@@ -123,7 +123,7 @@ impl ConstraintSystem {
 
     /// The total size of the [`ValueVec`] expected by this constraint system.
     pub fn value_vec_size(&self) -> usize {
-        self.constants.len() + self.n_inout + self.n_witness
+        (self.constants.len() + self.n_inout + self.n_witness).next_power_of_two()
     }
 
     /// Create a new [`ValueVec`] with the size expected by this constraint system.
@@ -135,6 +135,8 @@ impl ConstraintSystem {
 /// The vector of values.
 ///
 /// This is a prover-only structure.
+///
+/// The size of the value vec is always a power-of-two.
 pub struct ValueVec {
     data: Vec<Word>,
 }
