@@ -5,24 +5,26 @@ use crate::word::Word;
 /// Note that there is no shift left arithmetic because it is redundant.
 #[derive(Copy, Clone, Debug)]
 pub enum ShiftVariant {
-    /// Shift left logical
+    /// Shift logical left.
     Sll,
-    /// Shift right logical.
-    Srl,
-    /// Shift right arithmetic.
+    /// Shift logical right.
+    Slr,
+    /// Shift arithmetic right.
     Sar,
 }
 
 #[derive(Copy, Clone, Debug)]
 pub struct ValueIndex {
+    /// The index of this value in the input values vector `z`.
     pub value_index: usize,
+    /// The flavour of the shift that the value must be shifted by.
     pub shift_variant: ShiftVariant,
+    /// The number of bits by which the value must be shifted by.
     pub amount: usize,
 }
 
-pub type Operand = Vec<ValueIndex>;
-
 impl ValueIndex {
+    /// Create a value index that just uses the specified value.
     pub fn plain(value_index: usize) -> Self {
         Self {
             value_index,
@@ -31,6 +33,7 @@ impl ValueIndex {
         }
     }
 
+    /// Shift Left Logical by the given number of bits.
     pub fn sll(value_index: usize, amount: usize) -> Self {
         Self {
             value_index,
@@ -42,11 +45,13 @@ impl ValueIndex {
     pub fn srl(value_index: usize, amount: usize) -> Self {
         Self {
             value_index,
-            shift_variant: ShiftVariant::Srl,
+            shift_variant: ShiftVariant::Slr,
             amount,
         }
     }
 }
+
+pub type Operand = Vec<ValueIndex>;
 
 pub struct AndConstraint {
     pub a: Operand,
@@ -88,11 +93,11 @@ pub struct MulConstraint {
 }
 
 pub struct ConstraintSystem {
-    constants: Vec<Word>,
-    n_public: usize,
-    n_private: usize,
-    and_constrants: Vec<AndConstraint>,
-    mul_constraints: Vec<MulConstraint>,
+    pub constants: Vec<Word>,
+    pub n_public: usize,
+    pub n_private: usize,
+    pub and_constrants: Vec<AndConstraint>,
+    pub mul_constraints: Vec<MulConstraint>,
 }
 
 impl ConstraintSystem {
@@ -114,23 +119,25 @@ impl ConstraintSystem {
         self.and_constrants.len()
     }
 
-    pub fn new_witness(&self) -> Witness {
-        let size = self.constants.len() + self.n_public + self.n_private;
-        Witness::new(size)
+    /// The total size of the [`ValueVec`] expected by this constraint system.
+    pub fn value_vec_size(&self) -> usize {
+        self.constants.len() + self.n_public + self.n_private
     }
 
-    // pub fn validate_witness(&self, witness: &Witness) -> bool {
-    //
-    // }
+    /// Create a new [`ValueVec`] with the size expected by this constraint system.
+    pub fn new_value_vec(&self) -> ValueVec {
+        ValueVec::new(self.value_vec_size())
+    }
 }
 
-pub struct Witness {
+/// The vector of values.
+pub struct ValueVec {
     data: Vec<Option<Word>>,
 }
 
-impl Witness {
-    pub fn new(size: usize) -> Witness {
-        Witness {
+impl ValueVec {
+    pub fn new(size: usize) -> ValueVec {
+        ValueVec {
             data: vec![None; size],
         }
     }

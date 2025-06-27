@@ -2,7 +2,7 @@
 
 use circuits::sha256;
 use compiler::Wire;
-use constraint_system::Witness;
+use constraint_system::ValueVec;
 use word::Word;
 
 mod circuits;
@@ -44,18 +44,18 @@ fn proof_preimage() {
 
     let circuit = circuit.build();
     let cs = circuit.constraint_system();
-    let mut witness = cs.new_witness();
+    let mut value_vec = cs.new_value_vec();
 
-    compress.populate_m(&mut witness, preimage);
+    compress.populate_m(&mut value_vec, preimage);
     for (i, output) in output.iter().enumerate() {
-        witness.set(
+        value_vec.set(
             circuit.witness_index(*output),
             Word(expected_state[i] as u64),
         )
     }
 
-    circuit.fill_witness(&mut witness);
-    witness.assert_filled();
+    circuit.populate_wire_witness(&mut value_vec);
+    value_vec.assert_filled();
 
     println!("Number of AND constraints: {}", cs.n_and_constraints());
     println!("Number of gates: {}", circuit.n_gates());
@@ -96,15 +96,15 @@ fn sha256_chain() {
 
     let circuit = circuit.build();
     let cs = circuit.constraint_system();
-    let mut witness = cs.new_witness();
+    let mut value_vec = cs.new_value_vec();
 
     for compress in &compress_vec {
-        compress.populate_m(&mut witness, [0; 64]);
+        compress.populate_m(&mut value_vec, [0; 64]);
     }
-    circuit.fill_witness(&mut witness);
-    witness.assert_filled();
+    circuit.populate_wire_witness(&mut value_vec);
+    value_vec.assert_filled();
 
     println!("Number of AND constraints: {}", cs.n_and_constraints());
     println!("Number of gates: {}", circuit.n_gates());
-    println!("Size of witness: {}", witness.size());
+    println!("Size of witness: {}", value_vec.size());
 }

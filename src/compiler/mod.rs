@@ -7,7 +7,7 @@ use std::{
 use gate::{AssertEq, Band, Bor, Bxor, Gate, Iadd32, Rotr32, Shr32};
 
 use crate::{
-    constraint_system::{ConstraintSystem, ShiftVariant, Witness},
+    constraint_system::{ConstraintSystem, ShiftVariant, ValueVec},
     word::Word,
 };
 
@@ -210,7 +210,7 @@ impl Circuit {
         wire.0
     }
 
-    pub fn fill_witness(&self, w: &mut Witness) {
+    pub fn populate_wire_witness(&self, w: &mut ValueVec) {
         for (i, wire) in self.shared.wires.iter().enumerate() {
             if let WireKind::Constant(value) = wire.kind {
                 w.set(self.witness_index(Wire(i)), value);
@@ -221,7 +221,7 @@ impl Circuit {
         let start = Instant::now();
 
         for gate in self.shared.gates.iter() {
-            gate.fill_witness(self, w);
+            gate.populate_wire_witness(self, w);
         }
 
         let elapsed = start.elapsed();

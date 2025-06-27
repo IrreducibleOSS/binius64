@@ -2,13 +2,13 @@ use super::{CircuitBuilder, Wire};
 use crate::constraint_system::AndConstraint;
 use crate::constraint_system::ConstraintSystem;
 use crate::constraint_system::ValueIndex;
-use crate::constraint_system::Witness;
+use crate::constraint_system::ValueVec;
 use crate::word::Word;
 
 use super::Circuit;
 
 pub trait Gate {
-    fn fill_witness(&self, circuit: &Circuit, w: &mut Witness);
+    fn populate_wire_witness(&self, circuit: &Circuit, w: &mut ValueVec);
     fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem);
 }
 
@@ -26,7 +26,7 @@ impl Band {
 }
 
 impl Gate for Band {
-    fn fill_witness(&self, circuit: &Circuit, w: &mut Witness) {
+    fn populate_wire_witness(&self, circuit: &Circuit, w: &mut ValueVec) {
         let a = circuit.witness_index(self.a);
         let b = circuit.witness_index(self.b);
         let c = circuit.witness_index(self.c);
@@ -55,7 +55,7 @@ impl Bxor {
 }
 
 impl Gate for Bxor {
-    fn fill_witness(&self, circuit: &Circuit, w: &mut Witness) {
+    fn populate_wire_witness(&self, circuit: &Circuit, w: &mut ValueVec) {
         let a = circuit.witness_index(self.a);
         let b = circuit.witness_index(self.b);
         let c = circuit.witness_index(self.c);
@@ -84,7 +84,7 @@ impl Bor {
 }
 
 impl Gate for Bor {
-    fn fill_witness(&self, circuit: &Circuit, w: &mut Witness) {
+    fn populate_wire_witness(&self, circuit: &Circuit, w: &mut ValueVec) {
         let a = circuit.witness_index(self.a);
         let b = circuit.witness_index(self.b);
         let c = circuit.witness_index(self.c);
@@ -123,7 +123,7 @@ impl Iadd32 {
 }
 
 impl Gate for Iadd32 {
-    fn fill_witness(&self, circuit: &Circuit, w: &mut Witness) {
+    fn populate_wire_witness(&self, circuit: &Circuit, w: &mut ValueVec) {
         let a = circuit.witness_index(self.a);
         let b = circuit.witness_index(self.b);
         let c = circuit.witness_index(self.c);
@@ -178,7 +178,7 @@ impl Shr32 {
 }
 
 impl Gate for Shr32 {
-    fn fill_witness(&self, circuit: &Circuit, w: &mut Witness) {
+    fn populate_wire_witness(&self, circuit: &Circuit, w: &mut ValueVec) {
         let a = circuit.witness_index(self.a);
         let c = circuit.witness_index(self.c);
 
@@ -216,7 +216,7 @@ impl Rotr32 {
 }
 
 impl Gate for Rotr32 {
-    fn fill_witness(&self, circuit: &Circuit, w: &mut Witness) {
+    fn populate_wire_witness(&self, circuit: &Circuit, w: &mut ValueVec) {
         let a = circuit.witness_index(self.a);
         let c = circuit.witness_index(self.c);
 
@@ -229,8 +229,15 @@ impl Gate for Rotr32 {
         let c = circuit.witness_index(self.c);
         let mask32 = circuit.witness_index(self.mask32);
 
-        // ROTR: t1 = srl(x, n), t2 = sll(x, 32-n), r = OR(t1, t2), return AND(r, M32)
-        // This translates to: AND(OR(srl(x, n), sll(x, 32-n)), M32) = c
+        // ROTR(x, n):
+        //     t1 = srl(x, n),
+        //     t2 = sll(x, 32-n),
+        //     r = OR(t1, t2),
+        //     return AND(r, M32)
+        //
+        // This translates to:
+        //
+        // AND(OR(srl(x, n), sll(x, 32-n)), M32) = c
         cs.add_and_constraint(AndConstraint::abc(
             [
                 ValueIndex::srl(a, self.n as usize),
@@ -254,7 +261,7 @@ impl AssertEq {
 }
 
 impl Gate for AssertEq {
-    fn fill_witness(&self, circuit: &Circuit, w: &mut Witness) {
+    fn populate_wire_witness(&self, circuit: &Circuit, w: &mut ValueVec) {
         let x = circuit.witness_index(self.x);
         let y = circuit.witness_index(self.y);
 

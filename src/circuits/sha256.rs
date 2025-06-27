@@ -1,6 +1,6 @@
 use crate::{
     compiler::{CircuitBuilder, Wire},
-    constraint_system::Witness,
+    constraint_system::ValueVec,
     word::Word,
 };
 
@@ -104,7 +104,7 @@ impl Compress {
         }
     }
 
-    pub fn populate_m(&self, witness: &mut Witness, m: [u8; 64]) {
+    pub fn populate_m(&self, witness: &mut ValueVec, m: [u8; 64]) {
         debug_assert_eq!(self.m.len(), 16);
 
         for i in 0..16 {
