@@ -3,6 +3,7 @@ use crate::constraint_system::AndConstraint;
 use crate::constraint_system::ConstraintSystem;
 use crate::constraint_system::ValueIndex;
 use crate::constraint_system::Witness;
+use crate::word::Word;
 
 use super::Circuit;
 
@@ -110,7 +111,7 @@ impl Iadd32 {
     pub fn new(builder: &CircuitBuilder, a: Wire, b: Wire) -> Self {
         let c = builder.add_private();
         let cout = builder.add_private();
-        let mask32 = builder.add_constant(crate::word::Word::MASK_32);
+        let mask32 = builder.add_constant(Word::MASK_32);
         Self {
             a,
             b,
@@ -148,7 +149,7 @@ impl Gate for Iadd32 {
             [ValueIndex::plain(cout), ValueIndex::sll(cout, 1)],
         ));
 
-        // (x XOR y XOR (cout « 1)) AND M32 = z
+        // (x XOR y XOR (cout << 1)) AND M32 = z
         cs.add_and_constraint(AndConstraint::abc(
             [
                 ValueIndex::plain(a),
@@ -171,7 +172,7 @@ pub struct Shr32 {
 impl Shr32 {
     pub fn new(builder: &CircuitBuilder, a: Wire, n: u32) -> Self {
         let c = builder.add_private();
-        let mask32 = builder.add_constant(crate::word::Word::MASK_32);
+        let mask32 = builder.add_constant(Word::MASK_32);
         Self { a, c, mask32, n }
     }
 }
@@ -209,7 +210,7 @@ pub struct Rotr32 {
 impl Rotr32 {
     pub fn new(builder: &CircuitBuilder, a: Wire, n: u32) -> Self {
         let c = builder.add_private();
-        let mask32 = builder.add_constant(crate::word::Word::MASK_32);
+        let mask32 = builder.add_constant(Word::MASK_32);
         Self { a, c, mask32, n }
     }
 }
