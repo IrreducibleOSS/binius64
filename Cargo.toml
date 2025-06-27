@@ -6,5 +6,5 @@ edition = "2024"
 [dependencies]
 
 [profile.release]
-#lto = "fat"
-#debug = true
+lto = "fat"
+debug = true
