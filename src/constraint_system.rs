@@ -14,13 +14,15 @@ pub enum ShiftVariant {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct ShiftedValueIndex {
+pub struct ValueIndex {
     pub value_index: usize,
     pub shift_variant: ShiftVariant,
     pub amount: usize,
 }
 
-impl ShiftedValueIndex {
+pub type Operand = Vec<ValueIndex>;
+
+impl ValueIndex {
     pub fn plain(value_index: usize) -> Self {
         Self {
             value_index,
@@ -47,9 +49,9 @@ impl ShiftedValueIndex {
 }
 
 pub struct AndConstraint {
-    pub a: Vec<ShiftedValueIndex>,
-    pub b: Vec<ShiftedValueIndex>,
-    pub c: Vec<ShiftedValueIndex>,
+    pub a: Operand,
+    pub b: Operand,
+    pub c: Operand,
 }
 
 impl AndConstraint {
@@ -59,16 +61,16 @@ impl AndConstraint {
         c: impl IntoIterator<Item = usize>,
     ) -> AndConstraint {
         AndConstraint {
-            a: a.into_iter().map(|i| ShiftedValueIndex::plain(i)).collect(),
-            b: b.into_iter().map(|i| ShiftedValueIndex::plain(i)).collect(),
-            c: c.into_iter().map(|i| ShiftedValueIndex::plain(i)).collect(),
+            a: a.into_iter().map(|i| ValueIndex::plain(i)).collect(),
+            b: b.into_iter().map(|i| ValueIndex::plain(i)).collect(),
+            c: c.into_iter().map(|i| ValueIndex::plain(i)).collect(),
         }
     }
 
     pub fn abc(
-        a: impl IntoIterator<Item = ShiftedValueIndex>,
-        b: impl IntoIterator<Item = ShiftedValueIndex>,
-        c: impl IntoIterator<Item = ShiftedValueIndex>,
+        a: impl IntoIterator<Item = ValueIndex>,
+        b: impl IntoIterator<Item = ValueIndex>,
+        c: impl IntoIterator<Item = ValueIndex>,
     ) -> AndConstraint {
         AndConstraint {
             a: a.into_iter().collect(),
@@ -79,10 +81,10 @@ impl AndConstraint {
 }
 
 pub struct MulConstraint {
-    pub a: Vec<ShiftedValueIndex>,
-    pub b: Vec<ShiftedValueIndex>,
-    pub hi: Vec<ShiftedValueIndex>,
-    pub lo: Vec<ShiftedValueIndex>,
+    pub a: Operand,
+    pub b: Operand,
+    pub hi: Operand,
+    pub lo: Operand,
 }
 
 pub struct ConstraintSystem {

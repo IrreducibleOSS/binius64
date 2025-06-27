@@ -1,7 +1,7 @@
 use super::Wire;
 use crate::constraint_system::AndConstraint;
 use crate::constraint_system::ConstraintSystem;
-use crate::constraint_system::ShiftedValueIndex;
+use crate::constraint_system::ValueIndex;
 use crate::constraint_system::Witness;
 
 use super::Circuit;
@@ -137,23 +137,20 @@ impl Gate for Iadd32 {
 
         // (x XOR (cout << 1)) AND (y XOR (cout << 1)) = (cout << 1) XOR cout
         cs.add_and_constraint(AndConstraint::abc(
-            [ShiftedValueIndex::plain(a), ShiftedValueIndex::sll(cout, 1)],
-            [ShiftedValueIndex::plain(b), ShiftedValueIndex::sll(cout, 1)],
-            [
-                ShiftedValueIndex::plain(cout),
-                ShiftedValueIndex::sll(cout, 1),
-            ],
+            [ValueIndex::plain(a), ValueIndex::sll(cout, 1)],
+            [ValueIndex::plain(b), ValueIndex::sll(cout, 1)],
+            [ValueIndex::plain(cout), ValueIndex::sll(cout, 1)],
         ));
 
         // (x XOR y XOR (cout « 1)) AND M32 = z
         cs.add_and_constraint(AndConstraint::abc(
             [
-                ShiftedValueIndex::plain(a),
-                ShiftedValueIndex::plain(b),
-                ShiftedValueIndex::sll(cout, 1),
+                ValueIndex::plain(a),
+                ValueIndex::plain(b),
+                ValueIndex::sll(cout, 1),
             ],
-            [ShiftedValueIndex::plain(mask32)],
-            [ShiftedValueIndex::plain(c)],
+            [ValueIndex::plain(mask32)],
+            [ValueIndex::plain(c)],
         ));
     }
 }
@@ -187,9 +184,9 @@ impl Gate for Shr32 {
 
         // SHR = AND(srl(x, n), M32)
         cs.add_and_constraint(AndConstraint::abc(
-            [ShiftedValueIndex::srl(a, self.n as usize)],
-            [ShiftedValueIndex::plain(mask32)],
-            [ShiftedValueIndex::plain(c)],
+            [ValueIndex::srl(a, self.n as usize)],
+            [ValueIndex::plain(mask32)],
+            [ValueIndex::plain(c)],
         ));
     }
 }
@@ -225,11 +222,11 @@ impl Gate for Rotr32 {
         // This translates to: AND(OR(srl(x, n), sll(x, 32-n)), M32) = c
         cs.add_and_constraint(AndConstraint::abc(
             [
-                ShiftedValueIndex::srl(a, self.n as usize),
-                ShiftedValueIndex::sll(a, (32 - self.n) as usize),
+                ValueIndex::srl(a, self.n as usize),
+                ValueIndex::sll(a, (32 - self.n) as usize),
             ],
-            [ShiftedValueIndex::plain(mask32)],
-            [ShiftedValueIndex::plain(c)],
+            [ValueIndex::plain(mask32)],
+            [ValueIndex::plain(c)],
         ));
     }
 }
