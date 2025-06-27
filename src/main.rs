@@ -105,4 +105,5 @@ fn sha256_chain() {
 
     println!("Number of AND constraints: {}", cs.n_and_constraints());
     println!("Number of gates: {}", circuit.n_gates());
+    println!("Size of witness: {}", witness.size());
 }
