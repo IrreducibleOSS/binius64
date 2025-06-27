@@ -141,15 +141,17 @@ impl CircuitBuilder {
     }
 
     pub fn band(&self, a: Wire, b: Wire) -> Wire {
-        let c = self.add_private();
-        self.emit(Band::new(a, b, c));
-        c
+        let gate = Band::new(self, a, b);
+        let out = gate.c;
+        self.emit(gate);
+        out
     }
 
     pub fn bxor(&self, a: Wire, b: Wire) -> Wire {
-        let c = self.add_private();
-        self.emit(Bxor::new(a, b, c));
-        c
+        let gate = Bxor::new(self, a, b);
+        let out = gate.c;
+        self.emit(gate);
+        out
     }
 
     /// Bitwise Not
@@ -159,31 +161,31 @@ impl CircuitBuilder {
     }
 
     pub fn bor(&self, a: Wire, b: Wire) -> Wire {
-        let c = self.add_private();
-        self.emit(Bor::new(a, b, c));
-        c
+        let gate = Bor::new(self, a, b);
+        let out = gate.c;
+        self.emit(gate);
+        out
     }
 
     pub fn iadd_32(&self, a: Wire, b: Wire) -> Wire {
-        let c = self.add_private();
-        let cout = self.add_private();
-        let mask32 = self.add_constant(Word::MASK_32);
-        self.emit(Iadd32::new(a, b, c, cout, mask32));
-        c
+        let gate = Iadd32::new(self, a, b);
+        let out = gate.c;
+        self.emit(gate);
+        out
     }
 
     pub fn rotr_32(&self, a: Wire, n: u32) -> Wire {
-        let c = self.add_private();
-        let mask32 = self.add_constant(Word::MASK_32);
-        self.emit(Rotr32::new(a, c, mask32, n));
-        c
+        let gate = Rotr32::new(self, a, n);
+        let out = gate.c;
+        self.emit(gate);
+        out
     }
 
     pub fn shr_32(&self, a: Wire, n: u32) -> Wire {
-        let c = self.add_private();
-        let mask32 = self.add_constant(Word::MASK_32);
-        self.emit(Shr32::new(a, c, mask32, n));
-        c
+        let gate = Shr32::new(self, a, n);
+        let out = gate.c;
+        self.emit(gate);
+        out
     }
 
     pub fn assert_eq(&self, x: Wire, y: Wire) {
