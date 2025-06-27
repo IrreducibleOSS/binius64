@@ -1,6 +1,6 @@
 use std::{
-    cell::{Ref, RefCell, RefMut},
-    collections::{HashMap, HashSet},
+    cell::{RefCell, RefMut},
+    collections::HashMap,
     rc::Rc,
 };
 
@@ -103,9 +103,7 @@ impl CircuitBuilder {
     }
 
     fn shared_mut(&self) -> RefMut<Shared> {
-        RefMut::map(self.shared.borrow_mut(), |mut shared| {
-            shared.as_mut().unwrap()
-        })
+        RefMut::map(self.shared.borrow_mut(), |shared| shared.as_mut().unwrap())
     }
 
     fn emit(&self, gate: impl Gate + 'static) {

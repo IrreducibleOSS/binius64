@@ -48,7 +48,7 @@ impl Word {
         let Word(lhs) = self;
         let Word(rhs) = rhs;
         let sum = lhs.wrapping_add(rhs) & 0x00000000_FFFFFFFF;
-        let cout = ((lhs & rhs) | ((lhs ^ rhs) & !sum));
+        let cout = (lhs & rhs) | ((lhs ^ rhs) & !sum);
         (Word(sum), Word(cout))
     }
 

@@ -2,7 +2,6 @@ use super::{CircuitBuilder, Wire, WitnessFiller};
 use crate::constraint_system::AndConstraint;
 use crate::constraint_system::ConstraintSystem;
 use crate::constraint_system::ValueIndex;
-use crate::constraint_system::ValueVec;
 use crate::word::Word;
 
 use super::Circuit;
