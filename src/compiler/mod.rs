@@ -207,6 +207,13 @@ impl CircuitBuilder {
 pub struct WitnessFiller<'a> {
     circuit: &'a Circuit,
     value_vec: &'a mut ValueVec,
+    assertion_failed: bool,
+}
+
+impl<'a> WitnessFiller<'a> {
+    pub fn flag_assertion_failed(&mut self) {
+        self.assertion_failed = true;
+    }
 }
 
 impl<'a> std::ops::Index<Wire> for WitnessFiller<'a> {
@@ -247,10 +254,15 @@ impl Circuit {
         let mut filler = WitnessFiller {
             circuit: self,
             value_vec: w,
+            assertion_failed: false,
         };
 
         for gate in self.shared.gates.iter() {
             gate.populate_wire_witness(&mut filler);
+        }
+
+        if filler.assertion_failed {
+            panic!("assertion failed");
         }
 
         let elapsed = start.elapsed();

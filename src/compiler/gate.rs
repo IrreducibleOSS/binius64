@@ -241,7 +241,9 @@ impl AssertEq {
 
 impl Gate for AssertEq {
     fn populate_wire_witness(&self, w: &mut WitnessFiller) {
-        assert_eq!(w[self.x], w[self.y]);
+        if w[self.x] != w[self.y] {
+            w.flag_assertion_failed();
+        }
     }
 
     fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
