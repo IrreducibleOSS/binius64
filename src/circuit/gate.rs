@@ -1,4 +1,4 @@
-use super::Wire;
+use super::{CircuitBuilder, Wire};
 use crate::constraint_system::AndConstraint;
 use crate::constraint_system::ConstraintSystem;
 use crate::constraint_system::ValueIndex;
@@ -18,7 +18,8 @@ pub struct Band {
 }
 
 impl Band {
-    pub fn new(a: Wire, b: Wire, c: Wire) -> Self {
+    pub fn new(builder: &CircuitBuilder, a: Wire, b: Wire) -> Self {
+        let c = builder.add_private();
         Self { a, b, c }
     }
 }
@@ -46,7 +47,8 @@ pub struct Bxor {
 }
 
 impl Bxor {
-    pub fn new(a: Wire, b: Wire, c: Wire) -> Self {
+    pub fn new(builder: &CircuitBuilder, a: Wire, b: Wire) -> Self {
+        let c = builder.add_private();
         Self { a, b, c }
     }
 }
@@ -74,7 +76,8 @@ pub struct Bor {
 }
 
 impl Bor {
-    pub fn new(a: Wire, b: Wire, c: Wire) -> Self {
+    pub fn new(builder: &CircuitBuilder, a: Wire, b: Wire) -> Self {
+        let c = builder.add_private();
         Self { a, b, c }
     }
 }
@@ -104,7 +107,10 @@ pub struct Iadd32 {
 }
 
 impl Iadd32 {
-    pub fn new(a: Wire, b: Wire, c: Wire, cout: Wire, mask32: Wire) -> Self {
+    pub fn new(builder: &CircuitBuilder, a: Wire, b: Wire) -> Self {
+        let c = builder.add_private();
+        let cout = builder.add_private();
+        let mask32 = builder.add_constant(crate::word::Word::MASK_32);
         Self {
             a,
             b,
@@ -163,7 +169,9 @@ pub struct Shr32 {
 }
 
 impl Shr32 {
-    pub fn new(a: Wire, c: Wire, mask32: Wire, n: u32) -> Self {
+    pub fn new(builder: &CircuitBuilder, a: Wire, n: u32) -> Self {
+        let c = builder.add_private();
+        let mask32 = builder.add_constant(crate::word::Word::MASK_32);
         Self { a, c, mask32, n }
     }
 }
@@ -199,7 +207,9 @@ pub struct Rotr32 {
 }
 
 impl Rotr32 {
-    pub fn new(a: Wire, c: Wire, mask32: Wire, n: u32) -> Self {
+    pub fn new(builder: &CircuitBuilder, a: Wire, n: u32) -> Self {
+        let c = builder.add_private();
+        let mask32 = builder.add_constant(crate::word::Word::MASK_32);
         Self { a, c, mask32, n }
     }
 }
