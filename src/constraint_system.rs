@@ -94,18 +94,18 @@ pub struct MulConstraint {
 
 pub struct ConstraintSystem {
     pub constants: Vec<Word>,
-    pub n_public: usize,
-    pub n_private: usize,
+    pub n_inout: usize,
+    pub n_witness: usize,
     pub and_constrants: Vec<AndConstraint>,
     pub mul_constraints: Vec<MulConstraint>,
 }
 
 impl ConstraintSystem {
-    pub fn new(constants: Vec<Word>, n_public: usize, n_private: usize) -> Self {
+    pub fn new(constants: Vec<Word>, n_inout: usize, n_witness: usize) -> Self {
         ConstraintSystem {
             constants,
-            n_public,
-            n_private,
+            n_inout,
+            n_witness,
             and_constrants: Vec::new(),
             mul_constraints: Vec::new(),
         }
@@ -121,7 +121,7 @@ impl ConstraintSystem {
 
     /// The total size of the [`ValueVec`] expected by this constraint system.
     pub fn value_vec_size(&self) -> usize {
-        self.constants.len() + self.n_public + self.n_private
+        self.constants.len() + self.n_inout + self.n_witness
     }
 
     /// Create a new [`ValueVec`] with the size expected by this constraint system.
@@ -131,6 +131,8 @@ impl ConstraintSystem {
 }
 
 /// The vector of values.
+///
+/// This is a prover-only structure.
 pub struct ValueVec {
     data: Vec<Option<Word>>,
 }
@@ -142,6 +144,7 @@ impl ValueVec {
         }
     }
 
+    /// The total size of the vector.
     pub fn size(&self) -> usize {
         self.data.len()
     }

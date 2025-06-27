@@ -41,7 +41,7 @@ pub struct Wire(pub usize);
 #[derive(Copy, Clone)]
 enum WireKind {
     Constant(Word),
-    Public,
+    Inout,
     Private,
 }
 
@@ -53,8 +53,8 @@ pub struct WireData {
 
 struct Shared {
     cp: ConstPool,
-    n_public: usize,
-    n_private: usize,
+    n_inout: usize,
+    n_witness: usize,
     wires: Vec<WireData>,
     gates: Vec<Box<dyn Gate>>,
 }
@@ -74,16 +74,23 @@ impl CircuitBuilder {
             name: String::new(),
             shared: Rc::new(RefCell::new(Some(Shared {
                 cp: ConstPool::new(),
-                n_private: 0,
-                n_public: 0,
+                n_witness: 0,
+                n_inout: 0,
                 wires: Vec::new(),
                 gates: Vec::new(),
             }))),
         }
     }
 
+    /// # Preconditions
+    ///
+    /// Must be called only once.
     pub fn build(&self) -> Circuit {
-        let shared = self.shared.borrow_mut().take().unwrap();
+        let shared = self.shared.borrow_mut().take();
+        let Some(shared) = shared else {
+            panic!("CircuitBuilder::build called twice");
+        };
+
         Circuit { shared }
     }
 
@@ -124,16 +131,16 @@ impl CircuitBuilder {
         wire
     }
 
-    pub fn add_public(&self) -> Wire {
-        self.shared_mut().n_public += 1;
+    pub fn add_inout(&self) -> Wire {
+        self.shared_mut().n_inout += 1;
         self.add_wire(WireData {
-            kind: WireKind::Public,
+            kind: WireKind::Inout,
             shift: None,
         })
     }
 
-    pub fn add_private(&self) -> Wire {
-        self.shared_mut().n_private += 1;
+    pub fn add_witness(&self) -> Wire {
+        self.shared_mut().n_witness += 1;
         self.add_wire(WireData {
             kind: WireKind::Private,
             shift: None,
@@ -228,11 +235,12 @@ impl Circuit {
         println!("fill_witness took {} microseconds", elapsed.as_micros());
     }
 
+    /// Builds a constraint system from this circuit.
     pub fn constraint_system(&self) -> ConstraintSystem {
         let mut cs = ConstraintSystem::new(
             self.shared.cp.pool.keys().cloned().collect::<Vec<_>>(),
-            self.shared.n_public,
-            self.shared.n_private,
+            self.shared.n_inout,
+            self.shared.n_witness,
         );
         for gate in self.shared.gates.iter() {
             gate.constrain(self, &mut cs);
@@ -240,6 +248,10 @@ impl Circuit {
         cs
     }
 
+    /// Returns the number of gates in this circuit.
+    ///
+    /// Depending on what type of gates this circuit uses, the number of constraints might be
+    /// significantly larger.
     pub fn n_gates(&self) -> usize {
         self.shared.gates.len()
     }

@@ -29,11 +29,11 @@ impl State {
     }
 
     pub fn public(builder: &mut CircuitBuilder) -> Self {
-        State(std::array::from_fn(|i| builder.add_public()))
+        State(std::array::from_fn(|i| builder.add_inout()))
     }
 
     pub fn private(builder: &mut CircuitBuilder) -> Self {
-        State(std::array::from_fn(|i| builder.add_private()))
+        State(std::array::from_fn(|i| builder.add_witness()))
     }
 
     pub fn iv(builder: &mut CircuitBuilder) -> Self {

@@ -30,8 +30,8 @@ fn proof_preimage() {
 
     let mut circuit = compiler::CircuitBuilder::new();
     let mut state = sha256::State::iv(&mut circuit);
-    let input: [Wire; 16] = std::array::from_fn(|_| circuit.add_private());
-    let output: [Wire; 8] = std::array::from_fn(|_| circuit.add_public());
+    let input: [Wire; 16] = std::array::from_fn(|_| circuit.add_witness());
+    let output: [Wire; 8] = std::array::from_fn(|_| circuit.add_inout());
     let compress = sha256::Compress::new(&mut circuit, state, input);
 
     let state_out = compress.state_out.0.clone();
@@ -84,9 +84,9 @@ fn sha256_chain() {
         // Build a new instance of the sha256 verification subcircuit, passing the inputs `m` to it.
         // For the first compression `m` is public but everything else if private.
         let m: [compiler::Wire; 16] = if i == 0 {
-            std::array::from_fn(|_| sha256_builder.add_public())
+            std::array::from_fn(|_| sha256_builder.add_inout())
         } else {
-            std::array::from_fn(|_| sha256_builder.add_private())
+            std::array::from_fn(|_| sha256_builder.add_witness())
         };
         let compress = sha256::Compress::new(&mut sha256_builder, state, m);
         state = compress.state_out.clone();

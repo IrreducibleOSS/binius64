@@ -20,7 +20,7 @@ pub struct Band {
 
 impl Band {
     pub fn new(builder: &CircuitBuilder, a: Wire, b: Wire) -> Self {
-        let c = builder.add_private();
+        let c = builder.add_witness();
         Self { a, b, c }
     }
 }
@@ -49,7 +49,7 @@ pub struct Bxor {
 
 impl Bxor {
     pub fn new(builder: &CircuitBuilder, a: Wire, b: Wire) -> Self {
-        let c = builder.add_private();
+        let c = builder.add_witness();
         Self { a, b, c }
     }
 }
@@ -78,7 +78,7 @@ pub struct Bor {
 
 impl Bor {
     pub fn new(builder: &CircuitBuilder, a: Wire, b: Wire) -> Self {
-        let c = builder.add_private();
+        let c = builder.add_witness();
         Self { a, b, c }
     }
 }
@@ -109,8 +109,8 @@ pub struct Iadd32 {
 
 impl Iadd32 {
     pub fn new(builder: &CircuitBuilder, a: Wire, b: Wire) -> Self {
-        let c = builder.add_private();
-        let cout = builder.add_private();
+        let c = builder.add_witness();
+        let cout = builder.add_witness();
         let mask32 = builder.add_constant(Word::MASK_32);
         Self {
             a,
@@ -171,7 +171,7 @@ pub struct Shr32 {
 
 impl Shr32 {
     pub fn new(builder: &CircuitBuilder, a: Wire, n: u32) -> Self {
-        let c = builder.add_private();
+        let c = builder.add_witness();
         let mask32 = builder.add_constant(Word::MASK_32);
         Self { a, c, mask32, n }
     }
@@ -209,7 +209,7 @@ pub struct Rotr32 {
 
 impl Rotr32 {
     pub fn new(builder: &CircuitBuilder, a: Wire, n: u32) -> Self {
-        let c = builder.add_private();
+        let c = builder.add_witness();
         let mask32 = builder.add_constant(Word::MASK_32);
         Self { a, c, mask32, n }
     }
