@@ -229,12 +229,10 @@ mod tests {
         ];
 
         let mut circuit = compiler::CircuitBuilder::new();
-        let mut state = State::iv(&mut circuit);
+        let state = State::iv(&mut circuit);
         let input: [Wire; 16] = std::array::from_fn(|_| circuit.add_witness());
         let output: [Wire; 8] = std::array::from_fn(|_| circuit.add_inout());
         let compress = Compress::new(&mut circuit, state, input);
-
-        let state_out = compress.state_out.0.clone();
 
         // Mask to only low 32-bit.
         let mask32 = circuit.add_constant(Word::MASK_32);
