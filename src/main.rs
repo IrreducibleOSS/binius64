@@ -1,13 +1,13 @@
 #![allow(unused)]
 
-use circuit_builder::Wire;
+use circuits::sha256;
+use compiler::Wire;
 use constraint_system::Witness;
-use gadgets::sha256;
 use word::Word;
 
-mod circuit_builder;
+mod circuits;
+mod compiler;
 mod constraint_system;
-mod gadgets;
 mod word;
 
 /// A test circuit that proves a knowledge of preimage for a given state vector S in
@@ -28,7 +28,7 @@ fn proof_preimage() {
         0xb00361a3, 0x96177a9c, 0xb410ff61, 0xf20015ad,
     ];
 
-    let mut circuit = circuit_builder::CircuitBuilder::new();
+    let mut circuit = compiler::CircuitBuilder::new();
     let mut state = sha256::State::iv(&mut circuit);
     let input: [Wire; 16] = std::array::from_fn(|_| circuit.add_private());
     let output: [Wire; 8] = std::array::from_fn(|_| circuit.add_public());
@@ -68,7 +68,7 @@ fn main() {
 
 fn sha256_chain() {
     const N: usize = 1 << 10;
-    let mut circuit = circuit_builder::CircuitBuilder::new();
+    let mut circuit = compiler::CircuitBuilder::new();
 
     println!("{N} sha256 compress512 invocations");
 
@@ -83,7 +83,7 @@ fn sha256_chain() {
 
         // Build a new instance of the sha256 verification subcircuit, passing the inputs `m` to it.
         // For the first compression `m` is public but everything else if private.
-        let m: [circuit_builder::Wire; 16] = if i == 0 {
+        let m: [compiler::Wire; 16] = if i == 0 {
             std::array::from_fn(|_| sha256_builder.add_public())
         } else {
             std::array::from_fn(|_| sha256_builder.add_private())

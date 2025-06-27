@@ -1,5 +1,5 @@
 use crate::{
-    circuit_builder::{CircuitBuilder, Wire},
+    compiler::{CircuitBuilder, Wire},
     constraint_system::Witness,
     word::Word,
 };
