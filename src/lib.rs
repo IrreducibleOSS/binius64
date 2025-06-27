@@ -9,5 +9,3 @@ mod circuits;
 mod compiler;
 mod constraint_system;
 mod word;
-
-fn main() {}
