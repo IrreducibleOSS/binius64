@@ -1,3 +1,5 @@
+use std::ops::{Index, IndexMut};
+
 use crate::word::Word;
 
 /// A different variants of shifting a value.
@@ -134,13 +136,13 @@ impl ConstraintSystem {
 ///
 /// This is a prover-only structure.
 pub struct ValueVec {
-    data: Vec<Option<Word>>,
+    data: Vec<Word>,
 }
 
 impl ValueVec {
     pub fn new(size: usize) -> ValueVec {
         ValueVec {
-            data: vec![None; size],
+            data: vec![Word::ZERO; size],
         }
     }
 
@@ -150,18 +152,26 @@ impl ValueVec {
     }
 
     pub fn get(&self, index: usize) -> Word {
-        if self.data[index].is_none() {
-            panic!("Witness::get: value at index {} is not set", index);
-        }
-        self.data[index].unwrap()
+        self.data[index]
     }
 
     pub fn set(&mut self, index: usize, value: Word) {
-        assert!(self.data[index].is_none());
-        self.data[index] = Some(value);
+        self.data[index] = value;
     }
 
-    pub fn assert_filled(&self) {
-        assert!(self.data.iter().all(|v| v.is_some()))
+    pub fn assert_filled(&self) {}
+}
+
+impl Index<usize> for ValueVec {
+    type Output = Word;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.data[index]
+    }
+}
+
+impl IndexMut<usize> for ValueVec {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.data[index]
     }
 }

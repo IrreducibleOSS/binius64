@@ -206,6 +206,25 @@ impl CircuitBuilder {
     }
 }
 
+pub struct WitnessFiller<'a> {
+    circuit: &'a Circuit,
+    value_vec: &'a mut ValueVec,
+}
+
+impl<'a> std::ops::Index<Wire> for WitnessFiller<'a> {
+    type Output = Word;
+
+    fn index(&self, wire: Wire) -> &Self::Output {
+        &self.value_vec[self.circuit.witness_index(wire)]
+    }
+}
+
+impl<'a> std::ops::IndexMut<Wire> for WitnessFiller<'a> {
+    fn index_mut(&mut self, wire: Wire) -> &mut Self::Output {
+        &mut self.value_vec[self.circuit.witness_index(wire)]
+    }
+}
+
 pub struct Circuit {
     shared: Shared,
 }
@@ -227,8 +246,13 @@ impl Circuit {
         use std::time::Instant;
         let start = Instant::now();
 
+        let mut filler = WitnessFiller {
+            circuit: self,
+            value_vec: w,
+        };
+
         for gate in self.shared.gates.iter() {
-            gate.populate_wire_witness(self, w);
+            gate.populate_wire_witness(&mut filler);
         }
 
         let elapsed = start.elapsed();

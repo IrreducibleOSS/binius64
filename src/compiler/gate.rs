@@ -1,4 +1,4 @@
-use super::{CircuitBuilder, Wire};
+use super::{CircuitBuilder, Wire, WitnessFiller};
 use crate::constraint_system::AndConstraint;
 use crate::constraint_system::ConstraintSystem;
 use crate::constraint_system::ValueIndex;
@@ -8,7 +8,7 @@ use crate::word::Word;
 use super::Circuit;
 
 pub trait Gate {
-    fn populate_wire_witness(&self, circuit: &Circuit, w: &mut ValueVec);
+    fn populate_wire_witness(&self, w: &mut WitnessFiller);
     fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem);
 }
 
@@ -26,11 +26,8 @@ impl Band {
 }
 
 impl Gate for Band {
-    fn populate_wire_witness(&self, circuit: &Circuit, w: &mut ValueVec) {
-        let a = circuit.witness_index(self.a);
-        let b = circuit.witness_index(self.b);
-        let c = circuit.witness_index(self.c);
-        w.set(c, w.get(a) & w.get(b));
+    fn populate_wire_witness(&self, w: &mut WitnessFiller) {
+        w[self.c] = w[self.a] & w[self.b];
     }
 
     fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
@@ -55,11 +52,8 @@ impl Bxor {
 }
 
 impl Gate for Bxor {
-    fn populate_wire_witness(&self, circuit: &Circuit, w: &mut ValueVec) {
-        let a = circuit.witness_index(self.a);
-        let b = circuit.witness_index(self.b);
-        let c = circuit.witness_index(self.c);
-        w.set(c, w.get(a) ^ w.get(b));
+    fn populate_wire_witness(&self, w: &mut WitnessFiller) {
+        w[self.c] = w[self.a] ^ w[self.b];
     }
 
     fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
@@ -84,11 +78,8 @@ impl Bor {
 }
 
 impl Gate for Bor {
-    fn populate_wire_witness(&self, circuit: &Circuit, w: &mut ValueVec) {
-        let a = circuit.witness_index(self.a);
-        let b = circuit.witness_index(self.b);
-        let c = circuit.witness_index(self.c);
-        w.set(c, w.get(a) | w.get(b));
+    fn populate_wire_witness(&self, w: &mut WitnessFiller) {
+        w[self.c] = w[self.a] | w[self.b];
     }
 
     fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
@@ -123,16 +114,11 @@ impl Iadd32 {
 }
 
 impl Gate for Iadd32 {
-    fn populate_wire_witness(&self, circuit: &Circuit, w: &mut ValueVec) {
-        let a = circuit.witness_index(self.a);
-        let b = circuit.witness_index(self.b);
-        let c = circuit.witness_index(self.c);
-        let cout = circuit.witness_index(self.cout);
+    fn populate_wire_witness(&self, w: &mut WitnessFiller) {
+        let (sum, carry) = w[self.a].iadd_32(w[self.b]);
 
-        let (sum, carry) = w.get(a).iadd_32(w.get(b));
-
-        w.set(c, sum);
-        w.set(cout, carry);
+        w[self.c] = sum;
+        w[self.cout] = carry;
     }
 
     fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
@@ -178,12 +164,9 @@ impl Shr32 {
 }
 
 impl Gate for Shr32 {
-    fn populate_wire_witness(&self, circuit: &Circuit, w: &mut ValueVec) {
-        let a = circuit.witness_index(self.a);
-        let c = circuit.witness_index(self.c);
-
-        let result = w.get(a).shr_32(self.n);
-        w.set(c, result);
+    fn populate_wire_witness(&self, w: &mut WitnessFiller) {
+        let result = w[self.a].shr_32(self.n);
+        w[self.c] = result;
     }
 
     fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
@@ -216,12 +199,9 @@ impl Rotr32 {
 }
 
 impl Gate for Rotr32 {
-    fn populate_wire_witness(&self, circuit: &Circuit, w: &mut ValueVec) {
-        let a = circuit.witness_index(self.a);
-        let c = circuit.witness_index(self.c);
-
-        let result = w.get(a).rotr_32(self.n);
-        w.set(c, result);
+    fn populate_wire_witness(&self, w: &mut WitnessFiller) {
+        let result = w[self.a].rotr_32(self.n);
+        w[self.c] = result;
     }
 
     fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
@@ -261,11 +241,8 @@ impl AssertEq {
 }
 
 impl Gate for AssertEq {
-    fn populate_wire_witness(&self, circuit: &Circuit, w: &mut ValueVec) {
-        let x = circuit.witness_index(self.x);
-        let y = circuit.witness_index(self.y);
-
-        assert_eq!(w.get(x), w.get(y));
+    fn populate_wire_witness(&self, w: &mut WitnessFiller) {
+        assert_eq!(w[self.x], w[self.y]);
     }
 
     fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
