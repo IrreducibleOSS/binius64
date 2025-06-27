@@ -2,11 +2,12 @@
 
 use circuit::Wire;
 use constraint_system::Witness;
+use gadgets::sha256;
 use word::Word;
 
 mod circuit;
 mod constraint_system;
-mod sha256;
+mod gadgets;
 mod word;
 
 /// A test circuit that proves a knowledge of preimage for a given state vector S in
