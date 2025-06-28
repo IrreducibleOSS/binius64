@@ -39,7 +39,7 @@ impl ConstPool {
 /// The difference from `ValueIndex` is that a wire is abstract. Some wires could be moved during
 /// compilation and some wires might be pruned altogether.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-pub struct Wire(usize);
+pub struct Wire(u32);
 
 #[derive(Copy, Clone)]
 enum WireKind {
@@ -95,7 +95,7 @@ impl CircuitBuilder {
 
         let mut wire_mapping = Vec::with_capacity(shared.gates.len());
         for (i, _) in shared.wires.iter().enumerate() {
-            wire_mapping.push(ValueIndex(i));
+            wire_mapping.push(ValueIndex(i as u32));
         }
 
         Circuit {
@@ -124,7 +124,7 @@ impl CircuitBuilder {
         let mut shared = self.shared_mut();
         let id = shared.wires.len();
         shared.wires.push(wire_data);
-        Wire(id)
+        Wire(id as u32)
     }
 
     pub fn add_constant(&self, word: Word) -> Wire {
@@ -246,7 +246,7 @@ impl Circuit {
     /// For the given wire, returns its index in the witness vector.
     #[inline(always)]
     pub fn witness_index(&self, wire: Wire) -> ValueIndex {
-        self.wire_mapping[wire.0]
+        self.wire_mapping[wire.0 as usize]
     }
 
     pub fn new_witness_filler(&self) -> WitnessFiller {
@@ -265,7 +265,7 @@ impl Circuit {
         for (i, wire) in self.shared.wires.iter().enumerate() {
             if let WireKind::Constant(value) = wire.kind {
                 // TODO: don't conjure up a wire.
-                w[Wire(i)] = value;
+                w[Wire(i as u32)] = value;
             }
         }
 

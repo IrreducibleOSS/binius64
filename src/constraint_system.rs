@@ -3,7 +3,7 @@ use std::ops::{Index, IndexMut};
 use crate::word::Word;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct ValueIndex(pub usize);
+pub struct ValueIndex(pub u32);
 
 /// A different variants of shifting a value.
 ///
@@ -175,12 +175,12 @@ impl Index<ValueIndex> for ValueVec {
     type Output = Word;
 
     fn index(&self, index: ValueIndex) -> &Self::Output {
-        &self.data[index.0]
+        &self.data[index.0 as usize]
     }
 }
 
 impl IndexMut<ValueIndex> for ValueVec {
     fn index_mut(&mut self, index: ValueIndex) -> &mut Self::Output {
-        &mut self.data[index.0]
+        &mut self.data[index.0 as usize]
     }
 }
