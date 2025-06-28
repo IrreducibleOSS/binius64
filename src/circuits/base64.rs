@@ -1,12 +1,12 @@
-// Base64 verification circuit.
-//
-// This circuit checks that an encoded string is the Base64 representation of
-// a decoded byte string.  The length of the decoded string is provided as a
-// wire and must be in the range `0..=N` where `N` is a compile time bound.
-//
-// The circuit operates on 32-bit words.  Each byte is expected to be in the
-// low 8 bits of a word.  The encoded string length is `ENCODED_MAX` which is
-// four characters per three input bytes rounded up.
+//! Base64 verification circuit.
+//!
+//! This circuit checks that an encoded string is the Base64 representation of
+//! a decoded byte string.  The length of the decoded string is provided as a
+//! wire and must be in the range `0..=N` where `N` is a compile time bound.
+//!
+//! The circuit operates on 32-bit words.  Each byte is expected to be in the
+//! low 8 bits of a word.  The encoded string length is `ENCODED_MAX` which is
+//! four characters per three input bytes rounded up.
 
 use crate::{
     compiler::{CircuitBuilder, Wire},
@@ -220,8 +220,25 @@ mod tests {
     use base64::{Engine as _, engine::general_purpose};
 
     #[test]
+    fn base64_single() {
+        const N: usize = 1500;
+        const EN: usize = ((N + 2) / 3) * 4;
+        let mut circuit = compiler::CircuitBuilder::new();
+        let decoded: [compiler::Wire; N] = std::array::from_fn(|_| circuit.add_inout());
+        let encoded: [compiler::Wire; EN] = std::array::from_fn(|_| circuit.add_inout());
+        let len_wire = circuit.add_inout();
+        Base64::<N, EN>::new(&mut circuit, decoded, encoded, len_wire);
+        let circuit = circuit.build();
+        let cs = circuit.constraint_system();
+
+        println!("Number of AND constraints: {}", cs.n_and_constraints());
+        println!("Number of gates: {}", circuit.n_gates());
+        println!("Length of value vec: {}", cs.value_vec_len());
+    }
+
+    #[test]
     fn base64_roundtrip() {
-        const N: usize = 8;
+        const N: usize = 153;
         const EN: usize = ((N + 2) / 3) * 4;
         for len in 0..=N {
             let mut circuit = compiler::CircuitBuilder::new();
