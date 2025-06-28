@@ -5,6 +5,9 @@ edition = "2024"
 
 [dependencies]
 
+[dev-dependencies]
+base64 = "0.21"
+
 [profile.release]
 lto = "fat"
 debug = true
