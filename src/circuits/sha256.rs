@@ -1,6 +1,5 @@
 use crate::{
-    compiler::{CircuitBuilder, Wire},
-    constraint_system::ValueVec,
+    compiler::{CircuitBuilder, Wire, WitnessFiller},
     word::Word,
 };
 
@@ -104,7 +103,7 @@ impl Compress {
         }
     }
 
-    pub fn populate_m(&self, witness: &mut ValueVec, m: [u8; 64]) {
+    pub fn populate_m(&self, w: &mut WitnessFiller, m: [u8; 64]) {
         debug_assert_eq!(self.m.len(), 16);
 
         for i in 0..16 {
@@ -116,7 +115,7 @@ impl Compress {
                 | (m[j + 3] as u64);
 
             // Write it to the witness.  Word is a thin wrapper around u64.
-            witness.set(self.m[i].0, Word(limb));
+            w[self.m[i]] = Word(limb);
         }
     }
 }
@@ -242,20 +241,15 @@ mod tests {
 
         let circuit = circuit.build();
         let cs = circuit.constraint_system();
-        let mut value_vec = cs.new_value_vec();
+        let mut w = circuit.new_witness_filler();
 
         // Populate the input message for the compression function.
-        compress.populate_m(&mut value_vec, preimage);
+        compress.populate_m(&mut w, preimage);
 
-        for (i, output) in output.iter().enumerate() {
-            value_vec.set(
-                circuit.witness_index(*output),
-                Word(expected_state[i] as u64),
-            )
+        for (i, &output) in output.iter().enumerate() {
+            w[output] = Word(expected_state[i] as u64);
         }
-
-        circuit.populate_wire_witness(&mut value_vec);
-        value_vec.assert_filled();
+        circuit.populate_wire_witness(&mut w);
 
         println!("Number of AND constraints: {}", cs.n_and_constraints());
         println!("Number of gates: {}", circuit.n_gates());
@@ -292,16 +286,15 @@ mod tests {
 
         let circuit = circuit.build();
         let cs = circuit.constraint_system();
-        let mut value_vec = cs.new_value_vec();
+        let mut w = circuit.new_witness_filler();
 
         for compress in &compress_vec {
-            compress.populate_m(&mut value_vec, [0; 64]);
+            compress.populate_m(&mut w, [0; 64]);
         }
-        circuit.populate_wire_witness(&mut value_vec);
-        value_vec.assert_filled();
+        circuit.populate_wire_witness(&mut w);
 
         println!("Number of AND constraints: {}", cs.n_and_constraints());
         println!("Number of gates: {}", circuit.n_gates());
-        println!("Size of witness: {}", value_vec.size());
+        println!("Length of value vec: {}", cs.value_vec_len());
     }
 }

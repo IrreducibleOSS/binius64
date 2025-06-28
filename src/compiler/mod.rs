@@ -7,7 +7,7 @@ use std::{
 use gate::{AssertEq, Band, Bor, Bxor, Gate, Iadd32, Rotr32, Shr32};
 
 use crate::{
-    constraint_system::{ConstraintSystem, ShiftVariant, ValueVec},
+    constraint_system::{ConstraintSystem, ValueIndex, ValueVec, value_vec_len},
     word::Word,
 };
 
@@ -34,9 +34,12 @@ impl ConstPool {
     }
 }
 
-/// An ID of a wire.
+/// A wire through which a value flows in and out of gates.
+///
+/// The difference from `ValueIndex` is that a wire is abstract. Some wires could be moved during
+/// compilation and some wires might be pruned altogether.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-pub struct Wire(pub usize);
+pub struct Wire(usize);
 
 #[derive(Copy, Clone)]
 enum WireKind {
@@ -48,7 +51,6 @@ enum WireKind {
 #[derive(Copy, Clone)]
 pub struct WireData {
     kind: WireKind,
-    shift: Option<(ShiftVariant, usize)>,
 }
 
 struct Shared {
@@ -91,7 +93,15 @@ impl CircuitBuilder {
             panic!("CircuitBuilder::build called twice");
         };
 
-        Circuit { shared }
+        let mut wire_mapping = Vec::with_capacity(shared.gates.len());
+        for (i, _) in shared.wires.iter().enumerate() {
+            wire_mapping.push(ValueIndex(i));
+        }
+
+        Circuit {
+            shared,
+            wire_mapping,
+        }
     }
 
     pub fn subcircuit(&self, name: impl Into<String>) -> CircuitBuilder {
@@ -123,7 +133,6 @@ impl CircuitBuilder {
         }
         let wire = self.add_wire(WireData {
             kind: WireKind::Constant(word),
-            shift: None,
         });
         self.shared_mut().cp.insert(word, wire);
         wire
@@ -133,7 +142,6 @@ impl CircuitBuilder {
         self.shared_mut().n_inout += 1;
         self.add_wire(WireData {
             kind: WireKind::Inout,
-            shift: None,
         })
     }
 
@@ -141,7 +149,6 @@ impl CircuitBuilder {
         self.shared_mut().n_witness += 1;
         self.add_wire(WireData {
             kind: WireKind::Private,
-            shift: None,
         })
     }
 
@@ -206,7 +213,7 @@ impl CircuitBuilder {
 
 pub struct WitnessFiller<'a> {
     circuit: &'a Circuit,
-    value_vec: &'a mut ValueVec,
+    value_vec: ValueVec,
     assertion_failed: bool,
 }
 
@@ -232,36 +239,44 @@ impl<'a> std::ops::IndexMut<Wire> for WitnessFiller<'a> {
 
 pub struct Circuit {
     shared: Shared,
+    wire_mapping: Vec<ValueIndex>,
 }
 
 impl Circuit {
     /// For the given wire, returns its index in the witness vector.
     #[inline(always)]
-    pub fn witness_index(&self, wire: Wire) -> usize {
-        wire.0
+    pub fn witness_index(&self, wire: Wire) -> ValueIndex {
+        self.wire_mapping[wire.0]
     }
 
-    pub fn populate_wire_witness(&self, w: &mut ValueVec) {
+    pub fn new_witness_filler(&self) -> WitnessFiller {
+        WitnessFiller {
+            circuit: self,
+            value_vec: ValueVec::new(value_vec_len(
+                self.shared.cp.pool.len(),
+                self.shared.n_inout,
+                self.shared.n_witness,
+            )),
+            assertion_failed: false,
+        }
+    }
+
+    pub fn populate_wire_witness(&self, w: &mut WitnessFiller) {
         for (i, wire) in self.shared.wires.iter().enumerate() {
             if let WireKind::Constant(value) = wire.kind {
-                w.set(self.witness_index(Wire(i)), value);
+                // TODO: don't conjure up a wire.
+                w[Wire(i)] = value;
             }
         }
 
         use std::time::Instant;
         let start = Instant::now();
 
-        let mut filler = WitnessFiller {
-            circuit: self,
-            value_vec: w,
-            assertion_failed: false,
-        };
-
         for gate in self.shared.gates.iter() {
-            gate.populate_wire_witness(&mut filler);
+            gate.populate_wire_witness(w);
         }
 
-        if filler.assertion_failed {
+        if w.assertion_failed {
             panic!("assertion failed");
         }
 

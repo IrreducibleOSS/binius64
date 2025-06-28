@@ -2,6 +2,9 @@ use std::ops::{Index, IndexMut};
 
 use crate::word::Word;
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct ValueIndex(pub usize);
+
 /// A different variants of shifting a value.
 ///
 /// Note that there is no shift left arithmetic because it is redundant.
@@ -16,18 +19,18 @@ pub enum ShiftVariant {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct ValueIndex {
+pub struct ShiftedValueIndex {
     /// The index of this value in the input values vector `z`.
-    pub value_index: usize,
+    pub value_index: ValueIndex,
     /// The flavour of the shift that the value must be shifted by.
     pub shift_variant: ShiftVariant,
     /// The number of bits by which the value must be shifted by.
     pub amount: usize,
 }
 
-impl ValueIndex {
+impl ShiftedValueIndex {
     /// Create a value index that just uses the specified value.
-    pub fn plain(value_index: usize) -> Self {
+    pub fn plain(value_index: ValueIndex) -> Self {
         Self {
             value_index,
             shift_variant: ShiftVariant::Sll,
@@ -36,7 +39,7 @@ impl ValueIndex {
     }
 
     /// Shift Left Logical by the given number of bits.
-    pub fn sll(value_index: usize, amount: usize) -> Self {
+    pub fn sll(value_index: ValueIndex, amount: usize) -> Self {
         Self {
             value_index,
             shift_variant: ShiftVariant::Sll,
@@ -44,7 +47,7 @@ impl ValueIndex {
         }
     }
 
-    pub fn srl(value_index: usize, amount: usize) -> Self {
+    pub fn srl(value_index: ValueIndex, amount: usize) -> Self {
         Self {
             value_index,
             shift_variant: ShiftVariant::Slr,
@@ -53,7 +56,7 @@ impl ValueIndex {
     }
 }
 
-pub type Operand = Vec<ValueIndex>;
+pub type Operand = Vec<ShiftedValueIndex>;
 
 pub struct AndConstraint {
     pub a: Operand,
@@ -63,21 +66,21 @@ pub struct AndConstraint {
 
 impl AndConstraint {
     pub fn plain_abc(
-        a: impl IntoIterator<Item = usize>,
-        b: impl IntoIterator<Item = usize>,
-        c: impl IntoIterator<Item = usize>,
+        a: impl IntoIterator<Item = ValueIndex>,
+        b: impl IntoIterator<Item = ValueIndex>,
+        c: impl IntoIterator<Item = ValueIndex>,
     ) -> AndConstraint {
         AndConstraint {
-            a: a.into_iter().map(|i| ValueIndex::plain(i)).collect(),
-            b: b.into_iter().map(|i| ValueIndex::plain(i)).collect(),
-            c: c.into_iter().map(|i| ValueIndex::plain(i)).collect(),
+            a: a.into_iter().map(|i| ShiftedValueIndex::plain(i)).collect(),
+            b: b.into_iter().map(|i| ShiftedValueIndex::plain(i)).collect(),
+            c: c.into_iter().map(|i| ShiftedValueIndex::plain(i)).collect(),
         }
     }
 
     pub fn abc(
-        a: impl IntoIterator<Item = ValueIndex>,
-        b: impl IntoIterator<Item = ValueIndex>,
-        c: impl IntoIterator<Item = ValueIndex>,
+        a: impl IntoIterator<Item = ShiftedValueIndex>,
+        b: impl IntoIterator<Item = ShiftedValueIndex>,
+        c: impl IntoIterator<Item = ShiftedValueIndex>,
     ) -> AndConstraint {
         AndConstraint {
             a: a.into_iter().collect(),
@@ -121,15 +124,19 @@ impl ConstraintSystem {
         self.and_constrants.len()
     }
 
-    /// The total size of the [`ValueVec`] expected by this constraint system.
-    pub fn value_vec_size(&self) -> usize {
-        (self.constants.len() + self.n_inout + self.n_witness).next_power_of_two()
+    /// The total length of the [`ValueVec`] expected by this constraint system.
+    pub fn value_vec_len(&self) -> usize {
+        value_vec_len(self.constants.len(), self.n_inout, self.n_witness)
     }
 
     /// Create a new [`ValueVec`] with the size expected by this constraint system.
     pub fn new_value_vec(&self) -> ValueVec {
-        ValueVec::new(self.value_vec_size())
+        ValueVec::new(self.value_vec_len())
     }
+}
+
+pub fn value_vec_len(n_const: usize, n_inout: usize, n_witness: usize) -> usize {
+    (n_const + n_inout + n_witness).next_power_of_two()
 }
 
 /// The vector of values.
@@ -164,16 +171,16 @@ impl ValueVec {
     pub fn assert_filled(&self) {}
 }
 
-impl Index<usize> for ValueVec {
+impl Index<ValueIndex> for ValueVec {
     type Output = Word;
 
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.data[index]
+    fn index(&self, index: ValueIndex) -> &Self::Output {
+        &self.data[index.0]
     }
 }
 
-impl IndexMut<usize> for ValueVec {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        &mut self.data[index]
+impl IndexMut<ValueIndex> for ValueVec {
+    fn index_mut(&mut self, index: ValueIndex) -> &mut Self::Output {
+        &mut self.data[index.0]
     }
 }
