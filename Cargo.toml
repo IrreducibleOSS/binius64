@@ -3,5 +3,5 @@ members = ["crates/*"]
 resolver = "2"
 
 [profile.release]
-lto = "fat"
+lto = "thin"
 debug = true
