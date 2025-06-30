@@ -257,6 +257,11 @@ mod tests {
 
     #[test]
     fn sha256_chain() {
+        // Tests multiple SHA-256 compress512 invocations where the outputs are linked to the inputs
+        // of the following compression function.
+        //
+        // This creates ~100 layers with a lot of computations and a very large number of layers
+        // (hundreds of thousands) with a few gates each.
         const N: usize = 1 << 10;
         let mut circuit = compiler::CircuitBuilder::new();
 
@@ -280,6 +285,42 @@ mod tests {
             };
             let compress = Compress::new(&mut sha256_builder, state, m);
             state = compress.state_out.clone();
+
+            compress_vec.push(compress);
+        }
+
+        let circuit = circuit.build();
+        let cs = circuit.constraint_system();
+        let mut w = circuit.new_witness_filler();
+
+        for compress in &compress_vec {
+            compress.populate_m(&mut w, [0; 64]);
+        }
+        circuit.populate_wire_witness(&mut w);
+
+        println!("Number of AND constraints: {}", cs.n_and_constraints());
+        println!("Number of gates: {}", circuit.n_gates());
+        println!("Length of value vec: {}", cs.value_vec_len());
+    }
+
+    #[test]
+    fn sha256_parallel() {
+        // Test multiple SHA-256 compressions in parallel (no chaining)
+        const N: usize = 1 << 10;
+        let circuit = compiler::CircuitBuilder::new();
+
+        println!("{N} sha256 compress512 invocations in parallel");
+
+        let mut compress_vec = Vec::with_capacity(N);
+
+        for i in 0..N {
+            // Create a new subcircuit builder
+            let mut sha256_builder = circuit.subcircuit(format!("sha256[{i}]"));
+
+            // Each SHA-256 instance gets its own IV and input (all committed)
+            let state = State::iv(&mut sha256_builder);
+            let m: [compiler::Wire; 16] = std::array::from_fn(|_| sha256_builder.add_inout());
+            let compress = Compress::new(&mut sha256_builder, state, m);
 
             compress_vec.push(compress);
         }
