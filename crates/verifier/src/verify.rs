@@ -1,6 +1,6 @@
 use binius_field::{BinaryField, ExtensionField};
 use binius_transcript::{VerifierTranscript, fiat_shamir::Challenger};
-use monbijou::{constraint_system::ConstraintSystem, word::Word};
+use binius_frontend::{constraint_system::ConstraintSystem, word::Word};
 
 use super::{error::Error, fields::B64};
 

@@ -2,7 +2,7 @@ use binius_prover::prove;
 use binius_transcript::{ProverTranscript, fiat_shamir::HasherChallenger};
 use binius_verifier::{Params, fields::B128, verify};
 use blake2::{Blake2b, digest::consts::U32};
-use monbijou::{
+use binius_frontend::{
 	circuits::sha256::{Compress, State},
 	compiler,
 	compiler::Wire,

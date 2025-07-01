@@ -9,9 +9,9 @@ workspace = true
 
 [dependencies]
 binius_field = { path = "../field" }
+binius_frontend = { path = "../frontend" }
 binius_transcript = { path = "../transcript" }
 binius_verifier = { path = "../verifier" }
-monbijou = { path = "../monbijou" }
 thiserror.workspace = true
 
 [dev-dependencies]
