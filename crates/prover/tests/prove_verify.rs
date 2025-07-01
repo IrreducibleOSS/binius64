@@ -20,10 +20,10 @@ fn test_prove_verify_sha256_preimage() {
 	preimage[63] = 0x18;
 
 	#[rustfmt::skip]
-        let expected_state: [u32; 8] = [
-            0xba7816bf, 0x8f01cfea, 0x414140de, 0x5dae2223,
-            0xb00361a3, 0x96177a9c, 0xb410ff61, 0xf20015ad,
-        ];
+	let expected_state: [u32; 8] = [
+		0xba7816bf, 0x8f01cfea, 0x414140de, 0x5dae2223,
+		0xb00361a3, 0x96177a9c, 0xb410ff61, 0xf20015ad,
+	];
 
 	let mut circuit = compiler::CircuitBuilder::new();
 	let state = State::iv(&mut circuit);
