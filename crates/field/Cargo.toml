@@ -1,0 +1,112 @@
+[package]
+name = "binius_field"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+binius_maybe_rayon = { path = "../maybe_rayon", default-features = false }
+binius_utils = { path = "../utils", default-features = false }
+bytemuck.workspace = true
+cfg-if.workspace = true
+derive_more.workspace = true
+rand.workspace = true
+seq-macro.workspace = true
+subtle.workspace = true
+thiserror.workspace = true
+transpose.workspace = true
+tracing.workspace = true
+trait-set.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { workspace = true, features = ["wasm_js"] }
+
+[dev-dependencies]
+criterion.workspace = true
+itertools.workspace = true
+paste.workspace = true
+proptest.workspace = true
+
+[features]
+benchmark_alternative_strategies = []
+trace_multiplications = []
+default = ["nightly_features"]
+nightly_features = []
+
+[lib]
+bench = false
+
+[[bench]]
+name = "binary_field"
+harness = false
+
+[[bench]]
+name = "binary_field_util"
+harness = false
+
+[[bench]]
+name = "byte_sliced"
+harness = false
+
+[[bench]]
+name = "packed_extension_mul"
+harness = false
+
+[[bench]]
+name = "packed_field_linear_transform"
+harness = false
+
+[[bench]]
+name = "packed_field_element_access"
+harness = false
+
+[[bench]]
+name = "packed_field_init"
+harness = false
+
+[[bench]]
+name = "packed_field_iter"
+harness = false
+
+[[bench]]
+name = "packed_field_invert"
+harness = false
+
+[[bench]]
+name = "packed_field_multiply"
+harness = false
+
+[[bench]]
+name = "packed_field_mul_alpha"
+harness = false
+
+[[bench]]
+name = "packed_field_slice_iter"
+harness = false
+
+[[bench]]
+name = "packed_field_square"
+harness = false
+
+[[bench]]
+name = "packed_field_spread"
+harness = false
+
+[[bench]]
+name = "packed_field_subfield_ops"
+harness = false
+
+[[bench]]
+name = "byte_iteration"
+harness = false
+
+[[bench]]
+name = "main_field_unary_ops"
+harness = false
+
+[[bench]]
+name = "main_field_binary_ops"
+harness = false
