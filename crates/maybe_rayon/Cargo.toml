@@ -9,7 +9,6 @@ workspace = true
 
 [dependencies]
 cfg-if.workspace = true
-either.workspace = true
 itertools.workspace = true
 rayon = { optional = true, workspace = true }
 

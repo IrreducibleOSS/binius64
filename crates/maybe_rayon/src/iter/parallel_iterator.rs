@@ -8,7 +8,7 @@ use std::{
 	ops::{ControlFlow, Deref},
 };
 
-use either::Either;
+use itertools::Either;
 
 use self::private::Try;
 use super::{FromParallelIterator, IntoParallelIterator, parallel_wrapper::ParallelWrapper};
