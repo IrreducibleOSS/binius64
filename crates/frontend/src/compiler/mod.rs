@@ -112,7 +112,7 @@ impl CircuitBuilder {
 		}
 	}
 
-	fn shared_mut(&self) -> RefMut<Shared> {
+	fn shared_mut(&self) -> RefMut<'_, Shared> {
 		RefMut::map(self.shared.borrow_mut(), |shared| shared.as_mut().unwrap())
 	}
 
@@ -253,7 +253,7 @@ impl Circuit {
 		self.wire_mapping[wire.0 as usize]
 	}
 
-	pub fn new_witness_filler(&self) -> WitnessFiller {
+	pub fn new_witness_filler(&self) -> WitnessFiller<'_> {
 		WitnessFiller {
 			circuit: self,
 			value_vec: ValueVec::new(value_vec_len(

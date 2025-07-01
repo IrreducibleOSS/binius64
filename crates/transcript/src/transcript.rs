@@ -68,7 +68,7 @@ impl<Challenger_: Challenger> VerifierTranscript<Challenger_> {
 	///
 	/// This method should only be used to read advice that was previously written to the transcript
 	/// as an observed message.
-	pub fn decommitment(&mut self) -> TranscriptReader<impl Buf + '_> {
+	pub fn decommitment(&mut self) -> TranscriptReader<'_, impl Buf + '_> {
 		TranscriptReader {
 			buffer: &mut self.combined.buffer,
 			debug_assertions: self.debug_assertions,
@@ -275,7 +275,7 @@ impl<Challenger_: Challenger> ProverTranscript<Challenger_> {
 	/// a Merkle tree root as a commitment, and later sends leaf openings. The leaf openings should
 	/// be written using [`Self::decommitment`] because they are verified with respect to the
 	/// previously sent Merkle root.
-	pub fn decommitment(&mut self) -> TranscriptWriter<impl BufMut> {
+	pub fn decommitment(&mut self) -> TranscriptWriter<'_, impl BufMut> {
 		TranscriptWriter {
 			buffer: &mut self.combined.buffer,
 			debug_assertions: self.debug_assertions,

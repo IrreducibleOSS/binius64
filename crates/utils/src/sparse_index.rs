@@ -17,7 +17,7 @@ impl<T> SparseIndex<T> {
 		Self { entries }
 	}
 
-	pub fn entry(&mut self, id: usize) -> Entry<T> {
+	pub fn entry(&mut self, id: usize) -> Entry<'_, T> {
 		if self.entries.len() <= id {
 			self.entries.resize_with(id + 1, || None);
 		}
