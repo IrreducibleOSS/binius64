@@ -1,13 +1,13 @@
-use binius_prover::prove;
-use binius_transcript::{ProverTranscript, fiat_shamir::HasherChallenger};
-use binius_verifier::{Params, fields::B128, verify};
-use blake2::{Blake2b, digest::consts::U32};
 use binius_frontend::{
 	circuits::sha256::{Compress, State},
 	compiler,
 	compiler::Wire,
 	word::Word,
 };
+use binius_prover::prove;
+use binius_transcript::{ProverTranscript, fiat_shamir::HasherChallenger};
+use binius_verifier::{Params, fields::B128, verify};
+use blake2::{Blake2b, digest::consts::U32};
 
 type Blake2b256 = Blake2b<U32>;
 
@@ -54,14 +54,11 @@ fn test_prove_verify_sha256_preimage() {
 
 	let witness = w.into_value_vec();
 
-	// TODO: this is wrong, this should be the inout values from the witness.
-	let inout = vec![];
-
 	let params = Params {};
 
 	let mut prover_transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::default();
-	prove::<B128, _>(&params, &cs, witness, &mut prover_transcript).unwrap();
+	prove::<B128, _>(&params, &cs, witness.clone(), &mut prover_transcript).unwrap();
 
 	let mut verifier_transcript = prover_transcript.into_verifier();
-	verify::<B128, _>(&params, &cs, &inout, &mut verifier_transcript).unwrap();
+	verify::<B128, _>(&params, &cs, witness.inout(), &mut verifier_transcript).unwrap();
 }

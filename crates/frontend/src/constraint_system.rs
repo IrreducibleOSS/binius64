@@ -131,7 +131,7 @@ impl ConstraintSystem {
 
 	/// Create a new [`ValueVec`] with the size expected by this constraint system.
 	pub fn new_value_vec(&self) -> ValueVec {
-		ValueVec::new(self.value_vec_len())
+		ValueVec::new(self.constants.len(), self.n_inout, self.n_witness)
 	}
 }
 
@@ -146,12 +146,19 @@ pub fn value_vec_len(n_const: usize, n_inout: usize, n_witness: usize) -> usize 
 /// The size of the value vec is always a power-of-two.
 #[derive(Clone, Debug)]
 pub struct ValueVec {
+	n_const: usize,
+	n_inout: usize,
+	n_witness: usize,
 	data: Vec<Word>,
 }
 
 impl ValueVec {
-	pub fn new(size: usize) -> ValueVec {
+	pub fn new(n_const: usize, n_inout: usize, n_witness: usize) -> ValueVec {
+		let size = value_vec_len(n_const, n_inout, n_witness);
 		ValueVec {
+			n_const,
+			n_inout,
+			n_witness,
 			data: vec![Word::ZERO; size],
 		}
 	}
@@ -167,6 +174,20 @@ impl ValueVec {
 
 	pub fn set(&mut self, index: usize, value: Word) {
 		self.data[index] = value;
+	}
+
+	/// Returns the inout portion of the values vector.
+	pub fn inout(&self) -> &[Word] {
+		let start = self.n_const;
+		let end = start + self.n_inout;
+		&self.data[start..end]
+	}
+
+	/// Returns the witness portion of the values vector.
+	pub fn witness(&self) -> &[Word] {
+		let start = self.n_const + self.n_inout;
+		let end = start + self.n_witness;
+		&self.data[start..end]
 	}
 
 	pub fn assert_filled(&self) {}

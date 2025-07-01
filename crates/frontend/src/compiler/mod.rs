@@ -7,7 +7,7 @@ use std::{
 use gate::{AssertEq, Band, Bor, Bxor, Gate, Iadd32, Rotr32, Shr32};
 
 use crate::{
-	constraint_system::{ConstraintSystem, ValueIndex, ValueVec, value_vec_len},
+	constraint_system::{ConstraintSystem, ValueIndex, ValueVec},
 	word::Word,
 };
 
@@ -256,11 +256,11 @@ impl Circuit {
 	pub fn new_witness_filler(&self) -> WitnessFiller<'_> {
 		WitnessFiller {
 			circuit: self,
-			value_vec: ValueVec::new(value_vec_len(
+			value_vec: ValueVec::new(
 				self.shared.cp.pool.len(),
 				self.shared.n_inout,
 				self.shared.n_witness,
-			)),
+			),
 			assertion_failed: false,
 		}
 	}
