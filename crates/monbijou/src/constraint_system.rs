@@ -144,6 +144,7 @@ pub fn value_vec_len(n_const: usize, n_inout: usize, n_witness: usize) -> usize 
 /// This is a prover-only structure.
 ///
 /// The size of the value vec is always a power-of-two.
+#[derive(Clone, Debug)]
 pub struct ValueVec {
 	data: Vec<Word>,
 }

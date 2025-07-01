@@ -221,6 +221,10 @@ impl<'a> WitnessFiller<'a> {
 	pub fn flag_assertion_failed(&mut self) {
 		self.assertion_failed = true;
 	}
+
+	pub fn into_value_vec(self) -> ValueVec {
+		self.value_vec
+	}
 }
 
 impl<'a> std::ops::Index<Wire> for WitnessFiller<'a> {

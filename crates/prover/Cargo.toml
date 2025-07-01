@@ -1,0 +1,18 @@
+[package]
+name = "binius_prover"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+binius_field = { path = "../field" }
+binius_transcript = { path = "../transcript" }
+binius_verifier = { path = "../verifier" }
+monbijou = { path = "../monbijou" }
+thiserror.workspace = true
+
+[dev-dependencies]
+blake2.workspace = true
