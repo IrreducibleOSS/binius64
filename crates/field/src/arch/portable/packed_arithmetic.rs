@@ -405,6 +405,8 @@ where
 mod tests {
 	use std::fmt::Debug;
 
+	use rand::prelude::*;
+
 	use super::*;
 	use crate::{
 		BinaryField1b, BinaryField2b, BinaryField4b, BinaryField8b, BinaryField16b, BinaryField32b,
@@ -484,7 +486,7 @@ mod tests {
 		P: PackedField + MulAlpha + Debug,
 		P::Scalar: MulAlpha,
 	{
-		let mut rng = rand::rng();
+		let mut rng = StdRng::seed_from_u64(0);
 
 		for _ in 0..NUM_TESTS {
 			let a = P::random(&mut rng);
