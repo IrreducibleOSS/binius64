@@ -1,3 +1,4 @@
 /target
 profile.json
 Cargo.lock
+/.idea/
