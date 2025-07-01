@@ -1,0 +1,7 @@
+group_imports = "StdExternalCrate"
+hard_tabs = true
+imports_granularity = "Crate"
+max_width = 100
+fn_call_width = 88
+wrap_comments = true
+comment_width = 100
