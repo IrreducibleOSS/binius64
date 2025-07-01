@@ -1075,6 +1075,7 @@ pub fn is_polyval_tower<F: TowerField>() -> bool {
 mod tests {
 	use binius_utils::{SerializationMode, SerializeBytes, bytes::BytesMut};
 	use proptest::prelude::*;
+	use rand::prelude::*;
 
 	use super::*;
 	use crate::{
@@ -1231,7 +1232,7 @@ mod tests {
 	fn test_canonical_serialization() {
 		let mode = SerializationMode::CanonicalTower;
 		let mut buffer = BytesMut::new();
-		let mut rng = rand::rng();
+		let mut rng = StdRng::seed_from_u64(0);
 
 		let b128_poly1 = <BinaryField128bPolyval as Field>::random(&mut rng);
 		let b128_poly2 = <BinaryField128bPolyval as Field>::random(&mut rng);

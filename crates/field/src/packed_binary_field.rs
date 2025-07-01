@@ -215,6 +215,7 @@ pub mod test_utils {
 				TestTransformation<T>
 			{
 				fn test_transformation(a: <T as $crate::underlier::WithUnderlier>::Underlier) {
+					use ::rand::prelude::*;
 					use $crate::linear_transformation::{
 						FieldLinearTransformation, Transformation,
 					};
@@ -222,8 +223,9 @@ pub mod test_utils {
 					let a = T::from_underlier(a);
 
 					// TODO: think how we can use random seed from proptests here
+					let rng = StdRng::seed_from_u64(0);
 					let field_transformation =
-						FieldLinearTransformation::<T::Scalar, _>::random(rand::rng());
+						FieldLinearTransformation::<T::Scalar, _>::random(rng);
 					let packed_transformation =
 						T::make_packed_transformation(field_transformation.clone());
 
@@ -873,7 +875,7 @@ mod tests {
 
 	use binius_utils::{DeserializeBytes, SerializationMode, SerializeBytes, bytes::BytesMut};
 	use proptest::prelude::*;
-	use rand::{Rng, SeedableRng, rngs::StdRng};
+	use rand::prelude::*;
 	use test_utils::{check_interleave_all_heights, implements_transformation_factory};
 
 	use super::{
@@ -911,7 +913,8 @@ mod tests {
 		}
 	}
 
-	fn test_mul_packed_random<P: PackedField>(mut rng: impl Rng) {
+	fn test_mul_packed_random<P: PackedField>() {
+		let mut rng = StdRng::seed_from_u64(0);
 		test_mul_packed(P::random(&mut rng), P::random(&mut rng))
 	}
 
@@ -1088,32 +1091,32 @@ mod tests {
 
 	#[test]
 	fn test_mul_packed_256x1b() {
-		test_mul_packed_random::<PackedBinaryField256x1b>(rand::rng())
+		test_mul_packed_random::<PackedBinaryField256x1b>()
 	}
 
 	#[test]
 	fn test_mul_packed_32x8b() {
-		test_mul_packed_random::<PackedBinaryField32x8b>(rand::rng())
+		test_mul_packed_random::<PackedBinaryField32x8b>()
 	}
 
 	#[test]
 	fn test_mul_packed_16x16b() {
-		test_mul_packed_random::<PackedBinaryField16x16b>(rand::rng())
+		test_mul_packed_random::<PackedBinaryField16x16b>()
 	}
 
 	#[test]
 	fn test_mul_packed_8x32b() {
-		test_mul_packed_random::<PackedBinaryField8x32b>(rand::rng())
+		test_mul_packed_random::<PackedBinaryField8x32b>()
 	}
 
 	#[test]
 	fn test_mul_packed_4x64b() {
-		test_mul_packed_random::<PackedBinaryField4x64b>(rand::rng())
+		test_mul_packed_random::<PackedBinaryField4x64b>()
 	}
 
 	#[test]
 	fn test_mul_packed_2x128b() {
-		test_mul_packed_random::<PackedBinaryField2x128b>(rand::rng())
+		test_mul_packed_random::<PackedBinaryField2x128b>()
 	}
 
 	#[test]
