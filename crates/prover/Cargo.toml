@@ -1,5 +1,5 @@
 [package]
-name = "binius_prover"
+name = "binius-prover"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -8,10 +8,10 @@ authors.workspace = true
 workspace = true
 
 [dependencies]
-binius_field = { path = "../field" }
-binius_frontend = { path = "../frontend" }
-binius_transcript = { path = "../transcript" }
-binius_verifier = { path = "../verifier" }
+binius-field = { path = "../field" }
+binius-frontend = { path = "../frontend" }
+binius-transcript = { path = "../transcript" }
+binius-verifier = { path = "../verifier" }
 thiserror.workspace = true
 
 [dev-dependencies]

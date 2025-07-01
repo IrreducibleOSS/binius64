@@ -1,5 +1,5 @@
 [package]
-name = "binius_maybe_rayon"
+name = "binius-maybe-rayon"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

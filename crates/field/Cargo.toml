@@ -1,5 +1,5 @@
 [package]
-name = "binius_field"
+name = "binius-field"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -8,8 +8,8 @@ authors.workspace = true
 workspace = true
 
 [dependencies]
-binius_maybe_rayon = { path = "../maybe_rayon", default-features = false }
-binius_utils = { path = "../utils", default-features = false }
+binius-maybe-rayon = { path = "../maybe-rayon", default-features = false }
+binius-utils = { path = "../utils", default-features = false }
 bytemuck.workspace = true
 cfg-if.workspace = true
 derive_more.workspace = true

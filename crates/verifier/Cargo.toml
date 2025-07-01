@@ -1,5 +1,5 @@
 [package]
-name = "binius_verifier"
+name = "binius-verifier"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -8,7 +8,7 @@ authors.workspace = true
 workspace = true
 
 [dependencies]
-binius_field = { path = "../field" }
-binius_frontend = { path = "../frontend" }
-binius_transcript = { path = "../transcript" }
+binius-field = { path = "../field" }
+binius-frontend = { path = "../frontend" }
+binius-transcript = { path = "../transcript" }
 thiserror.workspace = true
