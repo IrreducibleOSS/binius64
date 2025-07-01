@@ -2,6 +2,37 @@
 members = ["crates/*"]
 resolver = "2"
 
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+authors = ["Irreducible Team <opensource@irreducible.com>"]
+
 [profile.release]
 lto = "thin"
 debug = true
+
+[profile.profiling]
+inherits = "release"
+debug = true
+
+[profile.bench]
+inherits = "release"
+debug = true
+
+[workspace.dependencies]
+auto_impl = "1.2.0"
+bytemuck = { version = "1.18.0", features = [
+    "derive",
+    "min_const_generics",
+    "must_cast",
+] }
+bytes = "1.7.2"
+cfg-if = "1.0.0"
+either = "1.11.0"
+generic-array = "0.14.7"
+itertools = "0.14.0"
+rand = { version = "0.9.1", default-features = false, features = ["std", "std_rng"] }
+rayon = "1.8.0"
+thiserror = "2.0.3"
+
+[workspace.lints.clippy]
