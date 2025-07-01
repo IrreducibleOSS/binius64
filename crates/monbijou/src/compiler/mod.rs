@@ -1,37 +1,37 @@
 use std::{
-    cell::{RefCell, RefMut},
-    collections::HashMap,
-    rc::Rc,
+	cell::{RefCell, RefMut},
+	collections::HashMap,
+	rc::Rc,
 };
 
 use gate::{AssertEq, Band, Bor, Bxor, Gate, Iadd32, Rotr32, Shr32};
 
 use crate::{
-    constraint_system::{ConstraintSystem, ValueIndex, ValueVec, value_vec_len},
-    word::Word,
+	constraint_system::{ConstraintSystem, ValueIndex, ValueVec, value_vec_len},
+	word::Word,
 };
 
 mod gate;
 
 pub struct ConstPool {
-    pool: HashMap<Word, Wire>,
+	pool: HashMap<Word, Wire>,
 }
 
 impl ConstPool {
-    pub fn new() -> Self {
-        ConstPool {
-            pool: HashMap::new(),
-        }
-    }
+	pub fn new() -> Self {
+		ConstPool {
+			pool: HashMap::new(),
+		}
+	}
 
-    pub fn get(&self, value: Word) -> Option<Wire> {
-        self.pool.get(&value).cloned()
-    }
+	pub fn get(&self, value: Word) -> Option<Wire> {
+		self.pool.get(&value).cloned()
+	}
 
-    pub fn insert(&mut self, word: Word, wire: Wire) {
-        let prev = self.pool.insert(word, wire);
-        assert!(prev.is_none());
-    }
+	pub fn insert(&mut self, word: Word, wire: Wire) {
+		let prev = self.pool.insert(word, wire);
+		assert!(prev.is_none());
+	}
 }
 
 /// A wire through which a value flows in and out of gates.
@@ -43,22 +43,22 @@ pub struct Wire(u32);
 
 #[derive(Copy, Clone)]
 enum WireKind {
-    Constant(Word),
-    Inout,
-    Private,
+	Constant(Word),
+	Inout,
+	Private,
 }
 
 #[derive(Copy, Clone)]
 pub struct WireData {
-    kind: WireKind,
+	kind: WireKind,
 }
 
 struct Shared {
-    cp: ConstPool,
-    n_inout: usize,
-    n_witness: usize,
-    wires: Vec<WireData>,
-    gates: Vec<Box<dyn Gate>>,
+	cp: ConstPool,
+	n_inout: usize,
+	n_witness: usize,
+	wires: Vec<WireData>,
+	gates: Vec<Box<dyn Gate>>,
 }
 
 /// # Clone
@@ -66,242 +66,242 @@ struct Shared {
 /// This is a light-weight reference. Cloning is cheap.
 #[derive(Clone)]
 pub struct CircuitBuilder {
-    name: String,
-    shared: Rc<RefCell<Option<Shared>>>,
+	name: String,
+	shared: Rc<RefCell<Option<Shared>>>,
 }
 
 impl CircuitBuilder {
-    pub fn new() -> Self {
-        CircuitBuilder {
-            name: String::new(),
-            shared: Rc::new(RefCell::new(Some(Shared {
-                cp: ConstPool::new(),
-                n_witness: 0,
-                n_inout: 0,
-                wires: Vec::new(),
-                gates: Vec::new(),
-            }))),
-        }
-    }
+	pub fn new() -> Self {
+		CircuitBuilder {
+			name: String::new(),
+			shared: Rc::new(RefCell::new(Some(Shared {
+				cp: ConstPool::new(),
+				n_witness: 0,
+				n_inout: 0,
+				wires: Vec::new(),
+				gates: Vec::new(),
+			}))),
+		}
+	}
 
-    /// # Preconditions
-    ///
-    /// Must be called only once.
-    pub fn build(&self) -> Circuit {
-        let shared = self.shared.borrow_mut().take();
-        let Some(shared) = shared else {
-            panic!("CircuitBuilder::build called twice");
-        };
+	/// # Preconditions
+	///
+	/// Must be called only once.
+	pub fn build(&self) -> Circuit {
+		let shared = self.shared.borrow_mut().take();
+		let Some(shared) = shared else {
+			panic!("CircuitBuilder::build called twice");
+		};
 
-        let mut wire_mapping = Vec::with_capacity(shared.gates.len());
-        for (i, _) in shared.wires.iter().enumerate() {
-            wire_mapping.push(ValueIndex(i as u32));
-        }
+		let mut wire_mapping = Vec::with_capacity(shared.gates.len());
+		for (i, _) in shared.wires.iter().enumerate() {
+			wire_mapping.push(ValueIndex(i as u32));
+		}
 
-        Circuit {
-            shared,
-            wire_mapping,
-        }
-    }
+		Circuit {
+			shared,
+			wire_mapping,
+		}
+	}
 
-    pub fn subcircuit(&self, name: impl Into<String>) -> CircuitBuilder {
-        let name = name.into();
-        CircuitBuilder {
-            name: format!("{}.{name}", self.name),
-            shared: self.shared.clone(),
-        }
-    }
+	pub fn subcircuit(&self, name: impl Into<String>) -> CircuitBuilder {
+		let name = name.into();
+		CircuitBuilder {
+			name: format!("{}.{name}", self.name),
+			shared: self.shared.clone(),
+		}
+	}
 
-    fn shared_mut(&self) -> RefMut<Shared> {
-        RefMut::map(self.shared.borrow_mut(), |shared| shared.as_mut().unwrap())
-    }
+	fn shared_mut(&self) -> RefMut<Shared> {
+		RefMut::map(self.shared.borrow_mut(), |shared| shared.as_mut().unwrap())
+	}
 
-    fn emit(&self, gate: impl Gate + 'static) {
-        self.shared_mut().gates.push(Box::new(gate))
-    }
+	fn emit(&self, gate: impl Gate + 'static) {
+		self.shared_mut().gates.push(Box::new(gate))
+	}
 
-    fn add_wire(&self, wire_data: WireData) -> Wire {
-        let mut shared = self.shared_mut();
-        let id = shared.wires.len();
-        shared.wires.push(wire_data);
-        Wire(id as u32)
-    }
+	fn add_wire(&self, wire_data: WireData) -> Wire {
+		let mut shared = self.shared_mut();
+		let id = shared.wires.len();
+		shared.wires.push(wire_data);
+		Wire(id as u32)
+	}
 
-    pub fn add_constant(&self, word: Word) -> Wire {
-        if let Some(wire) = self.shared_mut().cp.get(word) {
-            return wire;
-        }
-        let wire = self.add_wire(WireData {
-            kind: WireKind::Constant(word),
-        });
-        self.shared_mut().cp.insert(word, wire);
-        wire
-    }
+	pub fn add_constant(&self, word: Word) -> Wire {
+		if let Some(wire) = self.shared_mut().cp.get(word) {
+			return wire;
+		}
+		let wire = self.add_wire(WireData {
+			kind: WireKind::Constant(word),
+		});
+		self.shared_mut().cp.insert(word, wire);
+		wire
+	}
 
-    pub fn add_inout(&self) -> Wire {
-        self.shared_mut().n_inout += 1;
-        self.add_wire(WireData {
-            kind: WireKind::Inout,
-        })
-    }
+	pub fn add_inout(&self) -> Wire {
+		self.shared_mut().n_inout += 1;
+		self.add_wire(WireData {
+			kind: WireKind::Inout,
+		})
+	}
 
-    pub fn add_witness(&self) -> Wire {
-        self.shared_mut().n_witness += 1;
-        self.add_wire(WireData {
-            kind: WireKind::Private,
-        })
-    }
+	pub fn add_witness(&self) -> Wire {
+		self.shared_mut().n_witness += 1;
+		self.add_wire(WireData {
+			kind: WireKind::Private,
+		})
+	}
 
-    pub fn band(&self, a: Wire, b: Wire) -> Wire {
-        let gate = Band::new(self, a, b);
-        let out = gate.c;
-        self.emit(gate);
-        out
-    }
+	pub fn band(&self, a: Wire, b: Wire) -> Wire {
+		let gate = Band::new(self, a, b);
+		let out = gate.c;
+		self.emit(gate);
+		out
+	}
 
-    pub fn bxor(&self, a: Wire, b: Wire) -> Wire {
-        let gate = Bxor::new(self, a, b);
-        let out = gate.c;
-        self.emit(gate);
-        out
-    }
+	pub fn bxor(&self, a: Wire, b: Wire) -> Wire {
+		let gate = Bxor::new(self, a, b);
+		let out = gate.c;
+		self.emit(gate);
+		out
+	}
 
-    /// Bitwise Not
-    pub fn bnot(&self, a: Wire) -> Wire {
-        let all_one = self.add_constant(Word::ALL_ONE);
-        self.bxor(a, all_one)
-    }
+	/// Bitwise Not
+	pub fn bnot(&self, a: Wire) -> Wire {
+		let all_one = self.add_constant(Word::ALL_ONE);
+		self.bxor(a, all_one)
+	}
 
-    pub fn bor(&self, a: Wire, b: Wire) -> Wire {
-        let gate = Bor::new(self, a, b);
-        let out = gate.c;
-        self.emit(gate);
-        out
-    }
+	pub fn bor(&self, a: Wire, b: Wire) -> Wire {
+		let gate = Bor::new(self, a, b);
+		let out = gate.c;
+		self.emit(gate);
+		out
+	}
 
-    pub fn iadd_32(&self, a: Wire, b: Wire) -> Wire {
-        let gate = Iadd32::new(self, a, b);
-        let out = gate.c;
-        self.emit(gate);
-        out
-    }
+	pub fn iadd_32(&self, a: Wire, b: Wire) -> Wire {
+		let gate = Iadd32::new(self, a, b);
+		let out = gate.c;
+		self.emit(gate);
+		out
+	}
 
-    pub fn rotr_32(&self, a: Wire, n: u32) -> Wire {
-        let gate = Rotr32::new(self, a, n);
-        let out = gate.c;
-        self.emit(gate);
-        out
-    }
+	pub fn rotr_32(&self, a: Wire, n: u32) -> Wire {
+		let gate = Rotr32::new(self, a, n);
+		let out = gate.c;
+		self.emit(gate);
+		out
+	}
 
-    pub fn shr_32(&self, a: Wire, n: u32) -> Wire {
-        let gate = Shr32::new(self, a, n);
-        let out = gate.c;
-        self.emit(gate);
-        out
-    }
+	pub fn shr_32(&self, a: Wire, n: u32) -> Wire {
+		let gate = Shr32::new(self, a, n);
+		let out = gate.c;
+		self.emit(gate);
+		out
+	}
 
-    pub fn assert_eq(&self, x: Wire, y: Wire) {
-        self.emit(AssertEq::new(x, y))
-    }
+	pub fn assert_eq(&self, x: Wire, y: Wire) {
+		self.emit(AssertEq::new(x, y))
+	}
 
-    pub fn assert_eq_v<const N: usize>(&self, x: [Wire; N], y: [Wire; N]) {
-        for i in 0..N {
-            self.assert_eq(x[i], y[i]);
-        }
-    }
+	pub fn assert_eq_v<const N: usize>(&self, x: [Wire; N], y: [Wire; N]) {
+		for i in 0..N {
+			self.assert_eq(x[i], y[i]);
+		}
+	}
 }
 
 pub struct WitnessFiller<'a> {
-    circuit: &'a Circuit,
-    value_vec: ValueVec,
-    assertion_failed: bool,
+	circuit: &'a Circuit,
+	value_vec: ValueVec,
+	assertion_failed: bool,
 }
 
 impl<'a> WitnessFiller<'a> {
-    pub fn flag_assertion_failed(&mut self) {
-        self.assertion_failed = true;
-    }
+	pub fn flag_assertion_failed(&mut self) {
+		self.assertion_failed = true;
+	}
 }
 
 impl<'a> std::ops::Index<Wire> for WitnessFiller<'a> {
-    type Output = Word;
+	type Output = Word;
 
-    fn index(&self, wire: Wire) -> &Self::Output {
-        &self.value_vec[self.circuit.witness_index(wire)]
-    }
+	fn index(&self, wire: Wire) -> &Self::Output {
+		&self.value_vec[self.circuit.witness_index(wire)]
+	}
 }
 
 impl<'a> std::ops::IndexMut<Wire> for WitnessFiller<'a> {
-    fn index_mut(&mut self, wire: Wire) -> &mut Self::Output {
-        &mut self.value_vec[self.circuit.witness_index(wire)]
-    }
+	fn index_mut(&mut self, wire: Wire) -> &mut Self::Output {
+		&mut self.value_vec[self.circuit.witness_index(wire)]
+	}
 }
 
 pub struct Circuit {
-    shared: Shared,
-    wire_mapping: Vec<ValueIndex>,
+	shared: Shared,
+	wire_mapping: Vec<ValueIndex>,
 }
 
 impl Circuit {
-    /// For the given wire, returns its index in the witness vector.
-    #[inline(always)]
-    pub fn witness_index(&self, wire: Wire) -> ValueIndex {
-        self.wire_mapping[wire.0 as usize]
-    }
+	/// For the given wire, returns its index in the witness vector.
+	#[inline(always)]
+	pub fn witness_index(&self, wire: Wire) -> ValueIndex {
+		self.wire_mapping[wire.0 as usize]
+	}
 
-    pub fn new_witness_filler(&self) -> WitnessFiller {
-        WitnessFiller {
-            circuit: self,
-            value_vec: ValueVec::new(value_vec_len(
-                self.shared.cp.pool.len(),
-                self.shared.n_inout,
-                self.shared.n_witness,
-            )),
-            assertion_failed: false,
-        }
-    }
+	pub fn new_witness_filler(&self) -> WitnessFiller {
+		WitnessFiller {
+			circuit: self,
+			value_vec: ValueVec::new(value_vec_len(
+				self.shared.cp.pool.len(),
+				self.shared.n_inout,
+				self.shared.n_witness,
+			)),
+			assertion_failed: false,
+		}
+	}
 
-    pub fn populate_wire_witness(&self, w: &mut WitnessFiller) {
-        for (i, wire) in self.shared.wires.iter().enumerate() {
-            if let WireKind::Constant(value) = wire.kind {
-                // TODO: don't conjure up a wire.
-                w[Wire(i as u32)] = value;
-            }
-        }
+	pub fn populate_wire_witness(&self, w: &mut WitnessFiller) {
+		for (i, wire) in self.shared.wires.iter().enumerate() {
+			if let WireKind::Constant(value) = wire.kind {
+				// TODO: don't conjure up a wire.
+				w[Wire(i as u32)] = value;
+			}
+		}
 
-        use std::time::Instant;
-        let start = Instant::now();
+		use std::time::Instant;
+		let start = Instant::now();
 
-        for gate in self.shared.gates.iter() {
-            gate.populate_wire_witness(w);
-        }
+		for gate in self.shared.gates.iter() {
+			gate.populate_wire_witness(w);
+		}
 
-        if w.assertion_failed {
-            panic!("assertion failed");
-        }
+		if w.assertion_failed {
+			panic!("assertion failed");
+		}
 
-        let elapsed = start.elapsed();
-        println!("fill_witness took {} microseconds", elapsed.as_micros());
-    }
+		let elapsed = start.elapsed();
+		println!("fill_witness took {} microseconds", elapsed.as_micros());
+	}
 
-    /// Builds a constraint system from this circuit.
-    pub fn constraint_system(&self) -> ConstraintSystem {
-        let mut cs = ConstraintSystem::new(
-            self.shared.cp.pool.keys().cloned().collect::<Vec<_>>(),
-            self.shared.n_inout,
-            self.shared.n_witness,
-        );
-        for gate in self.shared.gates.iter() {
-            gate.constrain(self, &mut cs);
-        }
-        cs
-    }
+	/// Builds a constraint system from this circuit.
+	pub fn constraint_system(&self) -> ConstraintSystem {
+		let mut cs = ConstraintSystem::new(
+			self.shared.cp.pool.keys().cloned().collect::<Vec<_>>(),
+			self.shared.n_inout,
+			self.shared.n_witness,
+		);
+		for gate in self.shared.gates.iter() {
+			gate.constrain(self, &mut cs);
+		}
+		cs
+	}
 
-    /// Returns the number of gates in this circuit.
-    ///
-    /// Depending on what type of gates this circuit uses, the number of constraints might be
-    /// significantly larger.
-    pub fn n_gates(&self) -> usize {
-        self.shared.gates.len()
-    }
+	/// Returns the number of gates in this circuit.
+	///
+	/// Depending on what type of gates this circuit uses, the number of constraints might be
+	/// significantly larger.
+	pub fn n_gates(&self) -> usize {
+		self.shared.gates.len()
+	}
 }
