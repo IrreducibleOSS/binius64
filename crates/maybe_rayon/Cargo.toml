@@ -1,0 +1,17 @@
+[package]
+name = "binius_maybe_rayon"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+cfg-if.workspace = true
+itertools.workspace = true
+rayon = { optional = true, workspace = true }
+
+[features]
+default = ["rayon"]
+rayon = ["dep:rayon"]

@@ -1,0 +1,26 @@
+[package]
+name = "binius_utils"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+auto_impl.workspace = true
+binius_maybe_rayon = { path = "../maybe_rayon", default-features = false }
+bytemuck = { workspace = true, features = ["extern_crate_alloc"] }
+bytes.workspace = true
+cfg-if.workspace = true
+generic-array.workspace = true
+itertools.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+rand.workspace = true
+
+[features]
+default = ["rayon"]
+bail_panic = []
+rayon = ["binius_maybe_rayon/rayon"]
