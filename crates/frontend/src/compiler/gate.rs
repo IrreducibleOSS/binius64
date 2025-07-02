@@ -254,3 +254,34 @@ impl Gate for AssertEq {
 		cs.add_and_constraint(AndConstraint::plain_abc([x], [], [y]));
 	}
 }
+
+/// Assert0 enforces that a wire equals zero using a single AND constraint.
+/// Pattern: AND(a, ALL_1, 0) which constrains a = 0
+pub struct Assert0 {
+	pub a: Wire,
+	pub all_1: Wire,
+}
+
+impl Assert0 {
+	pub fn new(builder: &CircuitBuilder, a: Wire) -> Self {
+		let all_1 = builder.add_constant(Word::ALL_ONE);
+		Self { a, all_1 }
+	}
+}
+
+impl Gate for Assert0 {
+	fn populate_wire_witness(&self, w: &mut WitnessFiller) {
+		// The constraint is: a & ALL_1 = 0, which means a must be 0
+		if w[self.a] != Word::ZERO {
+			w.flag_assertion_failed();
+		}
+	}
+
+	fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
+		let a = circuit.witness_index(self.a);
+		let all_1 = circuit.witness_index(self.all_1);
+
+		// Constraint: AND(a, ALL_1, 0) => a & ALL_1 = 0 => a = 0
+		cs.add_and_constraint(AndConstraint::plain_abc([a], [all_1], []));
+	}
+}

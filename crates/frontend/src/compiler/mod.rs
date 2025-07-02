@@ -4,7 +4,7 @@ use std::{
 	rc::Rc,
 };
 
-use gate::{AssertEq, Band, Bor, Bxor, Gate, Iadd32, Rotr32, Shr32};
+use gate::{Assert0, AssertEq, Band, Bor, Bxor, Gate, Iadd32, Rotr32, Shr32};
 
 use crate::{
 	constraint_system::{ConstraintSystem, ValueIndex, ValueVec},
@@ -242,6 +242,12 @@ impl CircuitBuilder {
 		for i in 0..N {
 			self.assert_eq(x[i], y[i]);
 		}
+	}
+
+	/// Asserts that the given wire equals zero using a single AND constraint.
+	/// This is more efficient than using assert_eq with a zero constant.
+	pub fn assert_0(&self, a: Wire) {
+		self.emit(Assert0::new(self, a))
 	}
 }
 
