@@ -10,9 +10,17 @@ workspace = true
 [dependencies]
 binius-field = { path = "../field" }
 binius-frontend = { path = "../frontend" }
+binius-maybe-rayon = { path = "../maybe-rayon" }
 binius-transcript = { path = "../transcript" }
 binius-verifier = { path = "../verifier" }
+binius-utils = { path = "../utils" }
+bytes.workspace = true
+digest.workspace = true
+getset.workspace = true
 thiserror.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
 blake2.workspace = true
+itertools.workspace = true
+rand = { workspace = true, features = ["std_rng"] }

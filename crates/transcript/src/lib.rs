@@ -16,5 +16,6 @@ mod error;
 pub mod fiat_shamir;
 mod transcript;
 
+pub use bytes::{Buf, BufMut};
 pub use error::*;
 pub use transcript::*;
