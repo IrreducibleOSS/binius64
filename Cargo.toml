@@ -20,6 +20,7 @@ inherits = "release"
 debug = true
 
 [workspace.dependencies]
+assert_matches = "1.5.0"
 auto_impl = "1.2.0"
 blake2 = "0.10.6"
 bytemuck = { version = "1.18.0", features = [
@@ -36,6 +37,7 @@ generic-array = "0.14.7"
 getrandom = "0.3.3"
 getset = "0.1.6"
 itertools = "0.14.0"
+lazy_static = "1.5.0"
 paste = "1.0.15"
 proptest = "1.2.0"
 rand = { version = "0.9.1", default-features = false, features = ["std"] }
