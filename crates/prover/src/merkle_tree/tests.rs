@@ -4,8 +4,9 @@ use core::slice;
 use std::iter::repeat_with;
 
 use binius_field::{BinaryField16b, Field};
-use binius_transcript::{ProverTranscript, fiat_shamir::HasherChallenger};
+use binius_transcript::ProverTranscript;
 use binius_verifier::{
+	config::StdChallenger,
 	hash::{StdCompression, StdDigest},
 	merkle_tree::MerkleTreeScheme,
 };
@@ -27,7 +28,7 @@ fn test_binary_merkle_vcs_commit_prove_open_correctly() {
 	assert_eq!(commitment.root, tree.root());
 
 	for (i, value) in data.iter().enumerate() {
-		let mut proof_writer = ProverTranscript::<HasherChallenger<StdDigest>>::new();
+		let mut proof_writer = ProverTranscript::new(StdChallenger::default());
 		mr_prover
 			.prove_opening(&tree, 0, i, &mut proof_writer.message())
 			.unwrap();
@@ -66,7 +67,7 @@ fn test_binary_merkle_vcs_commit_layer_prove_open_correctly() {
 			.verify_layer(&commitment.root, layer_depth, layer)
 			.unwrap();
 		for (i, value) in data.iter().enumerate() {
-			let mut proof_writer = ProverTranscript::<HasherChallenger<StdDigest>>::new();
+			let mut proof_writer = ProverTranscript::new(StdChallenger::default());
 			mr_prover
 				.prove_opening(&tree, layer_depth, i, &mut proof_writer.message())
 				.unwrap();

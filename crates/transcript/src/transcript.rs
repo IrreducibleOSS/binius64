@@ -23,12 +23,12 @@ pub struct VerifierTranscript<Challenger> {
 	debug_assertions: bool,
 }
 
-impl<Challenger_: Default + Challenger> VerifierTranscript<Challenger_> {
-	pub fn new(vec: Vec<u8>) -> Self {
+impl<Challenger_: Challenger> VerifierTranscript<Challenger_> {
+	pub fn new(challenger: Challenger_, vec: Vec<u8>) -> Self {
 		Self {
 			combined: FiatShamirBuf {
-				challenger: Challenger_::default(),
 				buffer: Bytes::from(vec),
+				challenger,
 			},
 			debug_assertions: cfg!(debug_assertions),
 		}
@@ -187,28 +187,33 @@ pub struct ProverTranscript<Challenger> {
 	debug_assertions: bool,
 }
 
-impl<Challenger_: Default + Challenger> ProverTranscript<Challenger_> {
+impl<Challenger_: Challenger> ProverTranscript<Challenger_> {
 	/// Creates a new prover transcript.
 	///
 	/// By default debug assertions are set to the feature flag `debug_assertions`. You may also
 	/// change the debug flag with [`Self::set_debug`].
-	pub fn new() -> Self {
+	pub fn new(challenger: Challenger_) -> Self {
 		Self {
-			combined: Default::default(),
+			combined: FiatShamirBuf {
+				buffer: BytesMut::default(),
+				challenger,
+			},
 			debug_assertions: cfg!(debug_assertions),
 		}
 	}
+}
 
+impl<Challenger_: Default + Challenger> ProverTranscript<Challenger_> {
 	pub fn into_verifier(self) -> VerifierTranscript<Challenger_> {
 		let transcript = self.finalize();
 
-		VerifierTranscript::new(transcript)
+		VerifierTranscript::new(Challenger_::default(), transcript)
 	}
 }
 
 impl<Challenger_: Default + Challenger> Default for ProverTranscript<Challenger_> {
 	fn default() -> Self {
-		Self::new()
+		Self::new(Challenger_::default())
 	}
 }
 
@@ -401,7 +406,7 @@ mod tests {
 
 	#[test]
 	fn test_transcript_interactions() {
-		let mut prover_transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::new();
+		let mut prover_transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::default();
 		let mut writable = prover_transcript.message();
 
 		writable.write_scalar(BinaryField8b::new(0x96));
@@ -463,7 +468,7 @@ mod tests {
 
 	#[test]
 	fn test_advising() {
-		let mut prover_transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::new();
+		let mut prover_transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::default();
 		let mut advice_writer = prover_transcript.decommitment();
 
 		advice_writer.write_scalar(BinaryField8b::new(0x96));
@@ -503,8 +508,8 @@ mod tests {
 
 	#[test]
 	fn test_challenger_and_observing() {
-		let mut taped_transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::new();
-		let mut untaped_transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::new();
+		let mut taped_transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::default();
+		let mut untaped_transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::default();
 		let mut challenger = HasherChallenger::<Blake2b256>::default();
 
 		let mut rng = StdRng::seed_from_u64(0);
@@ -554,7 +559,7 @@ mod tests {
 
 	#[test]
 	fn test_transcript_debug() {
-		let mut transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::new();
+		let mut transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::default();
 
 		transcript.message().write_debug("test_transcript_debug");
 		transcript
@@ -566,7 +571,7 @@ mod tests {
 	#[test]
 	#[should_panic]
 	fn test_transcript_debug_fail() {
-		let mut transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::new();
+		let mut transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::default();
 
 		transcript.message().write_debug("test_transcript_debug");
 		transcript
