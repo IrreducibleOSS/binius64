@@ -13,6 +13,9 @@ use crate::{
 
 mod gate;
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Default)]
 pub struct ConstPool {
 	pool: HashMap<Word, Wire>,
@@ -98,9 +101,35 @@ impl CircuitBuilder {
 			panic!("CircuitBuilder::build called twice");
 		};
 
-		let mut wire_mapping = Vec::with_capacity(shared.gates.len());
-		for (i, _) in shared.wires.iter().enumerate() {
-			wire_mapping.push(ValueIndex(i as u32));
+		// `ValueVec` expects the wires to be in a certain order. Specifically:
+		//
+		// 1. const
+		// 2. inout
+		// 3. witness
+		//
+		// So we create a mapping between a `Wire` to the final `ValueIndex`.
+
+		// Create a vector of (original_index, priority) pairs and sort by priority.
+		let mut indexed_wires: Vec<(usize, u8)> = shared
+			.wires
+			.iter()
+			.enumerate()
+			.map(|(i, wire_data)| {
+				let priority = match wire_data.kind {
+					WireKind::Constant(_) => 0,
+					WireKind::Inout => 1,
+					WireKind::Private => 2,
+				};
+				(i, priority)
+			})
+			.collect();
+
+		indexed_wires.sort_by_key(|(_, priority)| *priority);
+
+		// Create the mapping from original wire index to sorted ValueIndex.
+		let mut wire_mapping = vec![ValueIndex(0); shared.wires.len()];
+		for (sorted_index, (original_index, _)) in indexed_wires.iter().enumerate() {
+			wire_mapping[*original_index] = ValueIndex(sorted_index as u32);
 		}
 
 		Circuit {

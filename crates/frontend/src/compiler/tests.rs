@@ -1,0 +1,65 @@
+use super::*;
+use crate::word::Word;
+
+#[test]
+fn sort_wires() {
+	// Create a circuit with wires in mixed order
+	let builder = CircuitBuilder::new();
+
+	// Add wires in a specific order to test sorting
+	let witness1 = builder.add_witness();
+	let const1 = builder.add_constant(Word(42));
+	let inout1 = builder.add_inout();
+	let witness2 = builder.add_witness();
+	let _const2 = builder.add_constant(Word(100));
+	let inout2 = builder.add_inout();
+	let witness3 = builder.add_witness();
+	let _const3 = builder.add_constant(Word(200));
+
+	// Build the circuit to trigger wire sorting
+	let circuit = builder.build();
+
+	// Verify that wire mapping follows the expected order: const, inout, witness
+	// Expected final order:
+	//
+	//     1. const1(42),
+	//     2. const2(100),
+	//     3. const3(200),
+	//     4. inout1,
+	//     5. inout2,
+	//     6. witness1,
+	//     7. witness2,
+	//     8. witness3
+	//
+
+	// Constants should come first - verify const1 is at position 0
+	assert_eq!(circuit.witness_index(const1), ValueIndex(0));
+
+	// Inout wires should come after constants
+	// inout1 (Wire(2)) should be the first inout wire
+	let inout1_idx = circuit.witness_index(inout1);
+	// inout2 (Wire(5)) should be the second inout wire
+	let inout2_idx = circuit.witness_index(inout2);
+
+	// Witness wires should come last
+	let witness1_idx = circuit.witness_index(witness1);
+	let witness2_idx = circuit.witness_index(witness2);
+	let witness3_idx = circuit.witness_index(witness3);
+
+	// Verify ordering: all constants < all inouts < all witnesses
+	assert!(inout1_idx.0 > circuit.witness_index(const1).0);
+	assert!(inout2_idx.0 > inout1_idx.0);
+	assert!(witness1_idx.0 > inout1_idx.0);
+	assert!(witness1_idx.0 > inout2_idx.0);
+	assert!(witness2_idx.0 > inout1_idx.0);
+	assert!(witness2_idx.0 > inout2_idx.0);
+	assert!(witness3_idx.0 > inout1_idx.0);
+	assert!(witness3_idx.0 > inout2_idx.0);
+
+	// Verify that witness wires maintain their relative order
+	assert!(witness2_idx.0 > witness1_idx.0);
+	assert!(witness3_idx.0 > witness2_idx.0);
+
+	// Verify that inout wires maintain their relative order
+	assert!(inout2_idx.0 > inout1_idx.0);
+}
