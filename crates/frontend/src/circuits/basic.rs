@@ -45,6 +45,13 @@ pub fn add_const(b: &CircuitBuilder, x: Wire, c: u32) -> Wire {
 	b.iadd_32(x, cst)
 }
 
+/// Subtract a 32-bit constant from a word
+pub fn sub_const(b: &CircuitBuilder, x: Wire, c: u32) -> Wire {
+	// compute -c in twos-complement
+	let neg_c = (!c).wrapping_add(1);
+	add_const(b, x, neg_c)
+}
+
 /// Compute x > const as a boolean wire (0/1).
 pub fn gt_const(b: &CircuitBuilder, x: Wire, c: u32) -> Wire {
 	// Compute x - (c + 1) and extract the sign bit.
