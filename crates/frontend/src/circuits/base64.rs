@@ -58,7 +58,7 @@ fn add_const(b: &CircuitBuilder, x: Wire, c: u32) -> Wire {
 /// Compute x > const as a boolean wire (0/1).
 fn gt_const(b: &CircuitBuilder, x: Wire, c: u32) -> Wire {
 	// Compute x - (c + 1) and extract the sign bit.
-	let k = (!((c + 1) as u32)).wrapping_add(1);
+	let k = (!(c + 1)).wrapping_add(1);
 	let k = b.add_constant(Word(k as u64));
 	let diff = b.iadd_32(x, k);
 	let sign = b.shr_32(diff, 31);
@@ -131,7 +131,7 @@ impl<const N: usize, const EN: usize> Base64<N, EN> {
 		let mask_0f = b.add_constant(Word(0x0F));
 		let mask_03 = b.add_constant(Word(0x03));
 
-		let n_blocks = (N + 2) / 3;
+		let n_blocks = N.div_ceil(3);
 
 		for block in 0..n_blocks {
 			let i_enc = block * 4;
@@ -198,7 +198,7 @@ mod tests {
 	#[test]
 	fn base64_single() {
 		const N: usize = 1500;
-		const EN: usize = ((N + 2) / 3) * 4;
+		const EN: usize = N.div_ceil(3) * 4;
 		let mut circuit = compiler::CircuitBuilder::new();
 		let decoded: [compiler::Wire; N] = std::array::from_fn(|_| circuit.add_inout());
 		let encoded: [compiler::Wire; EN] = std::array::from_fn(|_| circuit.add_inout());
@@ -215,7 +215,7 @@ mod tests {
 	#[test]
 	fn base64_roundtrip() {
 		const N: usize = 153;
-		const EN: usize = ((N + 2) / 3) * 4;
+		const EN: usize = N.div_ceil(3) * 4;
 		for len in 0..=N {
 			let mut circuit = compiler::CircuitBuilder::new();
 			let decoded: [compiler::Wire; N] = std::array::from_fn(|_| circuit.add_inout());

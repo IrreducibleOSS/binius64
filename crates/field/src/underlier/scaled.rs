@@ -168,7 +168,7 @@ impl<U: UnderlierWithBitOps, const N: usize> Shr<usize> for ScaledUnderlier<U, N
 			if i + shift_in_items < N {
 				result.0[i] |= self.0[i + shift_in_items] >> (rhs % U::BITS);
 			}
-			if i + shift_in_items + 1 < N && rhs % U::BITS != 0 {
+			if i + shift_in_items + 1 < N && !rhs.is_multiple_of(U::BITS) {
 				result.0[i] |= self.0[i + shift_in_items + 1] << (U::BITS - (rhs % U::BITS));
 			}
 		}
@@ -188,7 +188,7 @@ impl<U: UnderlierWithBitOps, const N: usize> Shl<usize> for ScaledUnderlier<U, N
 			if i >= shift_in_items {
 				result.0[i] |= self.0[i - shift_in_items] << (rhs % U::BITS);
 			}
-			if i > shift_in_items && rhs % U::BITS != 0 {
+			if i > shift_in_items && !rhs.is_multiple_of(U::BITS) {
 				result.0[i] |= self.0[i - shift_in_items - 1] >> (U::BITS - (rhs % U::BITS));
 			}
 		}

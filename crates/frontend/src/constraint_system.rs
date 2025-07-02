@@ -71,9 +71,9 @@ impl AndConstraint {
 		c: impl IntoIterator<Item = ValueIndex>,
 	) -> AndConstraint {
 		AndConstraint {
-			a: a.into_iter().map(|i| ShiftedValueIndex::plain(i)).collect(),
-			b: b.into_iter().map(|i| ShiftedValueIndex::plain(i)).collect(),
-			c: c.into_iter().map(|i| ShiftedValueIndex::plain(i)).collect(),
+			a: a.into_iter().map(ShiftedValueIndex::plain).collect(),
+			b: b.into_iter().map(ShiftedValueIndex::plain).collect(),
+			c: c.into_iter().map(ShiftedValueIndex::plain).collect(),
 		}
 	}
 
@@ -101,7 +101,7 @@ pub struct ConstraintSystem {
 	pub constants: Vec<Word>,
 	pub n_inout: usize,
 	pub n_witness: usize,
-	pub and_constrants: Vec<AndConstraint>,
+	pub and_constraints: Vec<AndConstraint>,
 	pub mul_constraints: Vec<MulConstraint>,
 }
 
@@ -111,17 +111,17 @@ impl ConstraintSystem {
 			constants,
 			n_inout,
 			n_witness,
-			and_constrants: Vec::new(),
+			and_constraints: Vec::new(),
 			mul_constraints: Vec::new(),
 		}
 	}
 
 	pub fn add_and_constraint(&mut self, and_constraint: AndConstraint) {
-		self.and_constrants.push(and_constraint);
+		self.and_constraints.push(and_constraint);
 	}
 
 	pub fn n_and_constraints(&self) -> usize {
-		self.and_constrants.len()
+		self.and_constraints.len()
 	}
 
 	/// The total length of the [`ValueVec`] expected by this constraint system.

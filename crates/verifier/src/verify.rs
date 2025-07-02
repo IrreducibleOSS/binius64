@@ -8,10 +8,10 @@ use super::{error::Error, fields::B64};
 pub struct Params {}
 
 pub fn verify<F, Challenger_>(
-	params: &Params,
-	cs: &ConstraintSystem,
-	inout: &[Word],
-	transcript: &mut VerifierTranscript<Challenger_>,
+	_params: &Params,
+	_cs: &ConstraintSystem,
+	_inout: &[Word],
+	_transcript: &mut VerifierTranscript<Challenger_>,
 ) -> Result<(), Error>
 where
 	F: BinaryField + ExtensionField<B64>,

@@ -389,7 +389,7 @@ pub fn create_partial_sums_lookup_tables<P: PackedField>(
 	values: impl RandomAccessSequence<P>,
 ) -> Vec<P> {
 	let len = values.len();
-	assert!(len % 8 == 0);
+	assert!(len.is_multiple_of(8));
 
 	let mut result = zeroed_vec(len * 32);
 

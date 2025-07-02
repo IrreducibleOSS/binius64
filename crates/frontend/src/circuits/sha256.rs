@@ -63,9 +63,7 @@ impl Compress {
 		let mut w: Vec<Wire> = Vec::with_capacity(64);
 
 		// W[0..15] = block_words & M32
-		for t in 0..16 {
-			w.push(m_masked[t]);
-		}
+		w.extend_from_slice(&m_masked);
 
 		// W[16..63] computed from previous W values
 		for t in 16..64 {

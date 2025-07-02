@@ -13,15 +13,14 @@ use crate::{
 
 mod gate;
 
+#[derive(Default)]
 pub struct ConstPool {
 	pool: HashMap<Word, Wire>,
 }
 
 impl ConstPool {
 	pub fn new() -> Self {
-		ConstPool {
-			pool: HashMap::new(),
-		}
+		ConstPool::default()
 	}
 
 	pub fn get(&self, value: Word) -> Option<Wire> {
@@ -70,8 +69,8 @@ pub struct CircuitBuilder {
 	shared: Rc<RefCell<Option<Shared>>>,
 }
 
-impl CircuitBuilder {
-	pub fn new() -> Self {
+impl Default for CircuitBuilder {
+	fn default() -> Self {
 		CircuitBuilder {
 			name: String::new(),
 			shared: Rc::new(RefCell::new(Some(Shared {
@@ -82,6 +81,12 @@ impl CircuitBuilder {
 				gates: Vec::new(),
 			}))),
 		}
+	}
+}
+
+impl CircuitBuilder {
+	pub fn new() -> Self {
+		CircuitBuilder::default()
 	}
 
 	/// # Preconditions

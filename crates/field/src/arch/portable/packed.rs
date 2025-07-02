@@ -38,7 +38,7 @@ pub struct PackedPrimitiveType<U: UnderlierType, Scalar: BinaryField>(
 
 impl<U: UnderlierType, Scalar: BinaryField> PackedPrimitiveType<U, Scalar> {
 	pub const WIDTH: usize = {
-		assert!(U::BITS % Scalar::N_BITS == 0);
+		assert!(U::BITS.is_multiple_of(Scalar::N_BITS));
 
 		U::BITS / Scalar::N_BITS
 	};

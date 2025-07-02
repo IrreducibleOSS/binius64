@@ -1041,7 +1041,7 @@ pub(crate) mod tests {
 
 		let mut prime = 2;
 		while prime * prime <= order {
-			while order % prime == 0 {
+			while order.is_multiple_of(prime) {
 				order /= prime;
 				factorization.push(prime);
 			}
