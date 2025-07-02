@@ -17,6 +17,5 @@ where
 	F: BinaryField + ExtensionField<B64>,
 	Challenger_: Challenger,
 {
-	let _ = (params, cs, inout, transcript);
 	Ok(())
 }
