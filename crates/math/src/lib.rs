@@ -1,8 +1,22 @@
-mod binary_subspace;
-mod error;
-mod matrix;
-pub mod ntt;
+// Copyright 2024-2025 Irreducible Inc.
 
-pub use binary_subspace::*;
-pub use error::*;
-pub use matrix::*;
+//! Mathematical primitives used in Binius, built atop the `binius-field` crate.
+//!
+//! This crate provides a variety of mathematical primitives used in Binius, including:
+//!
+//! * Multilinear polynomials
+//! * Univariate polynomials
+//! * Matrix operations
+//! * Additive number-theoretic transform
+//! * Error-correcting codes
+
+pub mod binary_subspace;
+mod error;
+pub mod matrix;
+pub mod ntt;
+pub mod reed_solomon;
+
+pub use binary_subspace::BinarySubspace;
+pub use error::Error;
+pub use matrix::Matrix;
+pub use reed_solomon::ReedSolomonCode;
