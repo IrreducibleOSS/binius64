@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Project Evolution
+
+Monbijou is an evolution of the Binius codebase. The original Binius repository can be found at the relative path `../binius`. This new repository represents a major redesign and simplification of the original framework, implementing the Binius64 protocol as specified in the formal writeup.
+
 ## Build and Development Commands
 
 ### Building
