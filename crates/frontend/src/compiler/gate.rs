@@ -1,6 +1,6 @@
 use super::{Circuit, CircuitBuilder, Wire, WitnessFiller};
 use crate::{
-	constraint_system::{AndConstraint, ConstraintSystem, ShiftedValueIndex},
+	constraint_system::{AndConstraint, ConstraintSystem, MulConstraint, ShiftedValueIndex},
 	word::Word,
 };
 
@@ -283,5 +283,47 @@ impl Gate for Assert0 {
 
 		// Constraint: AND(a, ALL_1, 0) => a & ALL_1 = 0 => a = 0
 		cs.add_and_constraint(AndConstraint::plain_abc([a], [all_1], []));
+	}
+}
+
+/// Imul gate implements 64-bit × 64-bit → 128-bit unsigned multiplication.
+/// Uses the MulConstraint: A * B = (HI << 64) | LO
+pub struct Imul {
+	pub a: Wire,
+	pub b: Wire,
+	pub hi: Wire,
+	pub lo: Wire,
+}
+
+impl Imul {
+	pub fn new(builder: &CircuitBuilder, a: Wire, b: Wire) -> Self {
+		let hi = builder.add_witness();
+		let lo = builder.add_witness();
+		Self { a, b, hi, lo }
+	}
+}
+
+impl Gate for Imul {
+	fn populate_wire_witness(&self, w: &mut WitnessFiller) {
+		let (hi, lo) = w[self.a].imul(w[self.b]);
+		w[self.hi] = hi;
+		w[self.lo] = lo;
+	}
+
+	fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
+		let a = circuit.witness_index(self.a);
+		let b = circuit.witness_index(self.b);
+		let hi = circuit.witness_index(self.hi);
+		let lo = circuit.witness_index(self.lo);
+
+		// Create MulConstraint: A * B = (HI << 64) | LO
+		let mul_constraint = MulConstraint {
+			a: vec![ShiftedValueIndex::plain(a)],
+			b: vec![ShiftedValueIndex::plain(b)],
+			hi: vec![ShiftedValueIndex::plain(hi)],
+			lo: vec![ShiftedValueIndex::plain(lo)],
+		};
+
+		cs.add_mul_constraint(mul_constraint);
 	}
 }

@@ -4,7 +4,7 @@ use std::{
 	rc::Rc,
 };
 
-use gate::{Assert0, AssertEq, Band, Bor, Bxor, Gate, Iadd32, Rotr32, Shr32};
+use gate::{Assert0, AssertEq, Band, Bor, Bxor, Gate, Iadd32, Imul, Rotr32, Shr32};
 
 use crate::{
 	constraint_system::{ConstraintSystem, ValueIndex, ValueVec},
@@ -248,6 +248,16 @@ impl CircuitBuilder {
 	/// This is more efficient than using assert_eq with a zero constant.
 	pub fn assert_0(&self, a: Wire) {
 		self.emit(Assert0::new(self, a))
+	}
+
+	/// 64-bit × 64-bit → 128-bit unsigned multiplication.
+	/// Returns (hi, lo) where result = (hi << 64) | lo
+	pub fn imul(&self, a: Wire, b: Wire) -> (Wire, Wire) {
+		let gate = Imul::new(self, a, b);
+		let hi = gate.hi;
+		let lo = gate.lo;
+		self.emit(gate);
+		(hi, lo)
 	}
 }
 

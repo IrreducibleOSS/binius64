@@ -120,8 +120,16 @@ impl ConstraintSystem {
 		self.and_constraints.push(and_constraint);
 	}
 
+	pub fn add_mul_constraint(&mut self, mul_constraint: MulConstraint) {
+		self.mul_constraints.push(mul_constraint);
+	}
+
 	pub fn n_and_constraints(&self) -> usize {
 		self.and_constraints.len()
+	}
+
+	pub fn n_mul_constraints(&self) -> usize {
+		self.mul_constraints.len()
 	}
 
 	/// The total length of the [`ValueVec`] expected by this constraint system.

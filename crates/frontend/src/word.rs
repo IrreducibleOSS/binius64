@@ -68,4 +68,14 @@ impl Word {
 		let result = ((value_32 >> n) | (value_32 << (32 - n))) & 0x00000000_FFFFFFFF;
 		Word(result)
 	}
+
+	pub fn imul(self, rhs: Word) -> (Word, Word) {
+		let Word(lhs) = self;
+		let Word(rhs) = rhs;
+		let result = (lhs as u128) * (rhs as u128);
+
+		let hi = (result >> 64) as u64;
+		let lo = (result & 0x0000000000000000_FFFFFFFFFFFFFFFF) as u64;
+		(Word(hi), Word(lo))
+	}
 }
