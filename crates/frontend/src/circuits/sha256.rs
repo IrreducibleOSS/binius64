@@ -231,8 +231,12 @@ mod tests {
 
 		// Mask to only low 32-bit.
 		let mask32 = circuit.add_constant(Word::MASK_32);
-		for (actual_x, expected_x) in compress.state_out.0.iter().zip(output) {
-			circuit.assert_eq(circuit.band(*actual_x, mask32), expected_x);
+		for (i, (actual_x, expected_x)) in compress.state_out.0.iter().zip(output).enumerate() {
+			circuit.assert_eq(
+				format!("preimage_eq[{i}]"),
+				circuit.band(*actual_x, mask32),
+				expected_x,
+			);
 		}
 
 		let circuit = circuit.build();

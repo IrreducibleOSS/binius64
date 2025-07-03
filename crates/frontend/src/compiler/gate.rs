@@ -230,20 +230,24 @@ impl Gate for Rotr32 {
 }
 
 pub struct AssertEq {
+	pub name: String,
 	pub x: Wire,
 	pub y: Wire,
 }
 
 impl AssertEq {
-	pub fn new(x: Wire, y: Wire) -> Self {
-		Self { x, y }
+	pub fn new(name: String, x: Wire, y: Wire) -> Self {
+		Self { name, x, y }
 	}
 }
 
 impl Gate for AssertEq {
 	fn populate_wire_witness(&self, w: &mut WitnessFiller) {
 		if w[self.x] != w[self.y] {
-			w.flag_assertion_failed();
+			w.flag_assertion_failed(format!(
+				"{} failed: {:?} != {:?}",
+				self.name, w[self.x], w[self.y]
+			));
 		}
 	}
 
@@ -260,12 +264,13 @@ impl Gate for AssertEq {
 pub struct Assert0 {
 	pub a: Wire,
 	pub all_1: Wire,
+	pub name: String,
 }
 
 impl Assert0 {
-	pub fn new(builder: &CircuitBuilder, a: Wire) -> Self {
+	pub fn new(builder: &CircuitBuilder, name: String, a: Wire) -> Self {
 		let all_1 = builder.add_constant(Word::ALL_ONE);
-		Self { a, all_1 }
+		Self { name, a, all_1 }
 	}
 }
 
@@ -273,7 +278,7 @@ impl Gate for Assert0 {
 	fn populate_wire_witness(&self, w: &mut WitnessFiller) {
 		// The constraint is: a & ALL_1 = 0, which means a must be 0
 		if w[self.a] != Word::ZERO {
-			w.flag_assertion_failed();
+			w.flag_assertion_failed(format!("{} failed: {:?} != ZERO", self.name, self.a));
 		}
 	}
 

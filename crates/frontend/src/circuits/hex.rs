@@ -57,7 +57,7 @@ impl HexDecode {
 			let hi_shl = shl_const(b, hi, 4);
 			let expected_decoded_byte = b.bor(hi_shl, lo);
 			let actual_decoded_byte = decoded[i];
-			b.assert_eq(actual_decoded_byte, expected_decoded_byte);
+			b.assert_eq(format!("{i}"), actual_decoded_byte, expected_decoded_byte);
 		}
 
 		HexDecode { decoded, encoded }

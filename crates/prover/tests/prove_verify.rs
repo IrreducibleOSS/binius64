@@ -34,7 +34,7 @@ fn test_prove_verify_sha256_preimage() {
 	// Mask to only low 32-bit.
 	let mask32 = circuit.add_constant(Word::MASK_32);
 	for (actual_x, expected_x) in compress.state_out.0.iter().zip(output) {
-		circuit.assert_eq(circuit.band(*actual_x, mask32), expected_x);
+		circuit.assert_eq("eq", circuit.band(*actual_x, mask32), expected_x);
 	}
 
 	let circuit = circuit.build();

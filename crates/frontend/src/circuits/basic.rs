@@ -22,12 +22,12 @@ pub fn bool_not(b: &CircuitBuilder, x: Wire) -> Wire {
 ///
 /// When `cond` is one, asserts that `x == y`.  When `cond` is zero, no
 /// constraint is emitted on `x` and `y`.
-pub fn assert_eq_cond(b: &CircuitBuilder, x: Wire, y: Wire, cond: Wire) {
+pub fn assert_eq_cond(b: &CircuitBuilder, name: impl Into<String>, x: Wire, y: Wire, cond: Wire) {
 	let diff = b.bxor(x, y);
 	let mask = bool_to_mask(b, cond);
 	let masked = b.band(diff, mask);
 	let zero = b.add_constant(Word::ZERO);
-	b.assert_eq(masked, zero);
+	b.assert_eq(name, masked, zero);
 }
 
 /// Select between two wires depending on a boolean condition.

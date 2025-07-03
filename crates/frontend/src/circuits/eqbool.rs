@@ -25,7 +25,7 @@ impl EqBool {
 		// !neq = 1 if diff == 0 else 0
 		let eq_val = bool_not(builder, neq);
 
-		builder.assert_eq(eq_val, out);
+		builder.assert_eq("eq", eq_val, out);
 		EqBool { x, y, out }
 	}
 }

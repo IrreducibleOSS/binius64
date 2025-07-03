@@ -154,6 +154,10 @@ impl CircuitBuilder {
 		self.shared_mut().gates.push(Box::new(gate))
 	}
 
+	fn namespaced(&self, name: String) -> String {
+		format!("{}.{name}", self.name)
+	}
+
 	fn add_wire(&self, wire_data: WireData) -> Wire {
 		let mut shared = self.shared_mut();
 		let id = shared.wires.len();
@@ -234,20 +238,23 @@ impl CircuitBuilder {
 		out
 	}
 
-	pub fn assert_eq(&self, x: Wire, y: Wire) {
-		self.emit(AssertEq::new(x, y))
+	pub fn assert_eq(&self, name: impl Into<String>, x: Wire, y: Wire) {
+		let name = self.namespaced(name.into());
+		self.emit(AssertEq::new(name, x, y))
 	}
 
-	pub fn assert_eq_v<const N: usize>(&self, x: [Wire; N], y: [Wire; N]) {
+	pub fn assert_eq_v<const N: usize>(&self, name: impl Into<String>, x: [Wire; N], y: [Wire; N]) {
+		let base_name = name.into();
 		for i in 0..N {
-			self.assert_eq(x[i], y[i]);
+			self.assert_eq(format!("{base_name}[{i}]"), x[i], y[i]);
 		}
 	}
 
 	/// Asserts that the given wire equals zero using a single AND constraint.
 	/// This is more efficient than using assert_eq with a zero constant.
-	pub fn assert_0(&self, a: Wire) {
-		self.emit(Assert0::new(self, a))
+	pub fn assert_0(&self, name: impl Into<String>, a: Wire) {
+		let name = self.namespaced(name.into());
+		self.emit(Assert0::new(self, name, a))
 	}
 
 	/// 64-bit × 64-bit → 128-bit unsigned multiplication.
@@ -261,15 +268,21 @@ impl CircuitBuilder {
 	}
 }
 
+const MAX_ASSERTION_MESSAGES: usize = 100;
+
 pub struct WitnessFiller<'a> {
 	circuit: &'a Circuit,
 	value_vec: ValueVec,
-	assertion_failed: bool,
+	assertion_failed_message_vec: Vec<String>,
+	assertion_failed_count: usize,
 }
 
 impl<'a> WitnessFiller<'a> {
-	pub fn flag_assertion_failed(&mut self) {
-		self.assertion_failed = true;
+	pub fn flag_assertion_failed(&mut self, condition: String) {
+		self.assertion_failed_count += 1;
+		if self.assertion_failed_message_vec.len() < MAX_ASSERTION_MESSAGES {
+			self.assertion_failed_message_vec.push(condition);
+		}
 	}
 
 	pub fn into_value_vec(self) -> ValueVec {
@@ -311,7 +324,8 @@ impl Circuit {
 				self.shared.n_inout,
 				self.shared.n_witness,
 			),
-			assertion_failed: false,
+			assertion_failed_message_vec: Vec::new(),
+			assertion_failed_count: 0,
 		}
 	}
 
@@ -330,8 +344,15 @@ impl Circuit {
 			gate.populate_wire_witness(w);
 		}
 
-		if w.assertion_failed {
-			panic!("assertion failed");
+		if w.assertion_failed_count > 0 {
+			let mut message = w.assertion_failed_message_vec.join("\n");
+			if w.assertion_failed_count > w.assertion_failed_message_vec.len() {
+				message.push_str(&format!(
+					"\n(Some assertions are omitted. Total: {})",
+					w.assertion_failed_count
+				));
+			}
+			panic!("assertions failed:\n{message}");
 		}
 
 		let elapsed = start.elapsed();
