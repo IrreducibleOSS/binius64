@@ -174,6 +174,28 @@ cargo test --release
 
 ## Development Conventions
 
+### Code Navigation and Analysis
+When working with this codebase, prefer language server tools over text-based search when available:
+
+- **rust-analyzer MCP tools** (when available): Use `mcp__rust-analyzer__definition`, `mcp__rust-analyzer__references`, `mcp__rust-analyzer__hover`, etc. for precise symbol lookup, navigation, and type information
+- **Text-based search**: Use `Grep`, `Glob`, or `Task` tools for broader exploratory searches or when rust-analyzer tools are not available
+
+Examples of when to use rust-analyzer:
+- Finding function/type definitions: `mcp__rust-analyzer__definition`
+- Finding all references to a symbol: `mcp__rust-analyzer__references`
+- Getting type information or documentation: `mcp__rust-analyzer__hover`
+- Renaming symbols across the codebase: `mcp__rust-analyzer__rename_symbol`
+
+#### Setting up rust-analyzer MCP Server
+If you don't have the rust-analyzer MCP server configured, you can set it up using the implementation from https://github.com/isaacphi/mcp-language-server.
+
+To configure it in your Claude Code settings:
+1. Install the MCP server following the repository's instructions
+2. Add the server configuration to your Claude Code MCP settings
+3. Restart Claude Code to enable the rust-analyzer tools
+
+This will provide much more precise and efficient code navigation compared to text-based search tools.
+
 ### Toolchain Requirements
 - Uses Rust nightly (see rust-toolchain.toml for specific version)
 - All operations are 64-bit word-based (fundamental to Binius64 design)
