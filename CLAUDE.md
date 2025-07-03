@@ -191,6 +191,30 @@ cargo test --release
 - Use `cargo fmt` for formatting
 - Pre-commit hooks run rustfmt automatically
 
+### Commenting Guidelines
+- Prefer descriptive function and variable names over obvious inline comments
+- Use inline comments for additional context that cannot be easily inferred from the code
+- Focus comments on explaining "why" rather than "what"
+- Avoid comments that simply restate what the code obviously does
+
+Good examples:
+```rust
+// Fold coordinates in reverse order since first coordinate is highest-order variable
+for &coord in coords.iter().rev() {
+
+// Use extrapolation formula: x0 + (x1 - x0) * z for single multiplication
+let folded = lo_val + diff * packed_coord;
+```
+
+Poor examples:
+```rust
+// Iterate over coordinates
+for &coord in coords.iter() {
+
+// Compute the result
+let result = binius_field::util::inner_product_par(evals.as_ref(), eq_tensor.as_ref());
+```
+
 ## Architecture-Specific Optimizations
 
 The codebase includes significant architecture-specific optimizations:
