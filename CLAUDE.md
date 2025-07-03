@@ -172,6 +172,33 @@ cargo test test_name
 cargo test --release
 ```
 
+### Pseudo-Random Testing
+The codebase uses a common pattern of pseudo-random testing with the `rand` crate for comprehensive property-based testing:
+
+- **Deterministic randomness**: Tests use `StdRng::seed_from_u64(0)` instead of `thread_rng()` to ensure reproducible test results
+- **Property-based testing**: Random inputs are used to test mathematical properties (e.g., linearity, inverse operations, field arithmetic)
+- **Field element generation**: Use `<F as Field>::random(&mut rng)` for field elements to avoid ambiguity with multiple `random` traits
+- **Single random sample suffices**: When the sampled field is sufficiently large (e.g., 32-bits, as with `BinaryField32b`), testing at one random input is sufficient for mathematical verification
+
+Example test pattern:
+```rust
+#[test]
+fn test_property() {
+    let mut rng = StdRng::seed_from_u64(0);
+    
+    let x = <F as Field>::random(&mut rng);
+    let y = <F as Field>::random(&mut rng);
+    
+    // Test mathematical property
+    assert_eq!(some_operation(x, y), expected_result(x, y));
+}
+```
+
+This approach provides:
+- **Reproducible test failures**: Same seed always generates the same sequence
+- **Efficient testing**: Large field sizes make single random samples statistically sufficient
+- **Mathematical verification**: Properties hold across the entire field domain
+
 ## Development Conventions
 
 ### Toolchain Requirements
