@@ -1,4 +1,5 @@
 /target
 profile.json
 Cargo.lock
+CLAUDE.local.md
 /.idea/
