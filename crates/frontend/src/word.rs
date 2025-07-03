@@ -1,6 +1,6 @@
 use std::{
 	fmt,
-	ops::{BitAnd, BitOr, BitXor},
+	ops::{BitAnd, BitOr, BitXor, Shl, Shr},
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -43,6 +43,22 @@ impl BitXor for Word {
 	}
 }
 
+impl Shl<u32> for Word {
+	type Output = Self;
+
+	fn shl(self, rhs: u32) -> Self::Output {
+		Word(self.0 << rhs)
+	}
+}
+
+impl Shr<u32> for Word {
+	type Output = Self;
+
+	fn shr(self, rhs: u32) -> Self::Output {
+		Word(self.0 >> rhs)
+	}
+}
+
 impl Word {
 	pub fn iadd_32(self, rhs: Word) -> (Word, Word) {
 		let Word(lhs) = self;
@@ -77,5 +93,17 @@ impl Word {
 		let hi = (result >> 64) as u64;
 		let lo = (result & 0x0000000000000000_FFFFFFFFFFFFFFFF) as u64;
 		(Word(hi), Word(lo))
+	}
+
+	pub fn wrapping_sub(self, rhs: Word) -> Word {
+		Word(self.0.wrapping_sub(rhs.0))
+	}
+
+	pub fn as_u64(self) -> u64 {
+		self.0
+	}
+
+	pub fn from_u64(value: u64) -> Word {
+		Word(value)
 	}
 }

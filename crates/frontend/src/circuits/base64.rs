@@ -8,7 +8,7 @@
 //! low 8 bits of a word.  The encoded string length is `ENCODED_MAX` which is
 //! four characters per three input bytes rounded up.
 
-use super::basic::{add_const, assert_eq_cond, bool_not, eq_const, gt_const, select, shl_const};
+use super::basic::{add_const, bool_not, eq_const, gt_const, select, shl_const};
 use crate::{
 	compiler::{CircuitBuilder, Wire},
 	word::Word,
@@ -81,21 +81,9 @@ impl<const N: usize, const EN: usize> Base64<N, EN> {
 
 			// Padding checks
 			let need_pad2 = b.band(cond_block, bool_not(b, cond_b1));
-			assert_eq_cond(
-				b,
-				format!("encoded+2[{i_enc}]"),
-				encoded[i_enc + 2],
-				eq_char,
-				need_pad2,
-			);
+			b.assert_eq_cond(format!("encoded+2[{block}]"), encoded[i_enc + 2], eq_char, need_pad2);
 			let need_pad3 = b.band(cond_block, bool_not(b, cond_b2));
-			assert_eq_cond(
-				b,
-				format!("encoded+3[{i_enc}]"),
-				encoded[i_enc + 3],
-				eq_char,
-				need_pad3,
-			);
+			b.assert_eq_cond(format!("encoded+3[{block}]"), encoded[i_enc + 3], eq_char, need_pad3);
 
 			// byte0 = (c0 << 2) | (c1 >> 4)
 			let c0_shl = shl_const(b, c0, 2);
@@ -115,25 +103,13 @@ impl<const N: usize, const EN: usize> Base64<N, EN> {
 
 			// Assert decoded bytes
 			if i_dec < N {
-				assert_eq_cond(b, format!("decoded+0[{i_dec}]"), decoded[i_dec], byte0, cond_block);
+				b.assert_eq_cond(format!("decoded+0[{i_dec}]"), decoded[i_dec], byte0, cond_block);
 			}
 			if i_dec + 1 < N {
-				assert_eq_cond(
-					b,
-					format!("decoded+1[{}]", i_dec + 1),
-					decoded[i_dec + 1],
-					byte1,
-					cond_b1,
-				);
+				b.assert_eq_cond(format!("decoded+1[{i_dec}]"), decoded[i_dec + 1], byte1, cond_b1);
 			}
 			if i_dec + 2 < N {
-				assert_eq_cond(
-					b,
-					format!("decoded+2[{}]", i_dec + 2),
-					decoded[i_dec + 2],
-					byte2,
-					cond_b2,
-				);
+				b.assert_eq_cond(format!("decoded+2[{i_dec}]"), decoded[i_dec + 2], byte2, cond_b2);
 			}
 		}
 

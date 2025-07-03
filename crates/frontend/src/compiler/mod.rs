@@ -4,7 +4,10 @@ use std::{
 	rc::Rc,
 };
 
-use gate::{Assert0, AssertEq, Band, Bor, Bxor, Gate, Iadd32, Imul, Rotr32, Shr32};
+use gate::{
+	Assert0, AssertEq, AssertEqCond, Band, Bor, Bxor, ExtractByte, Gate, Iadd32, IcmpEq, IcmpUlt,
+	Imul, Rotr32, Shl, Shr, Shr32,
+};
 
 use crate::{
 	constraint_system::{ConstraintSystem, ValueIndex, ValueVec},
@@ -165,6 +168,20 @@ impl CircuitBuilder {
 		Wire(id as u32)
 	}
 
+	/// Creates a wire from a 64-bit word.
+	///
+	/// # Arguments
+	///
+	/// * `word` -  The word to add to the circuit.
+	///
+	/// # Returns
+	///
+	/// A `Wire` representing the constant value. The wire might be aliased because the constants
+	/// are deduplicated.
+	///
+	/// # Cost
+	///
+	/// Constants have no constraint cost - they are "free" in the circuit.
 	pub fn add_constant(&self, word: Word) -> Wire {
 		if let Some(wire) = self.shared_mut().cp.get(word) {
 			return wire;
@@ -174,6 +191,36 @@ impl CircuitBuilder {
 		});
 		self.shared_mut().cp.insert(word, wire);
 		wire
+	}
+
+	/// Creates a constant wire from a 64-bit unsigned integer.
+	///
+	/// This method adds a 64-bit constant value to the circuit. The constant is stored
+	/// as a `Word` and can be used in constraints and operations.
+	///
+	/// Constants are automatically deduplicated - multiple calls with the same value
+	/// will return the same wire.
+	///
+	/// # Arguments
+	/// * `c` - The 64-bit constant value to add to the circuit
+	///
+	/// # Returns
+	/// A `Wire` representing the constant value that can be used in circuit operations
+	pub fn add_constant_64(&self, c: u64) -> Wire {
+		self.add_constant(Word(c))
+	}
+
+	/// Creates a constant wire from an 8-bit value, zero-extended to 64 bits.
+	///
+	/// This method takes an 8-bit unsigned integer (byte) and zero-extends it to
+	/// a 64-bit value before adding it as a constant to the circuit. The resulting
+	/// wire contains the byte value in the lower 8 bits and zeros in the upper 56 bits.
+	/// This is commonly used for byte constants in circuits that process byte data.
+	///
+	/// # Arguments
+	/// * `c` - The 8-bit constant value (0-255) to add to the circuit
+	pub fn add_constant_zx_8(&self, c: u8) -> Wire {
+		self.add_constant(Word(c as u64))
 	}
 
 	pub fn add_inout(&self) -> Wire {
@@ -238,11 +285,63 @@ impl CircuitBuilder {
 		out
 	}
 
+	/// Logical left shift.
+	///
+	/// Shifts a 64-bit wire left by n bits, filling with zeros from the right.
+	///
+	/// Returns a << n
+	///
+	/// # Cost
+	///
+	/// 1 AND constraint.
+	pub fn shl(&self, a: Wire, n: u32) -> Wire {
+		let gate = Shl::new(self, a, n);
+		let out = gate.c;
+		self.emit(gate);
+		out
+	}
+
+	/// Logical right shift.
+	///
+	/// Shifts a 64-bit wire right by n bits, filling with zeros from the left.
+	///
+	/// Returns a >> n
+	///
+	/// # Cost
+	///
+	/// 1 AND constraint.
+	pub fn shr(&self, a: Wire, n: u32) -> Wire {
+		let gate = Shr::new(self, a, n);
+		let out = gate.c;
+		self.emit(gate);
+		out
+	}
+
+	/// Equality assertion.
+	///
+	/// Asserts that two 64-bit wires are equal.
+	///
+	/// Takes wires x and y and enforces x == y.
+	/// If the assertion fails, the circuit will report an error with the given name.
+	///
+	/// # Cost
+	///
+	/// 1 AND constraint.
 	pub fn assert_eq(&self, name: impl Into<String>, x: Wire, y: Wire) {
 		let name = self.namespaced(name.into());
 		self.emit(AssertEq::new(name, x, y))
 	}
 
+	/// Vector equality assertion.
+	///
+	/// Asserts that two arrays of 64-bit wires are equal element-wise.
+	///
+	/// Takes wire arrays x and y and enforces x[i] == y[i] for all i.
+	/// Each element assertion is named with the base name and index.
+	///
+	/// # Cost
+	///
+	/// N AND constraints (one per element).
 	pub fn assert_eq_v<const N: usize>(&self, name: impl Into<String>, x: [Wire; N], y: [Wire; N]) {
 		let base_name = name.into();
 		for i in 0..N {
@@ -265,6 +364,77 @@ impl CircuitBuilder {
 		let lo = gate.lo;
 		self.emit(gate);
 		(hi, lo)
+	}
+
+	/// Conditional equality assertion.
+	///
+	/// Asserts that two 64-bit wires are equal, but only when the mask is all-1.
+	/// When mask is all-0, the assertion is a no-op.
+	///
+	/// Takes wires a, b, and mask and enforces:
+	/// - If mask is all-1: a must equal b
+	/// - If mask is all-0: no constraint (assertion is ignored)
+	///
+	/// Pattern: AND((a ^ b), mask, 0)
+	///
+	/// # Cost
+	///
+	/// 1 AND constraint.
+	pub fn assert_eq_cond(&self, name: impl Into<String>, a: Wire, b: Wire, mask: Wire) {
+		let name = self.namespaced(name.into());
+		self.emit(AssertEqCond::new(name, a, b, mask))
+	}
+
+	/// Unsigned less-than comparison.
+	///
+	/// Compares two 64-bit wires as unsigned integers.
+	///
+	/// Returns:
+	/// - all-1 if a < b
+	/// - all-0 if a >= b
+	///
+	/// # Cost
+	///
+	/// 2 AND constraints.
+	pub fn icmp_ult(&self, a: Wire, b: Wire) -> Wire {
+		let gate = IcmpUlt::new(self, a, b);
+		let out = gate.result;
+		self.emit(gate);
+		out
+	}
+
+	/// Equality comparison.
+	///
+	/// Compares two 64-bit wires for equality.
+	///
+	/// Returns:
+	/// - all-1 if a == b
+	/// - all-0 if a != b
+	///
+	/// # Cost
+	///
+	/// 1 AND constraint.
+	pub fn icmp_eq(&self, a: Wire, b: Wire) -> Wire {
+		let gate = IcmpEq::new(self, a, b);
+		let out = gate.result;
+		self.emit(gate);
+		out
+	}
+
+	/// Byte extraction.
+	///
+	/// Extracts byte j from a 64-bit word (j=0 is least significant byte).
+	///
+	/// Returns the extracted byte (0-255) in the low 8 bits, with high 56 bits zero.
+	///
+	/// # Cost
+	///
+	/// 2 AND constraints.
+	pub fn extract_byte(&self, word: Wire, j: u32) -> Wire {
+		let gate = ExtractByte::new(self, word, j);
+		let out = gate.b;
+		self.emit(gate);
+		out
 	}
 }
 

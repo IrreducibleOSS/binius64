@@ -54,6 +54,14 @@ impl ShiftedValueIndex {
 			amount,
 		}
 	}
+
+	pub fn sar(value_index: ValueIndex, amount: usize) -> Self {
+		Self {
+			value_index,
+			shift_variant: ShiftVariant::Sar,
+			amount,
+		}
+	}
 }
 
 pub type Operand = Vec<ShiftedValueIndex>;
