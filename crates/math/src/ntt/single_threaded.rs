@@ -207,6 +207,7 @@ pub fn forward_transform<F: BinaryField, P: PackedField<Scalar = F>>(
 			// the same twiddle factor.
 			for k in 0..1 << (log_y - 1 - i) {
 				let twiddle = s_evals_i.get(coset_offset | k);
+				let twiddle = P::broadcast(twiddle);
 				for l in 0..1 << (i + log_x - log_w) {
 					let idx0 = j << (log_x + log_y - log_w) | k << (log_x + i + 1 - log_w) | l;
 					let idx1 = idx0 | 1 << (log_x + i - log_w);
@@ -349,6 +350,7 @@ pub fn inverse_transform<F: BinaryField, P: PackedField<Scalar = F>>(
 			// the same twiddle factor.
 			for k in 0..1 << (log_y - 1 - i) {
 				let twiddle = s_evals_i.get(coset_offset | k);
+				let twiddle = P::broadcast(twiddle);
 				for l in 0..1 << (i + log_x - log_w) {
 					let idx0 = j << (log_x + log_y - log_w) | k << (log_x + i + 1 - log_w) | l;
 					let idx1 = idx0 | 1 << (log_x + i - log_w);
