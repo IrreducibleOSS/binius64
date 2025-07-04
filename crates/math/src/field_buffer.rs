@@ -136,6 +136,56 @@ impl<P: PackedField, Data: Deref<Target = [P]>> FieldBuffer<P, Data> {
 
 		Ok(chunks)
 	}
+
+	/// Splits the buffer in half and returns a pair of borrowed slices.
+	///
+	/// # Throws
+	///
+	/// * [`Error::CannotSplit`] if `self.log_len() == 0`
+	pub fn split_half(&self) -> Result<(FieldSlice<'_, P>, FieldSlice<'_, P>), Error> {
+		if self.log_len == 0 {
+			return Err(Error::CannotSplit);
+		}
+
+		let new_log_len = self.log_len - 1;
+		let (first, second) = if new_log_len < P::LOG_WIDTH {
+			// The result will be two Single variants
+			// We have exactly one packed element that needs to be split
+			debug_assert_eq!(self.values.len(), 1);
+			let packed = self.values[0];
+			let zeros = P::default();
+
+			let (first_half, second_half) = packed.interleave(zeros, new_log_len);
+
+			let first = FieldBuffer {
+				log_len: new_log_len,
+				values: FieldSliceData::Single(first_half),
+			};
+			let second = FieldBuffer {
+				log_len: new_log_len,
+				values: FieldSliceData::Single(second_half),
+			};
+
+			(first, second)
+		} else {
+			// Split the packed values slice in half
+			let mid = self.values.len() / 2;
+			let (first_half, second_half) = self.values.split_at(mid);
+
+			let first = FieldBuffer {
+				log_len: new_log_len,
+				values: FieldSliceData::Slice(first_half),
+			};
+			let second = FieldBuffer {
+				log_len: new_log_len,
+				values: FieldSliceData::Slice(second_half),
+			};
+
+			(first, second)
+		};
+
+		Ok((first, second))
+	}
 }
 
 impl<P: PackedField, Data: DerefMut<Target = [P]>> FieldBuffer<P, Data> {
@@ -194,6 +244,75 @@ impl<P: PackedField, Data: DerefMut<Target = [P]>> FieldBuffer<P, Data> {
 			});
 
 		Ok(chunks)
+	}
+
+	/// Splits the buffer in half and calls a closure with the two halves.
+	///
+	/// If the buffer contains a single packed element that needs to be split,
+	/// this method will create temporary copies, call the closure, and then
+	/// write the results back to the original buffer.
+	///
+	/// # Throws
+	///
+	/// * [`Error::CannotSplit`] if `self.log_len() == 0`
+	pub fn split_half_mut<F, R>(&mut self, f: F) -> Result<R, Error>
+	where
+		F: FnOnce(&mut FieldSliceMut<'_, P>, &mut FieldSliceMut<'_, P>) -> R,
+	{
+		if self.log_len == 0 {
+			return Err(Error::CannotSplit);
+		}
+
+		let new_log_len = self.log_len - 1;
+
+		if new_log_len < P::LOG_WIDTH {
+			// We need to split a single packed element
+			debug_assert_eq!(self.values.len(), 1);
+
+			// Extract the values using interleave
+			let packed = self.values[0];
+			let zeros = P::default();
+			let (mut first_half, mut second_half) = packed.interleave(zeros, new_log_len);
+
+			// Create temporary buffers
+			//
+			// We use Slice instead of Single variants because:
+			// 1. The closure takes ownership of the FieldBuffers
+			// 2. We need to retrieve the potentially modified values after the closure runs
+			// 3. With arrays, we maintain access to the modified values through the array
+			let mut first = FieldBuffer {
+				log_len: new_log_len,
+				values: FieldSliceDataMut::Slice(slice::from_mut(&mut first_half)),
+			};
+			let mut second = FieldBuffer {
+				log_len: new_log_len,
+				values: FieldSliceDataMut::Slice(slice::from_mut(&mut second_half)),
+			};
+
+			// Call the closure with the temporary buffers
+			let result = f(&mut first, &mut second);
+
+			// Write back the results by interleaving them back together
+			// The arrays may have been modified by the closure
+			(self.values[0], _) = first_half.interleave(second_half, new_log_len);
+
+			Ok(result)
+		} else {
+			// Normal case: split the packed values slice in half
+			let mid = self.values.len() / 2;
+			let (first_slice, second_slice) = self.values.split_at_mut(mid);
+
+			let mut first = FieldBuffer {
+				log_len: new_log_len,
+				values: FieldSliceDataMut::Slice(first_slice),
+			};
+			let mut second = FieldBuffer {
+				log_len: new_log_len,
+				values: FieldSliceDataMut::Slice(second_slice),
+			};
+
+			Ok(f(&mut first, &mut second))
+		}
 	}
 }
 
@@ -481,5 +600,160 @@ mod tests {
 		let mut slice_mut = buffer.to_mut();
 		slice_mut.set(0, F::new(123)).unwrap();
 		assert_eq!(buffer.get(0).unwrap(), F::new(123));
+	}
+
+	#[test]
+	fn test_split_half() {
+		// Test with buffer size > P::WIDTH (multiple packed elements)
+		let values: Vec<F> = (0..16).map(F::new).collect();
+		let buffer = FieldBuffer::<P>::from_values(&values).unwrap();
+
+		let (mut first, mut second) = buffer.split_half().unwrap();
+		assert_eq!(first.len(), 8);
+		assert_eq!(second.len(), 8);
+
+		// Verify values
+		for i in 0..8 {
+			assert_eq!(first.get(i).unwrap(), F::new(i as u64));
+			assert_eq!(second.get(i).unwrap(), F::new((i + 8) as u64));
+		}
+
+		// Test with buffer size = P::WIDTH (single packed element)
+		// P::LOG_WIDTH = 2, so P::WIDTH = 4
+		let values: Vec<F> = (0..4).map(F::new).collect();
+		let buffer = FieldBuffer::<P>::from_values(&values).unwrap();
+
+		let (mut first, mut second) = buffer.split_half().unwrap();
+		assert_eq!(first.len(), 2);
+		assert_eq!(second.len(), 2);
+
+		// Verify we got Single variants
+		match &first.values {
+			FieldSliceData::Single(_) => {}
+			_ => panic!("Expected Single variant for first half"),
+		}
+		match &second.values {
+			FieldSliceData::Single(_) => {}
+			_ => panic!("Expected Single variant for second half"),
+		}
+
+		// Verify values
+		assert_eq!(first.get(0).unwrap(), F::new(0));
+		assert_eq!(first.get(1).unwrap(), F::new(1));
+		assert_eq!(second.get(0).unwrap(), F::new(2));
+		assert_eq!(second.get(1).unwrap(), F::new(3));
+
+		// Test with buffer size = 2 (less than P::WIDTH)
+		let values: Vec<F> = vec![F::new(10), F::new(20)];
+		let buffer = FieldBuffer::<P>::from_values(&values).unwrap();
+
+		let (mut first, mut second) = buffer.split_half().unwrap();
+		assert_eq!(first.len(), 1);
+		assert_eq!(second.len(), 1);
+
+		// Verify we got Single variants
+		match &first.values {
+			FieldSliceData::Single(_) => {}
+			_ => panic!("Expected Single variant for first half"),
+		}
+		match &second.values {
+			FieldSliceData::Single(_) => {}
+			_ => panic!("Expected Single variant for second half"),
+		}
+
+		assert_eq!(first.get(0).unwrap(), F::new(10));
+		assert_eq!(second.get(0).unwrap(), F::new(20));
+
+		// Test error case: buffer of size 1
+		let values = vec![F::new(42)];
+		let buffer = FieldBuffer::<P>::from_values(&values).unwrap();
+
+		let result = buffer.split_half();
+		assert!(matches!(result, Err(Error::CannotSplit)));
+	}
+
+	#[test]
+	fn test_split_half_mut() {
+		// Test with buffer size > P::WIDTH (multiple packed elements)
+		let mut buffer = FieldBuffer::<P>::zeros(4); // 16 elements
+
+		// Fill with test data
+		for i in 0..16 {
+			buffer.set(i, F::new(i as u64)).unwrap();
+		}
+
+		buffer
+			.split_half_mut(|first, second| {
+				assert_eq!(first.len(), 8);
+				assert_eq!(second.len(), 8);
+
+				// Modify through the split halves
+				for i in 0..8 {
+					first.set(i, F::new((i * 10) as u64)).unwrap();
+					second.set(i, F::new((i * 20) as u64)).unwrap();
+				}
+			})
+			.unwrap();
+
+		// Verify changes were made to original buffer
+		for i in 0..8 {
+			assert_eq!(buffer.get(i).unwrap(), F::new((i * 10) as u64));
+			assert_eq!(buffer.get(i + 8).unwrap(), F::new((i * 20) as u64));
+		}
+
+		// Test with buffer size = P::WIDTH (single packed element)
+		// P::LOG_WIDTH = 2, so a buffer with log_len = 2 (4 elements) can now be split
+		let mut buffer = FieldBuffer::<P>::zeros(2); // 4 elements
+
+		// Fill with test data
+		for i in 0..4 {
+			buffer.set(i, F::new(i as u64)).unwrap();
+		}
+
+		buffer
+			.split_half_mut(|first, second| {
+				assert_eq!(first.len(), 2);
+				assert_eq!(second.len(), 2);
+
+				// Modify values
+				first.set(0, F::new(100)).unwrap();
+				first.set(1, F::new(101)).unwrap();
+				second.set(0, F::new(200)).unwrap();
+				second.set(1, F::new(201)).unwrap();
+			})
+			.unwrap();
+
+		// Verify changes were written back
+		assert_eq!(buffer.get(0).unwrap(), F::new(100));
+		assert_eq!(buffer.get(1).unwrap(), F::new(101));
+		assert_eq!(buffer.get(2).unwrap(), F::new(200));
+		assert_eq!(buffer.get(3).unwrap(), F::new(201));
+
+		// Test with buffer size = 2
+		let mut buffer = FieldBuffer::<P>::zeros(1); // 2 elements
+
+		buffer.set(0, F::new(10)).unwrap();
+		buffer.set(1, F::new(20)).unwrap();
+
+		buffer
+			.split_half_mut(|first, second| {
+				assert_eq!(first.len(), 1);
+				assert_eq!(second.len(), 1);
+
+				// Modify values
+				first.set(0, F::new(30)).unwrap();
+				second.set(0, F::new(40)).unwrap();
+			})
+			.unwrap();
+
+		// Verify changes
+		assert_eq!(buffer.get(0).unwrap(), F::new(30));
+		assert_eq!(buffer.get(1).unwrap(), F::new(40));
+
+		// Test error case: buffer of size 1
+		let mut buffer = FieldBuffer::<P>::zeros(0); // 1 element
+
+		let result = buffer.split_half_mut(|_, _| {});
+		assert!(matches!(result, Err(Error::CannotSplit)));
 	}
 }
