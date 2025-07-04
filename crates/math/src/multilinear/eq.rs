@@ -1,12 +1,11 @@
 // Copyright 2024-2025 Irreducible Inc.
 
-use std::cmp::max;
+use std::ops::DerefMut;
 
 use binius_field::{Field, PackedField};
 use binius_maybe_rayon::prelude::*;
-use bytemuck::zeroed_vec;
 
-use crate::Error;
+use crate::{Error, FieldBuffer};
 
 /// Tensor of values with the eq indicator evaluated at extra_query_coordinates.
 ///
@@ -30,51 +29,43 @@ use crate::Error;
 /// Then `values` is updated to contain the evaluations of $g$ over the $n+k$-dimensional
 /// hypercube where
 /// * $g(x_0, \ldots, x_{n+k-1}) = f(x_0, \ldots, x_{n-1}) * eq(x_n, \ldots, x_{n+k-1}, r)$
-pub fn tensor_prod_eq_ind<P: PackedField>(
+pub fn tensor_prod_eq_ind<P: PackedField, Data: DerefMut<Target = [P]>>(
 	log_n_values: usize,
-	packed_values: &mut [P],
+	values: &mut FieldBuffer<P, Data>,
 	extra_query_coordinates: &[P::Scalar],
 ) -> Result<(), Error> {
-	let new_n_vars = log_n_values + extra_query_coordinates.len();
-	let expected_len = 1 << max(new_n_vars, P::LOG_WIDTH);
-	if packed_values.len() != 1 << new_n_vars.saturating_sub(P::LOG_WIDTH) {
+	let n_extra = extra_query_coordinates.len();
+	let new_n_vars = log_n_values + n_extra;
+	let expected_len = 1 << new_n_vars;
+	if values.len() != expected_len {
 		return Err(Error::IncorrectArgumentLength {
 			arg: "packed_values".to_string(),
 			expected: expected_len,
 		});
 	}
 
-	for (i, r_i) in extra_query_coordinates.iter().enumerate() {
-		let prev_length = 1 << (log_n_values + i);
-		if prev_length < P::WIDTH {
-			let q = &mut packed_values[0];
-			for h in 0..prev_length {
-				let x = q.get(h);
-				let prod = x * r_i;
-				q.set(h, x - prod);
-				q.set(prev_length | h, prod);
-			}
-		} else {
-			let prev_packed_length = prev_length / P::WIDTH;
-			let packed_r_i = P::broadcast(*r_i);
-			let (xs, ys) = packed_values.split_at_mut(prev_packed_length);
-			assert!(xs.len() <= ys.len());
-
-			// These magic numbers were chosen experimentally to have a reasonable performance
-			// for the calls with small number of elements.
-			xs.par_iter_mut()
-				.zip(ys.par_iter_mut())
-				.with_min_len(64)
-				.for_each(|(x, y)| {
-					// x = x * (1 - packed_r_i) = x - x * packed_r_i
-					// y = x * packed_r_i
-					// Notice that we can reuse the multiplication: (x * packed_r_i)
-					let prod = (*x) * packed_r_i;
-					*x -= prod;
-					*y = prod;
-				});
-		}
+	if extra_query_coordinates.is_empty() {
+		return Ok(());
 	}
+
+	values.split_half_mut(|lo, hi| {
+		tensor_prod_eq_ind(log_n_values, lo, &extra_query_coordinates[..n_extra - 1])?;
+
+		let r_i = &extra_query_coordinates[n_extra - 1];
+		let packed_r_i = P::broadcast(*r_i);
+
+		lo.as_mut()
+			.par_iter_mut()
+			.zip(hi.as_mut().par_iter_mut())
+			.for_each(|(lo_i, hi_i)| {
+				let prod = (*lo_i) * packed_r_i;
+				*lo_i -= prod;
+				*hi_i = prod;
+			});
+
+		Ok(())
+	})??;
+
 	Ok(())
 }
 
@@ -93,19 +84,21 @@ pub fn tensor_prod_eq_ind<P: PackedField>(
 /// See [DP23], Section 2.1 for more information about the equality indicator polynomial.
 ///
 /// [DP23]: <https://eprint.iacr.org/2023/1784>
-pub fn eq_ind_partial_eval<P: PackedField>(point: &[P::Scalar]) -> Vec<P> {
-	let n = point.len();
-	let len = 1 << n.saturating_sub(P::LOG_WIDTH);
-	let mut buffer = zeroed_vec::<P>(len);
-	buffer[0].set(0, P::Scalar::ONE);
+pub fn eq_ind_partial_eval<P: PackedField>(point: &[P::Scalar]) -> FieldBuffer<P> {
+	// The buffer needs to have the correct size: 2^max(point.len(), P::LOG_WIDTH) elements
+	// but since tensor_prod_eq_ind starts with log_n_values=0, we need the final size
+	let log_size = point.len();
+	let mut buffer = FieldBuffer::zeros(log_size);
+	buffer
+		.set(0, P::Scalar::ONE)
+		.expect("buffer has length at least 1");
 	tensor_prod_eq_ind(0, &mut buffer, point).expect("buffer is allocated with the correct length");
 	buffer
 }
 
 #[cfg(test)]
 mod tests {
-	use binius_field::{Field, PackedBinaryField4x32b, packed::set_packed_slice};
-	use itertools::Itertools;
+	use binius_field::{Field, PackedBinaryField4x32b};
 
 	use super::*;
 
@@ -117,12 +110,13 @@ mod tests {
 		let v0 = F::from(1);
 		let v1 = F::from(2);
 		let query = vec![v0, v1];
-		let mut result = vec![P::default(); 1 << (query.len() - P::LOG_WIDTH)];
-		set_packed_slice(&mut result, 0, F::ONE);
+		// log_n_values = 0, query.len() = 2, so total log_len = 2
+		let mut result = FieldBuffer::zeros(query.len());
+		result.set(0, F::ONE).unwrap();
 		tensor_prod_eq_ind(0, &mut result, &query).unwrap();
-		let result = PackedField::iter_slice(&result).collect_vec();
+		let result_vec: Vec<F> = P::iter_slice(result.as_ref()).collect();
 		assert_eq!(
-			result,
+			result_vec,
 			vec![
 				(F::ONE - v0) * (F::ONE - v1),
 				v0 * (F::ONE - v1),
@@ -135,8 +129,11 @@ mod tests {
 	#[test]
 	fn test_eq_ind_partial_eval_empty() {
 		let result = eq_ind_partial_eval::<P>(&[]);
-		let expected = vec![P::set_single(F::ONE)];
-		assert_eq!(result, expected);
+		// For P with LOG_WIDTH = 2, the minimum buffer size is 4 elements
+		assert_eq!(result.log_len(), 0);
+		assert_eq!(result.len(), 1);
+		let mut result_mut = result;
+		assert_eq!(result_mut.get(0).unwrap(), F::ONE);
 	}
 
 	#[test]
@@ -144,9 +141,11 @@ mod tests {
 		// Only one query coordinate
 		let r0 = F::new(2);
 		let result = eq_ind_partial_eval::<P>(&[r0]);
-		let expected = vec![(F::ONE - r0), r0, F::ZERO, F::ZERO];
-		let result = PackedField::iter_slice(&result).collect_vec();
-		assert_eq!(result, expected);
+		assert_eq!(result.log_len(), 1);
+		assert_eq!(result.len(), 2);
+		let mut result_mut = result;
+		assert_eq!(result_mut.get(0).unwrap(), F::ONE - r0);
+		assert_eq!(result_mut.get(1).unwrap(), r0);
 	}
 
 	#[test]
@@ -155,14 +154,16 @@ mod tests {
 		let r0 = F::new(2);
 		let r1 = F::new(3);
 		let result = eq_ind_partial_eval::<P>(&[r0, r1]);
-		let result = PackedField::iter_slice(&result).collect_vec();
+		assert_eq!(result.log_len(), 2);
+		assert_eq!(result.len(), 4);
+		let result_vec: Vec<F> = P::iter_slice(result.as_ref()).collect();
 		let expected = vec![
 			(F::ONE - r0) * (F::ONE - r1),
 			r0 * (F::ONE - r1),
 			(F::ONE - r0) * r1,
 			r0 * r1,
 		];
-		assert_eq!(result, expected);
+		assert_eq!(result_vec, expected);
 	}
 
 	#[test]
@@ -172,7 +173,9 @@ mod tests {
 		let r1 = F::new(3);
 		let r2 = F::new(5);
 		let result = eq_ind_partial_eval::<P>(&[r0, r1, r2]);
-		let result = PackedField::iter_slice(&result).collect_vec();
+		assert_eq!(result.log_len(), 3);
+		assert_eq!(result.len(), 8);
+		let result_vec: Vec<F> = P::iter_slice(result.as_ref()).collect();
 
 		let expected = vec![
 			(F::ONE - r0) * (F::ONE - r1) * (F::ONE - r2),
@@ -184,6 +187,6 @@ mod tests {
 			(F::ONE - r0) * r1 * r2,
 			r0 * r1 * r2,
 		];
-		assert_eq!(result, expected);
+		assert_eq!(result_vec, expected);
 	}
 }
