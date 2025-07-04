@@ -12,11 +12,13 @@
 
 pub mod binary_subspace;
 mod error;
+pub mod field_buffer;
 pub mod matrix;
 pub mod ntt;
 pub mod reed_solomon;
 
 pub use binary_subspace::BinarySubspace;
 pub use error::Error;
+pub use field_buffer::{FieldBuffer, FieldSlice, FieldSliceMut};
 pub use matrix::Matrix;
 pub use reed_solomon::ReedSolomonCode;

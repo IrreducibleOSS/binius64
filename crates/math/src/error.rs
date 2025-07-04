@@ -14,4 +14,6 @@ pub enum Error {
 	DomainSizeTooLarge,
 	#[error("argument {arg} must be in the range {range:?}")]
 	ArgumentRangeError { arg: String, range: Range<usize> },
+	#[error("buffer length must be a power of two")]
+	PowerOfTwoLengthRequired,
 }
