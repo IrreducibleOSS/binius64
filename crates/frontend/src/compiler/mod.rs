@@ -1,6 +1,7 @@
 use std::{
 	cell::{RefCell, RefMut},
 	collections::HashMap,
+	fmt,
 	rc::Rc,
 };
 
@@ -440,6 +441,30 @@ impl CircuitBuilder {
 
 const MAX_ASSERTION_MESSAGES: usize = 100;
 
+/// Error returned when populating wire witness fails due to assertion failures.
+#[derive(Debug)]
+pub struct PopulateError {
+	/// List of assertion failure messages (limited to MAX_ASSERTION_MESSAGES).
+	messages: Vec<String>,
+	/// Total count of assertion failures (may exceed messages.len()).
+	total_count: usize,
+}
+
+impl fmt::Display for PopulateError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		writeln!(f, "assertions failed:")?;
+		for message in &self.messages {
+			writeln!(f, "{message}")?;
+		}
+		if self.total_count > self.messages.len() {
+			writeln!(f, "(Some assertions are omitted. Total: {})", self.total_count)?;
+		}
+		Ok(())
+	}
+}
+
+impl std::error::Error for PopulateError {}
+
 pub struct WitnessFiller<'a> {
 	circuit: &'a Circuit,
 	value_vec: ValueVec,
@@ -499,7 +524,24 @@ impl Circuit {
 		}
 	}
 
-	pub fn populate_wire_witness(&self, w: &mut WitnessFiller) {
+	/// Populates non-input values (wires) in the witness.
+	///
+	/// Specifically, this will evaluate the circuit gate-by-gate and save the results in the
+	/// witness vector.
+	///
+	/// This function expects that the input wires are already filled. The input wires are
+	///
+	/// - [`CircuitBuilder::add_inout`],
+	/// - [`CircuitBuilder::add_witness`] that were not created by the gates,
+	///
+	/// The wires created by [`CircuitBuilder::add_constant`] (and its convenience methods) are
+	/// automatically populated by this function as well.
+	///
+	/// # Errors
+	///
+	/// In case the circuit is not satisfiable (any assertion fails), this function will return an
+	/// error with a list of assertion failure messages.
+	pub fn populate_wire_witness(&self, w: &mut WitnessFiller) -> Result<(), PopulateError> {
 		for (i, wire) in self.shared.wires.iter().enumerate() {
 			if let WireKind::Constant(value) = wire.kind {
 				// TODO: don't conjure up a wire.
@@ -515,18 +557,15 @@ impl Circuit {
 		}
 
 		if w.assertion_failed_count > 0 {
-			let mut message = w.assertion_failed_message_vec.join("\n");
-			if w.assertion_failed_count > w.assertion_failed_message_vec.len() {
-				message.push_str(&format!(
-					"\n(Some assertions are omitted. Total: {})",
-					w.assertion_failed_count
-				));
-			}
-			panic!("assertions failed:\n{message}");
+			return Err(PopulateError {
+				messages: w.assertion_failed_message_vec.clone(),
+				total_count: w.assertion_failed_count,
+			});
 		}
 
 		let elapsed = start.elapsed();
 		println!("fill_witness took {} microseconds", elapsed.as_micros());
+		Ok(())
 	}
 
 	/// Builds a constraint system from this circuit.

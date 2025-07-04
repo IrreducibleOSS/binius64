@@ -249,7 +249,7 @@ mod tests {
 		for (i, &output) in output.iter().enumerate() {
 			w[output] = Word(expected_state[i] as u64);
 		}
-		circuit.populate_wire_witness(&mut w);
+		circuit.populate_wire_witness(&mut w).unwrap();
 
 		println!("Number of AND constraints: {}", cs.n_and_constraints());
 		println!("Number of gates: {}", circuit.n_gates());
@@ -296,7 +296,7 @@ mod tests {
 		for compress in &compress_vec {
 			compress.populate_m(&mut w, [0; 64]);
 		}
-		circuit.populate_wire_witness(&mut w);
+		circuit.populate_wire_witness(&mut w).unwrap();
 
 		println!("Number of AND constraints: {}", cs.n_and_constraints());
 		println!("Number of gates: {}", circuit.n_gates());
@@ -332,7 +332,7 @@ mod tests {
 		for compress in &compress_vec {
 			compress.populate_m(&mut w, [0; 64]);
 		}
-		circuit.populate_wire_witness(&mut w);
+		circuit.populate_wire_witness(&mut w).unwrap();
 
 		println!("Number of AND constraints: {}", cs.n_and_constraints());
 		println!("Number of gates: {}", circuit.n_gates());

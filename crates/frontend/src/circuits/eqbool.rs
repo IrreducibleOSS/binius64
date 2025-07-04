@@ -46,7 +46,7 @@ mod tests {
 		w[y] = Word(0x1234);
 		w[out] = Word(1);
 
-		circuit.populate_wire_witness(&mut w);
+		circuit.populate_wire_witness(&mut w).unwrap();
 	}
 
 	#[test]
@@ -60,11 +60,10 @@ mod tests {
 		w[y] = Word(0x1235);
 		w[out] = Word(0);
 
-		circuit.populate_wire_witness(&mut w);
+		circuit.populate_wire_witness(&mut w).unwrap();
 	}
 
 	#[test]
-	#[should_panic]
 	fn fail_if_out_wrong() {
 		let mut b = CircuitBuilder::new();
 		let EqBool { x, y, out } = EqBool::new(&mut b);
@@ -75,6 +74,7 @@ mod tests {
 		w[y] = Word(0x1234);
 		w[out] = Word(0);
 
-		circuit.populate_wire_witness(&mut w);
+		let result = circuit.populate_wire_witness(&mut w);
+		assert!(result.is_err());
 	}
 }

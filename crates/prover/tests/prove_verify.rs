@@ -46,7 +46,7 @@ fn test_prove_verify_sha256_preimage() {
 	for (i, &output) in output.iter().enumerate() {
 		w[output] = Word(expected_state[i] as u64);
 	}
-	circuit.populate_wire_witness(&mut w);
+	circuit.populate_wire_witness(&mut w).unwrap();
 
 	let cs = circuit.constraint_system();
 	println!("Number of AND constraints: {}", cs.n_and_constraints());

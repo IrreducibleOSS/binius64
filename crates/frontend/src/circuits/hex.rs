@@ -117,6 +117,6 @@ mod tests {
 		hex_decode.populate_decoded(&mut w, &decoded_bytes);
 		hex_decode.populate_encoded(&mut w, encoded_bytes.as_bytes());
 
-		circuit.populate_wire_witness(&mut w);
+		circuit.populate_wire_witness(&mut w).unwrap();
 	}
 }

@@ -176,7 +176,7 @@ mod tests {
 			}
 			w[len_wire] = Word(len as u64);
 
-			circuit.populate_wire_witness(&mut w);
+			circuit.populate_wire_witness(&mut w).unwrap();
 		}
 	}
 }
