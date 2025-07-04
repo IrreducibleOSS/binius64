@@ -17,6 +17,8 @@ pub mod matrix;
 pub mod multilinear;
 pub mod ntt;
 pub mod reed_solomon;
+#[cfg(feature = "test-utils")]
+pub mod test_utils;
 
 pub use binary_subspace::BinarySubspace;
 pub use error::Error;

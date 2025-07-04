@@ -20,10 +20,14 @@ tracing.workspace = true
 
 [dev-dependencies]
 assert_matches.workspace = true
+binius-math = { path = ".", default-features = false, features = ["test-utils"] }
 criterion.workspace = true
 lazy_static.workspace = true
 proptest.workspace = true
 rand = { workspace = true, features = ["std_rng", "thread_rng"] }
+
+[features]
+test-utils = []
 
 [lib]
 bench = false

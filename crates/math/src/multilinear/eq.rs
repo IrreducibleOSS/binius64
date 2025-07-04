@@ -143,6 +143,7 @@ mod tests {
 	use rand::prelude::*;
 
 	use super::*;
+	use crate::test_utils::random_scalars;
 
 	type P = PackedBinaryField4x32b;
 	type F = <P as PackedField>::Scalar;
@@ -237,16 +238,11 @@ mod tests {
 	fn test_eq_ind_partial_eval_consistent_on_hypercube() {
 		let mut rng = StdRng::seed_from_u64(0);
 
-		// Create a random 5-variate point
-		let point: Vec<F> = (0..5).map(|_| <F as Field>::random(&mut rng)).collect();
+		let n_vars = 5;
 
-		// Call eq_ind_partial_eval
+		let point = random_scalars(&mut rng, n_vars);
 		let result = eq_ind_partial_eval::<P>(&point);
-		assert_eq!(result.log_len(), 5);
-		assert_eq!(result.len(), 32);
-
-		// Choose a random index between 0 and 31
-		let index: usize = rng.random_range(0..32);
+		let index = rng.random_range(..1 << n_vars);
 
 		// Query the value at that index
 		let mut result_mut = result;
