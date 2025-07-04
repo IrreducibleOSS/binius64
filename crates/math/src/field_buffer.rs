@@ -1,6 +1,9 @@
 // Copyright 2025 Irreducible Inc.
 
-use std::ops::{Deref, DerefMut};
+use std::{
+	ops::{Deref, DerefMut},
+	slice,
+};
 
 use binius_field::{
 	PackedField,
@@ -81,7 +84,7 @@ impl<P: PackedField, Data: Deref<Target = [P]>> FieldBuffer<P, Data> {
 	pub fn to_ref(&self) -> FieldSlice<'_, P> {
 		FieldBuffer {
 			log_len: self.log_len,
-			values: &self.values,
+			values: FieldSliceData::Slice(&self.values),
 		}
 	}
 
@@ -108,25 +111,27 @@ impl<P: PackedField, Data: Deref<Target = [P]>> FieldBuffer<P, Data> {
 	///
 	/// # Errors
 	///
-	/// * [`Error::ArgumentRangeError`] if `log_chunk_size > log_len`.
+	/// * [`Error::ArgumentRangeError`] if `log_chunk_size < P::LOG_WIDTH` or `log_chunk_size >
+	///   log_len`.
 	pub fn chunks(
 		&self,
 		log_chunk_size: usize,
 	) -> Result<impl Iterator<Item = FieldSlice<'_, P>>, Error> {
-		if log_chunk_size > self.log_len {
+		if log_chunk_size < P::LOG_WIDTH || log_chunk_size > self.log_len {
 			return Err(Error::ArgumentRangeError {
 				arg: "log_chunk_size".to_string(),
-				range: 0..self.log_len + 1,
+				range: P::LOG_WIDTH..self.log_len + 1,
 			});
 		}
 
-		let packed_chunk_size = 1 << log_chunk_size.saturating_sub(P::LOG_WIDTH);
+		let log_len = log_chunk_size.min(self.log_len);
+		let packed_chunk_size = 1 << (log_chunk_size - P::LOG_WIDTH);
 		let chunks = self
 			.values
 			.chunks(packed_chunk_size)
 			.map(move |chunk| FieldBuffer {
-				log_len: log_chunk_size,
-				values: chunk,
+				log_len,
+				values: FieldSliceData::Slice(chunk),
 			});
 
 		Ok(chunks)
@@ -138,7 +143,7 @@ impl<P: PackedField, Data: DerefMut<Target = [P]>> FieldBuffer<P, Data> {
 	pub fn to_mut(&mut self) -> FieldSliceMut<'_, P> {
 		FieldBuffer {
 			log_len: self.log_len,
-			values: &mut self.values,
+			values: FieldSliceDataMut::Slice(&mut self.values),
 		}
 	}
 
@@ -165,25 +170,27 @@ impl<P: PackedField, Data: DerefMut<Target = [P]>> FieldBuffer<P, Data> {
 	///
 	/// # Throws
 	///
-	/// * [`Error::ArgumentRangeError`] if `log_chunk_size > log_len`.
+	/// * [`Error::ArgumentRangeError`] if `log_chunk_size < P::LOG_WIDTH` or `log_chunk_size >
+	///   log_len`.
 	pub fn chunks_mut(
 		&mut self,
 		log_chunk_size: usize,
 	) -> Result<impl Iterator<Item = FieldSliceMut<'_, P>>, Error> {
-		if log_chunk_size > self.log_len {
+		if log_chunk_size < P::LOG_WIDTH || log_chunk_size > self.log_len {
 			return Err(Error::ArgumentRangeError {
 				arg: "log_chunk_size".to_string(),
-				range: 0..self.log_len + 1,
+				range: P::LOG_WIDTH..self.log_len + 1,
 			});
 		}
 
+		let log_len = log_chunk_size.min(self.log_len);
 		let packed_chunk_size = 1 << log_chunk_size.saturating_sub(P::LOG_WIDTH);
 		let chunks = self
 			.values
 			.chunks_mut(packed_chunk_size)
 			.map(move |chunk| FieldBuffer {
-				log_len: log_chunk_size,
-				values: chunk,
+				log_len,
+				values: FieldSliceDataMut::Slice(chunk),
 			});
 
 		Ok(chunks)
@@ -203,10 +210,53 @@ impl<P: PackedField, Data: DerefMut<Target = [P]>> AsMut<[P]> for FieldBuffer<P,
 }
 
 /// Alias for a field buffer over a borrowed slice.
-pub type FieldSlice<'a, P> = FieldBuffer<P, &'a [P]>;
+pub type FieldSlice<'a, P> = FieldBuffer<P, FieldSliceData<'a, P>>;
 
 /// Alias for a field buffer over a mutably borrowed slice.
-pub type FieldSliceMut<'a, P> = FieldBuffer<P, &'a mut [P]>;
+pub type FieldSliceMut<'a, P> = FieldBuffer<P, FieldSliceDataMut<'a, P>>;
+
+#[derive(Debug)]
+pub enum FieldSliceData<'a, P> {
+	Single(P),
+	Slice(&'a [P]),
+}
+
+impl<'a, P> Deref for FieldSliceData<'a, P> {
+	type Target = [P];
+
+	fn deref(&self) -> &Self::Target {
+		match self {
+			FieldSliceData::Single(val) => slice::from_ref(val),
+			FieldSliceData::Slice(slice) => slice,
+		}
+	}
+}
+
+#[derive(Debug)]
+pub enum FieldSliceDataMut<'a, P> {
+	Single(P),
+	Slice(&'a mut [P]),
+}
+
+impl<'a, P> Deref for FieldSliceDataMut<'a, P> {
+	type Target = [P];
+
+	fn deref(&self) -> &Self::Target {
+		match self {
+			FieldSliceDataMut::Single(val) => slice::from_ref(val),
+			FieldSliceDataMut::Slice(slice) => slice,
+		}
+	}
+}
+
+impl<'a, P> DerefMut for FieldSliceDataMut<'a, P> {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		match self {
+			FieldSliceDataMut::Single(val) => slice::from_mut(val),
+			FieldSliceDataMut::Slice(slice) => slice,
+		}
+	}
+}
 
 #[cfg(test)]
 mod tests {
@@ -382,8 +432,13 @@ mod tests {
 			}
 		}
 
-		// Test invalid chunk size
+		// Test invalid chunk size (too large)
 		assert!(buffer.chunks(5).is_err());
+
+		// Test invalid chunk size (too small - below P::LOG_WIDTH)
+		// P::LOG_WIDTH = 2, so chunks(0) and chunks(1) should fail
+		assert!(buffer.chunks(0).is_err());
+		assert!(buffer.chunks(1).is_err());
 	}
 
 	#[test]
@@ -407,6 +462,10 @@ mod tests {
 				assert_eq!(buffer.get(chunk_idx * 4 + i).unwrap(), expected);
 			}
 		}
+
+		// Test invalid chunk size (too small - below P::LOG_WIDTH)
+		assert!(buffer.chunks_mut(0).is_err());
+		assert!(buffer.chunks_mut(1).is_err());
 	}
 
 	#[test]
