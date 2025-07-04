@@ -108,9 +108,12 @@ This design maps naturally to CPU instructions and achieves massive efficiency g
 - MUL constraint: ~200x more expensive
 - Committing one 64-bit word: ~0.2x
 
-### Circuit Design
+### Circuit Implementation and Design
 
-See docs/frontend/circuit_design.md.
+There are several resources depending on the task:
+
+- docs/frontend/circuit_design.md - how to design circuits for Binius64
+- docs/frontend/rust_circuits.md - conventions on coding circuits for the frontend crate
 
 ## Key Differences from Original Binius
 
