@@ -22,5 +22,10 @@ tracing.workspace = true
 
 [dev-dependencies]
 blake2.workspace = true
+criterion.workspace = true
 itertools.workspace = true
 rand = { workspace = true, features = ["std_rng"] }
+
+[[bench]]
+name = "binary_merkle_tree"
+harness = false
