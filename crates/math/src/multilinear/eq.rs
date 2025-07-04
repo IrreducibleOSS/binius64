@@ -1,6 +1,6 @@
 // Copyright 2024-2025 Irreducible Inc.
 
-use std::ops::DerefMut;
+use std::{iter, ops::DerefMut};
 
 use binius_field::{Field, PackedField};
 use binius_maybe_rayon::prelude::*;
@@ -96,9 +96,51 @@ pub fn eq_ind_partial_eval<P: PackedField>(point: &[P::Scalar]) -> FieldBuffer<P
 	buffer
 }
 
+/// Evaluates the 2-variate multilinear which indicates the equality condition over the hypercube.
+///
+/// This evaluates the bivariate polynomial
+///
+/// $$
+/// \widetilde{eq}(X, Y) = X Y + (1 - X) (1 - Y)
+/// $$
+///
+/// In the special case of binary fields, the evaluation can be simplified to
+///
+/// $$
+/// \widetilde{eq}(X, Y) = X + Y + 1
+/// $$
+#[inline(always)]
+pub fn eq_one_var<F: Field>(x: F, y: F) -> F {
+	if F::CHARACTERISTIC == 2 {
+		// Optimize away the multiplication for binary fields
+		x + y + F::ONE
+	} else {
+		x * y + (F::ONE - x) * (F::ONE - y)
+	}
+}
+
+/// Evaluates the equality indicator multilinear at a pair of coordinates.
+///
+/// This evaluates the 2n-variate multilinear polynomial
+///
+/// $$
+/// \widetilde{eq}(X_0, \ldots, X_{n-1}, Y_0, \ldots, Y_{n-1}) = \prod_{i=0}^{n-1} X_i Y_i + (1 -
+/// X_i) (1 - Y_i) $$
+///
+/// In the special case of binary fields, the evaluation can be simplified to
+///
+/// See [DP23], Section 2.1 for more information about the equality indicator polynomial.
+///
+/// [DP23]: <https://eprint.iacr.org/2023/1784>
+pub fn eq_ind<F: Field>(x: &[F], y: &[F]) -> F {
+	assert_eq!(x.len(), y.len(), "pre-condition: x and y must be the same length");
+	iter::zip(x, y).map(|(&x, &y)| eq_one_var(x, y)).product()
+}
+
 #[cfg(test)]
 mod tests {
 	use binius_field::{Field, PackedBinaryField4x32b};
+	use rand::prelude::*;
 
 	use super::*;
 
@@ -188,5 +230,43 @@ mod tests {
 			r0 * r1 * r2,
 		];
 		assert_eq!(result_vec, expected);
+	}
+
+	// Property-based test that eq_ind_partial_eval is consistent with eq_ind at a random index.
+	#[test]
+	fn test_eq_ind_partial_eval_consistent_on_hypercube() {
+		let mut rng = StdRng::seed_from_u64(0);
+
+		// Create a random 5-variate point
+		let point: Vec<F> = (0..5).map(|_| <F as Field>::random(&mut rng)).collect();
+
+		// Call eq_ind_partial_eval
+		let result = eq_ind_partial_eval::<P>(&point);
+		assert_eq!(result.log_len(), 5);
+		assert_eq!(result.len(), 32);
+
+		// Choose a random index between 0 and 31
+		let index: usize = rng.random_range(0..32);
+
+		// Query the value at that index
+		let mut result_mut = result;
+		let partial_eval_value = result_mut.get(index).unwrap();
+
+		// Decompose the index as a slice of F::ZERO and F::ONE bits
+		let index_bits: Vec<F> = (0..5)
+			.map(|i| {
+				if (index >> i) & 1 == 1 {
+					F::ONE
+				} else {
+					F::ZERO
+				}
+			})
+			.collect();
+
+		// Call eq_ind with the point and the index bits
+		let eq_ind_value = eq_ind(&point, &index_bits);
+
+		// Assert that both values are equal
+		assert_eq!(partial_eval_value, eq_ind_value);
 	}
 }

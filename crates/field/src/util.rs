@@ -69,17 +69,6 @@ where
 	}
 }
 
-/// Evaluation of the 2-variate multilinear which indicates the condition x == y
-#[inline(always)]
-pub fn eq<F: Field>(x: F, y: F) -> F {
-	if F::CHARACTERISTIC == 2 {
-		// Optimize away the multiplication for binary fields
-		x + y + F::ONE
-	} else {
-		x * y + (F::ONE - x) * (F::ONE - y)
-	}
-}
-
 /// Iterate the powers of a given value, beginning with 1 (the 0'th power).
 pub fn powers<F: Field>(val: F) -> impl Iterator<Item = F> {
 	iter::successors(Some(F::ONE), move |&power| Some(power * val))
