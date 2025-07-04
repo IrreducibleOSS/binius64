@@ -19,6 +19,46 @@ pub fn random_scalars<F: Field>(mut rng: impl RngCore, n: usize) -> Vec<F> {
 	repeat_with(|| F::random(&mut rng)).take(n).collect()
 }
 
+/// Converts an index to a hypercube point representation.
+///
+/// Given an index and number of variables, decomposes the index into a vector
+/// of field elements where each element is either F::ZERO or F::ONE based on
+/// the corresponding bit in the index.
+///
+/// # Arguments
+///
+/// * `n_vars` - Number of variables (bits) in the hypercube point
+/// * `index` - The index to convert (must be less than 2^n_vars)
+///
+/// # Returns
+///
+/// Vector of n_vars field elements, where element i is F::ONE if bit i of index is 1,
+/// and F::ZERO otherwise.
+///
+/// # Example
+///
+/// ```
+/// # use binius_field::BinaryField32b;
+/// # use binius_math::test_utils::index_to_hypercube_point;
+/// let point = index_to_hypercube_point::<BinaryField32b>(3, 5);
+/// // 5 = 0b101, so point = [F::ONE, F::ZERO, F::ONE]
+/// ```
+pub fn index_to_hypercube_point<F: Field>(n_vars: usize, index: usize) -> Vec<F> {
+	debug_assert!(
+		index < (1 << n_vars),
+		"Index {index} out of bounds for {n_vars}-variable hypercube"
+	);
+	(0..n_vars)
+		.map(|i| {
+			if (index >> i) & 1 == 1 {
+				F::ONE
+			} else {
+				F::ZERO
+			}
+		})
+		.collect()
+}
+
 #[cfg(test)]
 mod tests {
 	use binius_field::BinaryField32b;

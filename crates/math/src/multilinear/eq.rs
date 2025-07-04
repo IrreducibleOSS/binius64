@@ -143,7 +143,7 @@ mod tests {
 	use rand::prelude::*;
 
 	use super::*;
-	use crate::test_utils::random_scalars;
+	use crate::test_utils::{index_to_hypercube_point, random_scalars};
 
 	type P = PackedBinaryField4x32b;
 	type F = <P as PackedField>::Scalar;
@@ -248,21 +248,9 @@ mod tests {
 		let mut result_mut = result;
 		let partial_eval_value = result_mut.get(index).unwrap();
 
-		// Decompose the index as a slice of F::ZERO and F::ONE bits
-		let index_bits: Vec<F> = (0..5)
-			.map(|i| {
-				if (index >> i) & 1 == 1 {
-					F::ONE
-				} else {
-					F::ZERO
-				}
-			})
-			.collect();
-
-		// Call eq_ind with the point and the index bits
+		let index_bits = index_to_hypercube_point(n_vars, index);
 		let eq_ind_value = eq_ind(&point, &index_bits);
 
-		// Assert that both values are equal
 		assert_eq!(partial_eval_value, eq_ind_value);
 	}
 }
