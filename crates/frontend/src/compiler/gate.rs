@@ -500,7 +500,7 @@ impl Gate for IcmpEq {
 	}
 }
 
-/// Extract byte j from word using 2 AND constraints
+/// Extract byte j from word using 2 AND constraints (j=0 is least significant byte).
 ///
 /// 1. AND((word srl (8*j)) ^ b, 0xFF, 0) - forces low 8 bits of b to equal the byte
 /// 2. AND(b, 0xFFFFFFFFFFFFFF00, 0) - forces high 56 bits of b to zero
