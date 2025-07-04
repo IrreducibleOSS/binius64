@@ -13,10 +13,10 @@ binius-maybe-rayon = { path = "../maybe-rayon", default-features = false }
 binius-utils = { path = "../utils", default-features = false }
 bytemuck.workspace = true
 getset.workspace = true
+itertools.workspace = true
 rand.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
-log = "0.4.27"
 
 [dev-dependencies]
 assert_matches.workspace = true
