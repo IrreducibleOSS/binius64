@@ -108,16 +108,9 @@ This design maps naturally to CPU instructions and achieves massive efficiency g
 - MUL constraint: ~200x more expensive
 - Committing one 64-bit word: ~0.2x
 
-### Circuit Design Guidelines
+### Circuit Design
 
-When implementing circuits:
-1. Prefer AND constraints over MUL when possible
-2. XORs and shifts are free within constraints
-3. Stand-alone XOR requires one AND constraint
-4. Test edge cases (all zeros, all ones)
-5. Variable-length inputs should test multiple sizes
-
-See AGENTS.md for detailed circuit design patterns and the formal grammar.
+See docs/frontend/circuit_design.md.
 
 ## Key Differences from Original Binius
 

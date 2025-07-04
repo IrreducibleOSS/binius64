@@ -1,17 +1,3 @@
-## Monbijou
-
-## Code Guidelines
-
-- Add comments to the code which might not be obvious to a person/agent that is not familiar with the
-  project.
-- Add tests for new functionality, especially circuits. If the circuit has variable length inputs
-  try to test all/most combinations. Pay attention to the edge cases (all zeroes, all ones).
-- Test code with `cargo test --release`. Often you don't need to test the whole project, so specify
-  the package to test with `-p <crate-name>`. When using `--nocapture` to check the output either
-  specify a single test or specify `--test-threads=1`, otherwise the output might be mangled.
-- Avoid introducing warnings in the code.
-- Check that the code is properly formatted with `cargo fmt -- --check`.
-
 ## Monbijou Circuit Design Cheatsheet
 
 Ultra‑short reference for building 64‑bit R1CS circuits compatible with the Monbijou proof system.
