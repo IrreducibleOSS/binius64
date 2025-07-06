@@ -35,3 +35,7 @@ harness = false
 [[bench]]
 name = "large_transform"
 harness = false
+
+[[bench]]
+name = "google_field_bench"
+harness = false
