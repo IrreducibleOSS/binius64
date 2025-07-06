@@ -111,3 +111,7 @@ harness = false
 [[bench]]
 name = "main_field_binary_ops"
 harness = false
+
+[[bench]]
+name = "google_field_bench"
+harness = false
