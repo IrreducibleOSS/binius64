@@ -463,7 +463,6 @@ class CoverageRunner:
                 # Debug: check if we have the full output
                 if "Filename" in full_output and "Regions" in full_output:
                     lines_count = len(full_output.split('\n'))
-                    # print(f"DEBUG: Found {lines_count} lines in output")
                 
                 # Filter and format output
                 formatted_output, coverage_data = self._filter_output(full_output, package_filter)
