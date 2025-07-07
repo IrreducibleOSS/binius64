@@ -337,7 +337,7 @@ impl CircuitBuilder {
 	///
 	/// Asserts that two arrays of 64-bit wires are equal element-wise.
 	///
-	/// Takes wire arrays x and y and enforces x[i] == y[i] for all i.
+	/// Takes wire arrays x and y and enforces `x[i] == y[i]` for all `i`.
 	/// Each element assertion is named with the base name and index.
 	///
 	/// # Cost

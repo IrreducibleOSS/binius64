@@ -19,7 +19,7 @@ use super::{
 /// The Reed–Solomon code admits an efficient encoding algorithm over binary fields due to [LCH14].
 /// The additive NTT encoding algorithm encodes messages interpreted as the coefficients of a
 /// polynomial in a non-standard, novel polynomial basis and the codewords are the polynomial
-/// evaluations over a linear subspace of the field. See the [binius_ntt] crate for more details.
+/// evaluations over a linear subspace of the field. See the [binius-math] crate for more details.
 ///
 /// [Reed–Solomon]: <https://en.wikipedia.org/wiki/Reed%E2%80%93Solomon_error_correction>
 /// [LCH14]: <https://arxiv.org/abs/1404.3458>

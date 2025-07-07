@@ -226,7 +226,7 @@ pub(crate) const fn max_i32(left: i32, right: i32) -> i32 {
 /// This solution shows 4X better performance.
 /// We have to use macro because parameter `count` in _mm_slli_epi64/_mm_srli_epi64 should be passed
 /// as constant and Rust currently doesn't allow passing expressions (`count - 64`) where variable
-/// is a generic constant parameter. Source: https://stackoverflow.com/questions/34478328/the-best-way-to-shift-a-m128i/34482688#34482688
+/// is a generic constant parameter. Source: <https://stackoverflow.com/questions/34478328/the-best-way-to-shift-a-m128i/34482688#34482688>
 macro_rules! bitshift_128b {
 	($val:expr, $shift:ident, $byte_shift:ident, $bit_shift_64:ident, $bit_shift_64_opposite:ident, $or:ident) => {
 		unsafe {

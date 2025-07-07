@@ -28,8 +28,8 @@ fn ascii_to_nibble(b: &CircuitBuilder, ch: Wire) -> Wire {
 
 /// Verify that `encoded` is the uppercase hex representation of `decode`.
 ///
-/// decoded: Vec<Wire> each wire contains one data byte to encode.
-/// encoded: Vec<Wire> each wire contains one ASCII character code.
+/// decoded: `Vec<Wire>` each wire contains one data byte to encode.
+/// encoded: `Vec<Wire>` each wire contains one ASCII character code.
 ///
 /// The number of encoded writes must equal twice the number of decoded wires.
 pub struct HexDecode {
