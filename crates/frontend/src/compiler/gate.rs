@@ -807,6 +807,7 @@ mod tests {
 	use quickcheck_macros::quickcheck;
 
 	use super::*;
+	use crate::constraint_verifier::verify_constraints;
 
 	#[quickcheck]
 	fn prop_iadd_cin_cout_carry_chain(a1: u64, b1: u64, a2: u64, b2: u64) -> TestResult {
@@ -843,7 +844,11 @@ mod tests {
 			return TestResult::failed();
 		}
 
-		TestResult::passed()
+		let cs = circuit.constraint_system();
+		match verify_constraints(&cs, &w.value_vec) {
+			Ok(_) => TestResult::passed(),
+			Err(e) => TestResult::error(e),
+		}
 	}
 
 	#[test]
