@@ -1,3 +1,5 @@
+use rand::{Rng, SeedableRng as _, rngs::StdRng};
+
 use super::*;
 use crate::word::Word;
 
@@ -62,4 +64,26 @@ fn sort_wires() {
 
 	// Verify that inout wires maintain their relative order
 	assert!(inout2_idx.0 > inout1_idx.0);
+}
+
+#[test]
+fn test_icmp_ult() {
+	// Build a circuit with only two inputs and check c = a < b.
+	let builder = CircuitBuilder::new();
+	let a = builder.add_inout();
+	let b = builder.add_inout();
+	let actual = builder.icmp_ult(a, b);
+	let expected = builder.add_inout();
+	builder.assert_eq("lt", actual, expected);
+	let circuit = builder.build();
+
+	// check that it actually works.
+	let mut rng = StdRng::seed_from_u64(42);
+	for _ in 0..10000 {
+		let mut w = circuit.new_witness_filler();
+		w[a] = Word(rng.random::<u64>());
+		w[b] = Word(rng.random::<u64>());
+		w[expected] = Word(if w[a].0 < w[b].0 { u64::MAX } else { 0 });
+		w.circuit.populate_wire_witness(&mut w).unwrap();
+	}
 }

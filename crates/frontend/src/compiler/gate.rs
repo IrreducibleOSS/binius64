@@ -510,45 +510,62 @@ impl Gate for AssertEqCond {
 	}
 }
 
-/// Unsigned less-than test (a < b ? all-1 : all-0) using 2 AND constraints.
+/// Unsigned less-than test (a < b ? all-1 : all-0) using 3 AND constraints.
 ///
-/// 1. AND((A ^ B) & (A ^ S), all-1, 0) - checks S = A - B
-/// 2. AND((S sra 63) ^ F, all-1, 0) - binds F = sign(S)
+/// Implements a < b using full-adder approach for t = a + (~b) + 1 (two's complement subtraction):
+/// 1. Full-adder borrow relation: enforces borrow propagation
+/// 2. Full-adder sum bits: res = a ^ (~b) ^ (borrow<<1) ^ 1
+/// 3. Extract MSB of res into result: sign bit indicates comparison result
 pub struct IcmpUlt {
 	pub a: Wire,
 	pub b: Wire,
 	pub result: Wire,
-	pub s: Wire,
+	pub borrow: Wire,
+	pub res: Wire,
 	pub all_1: Wire,
+	pub one: Wire,
 }
 
 impl IcmpUlt {
 	pub fn new(builder: &CircuitBuilder, a: Wire, b: Wire) -> Self {
 		let result = builder.add_witness();
-		let s = builder.add_witness();
+		let borrow = builder.add_witness();
+		let res = builder.add_witness();
 		let all_1 = builder.add_constant(Word::ALL_ONE);
+		let one = builder.add_constant(Word::from_u64(1));
 		Self {
 			a,
 			b,
 			result,
-			s,
+			borrow,
+			res,
 			all_1,
+			one,
 		}
 	}
 }
 
 impl Gate for IcmpUlt {
 	fn populate_wire_witness(&self, w: &mut WitnessFiller) {
-		let a_val = w[self.a];
-		let b_val = w[self.b];
+		let a_val = w[self.a].as_u64();
+		let b_val = w[self.b].as_u64();
 
-		// S = A - B (two's complement subtraction)
-		let s_val = a_val.wrapping_sub(b_val);
-		w[self.s] = s_val;
+		// Compute t = a + (~b) + 1 = a - b
+		let not_b = !b_val;
+		let res = a_val.wrapping_sub(b_val);
 
-		// F = sign(S): all-1 when A < B (S negative), all-0 when A >= B (S non-negative)
-		let sign_bit = (s_val.as_u64() >> 63) & 1;
-		w[self.result] = if sign_bit == 1 {
+		// Efficient borrow computation using the formula:
+		// For c = borrow vector of a + b + cin:
+		// c = (a + b + cin) ^ a ^ b ^ cin
+		// In our case: b = ~b_val, cin = 1
+		let borrow_vec = res ^ a_val ^ not_b ^ 1;
+
+		w[self.borrow] = Word::from_u64(borrow_vec);
+		w[self.res] = Word::from_u64(res);
+
+		// z = sign-bit of (a - b) ⇒ 1 if a<b else 0,
+		// but encoded as all-1 or 0
+		w[self.result] = if a_val < b_val {
 			Word::ALL_ONE
 		} else {
 			Word::ZERO
@@ -559,28 +576,51 @@ impl Gate for IcmpUlt {
 		let a = circuit.witness_index(self.a);
 		let b = circuit.witness_index(self.b);
 		let result = circuit.witness_index(self.result);
-		let s = circuit.witness_index(self.s);
+		let borrow = circuit.witness_index(self.borrow);
+		let res = circuit.witness_index(self.res);
 		let all_1 = circuit.witness_index(self.all_1);
+		let one = circuit.witness_index(self.one);
 
-		// 1. AND((A ^ B) & (A ^ S), all-1, 0) - checks the subtraction (forces S = A - B)
+		// Gate 1: full-adder borrow relation for t = a + (~b) + 1
+		// AND(v0 ^ v3 sll 1 ^ 1, v1 ^ all-1 ^ v3 sll 1 ^ 1, v3 sll 1 ^ v3)
 		cs.add_and_constraint(AndConstraint::abc(
-			[ShiftedValueIndex::plain(a), ShiftedValueIndex::plain(b)],
 			[
 				ShiftedValueIndex::plain(a),
-				ShiftedValueIndex::plain(s),
-				ShiftedValueIndex::plain(all_1),
+				ShiftedValueIndex::sll(borrow, 1),
+				ShiftedValueIndex::plain(one),
 			],
-			[],
+			[
+				ShiftedValueIndex::plain(b),
+				ShiftedValueIndex::plain(all_1),
+				ShiftedValueIndex::sll(borrow, 1),
+				ShiftedValueIndex::plain(one),
+			],
+			[
+				ShiftedValueIndex::sll(borrow, 1),
+				ShiftedValueIndex::plain(borrow),
+			],
 		));
 
-		// 2. AND((S sra 63) ^ F, all-1, 0) - binds the result (F = sign(S))
+		// Gate 2: full-adder sum bits: res = a ^ (~b) ^ (borrow<<1) ^ 1
+		// AND(v0 ^ v1 ^ all-1 ^ v3 sll 1 ^ 1, all-1, v4)
 		cs.add_and_constraint(AndConstraint::abc(
 			[
-				ShiftedValueIndex::sar(s, 63),
-				ShiftedValueIndex::plain(result),
+				ShiftedValueIndex::plain(a),
+				ShiftedValueIndex::plain(b),
+				ShiftedValueIndex::plain(all_1),
+				ShiftedValueIndex::sll(borrow, 1),
+				ShiftedValueIndex::plain(one),
 			],
 			[ShiftedValueIndex::plain(all_1)],
-			[],
+			[ShiftedValueIndex::plain(res)],
+		));
+
+		// Gate 3: extract MSB of res into result
+		// AND(v4 sra 63, all-1, v2)
+		cs.add_and_constraint(AndConstraint::abc(
+			[ShiftedValueIndex::sar(res, 63)],
+			[ShiftedValueIndex::plain(all_1)],
+			[ShiftedValueIndex::plain(result)],
 		));
 	}
 }
