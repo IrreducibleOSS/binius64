@@ -6,8 +6,8 @@ use std::{
 };
 
 use gate::{
-	Assert0, AssertEq, AssertEqCond, Band, Bor, Bxor, ExtractByte, Gate, Iadd32, IcmpEq, IcmpUlt,
-	Imul, Rotr32, Shl, Shr, Shr32,
+	Assert0, AssertBand0, AssertEq, AssertEqCond, Band, Bor, Bxor, ExtractByte, Gate, Iadd32,
+	IcmpEq, IcmpUlt, Imul, Rotr32, Shl, Shr, Shr32,
 };
 
 use crate::{
@@ -355,6 +355,22 @@ impl CircuitBuilder {
 	pub fn assert_0(&self, name: impl Into<String>, a: Wire) {
 		let name = self.namespaced(name.into());
 		self.emit(Assert0::new(self, name, a))
+	}
+
+	/// Bitwise AND assertion with constant equals zero.
+	///
+	/// Asserts that the bitwise AND of a wire with a constant equals zero.
+	/// This is useful for checking that specific bits are unset.
+	///
+	/// Takes wire a and constant c and enforces a & c = 0.
+	/// If the assertion fails, the circuit will report an error with the given name.
+	///
+	/// # Cost
+	///
+	/// 1 AND constraint.
+	pub fn assert_band_0(&self, name: impl Into<String>, a: Wire, constant: Word) {
+		let name = self.namespaced(name.into());
+		self.emit(AssertBand0::new(self, name, a, constant))
 	}
 
 	/// 64-bit × 64-bit → 128-bit unsigned multiplication.

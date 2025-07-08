@@ -291,6 +291,41 @@ impl Gate for Assert0 {
 	}
 }
 
+/// Assert that bitwise AND of wire with constant equals zero.
+/// Pattern: AND(a, constant, 0) which constrains a & constant = 0
+pub struct AssertBand0 {
+	pub a: Wire,
+	pub constant: Wire,
+	pub name: String,
+}
+
+impl AssertBand0 {
+	pub fn new(builder: &CircuitBuilder, name: String, a: Wire, constant: Word) -> Self {
+		let constant = builder.add_constant(constant);
+		Self { name, a, constant }
+	}
+}
+
+impl Gate for AssertBand0 {
+	fn populate_wire_witness(&self, w: &mut WitnessFiller) {
+		let result = w[self.a] & w[self.constant];
+		if result != Word::ZERO {
+			w.flag_assertion_failed(format!(
+				"{} failed: {:?} & {:?} = {:?} != ZERO",
+				self.name, w[self.a], w[self.constant], result
+			));
+		}
+	}
+
+	fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
+		let a = circuit.witness_index(self.a);
+		let constant = circuit.witness_index(self.constant);
+
+		// Constraint: AND(a, constant, 0) => a & constant = 0
+		cs.add_and_constraint(AndConstraint::plain_abc([a], [constant], []));
+	}
+}
+
 /// Imul gate implements 64-bit × 64-bit → 128-bit unsigned multiplication.
 /// Uses the MulConstraint: A * B = (HI << 64) | LO
 pub struct Imul {
