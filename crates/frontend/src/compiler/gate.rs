@@ -87,6 +87,111 @@ impl Gate for Bor {
 	}
 }
 
+/// 64-bit unsigned integer addition with carry propagation.
+///
+/// # Wires
+///
+/// - `a`, `b`: Input wires for the summands
+/// - `cin` (carry-in): Input wire for the previous carry word. Only the MSB is used as the actual
+///   carry bit
+/// - `sum`: Output wire containing the resulting sum = a + b + carry_bit
+/// - `cout` (carry-out): Output wire containing a carry word where each bit position indicates
+///   whether a carry occurred at that position during the addition.
+///
+/// ## Carry-out Computation
+///
+/// The carry-out is computed as: `cout = (a & b) | ((a ^ b) & !sum)`
+///
+/// For example:
+/// - `0x0000000000000003 + 0x0000000000000001 = 0x0000000000000004` with `cout =
+///   0x0000000000000003` (carries at bits 0 and 1)
+/// - `0xFFFFFFFFFFFFFFFF + 0x0000000000000001 = 0x0000000000000000` with `cout =
+///   0xFFFFFFFFFFFFFFFF` (carries at all bit positions)
+///
+/// # Constraints
+///
+/// The gate generates two AND constraints:
+///
+/// 1. **Carry generation constraint**: Ensures correct carry propagation
+/// 2. **Sum constraint**: Ensures the sum equals `a ^ b ^ (cout << 1) ^ cin_msb`
+pub struct IaddCinCout {
+	pub a: Wire,
+	pub b: Wire,
+	pub cin: Wire,
+	pub sum: Wire,
+	pub cout: Wire,
+	all_1: Wire,
+}
+
+impl IaddCinCout {
+	pub fn new(builder: &CircuitBuilder, a: Wire, b: Wire, cin: Wire) -> Self {
+		let sum = builder.add_witness();
+		let cout = builder.add_witness();
+		let all_1 = builder.add_constant(Word::ALL_ONE);
+
+		Self {
+			a,
+			b,
+			cin,
+			sum,
+			cout,
+			all_1,
+		}
+	}
+}
+
+impl Gate for IaddCinCout {
+	fn populate_wire_witness(&self, w: &mut WitnessFiller) {
+		let a = w[self.a];
+		let b = w[self.b];
+
+		// Extract carry-in bit from MSB of previous carry word
+		let Word(cin) = w[self.cin];
+		let carry_bit = cin >> 63;
+		let (sum, carry_out) = a.iadd_cin_cout(b, carry_bit);
+
+		w[self.sum] = sum;
+		w[self.cout] = carry_out;
+	}
+
+	fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
+		let a = circuit.witness_index(self.a);
+		let b = circuit.witness_index(self.b);
+		let sum = circuit.witness_index(self.sum);
+		let cout = circuit.witness_index(self.cout);
+		let all_ones = circuit.witness_index(self.all_1);
+		let cin = circuit.witness_index(self.cin);
+
+		let cout_sll_1 = ShiftedValueIndex::sll(cout, 1);
+		// The carry bit
+		let cin_msb = ShiftedValueIndex::srl(cin, 63);
+
+		// (a XOR (cout << 1) XOR cin_msb) AND (b XOR (cout << 1) XOR cin_msb)
+		// 		= cout XOR (cout << 1) XOR cin_msb
+		let a_operands = vec![ShiftedValueIndex::plain(a), cout_sll_1, cin_msb];
+		let b_operands = vec![ShiftedValueIndex::plain(b), cout_sll_1, cin_msb];
+		let c_operands = vec![ShiftedValueIndex::plain(cout), cout_sll_1, cin_msb];
+
+		// a XOR b XOR (cout << 1) XOR cin_msb
+		let sum_operands = vec![
+			ShiftedValueIndex::plain(a),
+			ShiftedValueIndex::plain(b),
+			ShiftedValueIndex::sll(cout, 1),
+			cin_msb,
+		];
+
+		// carry propagation constraint
+		cs.add_and_constraint(AndConstraint::abc(a_operands, b_operands, c_operands));
+
+		// sum equality constraint
+		cs.add_and_constraint(AndConstraint::abc(
+			sum_operands,
+			[ShiftedValueIndex::plain(all_ones)],
+			[ShiftedValueIndex::plain(sum)],
+		));
+	}
+}
+
 pub struct Iadd32 {
 	pub a: Wire,
 	pub b: Wire,
@@ -653,5 +758,85 @@ impl Gate for Shl {
 			[],
 			[ShiftedValueIndex::plain(c)],
 		));
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use quickcheck::TestResult;
+	use quickcheck_macros::quickcheck;
+
+	use super::*;
+
+	#[quickcheck]
+	fn prop_iadd_cin_cout_carry_chain(a1: u64, b1: u64, a2: u64, b2: u64) -> TestResult {
+		let builder = CircuitBuilder::new();
+
+		// First addition
+		let a1_wire = builder.add_constant_64(a1);
+		let b1_wire = builder.add_constant_64(b1);
+		let cin_wire = builder.add_constant(Word::ZERO);
+		let (sum1_wire, cout1_wire) = builder.iadd_cin_cout(a1_wire, b1_wire, cin_wire);
+
+		// Second addition with carry from first
+		let a2_wire = builder.add_constant_64(a2);
+		let b2_wire = builder.add_constant_64(b2);
+		let (sum2_wire, cout2_wire) = builder.iadd_cin_cout(a2_wire, b2_wire, cout1_wire);
+
+		let circuit = builder.build();
+		let mut w = circuit.new_witness_filler();
+		circuit.populate_wire_witness(&mut w).unwrap();
+
+		// Check first addition
+		let expected_sum1 = a1.wrapping_add(b1);
+		let expected_cout1 = (a1 & b1) | ((a1 ^ b1) & !expected_sum1);
+		if w[sum1_wire] != Word(expected_sum1) || w[cout1_wire] != Word(expected_cout1) {
+			return TestResult::failed();
+		}
+
+		// Check second addition with carry
+		// Extract MSB of cout1 as the carry-in bit
+		let cin2 = expected_cout1 >> 63;
+		let expected_sum2 = a2.wrapping_add(b2).wrapping_add(cin2);
+		let expected_cout2 = (a2 & b2) | ((a2 ^ b2) & !expected_sum2);
+		if w[sum2_wire] != Word(expected_sum2) || w[cout2_wire] != Word(expected_cout2) {
+			return TestResult::failed();
+		}
+
+		TestResult::passed()
+	}
+
+	#[test]
+	fn test_iadd_cin_cout_max_values() {
+		let builder = CircuitBuilder::new();
+
+		let a = builder.add_constant_64(0xFFFFFFFFFFFFFFFF);
+		let b = builder.add_constant_64(0xFFFFFFFFFFFFFFFF);
+		let cin_wire = builder.add_constant(Word::ZERO);
+		let (sum_wire, cout_wire) = builder.iadd_cin_cout(a, b, cin_wire);
+
+		let circuit = builder.build();
+		let mut w = circuit.new_witness_filler();
+		circuit.populate_wire_witness(&mut w).unwrap();
+
+		assert_eq!(w[sum_wire], Word(0xFFFFFFFFFFFFFFFE));
+		assert_eq!(w[cout_wire], Word(0xFFFFFFFFFFFFFFFF));
+	}
+
+	#[test]
+	fn test_iadd_cin_cout_zero() {
+		let builder = CircuitBuilder::new();
+
+		let a = builder.add_constant_64(0);
+		let b = builder.add_constant_64(0);
+		let cin_wire = builder.add_constant(Word::ZERO);
+		let (sum_wire, cout_wire) = builder.iadd_cin_cout(a, b, cin_wire);
+
+		let circuit = builder.build();
+		let mut w = circuit.new_witness_filler();
+		circuit.populate_wire_witness(&mut w).unwrap();
+
+		assert_eq!(w[sum_wire], Word(0));
+		assert_eq!(w[cout_wire], Word(0));
 	}
 }

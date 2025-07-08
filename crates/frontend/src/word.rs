@@ -68,6 +68,16 @@ impl Word {
 		(Word(sum), Word(cout))
 	}
 
+	/// Performs 64-bit addition with carry input bit.
+	/// Returns (sum, carry_word) where carry_word encodes all carry positions.
+	pub fn iadd_cin_cout(self, rhs: Word, cin: u64) -> (Word, Word) {
+		let Word(lhs) = self;
+		let Word(rhs) = rhs;
+		let sum = lhs.wrapping_add(rhs).wrapping_add(cin);
+		let cout = (lhs & rhs) | ((lhs ^ rhs) & !sum);
+		(Word(sum), Word(cout))
+	}
+
 	pub fn shr_32(self, n: u32) -> Word {
 		let Word(value) = self;
 		// Shift right logically by n bits and mask with 32-bit mask

@@ -7,7 +7,7 @@ use std::{
 
 use gate::{
 	Assert0, AssertBand0, AssertEq, AssertEqCond, Band, Bor, Bxor, ExtractByte, Gate, Iadd32,
-	IcmpEq, IcmpUlt, Imul, Rotr32, Shl, Shr, Shr32,
+	IaddCinCout, IcmpEq, IcmpUlt, Imul, Rotr32, Shl, Shr, Shr32,
 };
 
 use crate::{
@@ -270,6 +270,24 @@ impl CircuitBuilder {
 		let out = gate.c;
 		self.emit(gate);
 		out
+	}
+
+	/// 64-bit addition with carry input and output.
+	///
+	/// Performs full 64-bit unsigned addition of two wires plus a carry input.
+	///
+	/// Returns (sum, carry_out) where sum is the 64-bit result and carry_out
+	/// indicates overflow.
+	///
+	/// # Cost
+	///
+	/// 2 AND constraints.
+	pub fn iadd_cin_cout(&self, a: Wire, b: Wire, cin: Wire) -> (Wire, Wire) {
+		let gate = IaddCinCout::new(self, a, b, cin);
+		let sum = gate.sum;
+		let cout = gate.cout;
+		self.emit(gate);
+		(sum, cout)
 	}
 
 	pub fn rotr_32(&self, a: Wire, n: u32) -> Wire {
