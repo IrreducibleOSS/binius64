@@ -9,12 +9,15 @@ use crate::{
 /// Each term represents a byte string where:
 /// - `len` is the actual length in bytes
 /// - `data` contains the bytes packed into 64-bit words (8 bytes per word)
+/// - `max_size` is the maximum size of this specific term in bytes
 pub struct Term {
 	/// The actual length of this term in bytes
 	pub len: Wire,
 	/// The term's data as bytes packed into 64-bit words.
 	/// Each Wire represents 8 bytes packed in little-endian order.
 	pub data: Vec<Wire>,
+	/// Maximum size of this term in bytes (must be multiple of 8)
+	pub max_size: usize,
 }
 
 impl Term {
@@ -26,14 +29,13 @@ impl Term {
 	/// Populate the term's data from a byte slice
 	///
 	/// # Panics
-	/// Panics if data.len() > max_n_term (8 * self.data.len())
+	/// Panics if data.len() > self.max_size
 	pub fn populate_data(&self, w: &mut crate::compiler::WitnessFiller, data: &[u8]) {
-		let max_n_term = self.data.len() * 8;
 		assert!(
-			data.len() <= max_n_term,
+			data.len() <= self.max_size,
 			"term data length {} exceeds maximum {}",
 			data.len(),
-			max_n_term
+			self.max_size
 		);
 
 		// Pack bytes into words
@@ -70,33 +72,34 @@ impl Concat {
 	/// # Arguments
 	/// * `b` - Circuit builder
 	/// * `max_n_joined` - Maximum joined size in bytes (must be multiple of 8)
-	/// * `max_n_term` - Maximum size of any single term in bytes (must be multiple of 8)
 	/// * `len_joined` - Actual joined size in bytes
 	/// * `joined` - Joined array packed as words (8 bytes per word)
-	/// * `terms` - Vector of terms to concatenate
+	/// * `terms` - Vector of terms to concatenate, each with its own max_size
 	///
 	/// # Panics
 	/// * If max_n_joined is not a multiple of 8
-	/// * If max_n_term is not a multiple of 8
+	/// * If any term's max_size is not a multiple of 8
 	/// * If joined.len() != max_n_joined / 8
-	/// * If any term's data.len() != max_n_term / 8
+	/// * If any term's data.len() != term.max_size / 8
 	pub fn new(
 		b: &CircuitBuilder,
 		max_n_joined: usize,
-		max_n_term: usize,
 		len_joined: Wire,
 		joined: Vec<Wire>,
 		terms: Vec<Term>,
 	) -> Self {
 		assert_eq!(max_n_joined % 8, 0, "max_n_joined must be multiple of 8");
-		assert_eq!(max_n_term % 8, 0, "max_n_term must be multiple of 8");
 		assert_eq!(joined.len(), max_n_joined / 8, "joined.len() must equal max_n_joined / 8");
 
 		for (i, term) in terms.iter().enumerate() {
 			assert_eq!(
+				term.max_size % 8, 0,
+				"term[{i}].max_size must be multiple of 8"
+			);
+			assert_eq!(
 				term.data.len(),
-				max_n_term / 8,
-				"term[{i}].data.len() must equal max_n_term / 8"
+				term.max_size / 8,
+				"term[{i}].data.len() must equal term.max_size / 8"
 			);
 		}
 
@@ -114,7 +117,7 @@ impl Concat {
 			let _slice = Slice::new(
 				&b,
 				max_n_joined,
-				max_n_term,
+				term.max_size,
 				len_joined,
 				term.len,
 				joined.clone(),
@@ -178,22 +181,23 @@ mod tests {
 	/// Helper to create a concat circuit with given parameters
 	fn create_concat_circuit(
 		max_n_joined: usize,
-		max_n_terms: usize,
-		max_n_term: usize,
+		term_max_sizes: Vec<usize>,
 	) -> (CircuitBuilder, Concat) {
 		let b = CircuitBuilder::new();
 
 		let len_joined = b.add_inout();
 		let joined: Vec<Wire> = (0..max_n_joined / 8).map(|_| b.add_inout()).collect();
 
-		let terms: Vec<Term> = (0..max_n_terms)
-			.map(|_| Term {
+		let terms: Vec<Term> = term_max_sizes
+			.into_iter()
+			.map(|max_size| Term {
 				len: b.add_inout(),
-				data: (0..max_n_term / 8).map(|_| b.add_inout()).collect(),
+				data: (0..max_size / 8).map(|_| b.add_inout()).collect(),
+				max_size,
 			})
 			.collect();
 
-		let concat = Concat::new(&b, max_n_joined, max_n_term, len_joined, joined, terms);
+		let concat = Concat::new(&b, max_n_joined, len_joined, joined, terms);
 
 		(b, concat)
 	}
@@ -201,11 +205,12 @@ mod tests {
 	/// Helper to test a concatenation scenario
 	fn test_concat(
 		max_n_joined: usize,
-		max_n_term: usize,
+		term_max_sizes: Vec<usize>,
 		expected_joined: &[u8],
 		term_data: &[&[u8]],
 	) -> Result<(), Box<dyn std::error::Error>> {
-		let (b, concat) = create_concat_circuit(max_n_joined, term_data.len(), max_n_term);
+		assert_eq!(term_max_sizes.len(), term_data.len(), "term_max_sizes and term_data must have same length");
+		let (b, concat) = create_concat_circuit(max_n_joined, term_max_sizes);
 		let circuit = b.build();
 		let mut filler = circuit.new_witness_filler();
 
@@ -226,55 +231,55 @@ mod tests {
 	#[test]
 	fn test_two_terms_concat() {
 		// "hello" + "world" = "helloworld"
-		test_concat(16, 8, b"helloworld", &[b"hello", b"world"]).unwrap();
+		test_concat(16, vec![8, 8], b"helloworld", &[b"hello", b"world"]).unwrap();
 	}
 
 	#[test]
 	fn test_three_terms_concat() {
 		// "foo" + "bar" + "baz" = "foobarbaz"
-		test_concat(24, 8, b"foobarbaz", &[b"foo", b"bar", b"baz"]).unwrap();
+		test_concat(24, vec![8, 8, 8], b"foobarbaz", &[b"foo", b"bar", b"baz"]).unwrap();
 	}
 
 	#[test]
 	fn test_empty_term() {
 		// "hello" + "" + "world" = "helloworld"
-		test_concat(16, 8, b"helloworld", &[b"hello", b"", b"world"]).unwrap();
+		test_concat(16, vec![8, 8, 8], b"helloworld", &[b"hello", b"", b"world"]).unwrap();
 	}
 
 	#[test]
 	fn test_unaligned_terms() {
 		// "hello12" (7 bytes) + "world456" (8 bytes) = "hello12world456"
-		test_concat(24, 16, b"hello12world456", &[b"hello12", b"world456"]).unwrap();
+		test_concat(24, vec![8, 16], b"hello12world456", &[b"hello12", b"world456"]).unwrap();
 	}
 
 	#[test]
 	fn test_domain_concat() {
 		// "api" + "." + "example" + "." + "com" = "api.example.com"
-		test_concat(32, 16, b"api.example.com", &[b"api", b".", b"example", b".", b"com"]).unwrap();
+		test_concat(32, vec![8, 8, 8, 8, 8], b"api.example.com", &[b"api", b".", b"example", b".", b"com"]).unwrap();
 	}
 
 	#[test]
 	fn test_all_terms_empty() {
 		// "" + "" = ""
-		test_concat(8, 8, b"", &[b"", b""]).unwrap();
+		test_concat(8, vec![8, 8], b"", &[b"", b""]).unwrap();
 	}
 
 	#[test]
 	fn test_single_term() {
 		// "hello" = "hello"
-		test_concat(8, 8, b"hello", &[b"hello"]).unwrap();
+		test_concat(8, vec![8], b"hello", &[b"hello"]).unwrap();
 	}
 
 	#[test]
 	fn test_single_byte_terms() {
 		// "a" + "b" + "c" + "d" + "e" = "abcde"
-		test_concat(8, 8, b"abcde", &[b"a", b"b", b"c", b"d", b"e"]).unwrap();
+		test_concat(8, vec![8, 8, 8, 8, 8], b"abcde", &[b"a", b"b", b"c", b"d", b"e"]).unwrap();
 	}
 
 	#[test]
 	fn test_length_mismatch() {
 		// Test where claimed length doesn't match actual concatenation
-		let (b, concat) = create_concat_circuit(16, 2, 8);
+		let (b, concat) = create_concat_circuit(16, vec![8, 8]);
 		let circuit = b.build();
 		let mut filler = circuit.new_witness_filler();
 
@@ -290,5 +295,24 @@ mod tests {
 		// This should fail due to length mismatch
 		let result = circuit.populate_wire_witness(&mut filler);
 		assert!(result.is_err());
+	}
+
+	#[test]
+	fn test_different_term_max_sizes() {
+		// Test with terms having different max sizes
+		// "short" (5 bytes, max 8) + "a very long string" (18 bytes, max 24) = "shorta very long string"
+		test_concat(32, vec![8, 24], b"shorta very long string", &[b"short", b"a very long string"]).unwrap();
+	}
+
+	#[test]
+	fn test_mixed_term_sizes() {
+		// Test with varied term max sizes for efficiency
+		// Small terms get small max sizes, large terms get large max sizes
+		test_concat(
+			64,
+			vec![8, 8, 32, 8, 16], 
+			b"hi.this is a much longer term.bye", 
+			&[b"hi", b".", b"this is a much longer term", b".", b"bye"]
+		).unwrap();
 	}
 }
