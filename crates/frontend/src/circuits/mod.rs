@@ -3,3 +3,4 @@ pub mod basic;
 pub mod eqbool;
 pub mod hex;
 pub mod sha256;
+pub mod slice;
