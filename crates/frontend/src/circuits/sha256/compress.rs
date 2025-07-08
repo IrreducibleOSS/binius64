@@ -18,7 +18,12 @@ const K: [u32; 64] = [
 	0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
 ];
 
-/// 512-bit state of SHA-256.
+/// The internal state of SHA-256.
+///
+/// The state size is 256 bits. For efficiency reasons it's packed in 8 x 32-bit words, and not
+/// 4 x 64-bit words.
+///
+/// The elements are referred to as a–h or H0–H7.
 #[derive(Clone)]
 pub struct State(pub [Wire; 8]);
 
@@ -37,6 +42,20 @@ impl State {
 
 	pub fn iv(builder: &mut CircuitBuilder) -> Self {
 		State(std::array::from_fn(|i| builder.add_constant(Word(IV[i] as u64))))
+	}
+
+	/// Packs the state into 4 x 64-bit words.
+	pub fn pack_4x64b(&self, builder: &mut CircuitBuilder) -> [Wire; 4] {
+		fn pack_pair(b: &CircuitBuilder, hi: Wire, lo: Wire) -> Wire {
+			b.bxor(lo, b.shl(hi, 32))
+		}
+
+		[
+			pack_pair(builder, self.0[0], self.0[1]),
+			pack_pair(builder, self.0[2], self.0[3]),
+			pack_pair(builder, self.0[4], self.0[5]),
+			pack_pair(builder, self.0[6], self.0[7]),
+		]
 	}
 }
 
