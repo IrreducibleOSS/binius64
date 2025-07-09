@@ -430,7 +430,7 @@ impl CircuitBuilder {
 	///
 	/// # Cost
 	///
-	/// 3 AND constraints.
+	/// 4 AND constraints.
 	pub fn icmp_ult(&self, a: Wire, b: Wire) -> Wire {
 		let gate = IcmpUlt::new(self, a, b);
 		let out = gate.result;

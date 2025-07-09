@@ -510,115 +510,131 @@ impl Gate for AssertEqCond {
 	}
 }
 
-/// Unsigned less-than test (a < b ? all-1 : all-0) using 3 AND constraints.
+/// Unsigned less-than test (a < b ? all-1 : all-0) using 4 AND constraints.
 ///
-/// Implements a < b using full-adder approach for t = a + (~b) + 1 (two's complement subtraction):
-/// 1. Full-adder borrow relation: enforces borrow propagation
-/// 2. Full-adder sum bits: res = a ^ (~b) ^ (borrow<<1) ^ 1
-/// 3. Extract MSB of res into result: sign bit indicates comparison result
+/// Implements a < b by computing a - b = a + (~b) + 1 and checking the carry out.
+/// If there's no carry out from MSB (borrow occurred), then a < b.
 pub struct IcmpUlt {
 	pub a: Wire,
 	pub b: Wire,
 	pub result: Wire,
-	pub borrow: Wire,
-	pub res: Wire,
-	pub all_1: Wire,
-	pub one: Wire,
+	not_b: Wire,
+	cin: Wire,
+	diff: Wire,
+	cout: Wire,
+	all_1: Wire,
 }
 
 impl IcmpUlt {
 	pub fn new(builder: &CircuitBuilder, a: Wire, b: Wire) -> Self {
 		let result = builder.add_witness();
-		let borrow = builder.add_witness();
-		let res = builder.add_witness();
+		let not_b = builder.add_witness();
 		let all_1 = builder.add_constant(Word::ALL_ONE);
-		let one = builder.add_constant(Word::from_u64(1));
+		// 1 in MSB for carry-in
+		let cin = builder.add_constant(Word::from_u64(1u64 << 63));
+		// internal carry-bits in diff calculation
+		let cout = builder.add_witness();
+		// holds a - b
+		let diff = builder.add_witness();
+
 		Self {
 			a,
 			b,
 			result,
-			borrow,
-			res,
+			not_b,
+			cin,
+			diff,
+			cout,
 			all_1,
-			one,
 		}
 	}
 }
 
 impl Gate for IcmpUlt {
 	fn populate_wire_witness(&self, w: &mut WitnessFiller) {
-		let a_val = w[self.a].as_u64();
-		let b_val = w[self.b].as_u64();
+		let a = w[self.a];
+		let b = w[self.b];
 
-		// Compute t = a + (~b) + 1 = a - b
-		let not_b = !b_val;
-		let res = a_val.wrapping_sub(b_val);
+		let not_b = w[self.all_1] ^ b;
+		w[self.not_b] = not_b;
 
-		// Efficient borrow computation using the formula:
-		// For c = borrow vector of a + b + cin:
-		// c = (a + b + cin) ^ a ^ b ^ cin
-		// In our case: b = ~b_val, cin = 1
-		let borrow_vec = res ^ a_val ^ not_b ^ 1;
+		// extract the incoming carry-in (MSB of cin)
+		let cin_bit = w[self.cin].as_u64() >> 63;
 
-		w[self.borrow] = Word::from_u64(borrow_vec);
-		w[self.res] = Word::from_u64(res);
+		// compute a - b = a + (~b) + 1
+		let (diff, carry_out) = a.iadd_cin_cout(not_b, cin_bit);
+		w[self.diff] = diff;
+		w[self.cout] = carry_out;
 
-		// z = sign-bit of (a - b) ⇒ 1 if a<b else 0,
-		// but encoded as all-1 or 0
-		w[self.result] = if a_val < b_val {
-			Word::ALL_ONE
-		} else {
-			Word::ZERO
-		};
+		// For unsigned comparison a < b:
+		// We compute a - b = a + (~b) + 1
+		// If there's a carry out from MSB (carry[63] = 1), then a >= b (no borrow)
+		// If there's no carry out from MSB (carry[63] = 0), then a < b (borrow occurred)
+		//
+		// Extract the carry_out bit
+		let carry_out_bit = carry_out.as_u64() >> 63;
+		// Negate the carry_out bit to get the borrow (1 if borrow occurred, 0 if
+		// borrow did not occur)
+		let borrow = carry_out_bit ^ 1;
+		// Result is zero if bottow = 0 and all-1 if borrow = 1
+		w[self.result] = Word::from_u64(borrow.wrapping_neg());
 	}
 
 	fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
 		let a = circuit.witness_index(self.a);
 		let b = circuit.witness_index(self.b);
 		let result = circuit.witness_index(self.result);
-		let borrow = circuit.witness_index(self.borrow);
-		let res = circuit.witness_index(self.res);
+		let not_b = circuit.witness_index(self.not_b);
 		let all_1 = circuit.witness_index(self.all_1);
-		let one = circuit.witness_index(self.one);
+		let diff = circuit.witness_index(self.diff);
+		let cout = circuit.witness_index(self.cout);
+		let cin = circuit.witness_index(self.cin);
 
-		// Gate 1: full-adder borrow relation for t = a + (~b) + 1
-		// AND(v0 ^ v3 sll 1 ^ 1, v1 ^ all-1 ^ v3 sll 1 ^ 1, v3 sll 1 ^ v3)
+		// Constraint 1: not_b = b ^ all_1
 		cs.add_and_constraint(AndConstraint::abc(
-			[
-				ShiftedValueIndex::plain(a),
-				ShiftedValueIndex::sll(borrow, 1),
-				ShiftedValueIndex::plain(one),
-			],
-			[
-				ShiftedValueIndex::plain(b),
-				ShiftedValueIndex::plain(all_1),
-				ShiftedValueIndex::sll(borrow, 1),
-				ShiftedValueIndex::plain(one),
-			],
-			[
-				ShiftedValueIndex::sll(borrow, 1),
-				ShiftedValueIndex::plain(borrow),
-			],
-		));
-
-		// Gate 2: full-adder sum bits: res = a ^ (~b) ^ (borrow<<1) ^ 1
-		// AND(v0 ^ v1 ^ all-1 ^ v3 sll 1 ^ 1, all-1, v4)
-		cs.add_and_constraint(AndConstraint::abc(
-			[
-				ShiftedValueIndex::plain(a),
-				ShiftedValueIndex::plain(b),
-				ShiftedValueIndex::plain(all_1),
-				ShiftedValueIndex::sll(borrow, 1),
-				ShiftedValueIndex::plain(one),
-			],
+			[ShiftedValueIndex::plain(b), ShiftedValueIndex::plain(all_1)],
 			[ShiftedValueIndex::plain(all_1)],
-			[ShiftedValueIndex::plain(res)],
+			[ShiftedValueIndex::plain(not_b)],
 		));
 
-		// Gate 3: extract MSB of res into result
-		// AND(v4 sra 63, all-1, v2)
+		// Shift cout left by 1 to align bits with cin
+		let cout_sll_1 = ShiftedValueIndex::sll(cout, 1);
+		// The carry bit
+		let cin_msb = ShiftedValueIndex::srl(cin, 63);
+
+		// Constraint 2: Carry propagation constraint
+		// (a XOR (cout << 1) XOR cin_msb) AND (not_b XOR (cout << 1) XOR cin_msb)
+		// 		= cout XOR (cout << 1) XOR cin_msb
+		let a_operands = vec![ShiftedValueIndex::plain(a), cout_sll_1, cin_msb];
+		let b_operands = vec![ShiftedValueIndex::plain(not_b), cout_sll_1, cin_msb];
+		let c_operands = vec![ShiftedValueIndex::plain(cout), cout_sll_1, cin_msb];
+
+		cs.add_and_constraint(AndConstraint::abc(a_operands, b_operands, c_operands));
+
+		// Constraint 3: Diff constraint
+		let sum_operands = vec![
+			ShiftedValueIndex::plain(a),
+			ShiftedValueIndex::plain(not_b),
+			ShiftedValueIndex::sll(cout, 1),
+			cin_msb,
+		];
+
+		// (a XOR not_b XOR (cout << 1) XOR cin_msb) AND all_1 = diff
 		cs.add_and_constraint(AndConstraint::abc(
-			[ShiftedValueIndex::sar(res, 63)],
+			sum_operands,
+			[ShiftedValueIndex::plain(all_1)],
+			[ShiftedValueIndex::plain(diff)],
+		));
+
+		// Constraint 4: Map carry MSB to result
+		// For unsigned less-than:
+		// - If carry[63] = 0 (no carry out, i.e., borrow), then result = all-1 (a < b)
+		// - If carry[63] = 1 (carry out, no borrow), then result = 0 (a >= b)
+		cs.add_and_constraint(AndConstraint::abc(
+			[
+				ShiftedValueIndex::sar(cout, 63),
+				ShiftedValueIndex::plain(all_1),
+			],
 			[ShiftedValueIndex::plain(all_1)],
 			[ShiftedValueIndex::plain(result)],
 		));
@@ -883,5 +899,40 @@ mod tests {
 
 		assert_eq!(w[sum_wire], Word(0));
 		assert_eq!(w[cout_wire], Word(0));
+	}
+
+	fn prop_check_icmp_ult(a: u64, b: u64, expected_result: Word) -> TestResult {
+		let builder = CircuitBuilder::new();
+		let a_wire = builder.add_constant_64(a);
+		let b_wire = builder.add_constant_64(b);
+		let result_wire = builder.icmp_ult(a_wire, b_wire);
+
+		let circuit = builder.build();
+		let mut w = circuit.new_witness_filler();
+		circuit.populate_wire_witness(&mut w).unwrap();
+
+		assert_eq!(w[result_wire], expected_result);
+
+		let cs = circuit.constraint_system();
+		match verify_constraints(&cs, &w.value_vec) {
+			Ok(_) => TestResult::passed(),
+			Err(e) => TestResult::error(format!("Constraint verification failed: {e}")),
+		}
+	}
+
+	#[quickcheck]
+	fn prop_icmp_ult_gte(a: u64, b: u64) -> TestResult {
+		if a < b {
+			return TestResult::discard();
+		}
+		prop_check_icmp_ult(a, b, Word::ZERO)
+	}
+
+	#[quickcheck]
+	fn prop_icmp_ult_lt(a: u64, b: u64) -> TestResult {
+		if a >= b {
+			return TestResult::discard();
+		}
+		prop_check_icmp_ult(a, b, Word::ALL_ONE)
 	}
 }
