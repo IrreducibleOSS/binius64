@@ -338,11 +338,13 @@ pub struct AssertEq {
 	pub name: String,
 	pub x: Wire,
 	pub y: Wire,
+	all_1: Wire,
 }
 
 impl AssertEq {
-	pub fn new(name: String, x: Wire, y: Wire) -> Self {
-		Self { name, x, y }
+	pub fn new(builder: &CircuitBuilder, name: String, x: Wire, y: Wire) -> Self {
+		let all_1 = builder.add_constant(Word::ALL_ONE);
+		Self { name, x, y, all_1 }
 	}
 }
 
@@ -359,8 +361,8 @@ impl Gate for AssertEq {
 	fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
 		let x = circuit.witness_index(self.x);
 		let y = circuit.witness_index(self.y);
-
-		cs.add_and_constraint(AndConstraint::plain_abc([x], [], [y]));
+		let all_1 = circuit.witness_index(self.all_1);
+		cs.add_and_constraint(AndConstraint::plain_abc([x, y], [all_1], []));
 	}
 }
 

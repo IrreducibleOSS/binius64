@@ -200,3 +200,37 @@ fn prop_icmp_ult_lt(a: u64, b: u64) -> TestResult {
 	}
 	prop_check_icmp_ult(a, b, Word::ALL_ONE)
 }
+
+#[quickcheck]
+fn prop_check_assert_eq(x: u64, y: u64) -> TestResult {
+	let builder = CircuitBuilder::new();
+	let is_equal = x == y;
+	let x_wire = builder.add_constant_64(x);
+	let y_wire = builder.add_constant_64(y);
+	builder.assert_eq("eq", x_wire, y_wire);
+
+	let circuit = builder.build();
+	let mut w = circuit.new_witness_filler();
+
+	let result = circuit.populate_wire_witness(&mut w);
+
+	if is_equal {
+		// When values are equal, witness population should succeed
+		if result.is_err() {
+			return TestResult::failed();
+		}
+		// And constraints should verify
+		let cs = circuit.constraint_system();
+		match verify_constraints(&cs, &w.value_vec) {
+			Ok(_) => TestResult::passed(),
+			Err(e) => TestResult::error(format!("Constraint verification failed: {e}")),
+		}
+	} else {
+		// When values are not equal, witness population should fail
+		if result.is_ok() {
+			return TestResult::failed();
+		}
+		// We don't verify constraints when assertion fails
+		TestResult::passed()
+	}
+}

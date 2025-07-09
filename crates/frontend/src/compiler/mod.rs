@@ -348,7 +348,7 @@ impl CircuitBuilder {
 	/// 1 AND constraint.
 	pub fn assert_eq(&self, name: impl Into<String>, x: Wire, y: Wire) {
 		let name = self.namespaced(name.into());
-		self.emit(AssertEq::new(name, x, y))
+		self.emit(AssertEq::new(self, name, x, y))
 	}
 
 	/// Vector equality assertion.
