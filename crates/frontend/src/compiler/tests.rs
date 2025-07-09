@@ -234,3 +234,24 @@ fn prop_check_assert_eq(x: u64, y: u64) -> TestResult {
 		TestResult::passed()
 	}
 }
+
+#[quickcheck]
+fn prop_check_icmp_eq(a: u64, b: u64) -> TestResult {
+	let builder = CircuitBuilder::new();
+	let a_wire = builder.add_constant_64(a);
+	let b_wire = builder.add_constant_64(b);
+	let result_wire = builder.icmp_eq(a_wire, b_wire);
+
+	let circuit = builder.build();
+	let mut w = circuit.new_witness_filler();
+
+	circuit.populate_wire_witness(&mut w).unwrap();
+	let expected_result = if a == b { Word::ALL_ONE } else { Word::ZERO };
+	assert_eq!(w[result_wire], expected_result);
+
+	let cs = circuit.constraint_system();
+	match verify_constraints(&cs, &w.value_vec) {
+		Ok(_) => TestResult::passed(),
+		Err(e) => TestResult::error(format!("Constraint verification failed: {e}")),
+	}
+}

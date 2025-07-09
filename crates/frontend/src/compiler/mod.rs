@@ -448,7 +448,7 @@ impl CircuitBuilder {
 	///
 	/// # Cost
 	///
-	/// 1 AND constraint.
+	/// 1 AND constraint (with a known soundness limitation).
 	pub fn icmp_eq(&self, a: Wire, b: Wire) -> Wire {
 		let gate = IcmpEq::new(self, a, b);
 		let out = gate.result;

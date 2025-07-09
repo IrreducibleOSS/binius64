@@ -644,7 +644,7 @@ impl Gate for IcmpUlt {
 }
 
 /// 64-bit equality test that returns all-1 if equal, all-0 if not equal
-/// Uses 1 AND constraint: AND(v_a ^ v_b, all-1, result ^ all-1)
+/// Uses 1 AND constraint (with a known soundness limitation for the a == b case).
 pub struct IcmpEq {
 	pub a: Wire,
 	pub b: Wire,
@@ -682,19 +682,12 @@ impl Gate for IcmpEq {
 		let a = circuit.witness_index(self.a);
 		let b = circuit.witness_index(self.b);
 		let result = circuit.witness_index(self.result);
-		let all_1 = circuit.witness_index(self.all_1);
+		let _all_1 = circuit.witness_index(self.all_1);
 
-		// AND(v_a ^ v_b, all-1, result ^ all-1)
-		// When a == b: v_a ^ v_b = 0, so 0 & all-1 = 0 = result ^ all-1, meaning result = all-1
-		// When a != b: v_a ^ v_b != 0, so constraint can only be satisfied if result = 0
-		cs.add_and_constraint(AndConstraint::abc(
-			[ShiftedValueIndex::plain(a), ShiftedValueIndex::plain(b)],
-			[ShiftedValueIndex::plain(all_1)],
-			[
-				ShiftedValueIndex::plain(result),
-				ShiftedValueIndex::plain(all_1),
-			],
-		));
+		// Constraint 1: Force result = 0 when a != b
+		// (a ^ b) & result = 0
+		// This is not sound (i.e if a == b then result could be anything)
+		cs.add_and_constraint(AndConstraint::plain_abc([a, b], [result], []));
 	}
 }
 
