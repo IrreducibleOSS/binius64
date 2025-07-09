@@ -1,7 +1,9 @@
+use quickcheck::TestResult;
+use quickcheck_macros::quickcheck;
 use rand::{Rng, SeedableRng as _, rngs::StdRng};
 
 use super::*;
-use crate::word::Word;
+use crate::{constraint_verifier::verify_constraints, word::Word};
 
 #[test]
 fn sort_wires() {
@@ -86,4 +88,115 @@ fn test_icmp_ult() {
 		w[expected] = Word(if w[a].0 < w[b].0 { u64::MAX } else { 0 });
 		w.circuit.populate_wire_witness(&mut w).unwrap();
 	}
+}
+
+#[quickcheck]
+fn prop_iadd_cin_cout_carry_chain(a1: u64, b1: u64, a2: u64, b2: u64) -> TestResult {
+	let builder = CircuitBuilder::new();
+
+	// First addition
+	let a1_wire = builder.add_constant_64(a1);
+	let b1_wire = builder.add_constant_64(b1);
+	let cin_wire = builder.add_constant(Word::ZERO);
+	let (sum1_wire, cout1_wire) = builder.iadd_cin_cout(a1_wire, b1_wire, cin_wire);
+
+	// Second addition with carry from first
+	let a2_wire = builder.add_constant_64(a2);
+	let b2_wire = builder.add_constant_64(b2);
+	let (sum2_wire, cout2_wire) = builder.iadd_cin_cout(a2_wire, b2_wire, cout1_wire);
+
+	let circuit = builder.build();
+	let mut w = circuit.new_witness_filler();
+	circuit.populate_wire_witness(&mut w).unwrap();
+
+	// Check first addition
+	let expected_sum1 = a1.wrapping_add(b1);
+	let expected_cout1 = (a1 & b1) | ((a1 ^ b1) & !expected_sum1);
+	if w[sum1_wire] != Word(expected_sum1) || w[cout1_wire] != Word(expected_cout1) {
+		return TestResult::failed();
+	}
+
+	// Check second addition with carry
+	// Extract MSB of cout1 as the carry-in bit
+	let cin2 = expected_cout1 >> 63;
+	let expected_sum2 = a2.wrapping_add(b2).wrapping_add(cin2);
+	let expected_cout2 = (a2 & b2) | ((a2 ^ b2) & !expected_sum2);
+	if w[sum2_wire] != Word(expected_sum2) || w[cout2_wire] != Word(expected_cout2) {
+		return TestResult::failed();
+	}
+
+	let cs = circuit.constraint_system();
+	match verify_constraints(&cs, &w.value_vec) {
+		Ok(_) => TestResult::passed(),
+		Err(e) => TestResult::error(e),
+	}
+}
+
+#[test]
+fn test_iadd_cin_cout_max_values() {
+	let builder = CircuitBuilder::new();
+
+	let a = builder.add_constant_64(0xFFFFFFFFFFFFFFFF);
+	let b = builder.add_constant_64(0xFFFFFFFFFFFFFFFF);
+	let cin_wire = builder.add_constant(Word::ZERO);
+	let (sum_wire, cout_wire) = builder.iadd_cin_cout(a, b, cin_wire);
+
+	let circuit = builder.build();
+	let mut w = circuit.new_witness_filler();
+	circuit.populate_wire_witness(&mut w).unwrap();
+
+	assert_eq!(w[sum_wire], Word(0xFFFFFFFFFFFFFFFE));
+	assert_eq!(w[cout_wire], Word(0xFFFFFFFFFFFFFFFF));
+}
+
+#[test]
+fn test_iadd_cin_cout_zero() {
+	let builder = CircuitBuilder::new();
+
+	let a = builder.add_constant_64(0);
+	let b = builder.add_constant_64(0);
+	let cin_wire = builder.add_constant(Word::ZERO);
+	let (sum_wire, cout_wire) = builder.iadd_cin_cout(a, b, cin_wire);
+
+	let circuit = builder.build();
+	let mut w = circuit.new_witness_filler();
+	circuit.populate_wire_witness(&mut w).unwrap();
+
+	assert_eq!(w[sum_wire], Word(0));
+	assert_eq!(w[cout_wire], Word(0));
+}
+
+fn prop_check_icmp_ult(a: u64, b: u64, expected_result: Word) -> TestResult {
+	let builder = CircuitBuilder::new();
+	let a_wire = builder.add_constant_64(a);
+	let b_wire = builder.add_constant_64(b);
+	let result_wire = builder.icmp_ult(a_wire, b_wire);
+
+	let circuit = builder.build();
+	let mut w = circuit.new_witness_filler();
+	circuit.populate_wire_witness(&mut w).unwrap();
+
+	assert_eq!(w[result_wire], expected_result);
+
+	let cs = circuit.constraint_system();
+	match verify_constraints(&cs, &w.value_vec) {
+		Ok(_) => TestResult::passed(),
+		Err(e) => TestResult::error(format!("Constraint verification failed: {e}")),
+	}
+}
+
+#[quickcheck]
+fn prop_icmp_ult_gte(a: u64, b: u64) -> TestResult {
+	if a < b {
+		return TestResult::discard();
+	}
+	prop_check_icmp_ult(a, b, Word::ZERO)
+}
+
+#[quickcheck]
+fn prop_icmp_ult_lt(a: u64, b: u64) -> TestResult {
+	if a >= b {
+		return TestResult::discard();
+	}
+	prop_check_icmp_ult(a, b, Word::ALL_ONE)
 }
