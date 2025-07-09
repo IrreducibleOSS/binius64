@@ -1,8 +1,0 @@
-# Seeds for failure cases proptest has generated in the past. It is
-# automatically read and these particular cases re-run before any
-# novel cases are generated.
-#
-# It is recommended to check this file in to source control so that
-# everyone who runs the test benefits from these saved cases.
-cc 889b829bfaea5934171f04e2380ba0bf448cb26dc6245d6f6f056e8a8726a407 # shrinks to a = __m128i(2, 0), b = __m128i(5764607523034234880, 1276703107876621486), c = __m128i(-2305843009213693952, 708298604572647503)
-cc a23ab1ceff3c36c99351dad7f2885a9e5c4a9333441e74deb121476fae75eb6b # shrinks to a = __m256i(0, 0, 2, 0), b = __m256i(0, 0, 2305843009213693952, 18546373356567353), c = __m256i(0, 0, 4611686018427387904, 3070787219249065479)
