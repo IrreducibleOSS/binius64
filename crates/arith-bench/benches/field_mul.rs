@@ -63,6 +63,11 @@ fn run_google_mul_benchmark<U, R>(
 }
 
 /// Generic benchmark helper for multiplication operations.
+///
+/// The benchmark strategy is to iterate over an array of field elements repeatedly, multiplying
+/// strided pairs of elements in place. The stride is half of the length of the array, so that when
+/// the array is large enough, the instructions can be efficiently pipelined. The number of passes
+/// controls the density of multiplications per iteration.
 fn run_mul_benchmark<T, R>(
 	group: &mut BenchmarkGroup<'_, criterion::measurement::WallTime>,
 	name: &str,
@@ -75,19 +80,28 @@ fn run_mul_benchmark<T, R>(
 	R: Rng,
 	StandardUniform: Distribution<T>,
 {
-	/// Batch size for processing multiple operations
-	const BATCH_SIZE: usize = 32;
+	/// The size of the field element array to process. Values too small limit pipelined
+	/// parallelism.
+	const BATCH_SIZE: usize = 16;
+	/// The number of multiplications per element in the batch. Larger values increase the density
+	/// of multiplications per iteration.
+	const N_PASSES: usize = 64;
 
-	// Generate random batches
-	let a_batch: [T; BATCH_SIZE] = array::from_fn(|_| rng.random());
-	let b_batch: [T; BATCH_SIZE] = array::from_fn(|_| rng.random());
+	// Generate random elements that are to be multiplied.
+	let mut batch: [T; BATCH_SIZE] = array::from_fn(|_| rng.random());
 
 	// Calculate throughput based on elements per underlier
 	let elements_per_underlier = underlier_bits / element_bits;
-	group.throughput(Throughput::Elements((BATCH_SIZE * elements_per_underlier) as u64));
+	group.throughput(Throughput::Elements((BATCH_SIZE * N_PASSES * elements_per_underlier) as u64));
 
 	group.bench_function(name, |b| {
-		b.iter(|| array::from_fn::<_, BATCH_SIZE, _>(|i| mul_fn(a_batch[i], b_batch[i])))
+		b.iter(|| {
+			for _ in 0..N_PASSES {
+				for i in 0..BATCH_SIZE {
+					batch[i] = mul_fn(batch[i], batch[(i + BATCH_SIZE / 2) % BATCH_SIZE]);
+				}
+			}
+		})
 	});
 }
 
