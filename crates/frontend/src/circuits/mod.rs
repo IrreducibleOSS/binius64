@@ -3,5 +3,6 @@ pub mod basic;
 pub mod concat;
 pub mod eqbool;
 pub mod hex;
+pub mod jwt_claims;
 pub mod sha256;
 pub mod slice;
