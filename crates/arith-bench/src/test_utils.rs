@@ -106,7 +106,7 @@ pub mod multiplication_tests {
 	{
 		let one = T::broadcast(identity);
 		let a_times_one = mul_fn(a, one);
-		println!("a: {:?}, a_times_one: {:?}", a, a_times_one);
+		println!("a: {a:?}, a_times_one: {a_times_one:?}");
 		assert!(
 			T::is_equal(a_times_one, a),
 			"The provided identity is not the multiplicative identity in {field_name}"

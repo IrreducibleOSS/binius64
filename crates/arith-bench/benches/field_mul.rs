@@ -1,14 +1,22 @@
 #[cfg(target_arch = "x86_64")]
+#[allow(unused_imports)]
 use std::arch::x86_64::{__m128i, __m256i};
+#[cfg(target_arch = "x86_64")]
 use std::{array, hint::black_box};
 
+#[cfg(target_arch = "x86_64")]
 use binius_arith_bench::Underlier;
-use criterion::{BenchmarkGroup, Criterion, Throughput, criterion_group, criterion_main};
+#[cfg(target_arch = "x86_64")]
+use criterion::{BenchmarkGroup, Throughput};
+use criterion::{Criterion, criterion_group, criterion_main};
+#[cfg(target_arch = "x86_64")]
 use rand::{
 	Rng,
 	distr::{Distribution, StandardUniform},
 };
 
+#[cfg(target_arch = "x86_64")]
+#[allow(dead_code)]
 fn run_google_mul_benchmark<U, R>(
 	group: &mut BenchmarkGroup<'_, criterion::measurement::WallTime>,
 	name: &str,
@@ -54,6 +62,8 @@ fn run_google_mul_benchmark<U, R>(
 }
 
 /// Generic benchmark helper for multiplication operations
+#[cfg(target_arch = "x86_64")]
+#[allow(dead_code)]
 fn run_mul_benchmark<T, R>(
 	group: &mut BenchmarkGroup<'_, criterion::measurement::WallTime>,
 	name: &str,
@@ -87,14 +97,16 @@ fn bench_rijndael_mul(c: &mut Criterion) {
 	#[cfg(not(target_arch = "x86_64"))]
 	{
 		let _ = c; // Suppress unused variable warning
-		return;
 	}
 
 	#[cfg(target_arch = "x86_64")]
 	{
+		#[allow(unused_imports, unused_variables, unused_mut)]
 		use binius_arith_bench::rijndael::mul_gfni;
 
+		#[allow(unused_variables, unused_mut)]
 		let mut group = c.benchmark_group("rijndael_mul_gfni");
+		#[allow(unused_variables, unused_mut)]
 		let mut rng = rand::rng();
 
 		// Benchmark __m128i
@@ -118,14 +130,16 @@ fn bench_polyval_mul(c: &mut Criterion) {
 	#[cfg(not(target_arch = "x86_64"))]
 	{
 		let _ = c; // Suppress unused variable warning
-		return;
 	}
 
 	#[cfg(target_arch = "x86_64")]
 	{
+		#[allow(unused_imports, unused_variables, unused_mut)]
 		use binius_arith_bench::polyval::mul_clmul;
 
+		#[allow(unused_variables, unused_mut)]
 		let mut group = c.benchmark_group("polyval_google_mul_clmul");
+		#[allow(unused_variables, unused_mut)]
 		let mut rng = rand::rng();
 
 		// Benchmark __m128i
@@ -163,9 +177,12 @@ fn bench_polyval_mul(c: &mut Criterion) {
 
 	#[cfg(target_arch = "x86_64")]
 	{
+		#[allow(unused_imports, unused_variables, unused_mut)]
 		use binius_arith_bench::polyval::mul_clmul;
 
+		#[allow(unused_variables, unused_mut)]
 		let mut group = c.benchmark_group("polyval_mul_clmul");
+		#[allow(unused_variables, unused_mut)]
 		let mut rng = rand::rng();
 
 		// Benchmark __m128i
@@ -207,14 +224,16 @@ fn bench_ghash_mul(c: &mut Criterion) {
 	#[cfg(not(target_arch = "x86_64"))]
 	{
 		let _ = c; // Suppress unused variable warning
-		return;
 	}
 
 	#[cfg(target_arch = "x86_64")]
 	{
+		#[allow(unused_imports, unused_variables, unused_mut)]
 		use binius_arith_bench::ghash::mul_clmul;
 
+		#[allow(unused_variables, unused_mut)]
 		let mut group = c.benchmark_group("ghash_mul_clmul");
+		#[allow(unused_variables, unused_mut)]
 		let mut rng = rand::rng();
 
 		// Benchmark __m128i
@@ -252,9 +271,12 @@ fn bench_ghash_mul(c: &mut Criterion) {
 
 	#[cfg(target_arch = "x86_64")]
 	{
+		#[allow(unused_imports, unused_variables, unused_mut)]
 		use binius_arith_bench::ghash::mul_clmul;
 
+		#[allow(unused_variables, unused_mut)]
 		let mut group = c.benchmark_group("ghash_google_mul_clmul");
+		#[allow(unused_variables, unused_mut)]
 		let mut rng = rand::rng();
 
 		// Benchmark __m128i
@@ -296,14 +318,16 @@ fn bench_monbijou_mul(c: &mut Criterion) {
 	#[cfg(not(target_arch = "x86_64"))]
 	{
 		let _ = c; // Suppress unused variable warning
-		return;
 	}
 
 	#[cfg(target_arch = "x86_64")]
 	{
+		#[allow(unused_imports, unused_variables, unused_mut)]
 		use binius_arith_bench::monbijou::mul_clmul;
 
+		#[allow(unused_variables, unused_mut)]
 		let mut group = c.benchmark_group("monbijou_mul_clmul");
+		#[allow(unused_variables, unused_mut)]
 		let mut rng = rand::rng();
 
 		// Benchmark __m128i
@@ -341,9 +365,12 @@ fn bench_monbijou_mul(c: &mut Criterion) {
 
 	#[cfg(target_arch = "x86_64")]
 	{
+		#[allow(unused_imports, unused_variables, unused_mut)]
 		use binius_arith_bench::monbijou::mul_clmul;
 
+		#[allow(unused_variables, unused_mut)]
 		let mut group = c.benchmark_group("monbijou_google_mul_clmul");
+		#[allow(unused_variables, unused_mut)]
 		let mut rng = rand::rng();
 
 		// Benchmark __m128i
@@ -385,14 +412,16 @@ fn bench_monbijou_128b_mul(c: &mut Criterion) {
 	#[cfg(not(target_arch = "x86_64"))]
 	{
 		let _ = c; // Suppress unused variable warning
-		return;
 	}
 
 	#[cfg(target_arch = "x86_64")]
 	{
+		#[allow(unused_imports, unused_variables, unused_mut)]
 		use binius_arith_bench::monbijou::mul_128b_clmul;
 
+		#[allow(unused_variables, unused_mut)]
 		let mut group = c.benchmark_group("monbijou_128b_mul_clmul");
+		#[allow(unused_variables, unused_mut)]
 		let mut rng = rand::rng();
 
 		// Benchmark __m128i
@@ -430,9 +459,12 @@ fn bench_monbijou_128b_mul(c: &mut Criterion) {
 
 	#[cfg(target_arch = "x86_64")]
 	{
+		#[allow(unused_imports, unused_variables, unused_mut)]
 		use binius_arith_bench::monbijou::mul_128b_clmul;
 
+		#[allow(unused_variables, unused_mut)]
 		let mut group = c.benchmark_group("monbijou_128b_google_mul_clmul");
+		#[allow(unused_variables, unused_mut)]
 		let mut rng = rand::rng();
 
 		// Benchmark __m128i
