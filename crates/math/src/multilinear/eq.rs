@@ -34,29 +34,33 @@ pub fn tensor_prod_eq_ind<P: PackedField, Data: DerefMut<Target = [P]>>(
 	values: &mut FieldBuffer<P, Data>,
 	extra_query_coordinates: &[P::Scalar],
 ) -> Result<(), Error> {
-	let n_extra = extra_query_coordinates.len();
-	let new_n_vars = log_n_values + n_extra;
+	let new_n_vars = log_n_values + extra_query_coordinates.len();
 	let expected_len = 1 << new_n_vars;
-	if values.len() != expected_len {
+
+	if values.len() < expected_len {
 		return Err(Error::IncorrectArgumentLength {
 			arg: "packed_values".to_string(),
 			expected: expected_len,
 		});
 	}
 
-	if extra_query_coordinates.is_empty() {
+	let Some((&r_i, remaining_coordinates)) = extra_query_coordinates.split_last() else {
 		return Ok(());
+	};
+
+	if values.len() > expected_len {
+		return values
+			.split_half_mut(|lo, _| tensor_prod_eq_ind(log_n_values, lo, extra_query_coordinates))
+			.expect("values.len() > expected_len => values.len() >= 2");
 	}
 
 	values.split_half_mut(|lo, hi| {
-		tensor_prod_eq_ind(log_n_values, lo, &extra_query_coordinates[..n_extra - 1])?;
+		tensor_prod_eq_ind(log_n_values, lo, remaining_coordinates)?;
 
-		let r_i = &extra_query_coordinates[n_extra - 1];
-		let packed_r_i = P::broadcast(*r_i);
+		let packed_r_i = P::broadcast(r_i);
 
-		lo.as_mut()
-			.par_iter_mut()
-			.zip(hi.as_mut().par_iter_mut())
+		(lo.as_mut(), hi.as_mut())
+			.into_par_iter()
 			.for_each(|(lo_i, hi_i)| {
 				let prod = (*lo_i) * packed_r_i;
 				*lo_i -= prod;
@@ -167,6 +171,34 @@ mod tests {
 				v0 * v1
 			]
 		);
+	}
+
+	#[test]
+	fn test_tensor_prod_eq_ind_inplace_expansion() {
+		let mut rng = StdRng::seed_from_u64(0);
+
+		let exps = 4;
+		let max_n_vars = exps * (exps + 1) / 2;
+		let mut coords = Vec::with_capacity(max_n_vars);
+		let mut eq_expansion = FieldBuffer::zeros(max_n_vars);
+		eq_expansion.set(0, F::ONE).unwrap();
+
+		for extra_count in 1..=exps {
+			let extra = random_scalars(&mut rng, extra_count);
+
+			tensor_prod_eq_ind::<P, _>(coords.len(), &mut eq_expansion, &extra).unwrap();
+			coords.extend(&extra);
+
+			for i in 0..1 << max_n_vars {
+				let v = eq_expansion.get(i).unwrap();
+				if i >= 1 << coords.len() {
+					assert_eq!(v, F::ZERO);
+				} else {
+					let hypercube_point = index_to_hypercube_point(coords.len(), i);
+					assert_eq!(v, eq_ind(&hypercube_point, &coords));
+				}
+			}
+		}
 	}
 
 	#[test]
