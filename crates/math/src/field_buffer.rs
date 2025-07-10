@@ -93,7 +93,7 @@ impl<P: PackedField, Data: Deref<Target = [P]>> FieldBuffer<P, Data> {
 	/// # Throws
 	///
 	/// * `Error::ArgumentRangeError` if the index is out of bounds.
-	pub fn get(&mut self, index: usize) -> Result<P::Scalar, Error> {
+	pub fn get(&self, index: usize) -> Result<P::Scalar, Error> {
 		if index >= self.len() {
 			return Err(Error::ArgumentRangeError {
 				arg: "index".to_string(),
@@ -390,7 +390,7 @@ mod tests {
 	fn test_zeros() {
 		// Make a buffer with `zeros()` and check that all elements are zero.
 		// Test with log_len >= LOG_WIDTH
-		let mut buffer = FieldBuffer::<P>::zeros(6); // 64 elements
+		let buffer = FieldBuffer::<P>::zeros(6); // 64 elements
 		assert_eq!(buffer.log_len(), 6);
 		assert_eq!(buffer.len(), 64);
 
@@ -400,7 +400,7 @@ mod tests {
 		}
 
 		// Test with log_len < LOG_WIDTH
-		let mut buffer = FieldBuffer::<P>::zeros(1); // 2 elements
+		let buffer = FieldBuffer::<P>::zeros(1); // 2 elements
 		assert_eq!(buffer.log_len(), 1);
 		assert_eq!(buffer.len(), 2);
 
@@ -416,7 +416,7 @@ mod tests {
 		// width
 		// P::LOG_WIDTH = 2, so P::WIDTH = 4
 		let values = vec![F::new(1), F::new(2)]; // 2 elements < 4
-		let mut buffer = FieldBuffer::<P>::from_values(&values).unwrap();
+		let buffer = FieldBuffer::<P>::from_values(&values).unwrap();
 
 		assert_eq!(buffer.log_len(), 1); // log2(2) = 1
 		assert_eq!(buffer.len(), 2);
@@ -432,7 +432,7 @@ mod tests {
 		// width
 		// P::LOG_WIDTH = 2, so P::WIDTH = 4
 		let values: Vec<F> = (0..16).map(F::new).collect(); // 16 elements > 4
-		let mut buffer = FieldBuffer::<P>::from_values(&values).unwrap();
+		let buffer = FieldBuffer::<P>::from_values(&values).unwrap();
 
 		assert_eq!(buffer.log_len(), 4); // log2(16) = 4
 		assert_eq!(buffer.len(), 16);
@@ -543,7 +543,7 @@ mod tests {
 		let chunks: Vec<_> = buffer.chunks(2).unwrap().collect();
 		assert_eq!(chunks.len(), 4);
 
-		for (chunk_idx, mut chunk) in chunks.into_iter().enumerate() {
+		for (chunk_idx, chunk) in chunks.into_iter().enumerate() {
 			assert_eq!(chunk.len(), 4);
 			for i in 0..4 {
 				let expected = F::new((chunk_idx * 4 + i) as u64);
@@ -608,7 +608,7 @@ mod tests {
 		let values: Vec<F> = (0..16).map(F::new).collect();
 		let buffer = FieldBuffer::<P>::from_values(&values).unwrap();
 
-		let (mut first, mut second) = buffer.split_half().unwrap();
+		let (first, second) = buffer.split_half().unwrap();
 		assert_eq!(first.len(), 8);
 		assert_eq!(second.len(), 8);
 
@@ -623,7 +623,7 @@ mod tests {
 		let values: Vec<F> = (0..4).map(F::new).collect();
 		let buffer = FieldBuffer::<P>::from_values(&values).unwrap();
 
-		let (mut first, mut second) = buffer.split_half().unwrap();
+		let (first, second) = buffer.split_half().unwrap();
 		assert_eq!(first.len(), 2);
 		assert_eq!(second.len(), 2);
 
@@ -647,7 +647,7 @@ mod tests {
 		let values: Vec<F> = vec![F::new(10), F::new(20)];
 		let buffer = FieldBuffer::<P>::from_values(&values).unwrap();
 
-		let (mut first, mut second) = buffer.split_half().unwrap();
+		let (first, second) = buffer.split_half().unwrap();
 		assert_eq!(first.len(), 1);
 		assert_eq!(second.len(), 1);
 

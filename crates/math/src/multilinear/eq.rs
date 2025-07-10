@@ -207,7 +207,7 @@ mod tests {
 		// For P with LOG_WIDTH = 2, the minimum buffer size is 4 elements
 		assert_eq!(result.log_len(), 0);
 		assert_eq!(result.len(), 1);
-		let mut result_mut = result;
+		let result_mut = result;
 		assert_eq!(result_mut.get(0).unwrap(), F::ONE);
 	}
 
@@ -218,7 +218,7 @@ mod tests {
 		let result = eq_ind_partial_eval::<P>(&[r0]);
 		assert_eq!(result.log_len(), 1);
 		assert_eq!(result.len(), 2);
-		let mut result_mut = result;
+		let result_mut = result;
 		assert_eq!(result_mut.get(0).unwrap(), F::ONE - r0);
 		assert_eq!(result_mut.get(1).unwrap(), r0);
 	}
@@ -277,7 +277,7 @@ mod tests {
 		let index = rng.random_range(..1 << n_vars);
 
 		// Query the value at that index
-		let mut result_mut = result;
+		let result_mut = result;
 		let partial_eval_value = result_mut.get(index).unwrap();
 
 		let index_bits = index_to_hypercube_point(n_vars, index);
