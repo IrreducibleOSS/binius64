@@ -182,40 +182,6 @@ fn bench_polyval(c: &mut Criterion) {
 	}
 
 	group.finish();
-
-	let mut group = c.benchmark_group("polyval_google_mul_clmul");
-
-	// Benchmark __m128i
-	#[cfg(all(target_feature = "pclmulqdq", target_feature = "sse2"))]
-	{
-		run_google_mul_benchmark(
-			&mut group,
-			"mul_clmul::<__m128i>",
-			mul_clmul::<__m128i>,
-			&mut rng,
-			128,
-			__m128i::BITS,
-		);
-	}
-
-	// Benchmark __m256i
-	#[cfg(all(
-		target_feature = "vpclmulqdq",
-		target_feature = "avx2",
-		target_feature = "sse2"
-	))]
-	{
-		run_google_mul_benchmark(
-			&mut group,
-			"mul_clmul::<__m256i>",
-			mul_clmul::<__m256i>,
-			&mut rng,
-			128,
-			__m256i::BITS,
-		);
-	}
-
-	group.finish();
 }
 
 /// Benchmark GF(2^128) GHASH multiplication using CLMUL instructions
@@ -334,40 +300,6 @@ fn bench_monbijou(c: &mut Criterion) {
 	}
 
 	group.finish();
-
-	let mut group = c.benchmark_group("monbijou_google");
-
-	// Benchmark __m128i
-	#[cfg(all(target_feature = "pclmulqdq", target_feature = "sse2"))]
-	{
-		run_google_mul_benchmark(
-			&mut group,
-			"m128i",
-			mul_clmul::<__m128i>,
-			&mut rng,
-			64,
-			__m128i::BITS,
-		);
-	}
-
-	// Benchmark __m256i
-	#[cfg(all(
-		target_feature = "vpclmulqdq",
-		target_feature = "avx2",
-		target_feature = "sse2"
-	))]
-	{
-		run_google_mul_benchmark(
-			&mut group,
-			"m256i",
-			mul_clmul::<__m256i>,
-			&mut rng,
-			64,
-			__m256i::BITS,
-		);
-	}
-
-	group.finish();
 }
 
 /// Benchmark GF(2^128) Monbijou 128-bit extension field multiplication using CLMUL instructions
@@ -400,40 +332,6 @@ fn bench_monbijou_128b(c: &mut Criterion) {
 	))]
 	{
 		run_mul_benchmark(
-			&mut group,
-			"mul_128b_clmul::<__m256i>",
-			mul_128b_clmul::<__m256i>,
-			&mut rng,
-			128,
-			__m256i::BITS,
-		);
-	}
-
-	group.finish();
-
-	let mut group = c.benchmark_group("monbijou_128b_google");
-
-	// Benchmark __m128i
-	#[cfg(all(target_feature = "pclmulqdq", target_feature = "sse2"))]
-	{
-		run_google_mul_benchmark(
-			&mut group,
-			"mul_128b_clmul::<__m128i>",
-			mul_128b_clmul::<__m128i>,
-			&mut rng,
-			128,
-			__m128i::BITS,
-		);
-	}
-
-	// Benchmark __m256i
-	#[cfg(all(
-		target_feature = "vpclmulqdq",
-		target_feature = "avx2",
-		target_feature = "sse2"
-	))]
-	{
-		run_google_mul_benchmark(
 			&mut group,
 			"mul_128b_clmul::<__m256i>",
 			mul_128b_clmul::<__m256i>,
