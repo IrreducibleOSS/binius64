@@ -34,7 +34,7 @@ fn karatsuba1<U: Underlier + OpsClmul>(x: U, y: U) -> (U, U, U) {
 	//        M                                 H         L
 	//
 	// m = x.hi^x.lo * y.hi^y.lo
-	let m = pmull(U::xor(x, U::shuffle_epi32::<0xee>(x)), U::xor(y, U::shuffle_epi32::<0xee>(y)));
+	let m = pmull(U::xor(x, U::duplicate_hi_64(x)), U::xor(y, U::duplicate_hi_64(y)));
 	let h = pmull2(y, x); // h = x.hi * y.hi
 	let l = pmull(y, x); // l = x.lo * y.lo
 	(h, m, l)
@@ -53,7 +53,7 @@ fn karatsuba2<U: Underlier + OpsClmul>(h: U, m: U, l: U) -> (U, U) {
 	let t = {
 		//   {m0, m1} ^ {l1, h0}
 		// = {m0^l1, m1^h0}
-		let t0 = { U::xor(m, U::shuffle_ps::<0x4e>(l, h)) };
+		let t0 = { U::xor(m, U::extract_hi_lo_64(l, h)) };
 
 		//   {h0, h1} ^ {l0, l1}
 		// = {h0^l0, h1^l1}
@@ -84,7 +84,7 @@ fn mont_reduce<U: Underlier + OpsClmul + PackedUnderlier<u128>>(x23: U, x01: U) 
 	static POLY: u128 = (1 << 127) | (1 << 126) | (1 << 121) | (1 << 63) | (1 << 62) | (1 << 57);
 	let poly = <U as PackedUnderlier<u128>>::broadcast(POLY);
 	let a = pmull(x01, poly);
-	let b = U::xor(x01, U::shuffle_epi32::<0x4e>(a));
+	let b = U::xor(x01, U::swap_hi_lo_64(a));
 	let c = pmull2(b, poly);
 	U::xor(x23, U::xor(c, b))
 }

@@ -152,14 +152,22 @@ impl crate::underlier::OpsClmul for __m128i {
 	}
 
 	#[inline]
-	fn shuffle_epi32<const IMM8: i32>(a: Self) -> Self {
-		unsafe { _mm_shuffle_epi32::<IMM8>(a) }
+	fn duplicate_hi_64(a: Self) -> Self {
+		unsafe { _mm_shuffle_epi32::<0xEE>(a) }
 	}
 
 	#[inline]
-	fn shuffle_ps<const IMM8: i32>(a: Self, b: Self) -> Self {
+	fn swap_hi_lo_64(a: Self) -> Self {
+		unsafe { _mm_shuffle_epi32::<0x4E>(a) }
+	}
+
+	#[inline]
+	fn extract_hi_lo_64(a: Self, b: Self) -> Self {
 		unsafe {
-			_mm_castps_si128(_mm_shuffle_ps::<IMM8>(_mm_castsi128_ps(a), _mm_castsi128_ps(b)))
+			_mm_castps_si128(_mm_shuffle_ps::<0x4E>(
+				_mm_castsi128_ps(a),
+				_mm_castsi128_ps(b),
+			))
 		}
 	}
 
@@ -399,14 +407,19 @@ impl crate::underlier::OpsClmul for __m256i {
 	}
 
 	#[inline]
-	fn shuffle_epi32<const IMM8: i32>(a: Self) -> Self {
-		unsafe { _mm256_shuffle_epi32::<IMM8>(a) }
+	fn duplicate_hi_64(a: Self) -> Self {
+		unsafe { _mm256_shuffle_epi32::<0xEE>(a) }
 	}
 
 	#[inline]
-	fn shuffle_ps<const IMM8: i32>(a: Self, b: Self) -> Self {
+	fn swap_hi_lo_64(a: Self) -> Self {
+		unsafe { _mm256_shuffle_epi32::<0x4E>(a) }
+	}
+
+	#[inline]
+	fn extract_hi_lo_64(a: Self, b: Self) -> Self {
 		unsafe {
-			_mm256_castps_si256(_mm256_shuffle_ps::<IMM8>(
+			_mm256_castps_si256(_mm256_shuffle_ps::<0x4E>(
 				_mm256_castsi256_ps(a),
 				_mm256_castsi256_ps(b),
 			))

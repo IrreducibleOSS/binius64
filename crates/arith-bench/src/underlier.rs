@@ -102,9 +102,10 @@ pub trait OpsGfni {
 pub trait OpsClmul {
 	fn clmulepi64<const IMM8: i32>(a: Self, b: Self) -> Self;
 
-	fn shuffle_epi32<const IMM8: i32>(a: Self) -> Self;
+	fn duplicate_hi_64(a: Self) -> Self;
+	fn swap_hi_lo_64(a: Self) -> Self;
 
-	fn shuffle_ps<const IMM8: i32>(a: Self, b: Self) -> Self;
+	fn extract_hi_lo_64(a: Self, b: Self) -> Self;
 
 	fn unpacklo_epi64(a: Self, b: Self) -> Self;
 
