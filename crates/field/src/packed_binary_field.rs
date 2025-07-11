@@ -886,7 +886,7 @@ mod tests {
 		*,
 	};
 	use crate::{
-		Field, PackedField, PackedFieldIndexable,
+		PackedField, PackedFieldIndexable, Random,
 		arch::{
 			packed_aes_16::*, packed_aes_32::*, packed_aes_64::*, packed_aes_128::*,
 			packed_aes_256::*, packed_aes_512::*,
@@ -922,9 +922,9 @@ mod tests {
 		let mut rng = StdRng::seed_from_u64(0);
 		let mut elem = P::random(&mut rng);
 
-		let scalars = repeat_with(|| Field::random(&mut rng))
+		let scalars = repeat_with(|| P::Scalar::random(&mut rng))
 			.take(P::WIDTH)
-			.collect::<Vec<P::Scalar>>();
+			.collect::<Vec<_>>();
 
 		for (i, val) in scalars.iter().enumerate() {
 			elem.set(i, *val);

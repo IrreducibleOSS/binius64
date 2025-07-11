@@ -7,11 +7,14 @@ use std::{
 
 use binius_utils::checked_arithmetics::checked_log_2;
 use bytemuck::{NoUninit, Pod, Zeroable, must_cast_mut, must_cast_ref};
-use rand::RngCore;
+use rand::{
+	Rng,
+	distr::{Distribution, StandardUniform},
+};
 use subtle::{Choice, ConstantTimeEq};
 
-use super::{Divisible, NumCast, Random, UnderlierType, UnderlierWithBitOps};
-use crate::tower_levels::TowerLevel;
+use super::{Divisible, NumCast, UnderlierType, UnderlierWithBitOps};
+use crate::{Random, tower_levels::TowerLevel};
 
 /// A type that represents a pair of elements of the same underlier type.
 /// We use it as an underlier for the `ScaledPackedField` type.
@@ -25,9 +28,9 @@ impl<U: Default, const N: usize> Default for ScaledUnderlier<U, N> {
 	}
 }
 
-impl<U: Random, const N: usize> Random for ScaledUnderlier<U, N> {
-	fn random(mut rng: impl RngCore) -> Self {
-		Self(array::from_fn(|_| U::random(&mut rng)))
+impl<U: Random, const N: usize> Distribution<ScaledUnderlier<U, N>> for StandardUniform {
+	fn sample<R: Rng + ?Sized>(&self, mut rng: &mut R) -> ScaledUnderlier<U, N> {
+		ScaledUnderlier(array::from_fn(|_| U::random(&mut rng)))
 	}
 }
 

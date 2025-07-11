@@ -12,7 +12,10 @@ use binius_utils::{
 	serialization::{assert_enough_data_for, assert_enough_space_for},
 };
 use bytemuck::{Pod, Zeroable};
-use rand::{Rng, RngCore};
+use rand::{
+	Rng,
+	distr::{Distribution, StandardUniform},
+};
 use seq_macro::seq;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
@@ -30,7 +33,7 @@ use crate::{
 	arithmetic_traits::Broadcast,
 	tower_levels::TowerLevel,
 	underlier::{
-		NumCast, Random, SmallU, SpreadToByte, U1, U2, U4, UnderlierType, UnderlierWithBitOps,
+		NumCast, SmallU, SpreadToByte, U1, U2, U4, UnderlierType, UnderlierWithBitOps,
 		WithUnderlier, impl_divisible, impl_iteration, spread_fallback, transpose_128b_values,
 		unpack_hi_128b_fallback, unpack_lo_128b_fallback,
 	},
@@ -318,10 +321,9 @@ impl ConditionallySelectable for M128 {
 	}
 }
 
-impl Random for M128 {
-	fn random(mut rng: impl RngCore) -> Self {
-		let val: u128 = rng.random();
-		val.into()
+impl Distribution<M128> for StandardUniform {
+	fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> M128 {
+		M128(rng.random())
 	}
 }
 

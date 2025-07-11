@@ -3,7 +3,7 @@
 use core::slice;
 use std::iter::repeat_with;
 
-use binius_field::{BinaryField16b, Field};
+use binius_field::{BinaryField16b, Random};
 use binius_transcript::ProverTranscript;
 use binius_verifier::{
 	config::StdChallenger,
@@ -20,9 +20,9 @@ fn test_binary_merkle_vcs_commit_prove_open_correctly() {
 
 	let mr_prover = BinaryMerkleTreeProver::<_, StdDigest, _>::new(StdCompression::default());
 
-	let data = repeat_with(|| Field::random(&mut rng))
+	let data = repeat_with(|| BinaryField16b::random(&mut rng))
 		.take(16)
-		.collect::<Vec<BinaryField16b>>();
+		.collect::<Vec<_>>();
 	let (commitment, tree) = mr_prover.commit(&data, 1).unwrap();
 
 	assert_eq!(commitment.root, tree.root());
@@ -54,9 +54,9 @@ fn test_binary_merkle_vcs_commit_layer_prove_open_correctly() {
 
 	let mr_prover = BinaryMerkleTreeProver::<_, StdDigest, _>::new(StdCompression::default());
 
-	let data = repeat_with(|| Field::random(&mut rng))
+	let data = repeat_with(|| BinaryField16b::random(&mut rng))
 		.take(32)
-		.collect::<Vec<BinaryField16b>>();
+		.collect::<Vec<_>>();
 	let (commitment, tree) = mr_prover.commit(&data, 1).unwrap();
 
 	assert_eq!(commitment.root, tree.root());
@@ -94,9 +94,9 @@ fn test_binary_merkle_vcs_verify_vector() {
 
 	let mr_prover = BinaryMerkleTreeProver::<_, StdDigest, _>::new(StdCompression::default());
 
-	let data = repeat_with(|| Field::random(&mut rng))
+	let data = repeat_with(|| BinaryField16b::random(&mut rng))
 		.take(4)
-		.collect::<Vec<BinaryField16b>>();
+		.collect::<Vec<_>>();
 	let (commitment, _) = mr_prover.commit(&data, 1).unwrap();
 
 	mr_prover

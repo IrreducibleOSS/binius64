@@ -13,12 +13,15 @@ use binius_utils::{
 };
 use bytemuck::{Pod, Zeroable, must_cast};
 use cfg_if::cfg_if;
-use rand::{Rng, RngCore};
+use rand::{
+	Rng,
+	distr::{Distribution, StandardUniform},
+};
 use seq_macro::seq;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
 use crate::{
-	BinaryField,
+	BinaryField, Random,
 	arch::{
 		binary_utils::{as_array_mut, as_array_ref, make_func_to_i8},
 		portable::{
@@ -32,7 +35,7 @@ use crate::{
 	arithmetic_traits::Broadcast,
 	tower_levels::TowerLevel,
 	underlier::{
-		NumCast, Random, SmallU, U1, U2, U4, UnderlierType, UnderlierWithBitOps, WithUnderlier,
+		NumCast, SmallU, U1, U2, U4, UnderlierType, UnderlierWithBitOps, WithUnderlier,
 		get_block_values, get_spread_bytes, impl_divisible, impl_iteration,
 		pair_unpack_lo_hi_128b_lanes, spread_fallback, transpose_128b_blocks_low_to_high,
 		unpack_hi_128b_fallback, unpack_lo_128b_fallback,
@@ -327,8 +330,8 @@ impl ConditionallySelectable for M256 {
 	}
 }
 
-impl Random for M256 {
-	fn random(mut rng: impl RngCore) -> Self {
+impl Distribution<M256> for StandardUniform {
+	fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> M256 {
 		let val: [u128; 2] = rng.random();
 		val.into()
 	}

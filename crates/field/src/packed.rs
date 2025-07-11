@@ -15,10 +15,9 @@ use binius_utils::{
 	random_access_sequence::{RandomAccessSequence, RandomAccessSequenceMut},
 };
 use bytemuck::Zeroable;
-use rand::RngCore;
 
 use super::{
-	Error,
+	Error, Random,
 	arithmetic_traits::{Broadcast, MulAlpha, Square},
 	binary_field_arithmetic::TowerFieldArithmetic,
 };
@@ -57,6 +56,7 @@ pub trait PackedField:
 	+ Send
 	+ Sync
 	+ Zeroable
+	+ Random
 	+ 'static
 {
 	type Scalar: Field;
@@ -151,7 +151,6 @@ pub trait PackedField:
 		result
 	}
 
-	fn random(rng: impl RngCore) -> Self;
 	fn broadcast(scalar: Self::Scalar) -> Self;
 
 	/// Construct a packed field element from a function that returns scalar values by index.
@@ -591,10 +590,6 @@ impl<F: Field> PackedField for F {
 		slice.iter().copied()
 	}
 
-	fn random(rng: impl RngCore) -> Self {
-		<Self as Field>::random(rng)
-	}
-
 	fn interleave(self, _other: Self, _log_block_len: usize) -> (Self, Self) {
 		panic!("cannot interleave when WIDTH = 1");
 	}
@@ -634,7 +629,7 @@ impl<PT> PackedBinaryField for PT where PT: PackedField<Scalar: BinaryField> {}
 #[cfg(test)]
 mod tests {
 	use itertools::Itertools;
-	use rand::{Rng, SeedableRng, rngs::StdRng};
+	use rand::{Rng, RngCore, SeedableRng, rngs::StdRng};
 
 	use super::*;
 	use crate::{
@@ -873,7 +868,7 @@ mod tests {
 
 	fn check_copy_from_scalars<P: PackedField>(mut rng: impl RngCore) {
 		let scalars = (0..100)
-			.map(|_| <<P as PackedField>::Scalar as Field>::random(&mut rng))
+			.map(|_| <<P as PackedField>::Scalar as Random>::random(&mut rng))
 			.collect::<Vec<_>>();
 
 		let mut packed_copy = vec![P::zero(); 100];
@@ -942,7 +937,7 @@ mod tests {
 	#[test]
 	fn check_packed_slice_mut() {
 		let mut rng = StdRng::seed_from_u64(0);
-		let mut random = || <BinaryField8b as Field>::random(&mut rng);
+		let mut random = || BinaryField8b::random(&mut rng);
 
 		let slice: &mut [PackedBinaryField16x8b] = &mut [];
 		let packed_slice = PackedSliceMut::new(slice);

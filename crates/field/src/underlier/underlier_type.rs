@@ -3,8 +3,9 @@
 use std::fmt::Debug;
 
 use bytemuck::{NoUninit, Zeroable};
-use rand::distr::{Distribution, StandardUniform};
 use subtle::ConstantTimeEq;
+
+use crate::Random;
 
 /// Primitive integer underlying a binary field or packed binary field implementation.
 /// Note that this type is not guaranteed to be POD, U1, U2 and U4 have some unused bits.
@@ -158,21 +159,6 @@ unsafe impl<U: UnderlierType> WithUnderlier for U {
 	#[inline]
 	fn from_underliers_ref_mut(val: &mut [Self::Underlier]) -> &mut [Self] {
 		val
-	}
-}
-
-/// A value that can be randomly generated
-pub trait Random {
-	/// Generate random value
-	fn random(rng: impl rand::Rng) -> Self;
-}
-
-impl<T> Random for T
-where
-	StandardUniform: Distribution<T>,
-{
-	fn random(mut rng: impl rand::Rng) -> Self {
-		rng.random()
 	}
 }
 

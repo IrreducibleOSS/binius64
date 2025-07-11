@@ -13,7 +13,6 @@ use binius_utils::{
 	bytes::{Buf, BufMut},
 };
 use bytemuck::{Pod, Zeroable};
-use rand::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
 use super::{
@@ -357,7 +356,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		PackedAESBinaryField4x32b, PackedAESBinaryField8x32b, PackedAESBinaryField16x32b,
-		PackedBinaryField4x32b, PackedBinaryField8x32b, PackedBinaryField16x32b,
+		PackedBinaryField4x32b, PackedBinaryField8x32b, PackedBinaryField16x32b, Random,
 		binary_field::tests::is_binary_field_valid_generator, underlier::WithUnderlier,
 	};
 
@@ -651,11 +650,11 @@ mod tests {
 	fn test_canonical_serialization() {
 		let mut buffer = BytesMut::new();
 		let mut rng = StdRng::seed_from_u64(0);
-		let aes8 = <AESTowerField8b as Field>::random(&mut rng);
-		let aes16 = <AESTowerField16b as Field>::random(&mut rng);
-		let aes32 = <AESTowerField32b as Field>::random(&mut rng);
-		let aes64 = <AESTowerField64b as Field>::random(&mut rng);
-		let aes128 = <AESTowerField128b as Field>::random(&mut rng);
+		let aes8 = AESTowerField8b::random(&mut rng);
+		let aes16 = AESTowerField16b::random(&mut rng);
+		let aes32 = AESTowerField32b::random(&mut rng);
+		let aes64 = AESTowerField64b::random(&mut rng);
+		let aes128 = AESTowerField128b::random(&mut rng);
 
 		let mode = SerializationMode::CanonicalTower;
 

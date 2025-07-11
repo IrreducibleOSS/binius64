@@ -15,7 +15,10 @@ use binius_utils::{
 	iter::IterExtensions,
 };
 use bytemuck::{Pod, TransparentWrapper, Zeroable};
-use rand::{Rng, RngCore};
+use rand::{
+	Rng,
+	distr::{Distribution, StandardUniform},
+};
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
 use super::{
@@ -262,12 +265,14 @@ impl Field for BinaryField128bPolyval {
 	const ONE: Self = Self(0xc2000000000000000000000000000001);
 	const CHARACTERISTIC: usize = 2;
 
-	fn random(mut rng: impl RngCore) -> Self {
-		Self(rng.random())
-	}
-
 	fn double(&self) -> Self {
 		Self(0)
+	}
+}
+
+impl Distribution<BinaryField128bPolyval> for StandardUniform {
+	fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BinaryField128bPolyval {
+		BinaryField128bPolyval(rng.random())
 	}
 }
 
@@ -1081,7 +1086,7 @@ mod tests {
 	use crate::{
 		AESTowerField128b, PackedAESBinaryField1x128b, PackedAESBinaryField2x128b,
 		PackedAESBinaryField4x128b, PackedBinaryField1x128b, PackedBinaryField2x128b,
-		PackedBinaryField4x128b, PackedField,
+		PackedBinaryField4x128b, PackedField, Random,
 		arch::{
 			packed_polyval_256::PackedBinaryPolyval2x128b,
 			packed_polyval_512::PackedBinaryPolyval4x128b,
@@ -1234,8 +1239,8 @@ mod tests {
 		let mut buffer = BytesMut::new();
 		let mut rng = StdRng::seed_from_u64(0);
 
-		let b128_poly1 = <BinaryField128bPolyval as Field>::random(&mut rng);
-		let b128_poly2 = <BinaryField128bPolyval as Field>::random(&mut rng);
+		let b128_poly1 = BinaryField128bPolyval::random(&mut rng);
+		let b128_poly2 = BinaryField128bPolyval::random(&mut rng);
 
 		SerializeBytes::serialize(&b128_poly1, &mut buffer, mode).unwrap();
 		SerializeBytes::serialize(&b128_poly2, &mut buffer, mode).unwrap();

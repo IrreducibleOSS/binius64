@@ -464,7 +464,7 @@ mod tests {
 
 	use assert_matches::assert_matches;
 	use binius_field::{
-		BinaryField8b, BinaryField16b, Field, PackedBinaryField8x16b, PackedFieldIndexable,
+		BinaryField8b, BinaryField16b, Field, PackedBinaryField8x16b, PackedFieldIndexable, Random,
 	};
 	use rand::{SeedableRng, rngs::StdRng};
 
@@ -504,7 +504,7 @@ mod tests {
 		let ntt = SingleThreadedNTT::<BinaryField16b>::new(log_len + 2).unwrap();
 
 		let mut rng = StdRng::seed_from_u64(0);
-		let msg = repeat_with(|| <BinaryField16b as Field>::random(&mut rng))
+		let msg = repeat_with(|| BinaryField16b::random(&mut rng))
 			.take(1 << log_len)
 			.collect::<Vec<_>>();
 

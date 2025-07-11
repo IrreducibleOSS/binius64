@@ -12,7 +12,10 @@ use binius_utils::{
 	checked_arithmetics::checked_log_2,
 };
 use bytemuck::{Pod, TransparentWrapper, Zeroable};
-use rand::RngCore;
+use rand::{
+	Rng,
+	distr::{Distribution, StandardUniform},
+};
 use subtle::ConstantTimeEq;
 
 use crate::{
@@ -295,10 +298,6 @@ where
 		Self(array::from_fn(|_| PT::zero()))
 	}
 
-	fn random(mut rng: impl RngCore) -> Self {
-		Self(array::from_fn(|_| PT::random(&mut rng)))
-	}
-
 	#[inline]
 	fn broadcast(scalar: Self::Scalar) -> Self {
 		Self(array::from_fn(|_| PT::broadcast(scalar)))
@@ -389,6 +388,15 @@ where
 			unsafe { std::slice::from_raw_parts(slice.as_ptr() as *const [PT; N], slice.len()) };
 
 		PT::iter_slice(cast_slice.as_flattened())
+	}
+}
+
+impl<PT: PackedField, const N: usize> Distribution<ScaledPackedField<PT, N>> for StandardUniform
+where
+	[PT; N]: Default,
+{
+	fn sample<R: Rng + ?Sized>(&self, mut rng: &mut R) -> ScaledPackedField<PT, N> {
+		ScaledPackedField(array::from_fn(|_| PT::random(&mut rng)))
 	}
 }
 

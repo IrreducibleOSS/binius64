@@ -8,9 +8,9 @@ use std::{
 };
 
 use binius_utils::{DeserializeBytes, SerializeBytes};
-use rand::RngCore;
 
 use crate::{
+	Random,
 	arithmetic_traits::{InvertOrZero, Square},
 	as_packed_field::PackScalar,
 	underlier::WithUnderlier,
@@ -48,6 +48,7 @@ pub trait Field:
 	+ for<'a> MulAssign<&'a Self>
 	+ Square
 	+ InvertOrZero
+	+ Random
 	// `Underlier: PackScalar<Self>` is an obvious property but it can't be deduced by the compiler so we are id here.
 	+ WithUnderlier<Underlier: PackScalar<Self>>
 	+ SerializeBytes
@@ -61,9 +62,6 @@ pub trait Field:
 
 	/// The characteristic of the field.
 	const CHARACTERISTIC: usize;
-
-	/// Returns an element chosen uniformly at random using a user-provided RNG.
-	fn random(rng: impl RngCore) -> Self;
 
 	/// Returns true iff this element is zero.
 	fn is_zero(&self) -> bool {

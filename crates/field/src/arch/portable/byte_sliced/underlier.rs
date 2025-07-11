@@ -2,10 +2,16 @@
 
 use binius_utils::checked_arithmetics::checked_log_2;
 use bytemuck::{Pod, Zeroable};
-use rand::RngCore;
+use rand::{
+	Rng,
+	distr::{Distribution, StandardUniform},
+};
 use subtle::{Choice, ConstantTimeEq};
 
-use crate::underlier::{Random, ScaledUnderlier, UnderlierType};
+use crate::{
+	Random,
+	underlier::{ScaledUnderlier, UnderlierType},
+};
 
 /// Unerlier for byte-sliced fields. Even though it may seem to be equivalent to
 /// `ScaledUnderlier<U, N>`, it is not. The difference is in order of bytes,
@@ -14,9 +20,9 @@ use crate::underlier::{Random, ScaledUnderlier, UnderlierType};
 #[repr(transparent)]
 pub struct ByteSlicedUnderlier<U, const N: usize>(ScaledUnderlier<U, N>);
 
-impl<U: Random, const N: usize> Random for ByteSlicedUnderlier<U, N> {
-	fn random(mut rng: impl RngCore) -> Self {
-		Self(Random::random(&mut rng))
+impl<U: Random, const N: usize> Distribution<ByteSlicedUnderlier<U, N>> for StandardUniform {
+	fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ByteSlicedUnderlier<U, N> {
+		ByteSlicedUnderlier(rng.random())
 	}
 }
 

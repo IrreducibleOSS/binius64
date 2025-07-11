@@ -168,14 +168,16 @@ macro_rules! benchmark_packed_operation {
             #[allow(non_snake_case)]
 			#[inline(never)]
             fn $packed_field(c: &mut criterion::Criterion) {
+				use binius_field::Random;
+
                 let mut group = c.benchmark_group(format!("{}/{}", stringify!($op_name), stringify!($packed_field)));
                 group.warm_up_time(core::time::Duration::from_secs(1));
                 group.measurement_time(core::time::Duration::from_secs(3));
                 group.throughput(criterion::Throughput::Elements((<$packed_field as binius_field::PackedField>::WIDTH *  $crate::packed_field_utils::BATCH_SIZE) as _));
 
                 let mut rng = rand::rng();
-                let a: $crate::packed_field_utils::Batch<$packed_field> = std::array::from_fn(|_| <$packed_field as binius_field::PackedField>::random(&mut rng));
-                let b: $crate::packed_field_utils::Batch<$packed_field> = std::array::from_fn(|_| <$packed_field as binius_field::PackedField>::random(&mut rng));
+                let a: $crate::packed_field_utils::Batch<$packed_field> = std::array::from_fn(|_| <$packed_field>::random(&mut rng));
+                let b: $crate::packed_field_utils::Batch<$packed_field> = std::array::from_fn(|_| <$packed_field>::random(&mut rng));
 
                 benchmark_packed_operation!(@run_func group, $packed_field, a, b, op_name @ $op_name, strategies @ $strategies);
 

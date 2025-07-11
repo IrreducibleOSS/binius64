@@ -12,7 +12,10 @@ use binius_utils::{
 };
 use bytemuck::{Pod, Zeroable};
 use derive_more::Not;
-use rand::RngCore;
+use rand::{
+	Rng,
+	distr::{Distribution, StandardUniform},
+};
 use seq_macro::seq;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
@@ -21,12 +24,12 @@ use super::super::portable::{
 	packed_arithmetic::{UnderlierWithBitConstants, interleave_mask_even, interleave_mask_odd},
 };
 use crate::{
-	BinaryField,
+	BinaryField, Random,
 	arch::binary_utils::{as_array_mut, as_array_ref},
 	arithmetic_traits::Broadcast,
 	tower_levels::TowerLevel,
 	underlier::{
-		NumCast, Random, SmallU, U1, U2, U4, UnderlierType, UnderlierWithBitOps, WithUnderlier,
+		NumCast, SmallU, U1, U2, U4, UnderlierType, UnderlierWithBitOps, WithUnderlier,
 		impl_divisible, impl_iteration, transpose_128b_values, unpack_lo_128b_fallback,
 	},
 };
@@ -266,9 +269,9 @@ impl ConditionallySelectable for M128 {
 	}
 }
 
-impl Random for M128 {
-	fn random(rng: impl RngCore) -> Self {
-		Self(u128::random(rng))
+impl Distribution<M128> for StandardUniform {
+	fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> M128 {
+		M128(rng.random())
 	}
 }
 

@@ -156,11 +156,6 @@ macro_rules! define_byte_sliced_3d {
 				}
 			}
 
-			fn random(mut rng: impl rand::RngCore) -> Self {
-				let data = array::from_fn(|_| array::from_fn(|_| <$packed_storage>::random(&mut rng)));
-				Self { data }
-			}
-
 			#[allow(unreachable_patterns)]
 			#[inline]
 			fn broadcast(scalar: Self::Scalar) -> Self {
@@ -283,6 +278,14 @@ macro_rules! define_byte_sliced_3d {
 			}
 
 			impl_spread!($name, $scalar_type, $packed_storage, $storage_tower_level);
+		}
+
+		impl ::rand::distr::Distribution<$name> for ::rand::distr::StandardUniform {
+			fn sample<R: ::rand::Rng + ?Sized>(&self, mut rng: &mut R) -> $name {
+				use $crate::Random;
+				let data = array::from_fn(|_| array::from_fn(|_| <$packed_storage>::random(&mut rng)));
+				$name { data }
+			}
 		}
 
 		impl Mul for $name {
@@ -733,11 +736,6 @@ macro_rules! define_byte_sliced_3d_1b {
 				}
 			}
 
-			fn random(mut rng: impl rand::RngCore) -> Self {
-				let data = array::from_fn(|_| <$packed_storage>::random(&mut rng));
-				Self { data }
-			}
-
 			impl_init_with_transpose!($packed_storage, BinaryField1b, $storage_tower_level);
 
 			// Benchmarks show that transposing before the iteration makes it slower for 1b case,
@@ -840,6 +838,14 @@ macro_rules! define_byte_sliced_3d_1b {
 			}
 
 			impl_spread!($name, BinaryField1b, $packed_storage, $storage_tower_level);
+		}
+
+		impl ::rand::distr::Distribution<$name> for ::rand::distr::StandardUniform {
+			fn sample<R: ::rand::Rng + ?Sized>(&self, mut rng: &mut R) -> $name {
+				use $crate::Random;
+				let data = array::from_fn(|_| <$packed_storage>::random(&mut rng));
+				$name { data }
+			}
 		}
 
 		impl Mul for $name {

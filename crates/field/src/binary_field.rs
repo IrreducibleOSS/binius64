@@ -12,7 +12,6 @@ use binius_utils::{
 	bytes::{Buf, BufMut},
 };
 use bytemuck::{Pod, Zeroable};
-use rand::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
 use super::{
@@ -317,12 +316,14 @@ macro_rules! binary_field {
 			const ONE: Self = $name::new(<$typ as $crate::underlier::UnderlierWithBitOps>::ONE);
 			const CHARACTERISTIC: usize = 2;
 
-			fn random(mut rng: impl RngCore) -> Self {
-				Self(<$typ as $crate::underlier::Random>::random(&mut rng))
-			}
-
 			fn double(&self) -> Self {
 				Self::ZERO
+			}
+		}
+
+		impl ::rand::distr::Distribution<$name> for ::rand::distr::StandardUniform {
+			fn sample<R: ::rand::Rng + ?Sized>(&self, rng: &mut R) -> $name {
+				$name(rng.random())
 			}
 		}
 

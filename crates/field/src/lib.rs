@@ -28,6 +28,7 @@ pub mod packed_extension;
 pub mod packed_extension_ops;
 mod packed_polyval;
 pub mod polyval;
+mod random;
 #[cfg(test)]
 mod tests;
 pub mod tower;
@@ -50,4 +51,5 @@ pub use packed_extension::*;
 pub use packed_extension_ops::*;
 pub use packed_polyval::*;
 pub use polyval::*;
+pub use random::Random;
 pub use transpose::{Error as TransposeError, square_transpose};

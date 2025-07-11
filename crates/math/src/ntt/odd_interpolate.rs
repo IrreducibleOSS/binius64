@@ -154,7 +154,7 @@ where
 mod tests {
 	use std::iter::repeat_with;
 
-	use binius_field::{BinaryField32b, Field};
+	use binius_field::{BinaryField32b, Field, Random};
 	use binius_utils::checked_arithmetics::log2_ceil_usize;
 	use rand::{SeedableRng, rngs::StdRng};
 

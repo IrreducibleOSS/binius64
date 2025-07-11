@@ -15,7 +15,10 @@ use std::{
 
 use binius_utils::{checked_arithmetics::checked_int_div, iter::IterExtensions};
 use bytemuck::{Pod, TransparentWrapper, Zeroable};
-use rand::RngCore;
+use rand::{
+	Rng,
+	distr::{Distribution, StandardUniform},
+};
 use subtle::{Choice, ConstantTimeEq};
 
 use super::packed_arithmetic::UnderlierWithBitConstants;
@@ -308,10 +311,6 @@ where
 		Self::from_underlier(U::ZERO)
 	}
 
-	fn random(rng: impl RngCore) -> Self {
-		U::random(rng).into()
-	}
-
 	#[inline]
 	fn iter(&self) -> impl Iterator<Item = Self::Scalar> + Send + Clone + '_ {
 		IterationMethods::<Scalar::Underlier, U>::ref_iter(&self.0)
@@ -381,6 +380,14 @@ where
 	#[inline]
 	fn invert_or_zero(self) -> Self {
 		<Self as InvertOrZero>::invert_or_zero(self)
+	}
+}
+
+impl<U: UnderlierType, Scalar: BinaryField> Distribution<PackedPrimitiveType<U, Scalar>>
+	for StandardUniform
+{
+	fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PackedPrimitiveType<U, Scalar> {
+		PackedPrimitiveType::from_underlier(U::random(rng))
 	}
 }
 

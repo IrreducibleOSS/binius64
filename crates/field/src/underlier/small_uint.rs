@@ -14,10 +14,13 @@ use binius_utils::{
 };
 use bytemuck::{NoUninit, Zeroable};
 use derive_more::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign};
-use rand::Rng;
+use rand::{
+	Rng,
+	distr::{Distribution, StandardUniform},
+};
 use subtle::{ConditionallySelectable, ConstantTimeEq};
 
-use super::{Random, UnderlierType, underlier_with_bit_ops::UnderlierWithBitOps};
+use super::{UnderlierType, underlier_with_bit_ops::UnderlierWithBitOps};
 
 /// Unsigned type with a size strictly less than 8 bits.
 #[derive(
@@ -108,9 +111,9 @@ impl<const N: usize> ConditionallySelectable for SmallU<N> {
 	}
 }
 
-impl<const N: usize> Random for SmallU<N> {
-	fn random(mut rng: impl Rng) -> Self {
-		Self(rng.random_range(0..1u8 << N))
+impl<const N: usize> Distribution<SmallU<N>> for StandardUniform {
+	fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SmallU<N> {
+		SmallU(rng.random_range(0..1u8 << N))
 	}
 }
 

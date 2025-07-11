@@ -3,7 +3,7 @@
 use std::array;
 
 use binius_field::{
-	PackedField,
+	PackedField, Random,
 	arch::{byte_sliced::*, packed_128::*, packed_256::*, packed_512::*},
 };
 use criterion::{

@@ -2,7 +2,7 @@
 
 use std::iter::repeat_with;
 
-use binius_field::Field;
+use binius_field::Random;
 use binius_prover::merkle_tree::{MerkleTreeProver, prover::BinaryMerkleTreeProver};
 use binius_verifier::{
 	fields::B64,
@@ -23,9 +23,9 @@ where
 {
 	let merkle_prover = BinaryMerkleTreeProver::<_, H, C>::new(compression);
 	let mut rng = rand::rng();
-	let data: Vec<F> = repeat_with(|| Field::random(&mut rng))
+	let data = repeat_with(|| F::random(&mut rng))
 		.take(1 << (LOG_ELEMS + LOG_ELEMS_IN_LEAF))
-		.collect();
+		.collect::<Vec<_>>();
 	let mut group = c.benchmark_group(format!("slow/merkle_tree/{hash_name}"));
 	group.throughput(Throughput::Bytes(
 		((1 << (LOG_ELEMS + LOG_ELEMS_IN_LEAF)) * std::mem::size_of::<F>()) as u64,
