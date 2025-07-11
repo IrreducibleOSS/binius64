@@ -75,14 +75,14 @@ MUL(A, B, HI, LO) constrains: A \* B = (HI << 64) | LO, where A, B, HI, LO are o
 
 | Item                             | Symbol  | Relative cost |
 | -------------------------------- | ------- | ------------- |
-| Bitwise **AND** constraint       | `nand`  | 1             |
-| 64 × 64 → 128 **MUL** constraint | `nmul`  | μ≈200         |
+| Bitwise **AND** constraint       | `num_and`  | 1             |
+| 64 × 64 → 128 **MUL** constraint | `num_mul`  | μ≈8         |
 | Commit **one 64‑bit word**       | `cword` | 0.2 ≈ 1⁄5 AND |
 
 Total prover work (rough):
 
 ```
-cost ≈ nand + μ·nmul + 0.2·ncommit
+cost ≈ num_and + μ·num_mul + 0.2·ncommit
 where   ncommit = ninout + nwitness
 ```
 
@@ -97,24 +97,6 @@ where   ncommit = ninout + nwitness
 `cword` captures Merkle/digest bandwidth; five committed words cost about the same as one AND gate.
 
 ---
-
-###  Common arithmetizations
-
-Gate counts assume *stand‑alone* results (i.e. the output word is needed later). If you merely use an expression **inside another gate**, you can inline its XOR/shift form and pay no extra cost.
-
-| Intended op          | Constraints / recipe                                                                                          | Gates     |
-| -------------------- | ------------------------------------------------------------------------------------------------------------- | --------- |
-| `z = x & y`          | single AND                                                                                                    | 1         |
-| `z = x ^ y`          | `(x ^ y) & all‑1 = z`                                                                                         | 1         |
-| `z = x \| y`         | `(x&y) ^ x ^ y = z` (inline XORs)                                                                             | 1         |
-| `¬x`                 | `(x ^ 0xFFFF…) & all‑1 = z`                                                                                   | 1         |
-| 64‑bit **add**       | 1. (x XOR (cout << 1)) AND (y XOR (cout << 1)) = (cout << 1) XOR cout 2. (x XOR y XOR (cout << 1)) AND \_ = z | 2         |
-| `x == y`             | `(x^y) & (all‑1) = 0`                                                                                         | 1         |
-| `z = sel ? a : b`    | two ANDs + XOR                                                                                                | 2         |
-| `<` / `≤`            | diff (1 AND) + MSB extraction (0–1 AND)                                                                       | 1–2       |
-| `z = c · x` (const)  | `k = popcount(c)−1` adds (≤ 63) **or** 1 MUL                                                                  | ≤ 63 or μ |
-| 64‑bit **mul**       | tuple `(a,b,hi,lo)`                                                                                           | 1 MUL (μ) |
-| Modular mul / invert | compose MULs + adds                                                                                           | many MULs |
 
 ---
 
