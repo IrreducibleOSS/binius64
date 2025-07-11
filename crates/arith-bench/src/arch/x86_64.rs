@@ -30,6 +30,12 @@ impl Underlier for __m128i {
 			_mm_movemask_epi8(cmp) == 0xFFFF
 		}
 	}
+
+	fn random(mut rng: impl rand::RngCore) -> Self {
+		let mut bytes = [0u8; 16];
+		rng.fill_bytes(&mut bytes);
+		unsafe { _mm_loadu_si128(bytes.as_ptr() as *const __m128i) }
+	}
 }
 
 #[cfg(target_feature = "sse2")]
@@ -164,10 +170,7 @@ impl crate::underlier::OpsClmul for __m128i {
 	#[inline]
 	fn extract_hi_lo_64(a: Self, b: Self) -> Self {
 		unsafe {
-			_mm_castps_si128(_mm_shuffle_ps::<0x4E>(
-				_mm_castsi128_ps(a),
-				_mm_castsi128_ps(b),
-			))
+			_mm_castps_si128(_mm_shuffle_ps::<0x4E>(_mm_castsi128_ps(a), _mm_castsi128_ps(b)))
 		}
 	}
 
@@ -228,6 +231,12 @@ impl Underlier for __m256i {
 			let cmp = _mm256_cmpeq_epi8(a, b);
 			_mm256_movemask_epi8(cmp) as u32 == 0xFFFFFFFF
 		}
+	}
+
+	fn random(mut rng: impl rand::RngCore) -> Self {
+		let mut bytes = [0u8; 32];
+		rng.fill_bytes(&mut bytes);
+		unsafe { _mm256_loadu_si256(bytes.as_ptr() as *const __m256i) }
 	}
 }
 
@@ -349,7 +358,7 @@ impl PackedUnderlier<u128> for __m256i {
 		unsafe {
 			seq!(N in 0..2 {
 				match index {
-					#(N => std::mem::transmute(_mm256_extracti128_si256::<N>(self)),)*
+					#(N => std::mem::transmute::<__m128i, u128>(_mm256_extracti128_si256::<N>(self)),)*
 					_ => unreachable!(),
 				}
 			})
@@ -610,7 +619,7 @@ mod tests {
 			a in arb_m128i(),
 			b in arb_m128i()
 		) {
-			test_mul_commutative(a, b, |x, y| crate::underlier::OpsGfni::gf2p8mul(x, y), "GF(2^8)");
+			test_mul_commutative(a, b, crate::underlier::OpsGfni::gf2p8mul, "GF(2^8)");
 		}
 
 		#[test]
@@ -620,7 +629,7 @@ mod tests {
 			b in arb_m128i(),
 			c in arb_m128i()
 		) {
-			test_mul_associative(a, b, c, |x, y| crate::underlier::OpsGfni::gf2p8mul(x, y), "GF(2^8)");
+			test_mul_associative(a, b, c, crate::underlier::OpsGfni::gf2p8mul, "GF(2^8)");
 		}
 
 		#[test]
@@ -630,7 +639,7 @@ mod tests {
 			b in arb_m128i(),
 			c in arb_m128i()
 		) {
-			test_mul_distributive(a, b, c, |x, y| crate::underlier::OpsGfni::gf2p8mul(x, y), "GF(2^8)");
+			test_mul_distributive(a, b, c, crate::underlier::OpsGfni::gf2p8mul, "GF(2^8)");
 		}
 
 		#[test]
@@ -648,7 +657,7 @@ mod tests {
 			a in arb_m256i(),
 			b in arb_m256i()
 		) {
-			test_mul_commutative(a, b, |x, y| crate::underlier::OpsGfni::gf2p8mul(x, y), "GF(2^8)");
+			test_mul_commutative(a, b, crate::underlier::OpsGfni::gf2p8mul, "GF(2^8)");
 		}
 
 		#[test]
@@ -658,7 +667,7 @@ mod tests {
 			b in arb_m256i(),
 			c in arb_m256i()
 		) {
-			test_mul_associative(a, b, c, |x, y| crate::underlier::OpsGfni::gf2p8mul(x, y), "GF(2^8)");
+			test_mul_associative(a, b, c, crate::underlier::OpsGfni::gf2p8mul, "GF(2^8)");
 		}
 
 		#[test]
@@ -668,7 +677,7 @@ mod tests {
 			b in arb_m256i(),
 			c in arb_m256i()
 		) {
-			test_mul_distributive(a, b, c, |x, y| crate::underlier::OpsGfni::gf2p8mul(x, y), "GF(2^8)");
+			test_mul_distributive(a, b, c, crate::underlier::OpsGfni::gf2p8mul, "GF(2^8)");
 		}
 
 		#[test]

@@ -29,6 +29,13 @@ impl Underlier for uint64x2_t {
 			vgetq_lane_u64(cmp, 0) == u64::MAX && vgetq_lane_u64(cmp, 1) == u64::MAX
 		}
 	}
+
+	fn random(mut rng: impl rand::RngCore) -> Self {
+		use rand::Rng;
+
+		let value: u128 = rng.random();
+		unsafe { std::mem::transmute::<_, uint64x2_t>(value) }
+	}
 }
 
 impl PackedUnderlier<u64> for uint64x2_t {
@@ -132,60 +139,41 @@ impl crate::underlier::OpsClmul for uint64x2_t {
 	#[inline]
 	fn clmulepi64<const IMM8: i32>(a: Self, b: Self) -> Self {
 		let result = match IMM8 {
-            0x00 => {
-                unsafe { vmull_p64(vgetq_lane_u64(a, 0), vgetq_lane_u64(b, 0)) }
-            }
-            0x11 => {
-                unsafe { vmull_p64(vgetq_lane_u64(a, 1), vgetq_lane_u64(b, 1)) }
-            }
-            0x10 => {
-                unsafe { vmull_p64(vgetq_lane_u64(a, 0), vgetq_lane_u64(b, 1)) }
-            }
-            0x01 => {
-                unsafe { vmull_p64(vgetq_lane_u64(a, 1), vgetq_lane_u64(b, 0)) }
-            }
-            _ => panic!("Unsupported IMM8 value for clmulepi64"),
-        };
+			0x00 => unsafe { vmull_p64(vgetq_lane_u64(a, 0), vgetq_lane_u64(b, 0)) },
+			0x11 => unsafe { vmull_p64(vgetq_lane_u64(a, 1), vgetq_lane_u64(b, 1)) },
+			0x10 => unsafe { vmull_p64(vgetq_lane_u64(a, 0), vgetq_lane_u64(b, 1)) },
+			0x01 => unsafe { vmull_p64(vgetq_lane_u64(a, 1), vgetq_lane_u64(b, 0)) },
+			_ => panic!("Unsupported IMM8 value for clmulepi64"),
+		};
 
-        unsafe { std::mem::transmute(result) }
+		unsafe { std::mem::transmute(result) }
 	}
 
 	#[inline]
 	fn duplicate_hi_64(a: Self) -> Self {
-        unsafe {
-            vdupq_n_u64(vgetq_lane_u64(a, 1))
-        }
-    }
-
-    #[inline]
-    fn swap_hi_lo_64(a: Self) -> Self {
-        unsafe {
-            vextq_u64(a, a, 1)
-        }
-    }
-
-    #[inline]
-    fn extract_hi_lo_64(a: Self, b: Self) -> Self {
-        unsafe {
-            vcombine_u64(
-                vcreate_u64(vgetq_lane_u64(a, 1)),
-                vcreate_u64(vgetq_lane_u64(b, 0)),
-            )
-        }
-    }
+		unsafe { vdupq_n_u64(vgetq_lane_u64(a, 1)) }
+	}
 
 	#[inline]
-	fn unpacklo_epi64(a: Self, b: Self) -> Self {
+	fn swap_hi_lo_64(a: Self) -> Self {
+		unsafe { vextq_u64(a, a, 1) }
+	}
+
+	#[inline]
+	fn extract_hi_lo_64(a: Self, b: Self) -> Self {
 		unsafe {
-			vzip1q_u64(a, b)
+			vcombine_u64(vcreate_u64(vgetq_lane_u64(a, 1)), vcreate_u64(vgetq_lane_u64(b, 0)))
 		}
 	}
 
 	#[inline]
+	fn unpacklo_epi64(a: Self, b: Self) -> Self {
+		unsafe { vzip1q_u64(a, b) }
+	}
+
+	#[inline]
 	fn unpackhi_epi64(a: Self, b: Self) -> Self {
-		unsafe {
-			vzip2q_u64(a, b)
-		}
+		unsafe { vzip2q_u64(a, b) }
 	}
 
 	#[inline]
@@ -195,11 +183,11 @@ impl crate::underlier::OpsClmul for uint64x2_t {
 			match IMM8 {
 				0 => a,
 				1..16 => {
-                    let a_bytes: uint8x16_t = std::mem::transmute(a);
-                    let zero: uint8x16_t = vdupq_n_u8(0);
-                    let shifted: uint8x16_t = vextq_u8::<IMM8>(zero, a_bytes);
-                    std::mem::transmute(shifted)
-                }
+					let a_bytes: uint8x16_t = std::mem::transmute(a);
+					let zero: uint8x16_t = vdupq_n_u8(0);
+					let shifted: uint8x16_t = vextq_u8::<IMM8>(zero, a_bytes);
+					std::mem::transmute(shifted)
+				}
 				16.. => vdupq_n_u64(0),
 				_ => {
 					// For other byte shifts, use a more complex approach
@@ -218,12 +206,12 @@ impl crate::underlier::OpsClmul for uint64x2_t {
 	#[inline]
 	fn movepi64_mask(a: Self) -> Self {
 		unsafe {
-            let a = std::mem::transmute(a);
-            // Get the odd lanes (upper 32 bits of each 64-bit element)
-            let odd_lanes = vtrn2q_u32(a, a);
-            // Arithmetic shift right to broadcast the sign bit
-            std::mem::transmute(vshrq_n_s32(std::mem::transmute(odd_lanes), 31))
-        }
+			let a = std::mem::transmute(a);
+			// Get the odd lanes (upper 32 bits of each 64-bit element)
+			let odd_lanes = vtrn2q_u32(a, a);
+			// Arithmetic shift right to broadcast the sign bit
+			std::mem::transmute(vshrq_n_s32(std::mem::transmute(odd_lanes), 31))
+		}
 	}
 }
 
@@ -232,16 +220,22 @@ mod tests {
 	use proptest::prelude::*;
 
 	use super::*;
-	use crate::ghash::{GHASH_ONE, mul_clmul as ghash_mul};
-	use crate::monbijou::{
-		MONBIJOU_128B_ONE, MONBIJOU_ONE, mul_128b_clmul as monbijou_128b_mul,
-		mul_clmul as monbijou_mul,
+	use crate::{
+		ghash::{GHASH_ONE, mul_clmul as ghash_mul},
+		monbijou::{
+			MONBIJOU_128B_ONE, MONBIJOU_ONE, mul_128b_clmul as monbijou_128b_mul,
+			mul_clmul as monbijou_mul,
+		},
+		polyval::{MONTGOMERY_ONE, mul_clmul as polyval_mul},
+		test_utils::{
+			arb_get_set_op,
+			multiplication_tests::{
+				test_mul_associative, test_mul_commutative, test_mul_distributive,
+				test_mul_identity,
+			},
+			test_packed_underlier_get_set_behaves_like_vec,
+		},
 	};
-	use crate::polyval::{MONTGOMERY_ONE, mul_clmul as polyval_mul};
-	use crate::test_utils::multiplication_tests::{
-		test_mul_associative, test_mul_commutative, test_mul_distributive, test_mul_identity,
-	};
-	use crate::test_utils::{arb_get_set_op, test_packed_underlier_get_set_behaves_like_vec};
 
 	// Strategy for generating uint64x2_t values
 	fn arb_uint64x2_t() -> impl Strategy<Value = uint64x2_t> {
@@ -466,7 +460,8 @@ mod tests {
 			assert_eq!(vgetq_lane_u64(zero_result, 1), 0);
 
 			// Test equality
-			let a_copy = vsetq_lane_u64(0xDEADBEEF, vsetq_lane_u64(0x12345678, vdupq_n_u64(0), 0), 1);
+			let a_copy =
+				vsetq_lane_u64(0xDEADBEEF, vsetq_lane_u64(0x12345678, vdupq_n_u64(0), 0), 1);
 			assert!(<uint64x2_t as Underlier>::is_equal(a, a_copy));
 			assert!(!<uint64x2_t as Underlier>::is_equal(a, b));
 		}
@@ -505,4 +500,3 @@ mod tests {
 		}
 	}
 }
-

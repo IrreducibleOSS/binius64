@@ -1,11 +1,11 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 
-use std::{
-	arch::x86_64::{__m128i, __m256i},
-	array,
-	hint::black_box,
-};
+#[cfg(target_arch = "aarch64")]
+use std::arch::aarch64::uint64x2_t;
+#[cfg(target_arch = "x86_64")]
+use std::arch::x86_64::{__m128i, __m256i};
+use std::{array, hint::black_box};
 
 use binius_arith_bench::Underlier;
 use criterion::{BenchmarkGroup, Criterion, Throughput, criterion_group, criterion_main};
@@ -28,11 +28,10 @@ fn run_google_mul_benchmark<U, R>(
 ) where
 	U: Underlier,
 	R: Rng,
-	StandardUniform: Distribution<U>,
 {
 	const N: usize = 100;
 
-	let x = rng.random::<U>();
+	let x = U::random(rng);
 	let mut y = [U::zero(); N];
 
 	// Calculate throughput based on elements per underlier
@@ -68,17 +67,17 @@ fn run_google_mul_benchmark<U, R>(
 /// strided pairs of elements in place. The stride is half of the length of the array, so that when
 /// the array is large enough, the instructions can be efficiently pipelined. The number of passes
 /// controls the density of multiplications per iteration.
+/// Generic benchmark helper for multiplication operations
 fn run_mul_benchmark<T, R>(
 	group: &mut BenchmarkGroup<'_, criterion::measurement::WallTime>,
 	name: &str,
 	mul_fn: fn(T, T) -> T,
-	rng: &mut R,
+	mut rng: R,
 	element_bits: usize,
 	underlier_bits: usize,
 ) where
-	T: Copy,
+	T: Underlier,
 	R: Rng,
-	StandardUniform: Distribution<T>,
 {
 	/// The size of the field element array to process. Values too small limit pipelined
 	/// parallelism.
@@ -88,7 +87,7 @@ fn run_mul_benchmark<T, R>(
 	const N_PASSES: usize = 64;
 
 	// Generate random elements that are to be multiplied.
-	let mut batch: [T; BATCH_SIZE] = array::from_fn(|_| rng.random());
+	let mut batch: [T; BATCH_SIZE] = array::from_fn(|_| T::random(&mut rng));
 
 	// Calculate throughput based on elements per underlier
 	let elements_per_underlier = underlier_bits / element_bits;
@@ -181,6 +180,23 @@ fn bench_polyval(c: &mut Criterion) {
 		);
 	}
 
+	// Benchmark uint64x2_t (AARCH64 NEON)
+	#[cfg(all(
+		target_arch = "aarch64",
+		target_feature = "neon",
+		target_feature = "aes"
+	))]
+	{
+		run_mul_benchmark(
+			&mut group,
+			"mul_clmul::uint64x2_t",
+			mul_clmul::<uint64x2_t>,
+			&mut rng,
+			128,
+			uint64x2_t::BITS,
+		);
+	}
+
 	group.finish();
 }
 
@@ -223,6 +239,23 @@ fn bench_ghash(c: &mut Criterion) {
 		);
 	}
 
+	// Benchmark uint64x2_t (AARCH64 NEON)
+	#[cfg(all(
+		target_arch = "aarch64",
+		target_feature = "neon",
+		target_feature = "aes"
+	))]
+	{
+		run_mul_benchmark(
+			&mut group,
+			"mul_clmul::uint64x2_t",
+			mul_clmul::<uint64x2_t>,
+			&mut rng,
+			128,
+			uint64x2_t::BITS,
+		);
+	}
+
 	group.finish();
 
 	let mut group = c.benchmark_group("ghash_google_mul_clmul");
@@ -257,6 +290,23 @@ fn bench_ghash(c: &mut Criterion) {
 		);
 	}
 
+	// Benchmark uint64x2_t (AARCH64 NEON)
+	#[cfg(all(
+		target_arch = "aarch64",
+		target_feature = "neon",
+		target_feature = "aes"
+	))]
+	{
+		run_google_mul_benchmark(
+			&mut group,
+			"mul_clmul::uint64x2_t",
+			mul_clmul::<uint64x2_t>,
+			&mut rng,
+			128,
+			uint64x2_t::BITS,
+		);
+	}
+
 	group.finish();
 }
 
@@ -267,7 +317,7 @@ fn bench_monbijou(c: &mut Criterion) {
 
 	let mut rng = rand::rng();
 
-	let mut group = c.benchmark_group("monbijou_mul_clmul");
+	let mut group = c.benchmark_group("monbijou_64b_mul_clmul");
 
 	// Benchmark __m128i
 	#[cfg(all(target_feature = "pclmulqdq", target_feature = "sse2"))]
@@ -296,6 +346,23 @@ fn bench_monbijou(c: &mut Criterion) {
 			&mut rng,
 			64,
 			__m256i::BITS,
+		);
+	}
+
+	// Benchmark uint64x2_t (AARCH64 NEON)
+	#[cfg(all(
+		target_arch = "aarch64",
+		target_feature = "neon",
+		target_feature = "aes"
+	))]
+	{
+		run_mul_benchmark(
+			&mut group,
+			"mul_clmul::uint64x2_t",
+			mul_clmul::<uint64x2_t>,
+			&mut rng,
+			64,
+			uint64x2_t::BITS,
 		);
 	}
 
@@ -338,6 +405,23 @@ fn bench_monbijou_128b(c: &mut Criterion) {
 			&mut rng,
 			128,
 			__m256i::BITS,
+		);
+	}
+
+	// Benchmark uint64x2_t (AARCH64 NEON)
+	#[cfg(all(
+		target_arch = "aarch64",
+		target_feature = "neon",
+		target_feature = "aes"
+	))]
+	{
+		run_mul_benchmark(
+			&mut group,
+			"mul_128b_clmul::uint64x2_t",
+			mul_128b_clmul::<uint64x2_t>,
+			&mut rng,
+			128,
+			uint64x2_t::BITS,
 		);
 	}
 

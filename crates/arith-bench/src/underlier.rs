@@ -1,5 +1,7 @@
 use std::fmt::Debug;
 
+use rand::RngCore;
+
 /// A type that supports bitwise operations and has a known bit width.
 ///
 /// Underliers are the basic building blocks for field arithmetic operations,
@@ -23,6 +25,9 @@ pub trait Underlier: Sized + Clone + Copy + Debug {
 
 	/// Checks if two underlier values are equal.
 	fn is_equal(a: Self, b: Self) -> bool;
+
+	/// Generates a random value of this underlier type using the provided rng.
+	fn random(rng: impl RngCore) -> Self;
 }
 
 /// An [`Underlier`] that can represent a packed vector of smaller underlier values.
@@ -152,6 +157,13 @@ macro_rules! impl_underlier_for_native_uint {
 			#[inline]
 			fn is_equal(a: Self, b: Self) -> bool {
 				a == b
+			}
+
+			#[inline]
+			fn random(mut rng: impl RngCore) -> Self {
+				use rand::Rng;
+
+				rng.random()
 			}
 		}
 	};
