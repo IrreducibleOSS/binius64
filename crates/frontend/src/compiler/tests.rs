@@ -90,6 +90,28 @@ fn test_icmp_ult() {
 	}
 }
 
+#[test]
+fn test_icmp_eq() {
+	// Build a circuit with only two inputs and check c = a == b.
+	let builder = CircuitBuilder::new();
+	let a = builder.add_inout();
+	let b = builder.add_inout();
+	let actual = builder.icmp_eq(a, b);
+	let expected = builder.add_inout();
+	builder.assert_eq("eq", actual, expected);
+	let circuit = builder.build();
+
+	// check that it actually works.
+	let mut rng = StdRng::seed_from_u64(42);
+	for _ in 0..10000 {
+		let mut w = circuit.new_witness_filler();
+		w[a] = Word(rng.random::<u64>());
+		w[b] = Word(rng.random::<u64>());
+		w[expected] = Word(if w[a].0 == w[b].0 { u64::MAX } else { 0 });
+		w.circuit.populate_wire_witness(&mut w).unwrap();
+	}
+}
+
 #[quickcheck]
 fn prop_iadd_cin_cout_carry_chain(a1: u64, b1: u64, a2: u64, b2: u64) -> TestResult {
 	let builder = CircuitBuilder::new();
@@ -233,4 +255,36 @@ fn prop_check_assert_eq(x: u64, y: u64) -> TestResult {
 		// We don't verify constraints when assertion fails
 		TestResult::passed()
 	}
+}
+
+fn prop_check_icmp_eq(a: u64, b: u64, expected_result: Word) -> TestResult {
+	let builder = CircuitBuilder::new();
+	let a_wire = builder.add_constant_64(a);
+	let b_wire = builder.add_constant_64(b);
+	let result_wire = builder.icmp_eq(a_wire, b_wire);
+
+	let circuit = builder.build();
+	let mut w = circuit.new_witness_filler();
+	circuit.populate_wire_witness(&mut w).unwrap();
+
+	assert_eq!(w[result_wire], expected_result);
+
+	let cs = circuit.constraint_system();
+	match verify_constraints(&cs, &w.value_vec) {
+		Ok(_) => TestResult::passed(),
+		Err(e) => TestResult::error(format!("Constraint verification failed: {e}")),
+	}
+}
+
+#[quickcheck]
+fn prop_icmp_eq_equal(a: u64) -> TestResult {
+	prop_check_icmp_eq(a, a, Word::ALL_ONE)
+}
+
+#[quickcheck]
+fn prop_icmp_eq_not_equal(a: u64, b: u64) -> TestResult {
+	if a == b {
+		return TestResult::discard();
+	}
+	prop_check_icmp_eq(a, b, Word::ZERO)
 }
