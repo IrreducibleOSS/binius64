@@ -1,182 +1,629 @@
-//! Base64 verification circuit.
-//!
-//! This circuit checks that an encoded string is the Base64 representation of
-//! a decoded byte string.  The length of the decoded string is provided as a
-//! wire and must be in the range `0..=N` where `N` is a compile time bound.
-//!
-//! The circuit operates on 32-bit words.  Each byte is expected to be in the
-//! low 8 bits of a word.  The encoded string length is `ENCODED_MAX` which is
-//! four characters per three input bytes rounded up.
-
-use super::basic::{add_const, bool_not, eq_const, gt_const, select, shl_const};
 use crate::{
-	compiler::{CircuitBuilder, Wire},
+	compiler::{CircuitBuilder, Wire, WitnessFiller},
 	word::Word,
 };
 
-/// Decode a single base64 character into a 6-bit value.
-fn ascii_to_val(b: &CircuitBuilder, ch: Wire) -> Wire {
-	let zero = b.add_constant(Word::ZERO);
-
-	// 'A'..'Z'
-	let mut out = select(b, add_const(b, ch, (!('A' as u32)).wrapping_add(1)), zero, {
-		let ge = gt_const(b, ch, ('A' as u32) - 1);
-		let le = bool_not(b, gt_const(b, ch, 'Z' as u32));
-		b.band(ge, le)
-	});
-
-	// 'a'..'z'
-	out = select(b, add_const(b, ch, (!('a' as u32)).wrapping_add(1 + 26)), out, {
-		let ge = gt_const(b, ch, ('a' as u32) - 1);
-		let le = bool_not(b, gt_const(b, ch, 'z' as u32));
-		b.band(ge, le)
-	});
-
-	// '0'..'9'
-	out = select(b, add_const(b, ch, (!('0' as u32)).wrapping_add(1 + 52)), out, {
-		let ge = gt_const(b, ch, ('0' as u32) - 1);
-		let le = bool_not(b, gt_const(b, ch, '9' as u32));
-		b.band(ge, le)
-	});
-
-	// '+' -> 62
-	out = select(b, b.add_constant(Word(62)), out, eq_const(b, ch, '+' as u32));
-
-	// '/' -> 63
-	select(b, b.add_constant(Word(63)), out, eq_const(b, ch, '/' as u32))
+/// Base64 URL-safe encoding verification.
+///
+/// Verifies that encoded data is a valid base64 URL-safe encoding of decoded data.
+///
+/// # Base64 URL-Safe Alphabet (RFC 4648 §5)
+///
+/// - Characters 0-61: Same as standard base64 (A-Z, a-z, 0-9)
+/// - Character 62: '-' (minus) instead of '+'
+/// - Character 63: '_' (underscore) instead of '/'
+/// - Padding: '=' (same as standard base64)
+///
+/// # Circuit Behavior
+///
+/// The circuit performs the following validations:
+/// - encoded is valid base64 URL-safe encoding of decoded
+/// - len_decoded is the actual length of data in decoded (in bytes)
+/// - len_decoded ≤ max_len_decoded (compile-time maximum)
+///
+/// # Input Packing
+///
+/// - decoded: Pack 8 bytes per 64-bit word
+/// - encoded: Pack 8 base64 characters per 64-bit word
+/// - len_decoded: Single 64-bit word containing byte count
+pub struct Base64UrlSafe {
+	/// Decoded data array (packed 8 bytes per word).
+	pub decoded: Vec<Wire>,
+	/// Encoded base64 array (packed 8 chars per word).
+	pub encoded: Vec<Wire>,
+	/// Actual length of decoded data in bytes.
+	pub len_decoded: Wire,
+	/// Maximum supported decoded data length in bytes (must be a multiple of 24).
+	pub max_len_decoded: usize,
 }
 
-/// Verify base64 encoding.
-pub struct Base64<const N: usize, const EN: usize> {
-	pub decoded: [Wire; N],
-	pub encoded: [Wire; EN],
-	pub len: Wire,
-}
+impl Base64UrlSafe {
+	/// Creates a new Base64UrlSafe verifier.
+	///
+	/// # Arguments
+	///
+	/// * `builder` - Circuit builder for constructing constraints
+	/// * `max_len_decoded` - Maximum supported decoded data length in bytes (must be a multiple of
+	///   24)
+	/// * `decoded` - Decoded byte array wires (must have length = max_len_decoded/8)
+	/// * `encoded` - Base64 encoded array wires (must have length = max_len_decoded/6)
+	/// * `len_decoded` - Wire containing actual length of decoded data in bytes
+	///
+	/// # Panics
+	///
+	/// * If `max_len_decoded` is not a multiple of 24
+	/// * If `decoded.len()` != max_len_decoded/8
+	/// * If `encoded.len()` != max_len_decoded/6
+	///
+	/// # Implementation Notes
+	///
+	/// The requirement that `max_len_decoded` be a multiple of 24 ensures:
+	/// - Word alignment: divisible by 8 for packing bytes into 64-bit words
+	/// - Base64 group alignment: divisible by 3 for processing complete groups
+	/// - Exact array sizing with no rounding needed
+	pub fn new(
+		builder: &CircuitBuilder,
+		max_len_decoded: usize,
+		decoded: Vec<Wire>,
+		encoded: Vec<Wire>,
+		len_decoded: Wire,
+	) -> Self {
+		// Ensure max_len_decoded is a multiple of 24 (LCM of 8 and 3)
+		assert!(
+			max_len_decoded.is_multiple_of(24),
+			"max_len_decoded must be a multiple of 24, got {max_len_decoded}"
+		);
 
-impl<const N: usize, const EN: usize> Base64<N, EN> {
-	pub fn new(b: &mut CircuitBuilder, decoded: [Wire; N], encoded: [Wire; EN], len: Wire) -> Self {
-		// Ensure len <= N
-		let over = gt_const(b, len, N as u32);
-		let zero = b.add_constant(Word::ZERO);
-		b.assert_eq("overflow", over, zero);
+		let expected_decoded_words = max_len_decoded / 8;
+		let expected_encoded_words = max_len_decoded / 6;
 
-		let eq_char = b.add_constant(Word('=' as u64));
-		let mask_0f = b.add_constant(Word(0x0F));
-		let mask_03 = b.add_constant(Word(0x03));
+		assert_eq!(
+			decoded.len(),
+			expected_decoded_words,
+			"decoded.len() must equal max_len_decoded/8"
+		);
+		assert_eq!(
+			encoded.len(),
+			expected_encoded_words,
+			"encoded.len() must equal max_len_decoded/6"
+		);
 
-		let n_blocks = N.div_ceil(3);
+		// Verify length bounds (use original max_len_decoded for user-specified limit)
+		verify_length_bounds(builder, len_decoded, max_len_decoded);
 
-		for block in 0..n_blocks {
-			let i_enc = block * 4;
-			let i_dec = block * 3;
+		// Process groups of 3 bytes -> 4 base64 chars
+		let groups = max_len_decoded / 3;
 
-			let cond_block = gt_const(b, len, (block * 3) as u32);
-			let cond_b1 = gt_const(b, len, (block * 3 + 1) as u32);
-			let cond_b2 = gt_const(b, len, (block * 3 + 2) as u32);
-
-			let c0 = ascii_to_val(b, encoded[i_enc]);
-			let c1 = ascii_to_val(b, encoded[i_enc + 1]);
-			let c2 = ascii_to_val(b, encoded[i_enc + 2]);
-			let c3 = ascii_to_val(b, encoded[i_enc + 3]);
-
-			// Padding checks
-			let need_pad2 = b.band(cond_block, bool_not(b, cond_b1));
-			b.assert_eq_cond(format!("encoded+2[{block}]"), encoded[i_enc + 2], eq_char, need_pad2);
-			let need_pad3 = b.band(cond_block, bool_not(b, cond_b2));
-			b.assert_eq_cond(format!("encoded+3[{block}]"), encoded[i_enc + 3], eq_char, need_pad3);
-
-			// byte0 = (c0 << 2) | (c1 >> 4)
-			let c0_shl = shl_const(b, c0, 2);
-			let c1_shr = b.shr_32(c1, 4);
-			let byte0 = b.bor(c0_shl, c1_shr);
-
-			// byte1 = ((c1 & 0xF) << 4) | (c2 >> 2)
-			let c1_low = b.band(c1, mask_0f);
-			let c1_low_shl = shl_const(b, c1_low, 4);
-			let c2_shr = b.shr_32(c2, 2);
-			let byte1 = b.bor(c1_low_shl, c2_shr);
-
-			// byte2 = ((c2 & 0x3) << 6) | c3
-			let c2_low = b.band(c2, mask_03);
-			let c2_low_shl = shl_const(b, c2_low, 6);
-			let byte2 = b.bor(c2_low_shl, c3);
-
-			// Assert decoded bytes
-			if i_dec < N {
-				b.assert_eq_cond(format!("decoded+0[{i_dec}]"), decoded[i_dec], byte0, cond_block);
-			}
-			if i_dec + 1 < N {
-				b.assert_eq_cond(format!("decoded+1[{i_dec}]"), decoded[i_dec + 1], byte1, cond_b1);
-			}
-			if i_dec + 2 < N {
-				b.assert_eq_cond(format!("decoded+2[{i_dec}]"), decoded[i_dec + 2], byte2, cond_b2);
-			}
+		for group_idx in 0..groups {
+			let b = builder.subcircuit(format!("group[{group_idx}]"));
+			verify_base64_group(&b, &decoded, &encoded, len_decoded, group_idx);
 		}
 
-		Base64 {
+		Self {
 			decoded,
 			encoded,
-			len,
+			len_decoded,
+			max_len_decoded,
 		}
 	}
+
+	/// Populates the length wire with the actual decoded data length.
+	///
+	/// # Arguments
+	///
+	/// * `w` - Witness filler to populate
+	/// * `length` - Actual length of decoded data in bytes
+	pub fn populate_len_decoded(&self, w: &mut WitnessFiller, length: usize) {
+		w[self.len_decoded] = Word(length as u64);
+	}
+
+	/// Populates the decoded data array from a byte slice.
+	///
+	/// # Arguments
+	///
+	/// * `w` - Witness filler to populate
+	/// * `data` - Decoded bytes
+	///
+	/// # Panics
+	///
+	/// Panics if `data.len()` exceeds the maximum size specified during construction.
+	pub fn populate_decoded(&self, w: &mut WitnessFiller, data: &[u8]) {
+		assert!(
+			data.len() <= self.max_len_decoded,
+			"decoded length {} exceeds maximum {}",
+			data.len(),
+			self.max_len_decoded,
+		);
+
+		// Pack bytes into 64-bit words (little-endian)
+		for (i, chunk) in data.chunks(8).enumerate() {
+			if i < self.decoded.len() {
+				let mut word = 0u64;
+				for (j, &byte) in chunk.iter().enumerate() {
+					word |= (byte as u64) << (j * 8);
+				}
+				w[self.decoded[i]] = Word(word);
+			}
+		}
+
+		// Zero out remaining words
+		for i in data.len().div_ceil(8)..self.decoded.len() {
+			w[self.decoded[i]] = Word::ZERO;
+		}
+	}
+
+	/// Populates the encoded base64 array from a byte slice.
+	///
+	/// # Arguments
+	///
+	/// * `w` - Witness filler to populate
+	/// * `data` - Base64-encoded bytes
+	///
+	/// # Panics
+	///
+	/// Panics if `data.len()` exceeds the maximum size specified during construction.
+	pub fn populate_encoded(&self, w: &mut WitnessFiller, data: &[u8]) {
+		let max_bytes = self.encoded.len() * 8;
+		assert!(
+			data.len() <= max_bytes,
+			"encoded length {} exceeds maximum {}",
+			data.len(),
+			max_bytes
+		);
+
+		// Pack bytes into 64-bit words (little-endian)
+		for (i, chunk) in data.chunks(8).enumerate() {
+			if i < self.encoded.len() {
+				let mut word = 0u64;
+				for (j, &byte) in chunk.iter().enumerate() {
+					word |= (byte as u64) << (j * 8);
+				}
+				w[self.encoded[i]] = Word(word);
+			}
+		}
+
+		// Zero out remaining words
+		for i in data.len().div_ceil(8)..self.encoded.len() {
+			w[self.encoded[i]] = Word::ZERO;
+		}
+	}
+}
+
+/// Verifies that the length is within bounds (0 < len_decoded <= max_len_decoded).
+fn verify_length_bounds(builder: &CircuitBuilder, len_decoded: Wire, max_len_decoded: usize) {
+	let max_len_const = builder.add_constant_64(max_len_decoded as u64);
+
+	// Check if len_decoded > max_len_decoded (which should be false)
+	// len_decoded > max_len_decoded is equivalent to max_len_decoded < len_decoded
+	let too_large = builder.icmp_ult(max_len_const, len_decoded);
+
+	// Assert too_large == 0
+	builder.assert_0("length_check", too_large);
+}
+
+/// Verifies a single base64 group (3 decoded bytes -> 4 base64 chars).
+///
+/// # Base64 Encoding Rules
+///
+/// Three bytes: AAAAAAAA BBBBBBBB CCCCCCCC
+/// Become four 6-bit values:
+/// - val0 = AAAAAA (top 6 bits of byte0)
+/// - val1 = AABBBB (bottom 2 bits of byte0 + top 4 bits of byte1)
+/// - val2 = BBBBCC (bottom 4 bits of byte1 + top 2 bits of byte2)
+/// - val3 = CCCCCC (bottom 6 bits of byte2)
+fn verify_base64_group(
+	builder: &CircuitBuilder,
+	decoded: &[Wire],
+	encoded: &[Wire],
+	len_decoded: Wire,
+	group_idx: usize,
+) {
+	let base_byte_idx = group_idx * 3;
+
+	// Check if this group is within actual length
+	let group_start = builder.add_constant_64(base_byte_idx as u64);
+	let is_active = builder.icmp_ult(group_start, len_decoded);
+
+	// Extract 3 decoded bytes
+	let byte0 = extract_byte(builder, decoded, base_byte_idx);
+	let byte1 = extract_byte(builder, decoded, base_byte_idx + 1);
+	let byte2 = extract_byte(builder, decoded, base_byte_idx + 2);
+
+	// Extract 4 base64 characters
+	let char0 = extract_byte(builder, encoded, group_idx * 4);
+	let char1 = extract_byte(builder, encoded, group_idx * 4 + 1);
+	let char2 = extract_byte(builder, encoded, group_idx * 4 + 2);
+	let char3 = extract_byte(builder, encoded, group_idx * 4 + 3);
+
+	// Compute bytes in this group for padding handling
+	let bytes_in_group = compute_bytes_in_group(builder, len_decoded, base_byte_idx);
+
+	// Convert 3 bytes to 4 6-bit values
+	let val0 = extract_6bit_value_0(builder, byte0);
+	let val1 = extract_6bit_value_1(builder, byte0, byte1);
+	let val2 = extract_6bit_value_2(builder, byte1, byte2);
+	let val3 = extract_6bit_value_3(builder, byte2);
+
+	// Verify character mappings
+	verify_base64_char(builder, val0, char0, is_active);
+
+	// has_byte1 = bytes_in_group > 0 is equivalent to 0 < bytes_in_group
+	let has_byte1 = builder.icmp_ult(builder.add_constant_64(0), bytes_in_group);
+	let check_char1 = builder.band(is_active, has_byte1);
+	verify_base64_char(builder, val1, char1, check_char1);
+
+	// has_byte2 = bytes_in_group > 1 is equivalent to 1 < bytes_in_group
+	let has_byte2 = builder.icmp_ult(builder.add_constant_64(1), bytes_in_group);
+
+	// has_byte3 = bytes_in_group > 2 is equivalent to 2 < bytes_in_group
+	let has_byte3 = builder.icmp_ult(builder.add_constant_64(2), bytes_in_group);
+
+	// For char2: encode if we have more than 1 byte (i.e., at least 2 bytes)
+	let should_encode_char2 = has_byte2;
+	verify_base64_char_or_padding(builder, val2, char2, is_active, should_encode_char2);
+
+	// For char3: encode if we have more than 2 bytes (i.e., all 3 bytes)
+	let should_encode_char3 = has_byte3;
+	verify_base64_char_or_padding(builder, val3, char3, is_active, should_encode_char3);
+}
+
+/// Extracts a byte from a word array at the given byte index.
+///
+/// # Arguments
+///
+/// * `builder` - Circuit builder
+/// * `words` - Array of 64-bit words, each containing 8 packed bytes
+/// * `byte_idx` - Global byte index to extract
+///
+/// # Returns
+///
+/// Wire containing the extracted byte value (0-255), or 0 if out of bounds.
+fn extract_byte(builder: &CircuitBuilder, words: &[Wire], byte_idx: usize) -> Wire {
+	let word_idx = byte_idx / 8;
+	let byte_offset = byte_idx % 8;
+
+	if word_idx >= words.len() {
+		// Return zero for out of bounds
+		return builder.add_constant_64(0);
+	}
+
+	let word = words[word_idx];
+	builder.extract_byte(word, byte_offset as u32)
+}
+
+/// Computes the number of valid bytes in a base64 group.
+///
+/// # Returns
+///
+/// Wire containing min(3, len_decoded - base_byte_idx)
+fn compute_bytes_in_group(
+	builder: &CircuitBuilder,
+	len_decoded: Wire,
+	base_byte_idx: usize,
+) -> Wire {
+	// For simplicity, we'll handle the common cases directly
+	// Since we process groups of 3, we need to check:
+	// - If base_byte_idx >= length: return 0
+	// - If base_byte_idx + 1 >= length: return 1
+	// - If base_byte_idx + 2 >= length: return 2
+	// - Otherwise: return 3
+
+	let base_idx = builder.add_constant_64(base_byte_idx as u64);
+	let base_idx_plus_1 = builder.add_constant_64((base_byte_idx + 1) as u64);
+	let base_idx_plus_2 = builder.add_constant_64((base_byte_idx + 2) as u64);
+
+	let zero = builder.add_constant_64(0);
+	let one = builder.add_constant_64(1);
+	let two = builder.add_constant_64(2);
+	let three = builder.add_constant_64(3);
+
+	// Check if base_idx < len_decoded (group has at least 1 byte)
+	let has_byte0 = builder.icmp_ult(base_idx, len_decoded);
+
+	// Check if base_idx + 1 < len_decoded (group has at least 2 bytes)
+	let has_byte1 = builder.icmp_ult(base_idx_plus_1, len_decoded);
+
+	// Check if base_idx + 2 < len_decoded (group has all 3 bytes)
+	let has_byte2 = builder.icmp_ult(base_idx_plus_2, len_decoded);
+
+	// Build result based on which bytes we have
+	// If has_byte2: return 3
+	// Else if has_byte1: return 2
+	// Else if has_byte0: return 1
+	// Else: return 0
+
+	// Select between 2 and 3 based on has_byte2
+	let two_or_three =
+		builder.bor(builder.band(has_byte2, three), builder.band(builder.bnot(has_byte2), two));
+
+	// Select between 0 and 1 based on has_byte0
+	let zero_or_one =
+		builder.bor(builder.band(has_byte0, one), builder.band(builder.bnot(has_byte0), zero));
+
+	// Select between (0 or 1) and (2 or 3) based on has_byte1
+	builder.bor(
+		builder.band(has_byte1, two_or_three),
+		builder.band(builder.bnot(has_byte1), zero_or_one),
+	)
+}
+
+/// Extracts the first 6-bit value (top 6 bits of byte0).
+fn extract_6bit_value_0(builder: &CircuitBuilder, byte0: Wire) -> Wire {
+	let val0 = builder.shr(byte0, 2);
+	builder.band(val0, builder.add_constant_64(0x3F))
+}
+
+/// Extracts the second 6-bit value (bottom 2 bits of byte0 + top 4 bits of byte1).
+fn extract_6bit_value_1(builder: &CircuitBuilder, byte0: Wire, byte1: Wire) -> Wire {
+	let byte0_low = builder.band(byte0, builder.add_constant_64(0x03));
+	let byte0_low_shifted = builder.shl(byte0_low, 4);
+	let byte1_high = builder.shr(byte1, 4);
+	let byte1_high = builder.band(byte1_high, builder.add_constant_64(0x0F));
+	builder.bor(byte0_low_shifted, byte1_high)
+}
+
+/// Extracts the third 6-bit value (bottom 4 bits of byte1 + top 2 bits of byte2).
+fn extract_6bit_value_2(builder: &CircuitBuilder, byte1: Wire, byte2: Wire) -> Wire {
+	let byte1_low = builder.band(byte1, builder.add_constant_64(0x0F));
+	let byte1_low_shifted = builder.shl(byte1_low, 2);
+	let byte2_high = builder.shr(byte2, 6);
+	let byte2_high = builder.band(byte2_high, builder.add_constant_64(0x03));
+	builder.bor(byte1_low_shifted, byte2_high)
+}
+
+/// Extracts the fourth 6-bit value (bottom 6 bits of byte2).
+fn extract_6bit_value_3(builder: &CircuitBuilder, byte2: Wire) -> Wire {
+	builder.band(byte2, builder.add_constant_64(0x3F))
+}
+
+/// Verifies that a base64 character matches the expected encoding.
+///
+/// # Arguments
+///
+/// * `builder` - Circuit builder
+/// * `six_bit_val` - The 6-bit value to encode (0-63)
+/// * `char_val` - The actual character value found
+/// * `is_active` - Whether this check should be enforced
+fn verify_base64_char(
+	builder: &CircuitBuilder,
+	six_bit_val: Wire,
+	char_val: Wire,
+	is_active: Wire,
+) {
+	let expected_char = compute_expected_base64_char(builder, six_bit_val);
+
+	// Check if char_val == expected_char
+	let eq = builder.icmp_eq(char_val, expected_char);
+
+	// Only enforce if active: valid = !is_active | eq
+	let not_active = builder.bnot(is_active);
+	let valid = builder.bor(not_active, eq);
+
+	// Assert valid == all ones
+	let all_ones = builder.add_constant_64(u64::MAX);
+	builder.assert_eq("base64_char", valid, all_ones);
+}
+
+/// Verifies that a base64 character is either valid encoding or padding.
+///
+/// # Arguments
+///
+/// * `builder` - Circuit builder
+/// * `six_bit_val` - The 6-bit value to encode (0-63)
+/// * `char_val` - The actual character value found
+/// * `is_active` - Whether this group is active
+/// * `should_encode` - Whether this position should contain encoded data (vs padding)
+fn verify_base64_char_or_padding(
+	builder: &CircuitBuilder,
+	six_bit_val: Wire,
+	char_val: Wire,
+	is_active: Wire,
+	should_encode: Wire,
+) {
+	// Check if char is '=' (61 in ASCII)
+	let padding_char = builder.add_constant_64(b'=' as u64);
+	let is_padding = builder.icmp_eq(char_val, padding_char);
+
+	// If should_encode, verify normal base64 char
+	let expected_char = compute_expected_base64_char(builder, six_bit_val);
+	let is_valid_char = builder.icmp_eq(char_val, expected_char);
+
+	// valid = (should_encode & is_valid_char) | (!should_encode & is_padding)
+	let not_should_encode = builder.bnot(should_encode);
+
+	let case1 = builder.band(should_encode, is_valid_char);
+	let case2 = builder.band(not_should_encode, is_padding);
+	let valid_encoding = builder.bor(case1, case2);
+
+	// Only enforce if active: valid = !is_active | valid_encoding
+	let not_active = builder.bnot(is_active);
+	let valid = builder.bor(not_active, valid_encoding);
+
+	// Assert valid == all ones
+	let all_ones = builder.add_constant_64(u64::MAX);
+	builder.assert_eq("base64_padding", valid, all_ones);
+}
+
+/// Computes the expected base64 character for a 6-bit value.
+///
+/// # Base64 URL-Safe Mapping
+///
+/// - 0-25: 'A'-'Z' (65-90)
+/// - 26-51: 'a'-'z' (97-122)
+/// - 52-61: '0'-'9' (48-57)
+/// - 62: '-' (45) [URL-safe variant]
+/// - 63: '_' (95) [URL-safe variant]
+///
+/// # Implementation Note
+///
+/// Since circuits don't support dynamic lookup tables, we check all 64
+/// possible values explicitly and combine results using masking.
+fn compute_expected_base64_char(builder: &CircuitBuilder, six_bit_val: Wire) -> Wire {
+	let mut result = builder.add_constant_64(0);
+
+	// For each possible value, check if six_bit_val equals it and add the corresponding char
+	for i in 0..64u64 {
+		let val_const = builder.add_constant_64(i);
+		let is_this_val = builder.icmp_eq(six_bit_val, val_const);
+
+		let char_val = match i {
+			0..=25 => b'A' + i as u8,
+			26..=51 => b'a' + (i - 26) as u8,
+			52..=61 => b'0' + (i - 52) as u8,
+			62 => b'-', // URL-safe: minus instead of plus
+			63 => b'_', // URL-safe: underscore instead of slash
+			_ => unreachable!(),
+		};
+
+		let char_const = builder.add_constant_64(char_val as u64);
+		let masked_char = builder.band(is_this_val, char_const);
+		result = builder.bor(result, masked_char);
+	}
+
+	result
 }
 
 #[cfg(test)]
 mod tests {
-	use base64::{Engine as _, engine::general_purpose};
+	use super::*;
+	use crate::compiler::CircuitBuilder;
 
-	use super::Base64;
-	use crate::{compiler, word::Word};
+	/// Encodes bytes to base64 using URL-safe alphabet.
+	fn encode_base64(input: &[u8]) -> Vec<u8> {
+		const BASE64_CHARS: &[u8] =
+			b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
-	#[test]
-	fn base64_single() {
-		const N: usize = 1500;
-		const EN: usize = N.div_ceil(3) * 4;
-		let mut circuit = compiler::CircuitBuilder::new();
-		let decoded: [compiler::Wire; N] = std::array::from_fn(|_| circuit.add_inout());
-		let encoded: [compiler::Wire; EN] = std::array::from_fn(|_| circuit.add_inout());
-		let len_wire = circuit.add_inout();
-		Base64::<N, EN>::new(&mut circuit, decoded, encoded, len_wire);
-		let circuit = circuit.build();
-		let cs = circuit.constraint_system();
+		let mut output = Vec::new();
 
-		println!("Number of AND constraints: {}", cs.n_and_constraints());
-		println!("Number of gates: {}", circuit.n_gates());
-		println!("Length of value vec: {}", cs.value_vec_len());
+		for chunk in input.chunks(3) {
+			let b1 = chunk[0];
+			let b2 = chunk.get(1).copied().unwrap_or(0);
+			let b3 = chunk.get(2).copied().unwrap_or(0);
+
+			let n = ((b1 as u32) << 16) | ((b2 as u32) << 8) | (b3 as u32);
+
+			output.push(BASE64_CHARS[((n >> 18) & 63) as usize]);
+			output.push(BASE64_CHARS[((n >> 12) & 63) as usize]);
+			output.push(if chunk.len() > 1 {
+				BASE64_CHARS[((n >> 6) & 63) as usize]
+			} else {
+				b'='
+			});
+			output.push(if chunk.len() > 2 {
+				BASE64_CHARS[(n & 63) as usize]
+			} else {
+				b'='
+			});
+		}
+
+		output
+	}
+
+	/// Helper to create base64 circuit with given max size.
+	fn create_base64_circuit(builder: &CircuitBuilder, max_len_decoded: usize) -> Base64UrlSafe {
+		// Create input wires
+		let decoded: Vec<Wire> = (0..max_len_decoded / 8)
+			.map(|_| builder.add_inout())
+			.collect();
+
+		let encoded: Vec<Wire> = (0..max_len_decoded / 6)
+			.map(|_| builder.add_inout())
+			.collect();
+
+		let len_decoded = builder.add_inout();
+
+		Base64UrlSafe::new(builder, max_len_decoded, decoded, encoded, len_decoded)
+	}
+
+	/// Helper to test base64 encoding verification.
+	fn test_base64_encoding(input: &[u8], max_len_decoded: usize) {
+		let expected_base64 = encode_base64(input);
+
+		let builder = CircuitBuilder::new();
+		let circuit = create_base64_circuit(&builder, max_len_decoded);
+		let compiled = builder.build();
+
+		// Create witness
+		let mut witness = compiled.new_witness_filler();
+
+		circuit.populate_len_decoded(&mut witness, input.len());
+		circuit.populate_decoded(&mut witness, input);
+		circuit.populate_encoded(&mut witness, &expected_base64);
+
+		// Verify circuit
+		compiled.populate_wire_witness(&mut witness).unwrap();
 	}
 
 	#[test]
-	fn base64_roundtrip() {
-		const N: usize = 153;
-		const EN: usize = N.div_ceil(3) * 4;
-		for len in 0..=N {
-			let mut circuit = compiler::CircuitBuilder::new();
-			let decoded: [compiler::Wire; N] = std::array::from_fn(|_| circuit.add_inout());
-			let encoded: [compiler::Wire; EN] = std::array::from_fn(|_| circuit.add_inout());
-			let len_wire = circuit.add_inout();
+	fn test_base64_hello_world() {
+		test_base64_encoding(b"Hello World!", 1512);
+	}
 
-			Base64::<N, EN>::new(&mut circuit, decoded, encoded, len_wire);
-			let circuit = circuit.build();
-			let mut w = circuit.new_witness_filler();
+	#[test]
+	fn test_base64_empty() {
+		test_base64_encoding(b"", 1512);
+	}
 
-			// Prepare inputs
-			let mut input = [0u8; N];
-			for i in 0..len {
-				input[i] = (i as u8) + 1;
-			}
-			let encoded_str = general_purpose::STANDARD.encode(&input[..len]);
-			let mut enc = [0u8; EN];
-			enc[..encoded_str.len()].copy_from_slice(encoded_str.as_bytes());
+	#[test]
+	fn test_base64_padding() {
+		// Test cases that require padding
+		test_base64_encoding(b"A", 1512); // Requires == padding
+		test_base64_encoding(b"AB", 1512); // Requires = padding
+		test_base64_encoding(b"ABC", 1512); // No padding
+	}
 
-			for i in 0..N {
-				w[decoded[i]] = Word(input[i] as u64);
-			}
-			for i in 0..EN {
-				w[encoded[i]] = Word(enc[i] as u64);
-			}
-			w[len_wire] = Word(len as u64);
+	#[test]
+	fn test_base64_long_input() {
+		let input =
+			b"The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog.";
+		test_base64_encoding(input, 1512);
+	}
 
-			circuit.populate_wire_witness(&mut w).unwrap();
-		}
+	#[test]
+	fn test_invalid_base64() {
+		// Test that invalid base64 encoding fails
+		let builder = CircuitBuilder::new();
+		let circuit = create_base64_circuit(&builder, 120);
+		let compiled = builder.build();
+
+		let input = b"ABC";
+		let invalid_base64 = b"XXXX"; // Invalid base64 for "ABC"
+
+		let mut witness = compiled.new_witness_filler();
+
+		circuit.populate_len_decoded(&mut witness, input.len());
+		circuit.populate_decoded(&mut witness, input);
+		circuit.populate_encoded(&mut witness, invalid_base64);
+
+		// Should fail verification
+		assert!(compiled.populate_wire_witness(&mut witness).is_err());
+	}
+
+	#[test]
+	fn test_url_safe_characters() {
+		// Test that URL-safe characters - and _ are used instead of + and /
+		// Create input that will result in characters 62 and 63 in base64
+
+		// For 111110 (62): we need top 6 bits = 111110
+		let input1 = &[0b11111000]; // Top 6 bits = 111110 = 62
+		let expected1 = encode_base64(input1);
+		assert_eq!(expected1[0], b'-', "Index 62 should map to '-' not '+'");
+
+		// For 111111 (63): we need top 6 bits = 111111
+		let input2 = &[0b11111100]; // Top 6 bits = 111111 = 63
+		let expected2 = encode_base64(input2);
+		assert_eq!(expected2[0], b'_', "Index 63 should map to '_' not '/'");
+
+		// Now test with the circuit
+		test_base64_encoding(input1, 120);
+		test_base64_encoding(input2, 120);
+	}
+
+	#[test]
+	#[should_panic(expected = "max_len_decoded must be a multiple of 24")]
+	fn test_panic_when_max_len_not_multiple_of_24() {
+		// This test verifies that max_len_decoded must be a multiple of 24
+		// Testing with max_len_decoded = 100 which is not a multiple of 24
+		test_base64_encoding(b"test", 100);
 	}
 }
