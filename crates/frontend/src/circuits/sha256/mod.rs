@@ -32,10 +32,10 @@ pub struct Sha256 {
 	pub len: Wire,
 	/// The expected SHA-256 digest packed as 4x64-bit words in big-endian order.
 	///
-	/// - digest[0]: High 64 bits (bytes 0-7 of the hash)
-	/// - digest[1]: Next 64 bits (bytes 8-15 of the hash)
-	/// - digest[2]: Next 64 bits (bytes 16-23 of the hash)
-	/// - digest[3]: Low 64 bits (bytes 24-31 of the hash)
+	/// - digest\[0\]: High 64 bits (bytes 0-7 of the hash)
+	/// - digest\[1\]: Next 64 bits (bytes 8-15 of the hash)
+	/// - digest\[2\]: Next 64 bits (bytes 16-23 of the hash)
+	/// - digest\[3\]: Low 64 bits (bytes 24-31 of the hash)
 	pub digest: [Wire; 4],
 	/// The input message packed as 64-bit words.
 	///

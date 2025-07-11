@@ -1,4 +1,4 @@
-//! Arithmetic for the GHASH field, GF(2)[X] / (X^128 + X^7 + X^2 + X + 1).
+//! Arithmetic for the GHASH field, GF(2)\[X\] / (X^128 + X^7 + X^2 + X + 1).
 
 use crate::{PackedUnderlier, Underlier, underlier::OpsClmul};
 

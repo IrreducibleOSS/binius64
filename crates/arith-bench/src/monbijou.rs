@@ -1,4 +1,4 @@
-//! Arithmetic for the Monbijou field, GF(2)[X] / (X^64 + X^4 + X^3 + X + 1).
+//! Arithmetic for the Monbijou field, GF(2)\[X\] / (X^64 + X^4 + X^3 + X + 1).
 //!
 //! This module implements arithmetic in the GF(2^64) binary field defined by the
 //! reduction polynomial X^64 + X^4 + X^3 + X + 1, which is used in the ISO 3309

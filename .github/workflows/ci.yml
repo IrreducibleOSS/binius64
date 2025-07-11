@@ -38,3 +38,14 @@ jobs:
           components: clippy
       - name: Run clippy
         run: cargo clippy --all --all-features --tests --benches --examples -- -D warnings
+
+  rust-doc:
+    name: rust-doc
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Build documentation
+        run: cargo doc --document-private-items --no-deps

@@ -102,7 +102,7 @@ pub struct Concat {
 	pub joined: Vec<Wire>,
 	/// The list of terms to be concatenated.
 	///
-	/// Terms are concatenated in order: terms[0] || terms[1] || ... || terms[n-1]
+	/// Terms are concatenated in order: terms\[0\] || terms\[1\] || ... || terms\[n-1\]
 	pub terms: Vec<Term>,
 }
 
