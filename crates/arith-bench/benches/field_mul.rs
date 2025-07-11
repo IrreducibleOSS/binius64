@@ -258,56 +258,56 @@ fn bench_ghash(c: &mut Criterion) {
 
 	group.finish();
 
-	let mut group = c.benchmark_group("ghash_google_mul_clmul");
+	// let mut group = c.benchmark_group("ghash_google_mul_clmul");
 
-	// Benchmark __m128i
-	#[cfg(all(target_feature = "pclmulqdq", target_feature = "sse2"))]
-	{
-		run_google_mul_benchmark(
-			&mut group,
-			"mul_clmul::<__m128i>",
-			mul_clmul::<__m128i>,
-			&mut rng,
-			128,
-			__m128i::BITS,
-		);
-	}
+	// // Benchmark __m128i
+	// #[cfg(all(target_feature = "pclmulqdq", target_feature = "sse2"))]
+	// {
+	// 	run_google_mul_benchmark(
+	// 		&mut group,
+	// 		"mul_clmul::<__m128i>",
+	// 		mul_clmul::<__m128i>,
+	// 		&mut rng,
+	// 		128,
+	// 		__m128i::BITS,
+	// 	);
+	// }
 
-	// Benchmark __m256i
-	#[cfg(all(
-		target_feature = "vpclmulqdq",
-		target_feature = "avx2",
-		target_feature = "sse2"
-	))]
-	{
-		run_google_mul_benchmark(
-			&mut group,
-			"mul_clmul::<__m256i>",
-			mul_clmul::<__m256i>,
-			&mut rng,
-			128,
-			__m256i::BITS,
-		);
-	}
+	// // Benchmark __m256i
+	// #[cfg(all(
+	// 	target_feature = "vpclmulqdq",
+	// 	target_feature = "avx2",
+	// 	target_feature = "sse2"
+	// ))]
+	// {
+	// 	run_google_mul_benchmark(
+	// 		&mut group,
+	// 		"mul_clmul::<__m256i>",
+	// 		mul_clmul::<__m256i>,
+	// 		&mut rng,
+	// 		128,
+	// 		__m256i::BITS,
+	// 	);
+	// }
 
-	// Benchmark uint64x2_t (AARCH64 NEON)
-	#[cfg(all(
-		target_arch = "aarch64",
-		target_feature = "neon",
-		target_feature = "aes"
-	))]
-	{
-		run_google_mul_benchmark(
-			&mut group,
-			"mul_clmul::uint64x2_t",
-			mul_clmul::<uint64x2_t>,
-			&mut rng,
-			128,
-			uint64x2_t::BITS,
-		);
-	}
+	// // Benchmark uint64x2_t (AARCH64 NEON)
+	// #[cfg(all(
+	// 	target_arch = "aarch64",
+	// 	target_feature = "neon",
+	// 	target_feature = "aes"
+	// ))]
+	// {
+	// 	run_google_mul_benchmark(
+	// 		&mut group,
+	// 		"mul_clmul::uint64x2_t",
+	// 		mul_clmul::<uint64x2_t>,
+	// 		&mut rng,
+	// 		128,
+	// 		uint64x2_t::BITS,
+	// 	);
+	// }
 
-	group.finish();
+	// group.finish();
 }
 
 /// Benchmark GF(2^64) Monbijou multiplication using CLMUL instructions
@@ -372,7 +372,7 @@ fn bench_monbijou(c: &mut Criterion) {
 /// Benchmark GF(2^128) Monbijou 128-bit extension field multiplication using CLMUL instructions
 #[allow(unused_imports, unused_variables, unused_mut)]
 fn bench_monbijou_128b(c: &mut Criterion) {
-	use binius_arith_bench::monbijou::mul_128b_clmul;
+	use binius_arith_bench::monbijou::{mul_128b_clmul, mul_128b_mine, mul_128b_wo_karatsuba};
 
 	let mut rng = rand::rng();
 
@@ -405,6 +405,23 @@ fn bench_monbijou_128b(c: &mut Criterion) {
 			&mut rng,
 			128,
 			__m256i::BITS,
+		);
+	}
+
+	// my stuff
+	#[cfg(all(
+		target_arch = "aarch64",
+		target_feature = "neon",
+		target_feature = "aes"
+	))]
+	{
+		run_mul_benchmark(
+			&mut group,
+			"mul_128b_mine::uint64x2_t",
+			mul_128b_wo_karatsuba,
+			&mut rng,
+			128,
+			uint64x2_t::BITS,
 		);
 	}
 

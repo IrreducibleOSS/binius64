@@ -1,0 +1,259 @@
+
+
+THEIRS
+ldr q0, [x0]
+ldr q1, [x1]
+pmull.1q v2, v0, v1
+dup.2d v3, v1[0]
+pmull2.1q v3, v0, v3
+dup.2d v4, v0[0]
+pmull2.1q v4, v4, v1
+eor.16b v3, v4, v3
+pmull2.1q v0, v0, v1
+eor.16b v1, v0, v2
+add.2d v2, v0, v0
+cmlt.4s v0, v0, #0
+mov w9, #27
+dup.2d v4, x9
+rev64.4s v0, v0
+and.16b v0, v0, v4
+eor3.16b v0, v2, v3, v0
+pmull2.1q v2, v1, v4
+pmull2.1q v3, v0, v4
+zip1.2d v0, v1, v0
+zip1.2d v1, v2, v3
+pmull2.1q v2, v2, v4
+pmull2.1q v3, v3, v4
+zip1.2d v2, v2, v3
+eor3.16b v0, v0, v1, v2
+str q0, [x8]
+ret
+
+
+ldr q0, [x0]
+ldr q1, [x1]
+pmull.1q v2, v0, v1
+dup.2d v3, v1[0]
+pmull2.1q v3, v0, v3
+dup.2d v4, v0[0]
+pmull2.1q v4, v4, v1
+eor.16b v3, v4, v3
+pmull2.1q v0, v0, v1
+eor.16b v1, v0, v2
+add.2d v0, v0, v0
+eor.16b v0, v0, v3
+mov w9, #27
+dup.2d v2, x9
+pmull2.1q v3, v1, v2
+pmull2.1q v4, v0, v2
+zip1.2d v0, v1, v0
+zip1.2d v1, v3, v4
+pmull2.1q v3, v3, v2
+pmull2.1q v2, v4, v2
+zip1.2d v2, v3, v2
+eor3.16b v0, v1, v0, v2
+str q0, [x8]
+
+ldr q0, [x0]          ; Load 128 bits from memory at address in x0 into vector register q0 (your first input a_vec)
+ldr q1, [x1]          ; Load 128 bits from memory at address in x1 into vector register q1 (your second input b_vec)
+
+pmull.1q v2, v0, v1   ; Polynomial multiply low 64-bits: v2 = v0[0] * v1[0] (t0 = x.lo * y.lo)
+
+dup.2d v3, v1[0]      ; Duplicate v1[0] (low 64 bits of y) across both lanes of v3
+pmull2.1q v3, v0, v3  ; Polynomial multiply high 64-bits of v0 with v3: v3 = v0[1] * v1[0] (part of t1b)
+
+dup.2d v4, v0[0]      ; Duplicate v0[0] (low 64 bits of x) across both lanes of v4
+pmull2.1q v4, v4, v1  ; Polynomial multiply v4 with high 64-bits of v1: v4 = v0[0] * v1[1] (part of t1a)
+
+eor.16b v3, v4, v3    ; XOR the results: v3 = v4 ^ v3 (t1 = t1a ^ t1b)
+
+pmull2.1q v0, v0, v1  ; Polynomial multiply high 64-bits: v0 = v0[1] * v1[1] (t2 = x.hi * y.hi)
+
+eor.16b v1, v0, v2    ; XOR v0 and v2: v1 = v0 ^ v2 (term0 = t0 ^ t2)
+
+add.2d v2, v0, v0     ; Double v0: v2 = v0 + v0 (t2_times_x = t2 << 1)
+cmlt.4s v0, v0, #0    ; Set each element of v0 to all 1s if it's < 0, else 0 (gets MSB - creates overflow mask)
+mov w9, #27           ; Set w9 = 27 (0x1B, the reduction polynomial)
+dup.2d v4, x9         ; Duplicate w9 (0x1B) across both lanes of v4
+
+rev64.4s v0, v0       ; Reverse bytes within each 64-bit element of v0 (adjusts bit order for mask)
+and.16b v0, v0, v4    ; AND the mask with the polynomial: v0 = v0 & v4 (t2_overflow_redc)
+
+eor3.16b v0, v2, v3, v0   ; Triple XOR: v0 = v2 ^ v3 ^ v0 (term1 = t2_times_x ^ t1 ^ t2_overflow_redc)
+
+; The next section is the reduce_pair implementation
+pmull2.1q v2, v1, v4  ; More polynomial multiplications for reduction
+pmull2.1q v3, v0, v4
+zip1.2d v0, v1, v0    ; Interleave elements for reduction
+zip1.2d v1, v2, v3
+pmull2.1q v2, v2, v4  ; Final polynomial multiplications
+pmull2.1q v3, v3, v4
+zip1.2d v2, v2, v3
+eor3.16b v0, v0, v1, v2   ; Final XOR combining all parts
+
+str q0, [x8]          ; Store result at memory address in x8
+ret                   ; Return
+
+
+
+
+\section{GHASH}
+ldr q0, [x0]
+ldr q1, [x1]
+dup.2d v2, v1[0]
+pmull2.1q v2, v0, v2
+dup.2d v3, v0[0]
+pmull2.1q v3, v3, v1
+eor.16b v2, v3, v2
+pmull2.1q v3, v0, v1
+movi.2d v4, #0000000000000000
+ext.16b v5, v4, v3, #8
+mov w9, #135
+dup.2d v6, x9
+pmull2.1q v3, v3, v6
+eor3.16b v2, v2, v5, v3
+pmull.1q v0, v0, v1
+ext.16b v1, v4, v2, #8
+pmull2.1q v2, v2, v6
+eor3.16b v0, v2, v0, v1
+str q0, [x8]
+ret
+
+l + m * x^64 + h * x^128
+= l + (m_lo * x^64 + m_hi * x^128) + (h_lo * x^128 + h_hi * x^64 * x^128)
+= l + x^64 [m_lo, m_hi] + x^64 [0, h_lo] + x^64 [p_lo, p_hi]
+where p = h_hi * (x^7 + x^2 + x + 1)
+
+\subsection{Commented}
+
+ldr q0, [x0]          ; Load first operand (128 bits) into v0
+ldr q1, [x1]          ; Load second operand (128 bits) into v1
+
+; Computing cross products (middle terms)
+dup.2d v2, v1[0]      ; Duplicate low 64 bits of v1 to both lanes of v2
+pmull2.1q v2, v0, v2  ; v2 = high 64 bits of v0 * low 64 bits of v1 (cross product)
+dup.2d v3, v0[0]      ; Duplicate low 64 bits of v0 to both lanes of v3
+pmull2.1q v3, v3, v1  ; v3 = low 64 bits of v0 * high 64 bits of v1 (cross product)
+eor.16b v2, v3, v2    ; v2 = v3 ^ v2 (combine cross products)
+
+; Computing high product term
+pmull2.1q v3, v0, v1  ; v3 = high 64 bits of v0 * high 64 bits of v1
+
+% v0 holds l
+% v2 holds m
+% v3 holds h
+% v5 holds lower half of v3
+% v6 holds constant in both lanes
+% 
+
+% we need to add v0 to v2. what's in v2?
+% v1 holds 
+
+% M = a
+
+% H_high * x^128
+% 
+
+% but low of h into v5
+
+
+; Setting up for reduction
+movi.2d v4, #0000000000000000  ; v4 = 0 (used for extending)
+ext.16b v5, v4, v3, #8         ; v5 = v3 shifted right by 8 bytes (high 64 bits to low position)
+mov w9, #135                   ; w9 = 0x87 (reduction polynomial, with 1 in the 7th bit = 0x80)
+dup.2d v6, x9                  ; v6 = reduction polynomial duplicated across lanes
+
+; First reduction step
+pmull2.1q v3, v3, v6           ; v3 = high bits * reduction polynomial
+eor3.16b v2, v2, v5, v3        ; v2 = middle terms ^ shifted high bits ^ reduced high bits
+
+; Computing low product term
+pmull.1q v0, v0, v1            ; v0 = low 64 bits of v0 * low 64 bits of v1
+
+; Second reduction step
+ext.16b v1, v4, v2, #8         ; v1 = v2 shifted right by 8 bytes
+pmull2.1q v2, v2, v6           ; v2 = high bits of v2 * reduction polynomial
+eor3.16b v0, v2, v0, v1        ; v0 = reduced high bits ^ low product ^ shifted middle terms
+
+str q0, [x8]                   ; Store result
+ret                            ; Return
+
+\section{MONBIJOU}
+
+MINE
+ldr q0, [x0]
+ldr q1, [x1]
+pmull.1q v2, v0, v1
+pmull2.1q v3, v0, v1
+eor.16b v4, v3, v2
+mov.d x9, v3[1]
+dup.2d v5, v1[1]
+eor.8b v1, v5, v1
+dup.2d v5, v0[1]
+eor.8b v0, v5, v0
+pmull.1q v0, v0, v1
+eor3.16b v0, v0, v2, v3
+fmov x10, d3
+mov.d x11, v0[1]
+extr x9, x9, x10, #63
+fmov x12, d0
+eor x9, x9, x11
+lsr x11, x9, #63
+eor x9, x9, x9, lsl #1
+extr x13, x11, x9, #61
+eor x10, x12, x10, lsl #1
+eor x11, x13, x11
+eor x9, x9, x9, lsl #3
+eor x11, x11, x11, lsl #1
+eor x9, x9, x10
+eor x9, x9, x11, lsl #3
+eor x9, x9, x11
+mov.d x10, v4[1]
+fmov x11, d4
+eor x10, x10, x10, lsl #1
+lsr x12, x10, #61
+eor x12, x12, x12, lsl #1
+eor x10, x10, x12
+eor x11, x11, x10, lsl #3
+eor x10, x10, x11
+stp x10, x9, [x8]
+ret
+
+WO KARATSUBA
+ldr q0, [x0]
+ldr q1, [x1]
+pmull.1q v2, v0, v1
+pmull2.1q v3, v0, v1
+eor.16b v2, v3, v2
+mov.d x9, v3[1]
+fmov x10, d3
+dup.2d v3, v1[0]
+pmull2.1q v3, v0, v3
+dup.2d v0, v0[0]
+pmull2.1q v0, v0, v1
+eor.16b v0, v0, v3
+mov.d x11, v0[1]
+extr x9, x9, x10, #63
+fmov x12, d0
+eor x9, x9, x11
+lsr x11, x9, #63
+eor x9, x9, x9, lsl #1
+extr x13, x11, x9, #61
+eor x10, x12, x10, lsl #1
+eor x11, x13, x11
+eor x9, x9, x9, lsl #3
+eor x11, x11, x11, lsl #1
+eor x9, x9, x10
+eor x9, x9, x11, lsl #3
+eor x9, x9, x11
+mov.d x10, v2[1]
+fmov x11, d2
+eor x10, x10, x10, lsl #1
+lsr x12, x10, #61
+eor x12, x12, x12, lsl #1
+eor x10, x10, x12
+eor x11, x11, x10, lsl #3
+eor x10, x10, x11
+stp x10, x9, [x8]
+ret
+

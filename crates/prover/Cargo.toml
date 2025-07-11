@@ -1,8 +1,8 @@
 [package]
 name = "binius-prover"
-version.workspace = true
-edition.workspace = true
-authors.workspace = true
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
 
 [lints]
 workspace = true
@@ -30,7 +30,7 @@ binius-math = { path = "../math", features = ["test-utils"] }
 blake2.workspace = true
 criterion.workspace = true
 proptest.workspace = true
-rand = { workspace = true, features = ["std_rng"] }
+rand = { workspace = true, features = ["std_rng", "thread_rng"] }
 
 [[bench]]
 name = "binary_merkle_tree"

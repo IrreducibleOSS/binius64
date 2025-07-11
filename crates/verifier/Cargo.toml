@@ -13,6 +13,7 @@ binius-frontend = { path = "../frontend" }
 binius-math = { path = "../math" }
 binius-transcript = { path = "../transcript" }
 binius-utils = { path = "../utils" }
+blake2.workspace = true
 bytemuck.workspace = true
 bytes.workspace = true
 digest.workspace = true
@@ -23,3 +24,4 @@ thiserror.workspace = true
 
 [dev-dependencies]
 assert_matches.workspace = true
+itertools.workspace = true

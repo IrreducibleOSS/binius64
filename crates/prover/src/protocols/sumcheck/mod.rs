@@ -3,4 +3,4 @@
 pub mod bivariate_mle;
 pub mod rerand_mle;
 pub mod common;
-mod error;
+pub mod error;

@@ -4,3 +4,4 @@ Cargo.lock
 CLAUDE.local.md
 /.idea/
 **/.DS_Store
+/.vscode

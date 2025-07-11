@@ -2,7 +2,7 @@
 
 use std::{fs::File, io::Write, iter::repeat_with, slice};
 
-use binius_field::TowerField;
+use binius_field::Field as TowerField;
 use binius_utils::{DeserializeBytes, SerializationMode, SerializeBytes};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
