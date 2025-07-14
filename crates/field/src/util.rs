@@ -8,6 +8,7 @@ use binius_utils::checked_arithmetics::checked_int_div;
 use crate::{ExtensionField, Field, PackedField, packed::get_packed_slice_unchecked};
 
 /// Computes the inner product of two vectors without checking that the lengths are equal
+#[inline]
 pub fn inner_product_unchecked<F, FE>(
 	a: impl IntoIterator<Item = FE>,
 	b: impl IntoIterator<Item = F>,
