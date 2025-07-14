@@ -242,3 +242,82 @@ fn prop_square_vs_mul_equivalence(vals: Vec<u64>) -> TestResult {
 
 	TestResult::passed()
 }
+
+#[quickcheck]
+fn prop_compare_equal(vals: Vec<u64>) -> TestResult {
+	if vals.len() > 8 {
+		return TestResult::discard();
+	}
+
+	let builder = CircuitBuilder::new();
+	let a: Vec<Wire> = (0..vals.len()).map(|_| builder.add_witness()).collect();
+	let b: Vec<Wire> = (0..vals.len()).map(|_| builder.add_witness()).collect();
+
+	let result = compare(&builder, &a, &b);
+
+	let cs = builder.build();
+	let mut w = cs.new_witness_filler();
+
+	// Set same values for both inputs
+	for (i, &val) in vals.iter().enumerate() {
+		w[a[i]] = Word(val);
+		w[b[i]] = Word(val);
+	}
+
+	cs.populate_wire_witness(&mut w).unwrap();
+
+	// Should be equal (all 1s)
+	if w[result] != Word(u64::MAX) {
+		return TestResult::error("Result is not all 1s");
+	}
+
+	if let Err(e) = verify_constraints(&cs.constraint_system(), &w.into_value_vec()) {
+		return TestResult::error(format!("Constraint verification failed: {e:?}"));
+	}
+
+	TestResult::passed()
+}
+
+#[quickcheck]
+fn prop_compare_different(a_vals: Vec<u64>, b_vals: Vec<u64>) -> TestResult {
+	if a_vals.len() != b_vals.len() || a_vals.len() > 8 {
+		return TestResult::discard();
+	}
+
+	// Skip if they're actually equal
+	if a_vals == b_vals {
+		return TestResult::discard();
+	}
+
+	let builder = CircuitBuilder::new();
+	let a: Vec<Wire> = (0..a_vals.len()).map(|_| builder.add_witness()).collect();
+	let b: Vec<Wire> = (0..b_vals.len()).map(|_| builder.add_witness()).collect();
+
+	let result = compare(&builder, &a, &b);
+
+	let cs = builder.build();
+	let mut w = cs.new_witness_filler();
+
+	for (i, &val) in a_vals.iter().enumerate() {
+		w[a[i]] = Word(val);
+	}
+	for (i, &val) in b_vals.iter().enumerate() {
+		w[b[i]] = Word(val);
+	}
+
+	// Run the circuit - this might fail for some cases
+	if let Err(e) = cs.populate_wire_witness(&mut w) {
+		return TestResult::error(format!("Circuit execution failed: {e:?}"));
+	}
+
+	// Should be not equal (all 0s)
+	if w[result] != Word(0) {
+		return TestResult::error("Different values detected as equal".to_string());
+	}
+
+	if let Err(e) = verify_constraints(&cs.constraint_system(), &w.into_value_vec()) {
+		return TestResult::error(format!("Constraint verification failed: {e:?}"));
+	}
+
+	TestResult::passed()
+}

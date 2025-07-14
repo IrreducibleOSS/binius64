@@ -16,6 +16,7 @@
 //! - Addition: Input size n produces output size n (with overflow checks)
 //! - Multiplication: Input sizes n and m produce output size n + m
 //! - Squaring: Input size n produces output size 2n
+//! - Comparison: Inputs must be the same size
 
 use num_bigint::BigUint;
 
@@ -81,6 +82,51 @@ pub fn square(builder: &CircuitBuilder, a: &[Wire]) -> Vec<Wire> {
 		}
 	}
 	compute_stack_adds(builder, &accumulator)
+}
+
+/// Compare two arbitrary-sized bignums for equality.
+///
+/// # Arguments
+/// * `builder` - Circuit builder for constraint generation
+/// * `a` - First bignum as little-endian limbs
+/// * `b` - Second bignum as little-endian limbs (must have same length as `a`)
+///
+/// # Returns
+/// A `Wire` that evaluates to:
+/// - `0xFFFFFFFFFFFFFFFF` (all ones) if `a == b`
+/// - `0x0000000000000000` (all zeros) if `a != b`
+///
+/// # Panics
+/// Panics if `a` and `b` have different lengths.
+pub fn compare(builder: &CircuitBuilder, a: &[Wire], b: &[Wire]) -> Wire {
+	assert_eq!(a.len(), b.len(), "compare: inputs must have the same length");
+
+	if a.is_empty() {
+		return builder.add_constant(Word::ALL_ONE);
+	}
+
+	// NB: An alternative approach, to reduce the number of icmp_eq gates used
+	// is:
+	//
+	//  1. XOR each limb pair
+	//  2. OR all the results together
+	//  3. compare the result of 2 with zero
+	//
+	// However when I treid this I got constraint verification errors in the
+	// tests.
+
+	// For each limb pair, compute equality (all 1s if equal, all 0s if not)
+	let eq_results: Vec<Wire> = a
+		.iter()
+		.zip(b.iter())
+		.map(|(&x, &y)| builder.icmp_eq(x, y))
+		.collect();
+
+	// AND all equality results together
+	eq_results
+		.into_iter()
+		.reduce(|acc, x| builder.band(acc, x))
+		.unwrap()
 }
 
 /// Add two arbitrary-sized bignums with carry propagation.
