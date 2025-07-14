@@ -6,6 +6,35 @@ use binius_field::{Field, PackedField};
 use binius_verifier::protocols::sumcheck::RoundCoeffs;
 
 #[derive(Clone, Debug, Default)]
+pub struct RoundEvals1<P: PackedField> {
+	pub one: P,
+}
+
+impl<P: PackedField> RoundEvals1<P> {
+	pub fn sum_scalars(self, log_len: usize) -> RoundEvals1<P::Scalar> {
+		RoundEvals1 {
+			one: self.one.iter().take(1 << log_len).sum(),
+		}
+	}
+}
+
+impl<F: Field> RoundEvals1<F> {
+	pub fn interpolate(self, sum: F, alpha: F) -> RoundCoeffs<F> {
+		let zero = (sum - self.one * alpha) * (F::ONE - alpha).invert_or_zero();
+		RoundCoeffs(vec![zero, self.one - zero])
+	}
+}
+
+impl<P: PackedField> Add<&Self> for RoundEvals1<P> {
+	type Output = Self;
+
+	fn add(mut self, rhs: &Self) -> Self::Output {
+		self.one += rhs.one;
+		self
+	}
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct RoundEvals2<P: PackedField> {
 	pub one: P,
 	pub inf: P,
