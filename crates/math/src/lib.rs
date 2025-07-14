@@ -13,6 +13,7 @@
 pub mod binary_subspace;
 mod error;
 pub mod field_buffer;
+pub mod line;
 pub mod matrix;
 pub mod multilinear;
 pub mod ntt;
