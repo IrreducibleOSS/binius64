@@ -10,13 +10,18 @@ workspace = true
 [dependencies]
 binius-field = { path = "../field" }
 binius-frontend = { path = "../frontend" }
+binius-math = { path = "../math" }
 binius-maybe-rayon = { path = "../maybe-rayon" }
 binius-transcript = { path = "../transcript" }
 binius-verifier = { path = "../verifier" }
 binius-utils = { path = "../utils" }
+bytemuck.workspace = true
 bytes.workspace = true
 digest.workspace = true
 getset.workspace = true
+itertools.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 

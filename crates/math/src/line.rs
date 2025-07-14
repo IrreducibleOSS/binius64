@@ -30,7 +30,7 @@ where
 
 #[cfg(test)]
 mod tests {
-	use binius_field::{Field, PackedBinaryField4x32b, PackedField};
+	use binius_field::{Field, PackedBinaryField4x32b, PackedField, Random};
 	use rand::prelude::*;
 
 	use super::*;
@@ -43,8 +43,8 @@ mod tests {
 		let mut rng = StdRng::seed_from_u64(0);
 
 		// Test with scalar field
-		let x0 = <F as Field>::random(&mut rng);
-		let x1 = <F as Field>::random(&mut rng);
+		let x0 = F::random(&mut rng);
+		let x1 = F::random(&mut rng);
 		let zero = F::ZERO;
 		let one = F::ONE;
 
@@ -55,8 +55,8 @@ mod tests {
 		assert_eq!(extrapolate_line_packed(x0, x1, one), x1);
 
 		// Test with packed field
-		let x0_packed = <P as PackedField>::random(&mut rng);
-		let x1_packed = <P as PackedField>::random(&mut rng);
+		let x0_packed = P::random(&mut rng);
+		let x1_packed = P::random(&mut rng);
 		let zero_packed = P::zero();
 		let one_packed = P::one();
 
@@ -72,11 +72,11 @@ mod tests {
 		let mut rng = StdRng::seed_from_u64(0);
 
 		// Generate random points and values
-		let x0 = <F as Field>::random(&mut rng);
-		let x1 = <F as Field>::random(&mut rng);
-		let z0 = <F as Field>::random(&mut rng);
-		let z1 = <F as Field>::random(&mut rng);
-		let alpha = <F as Field>::random(&mut rng);
+		let x0 = F::random(&mut rng);
+		let x1 = F::random(&mut rng);
+		let z0 = F::random(&mut rng);
+		let z1 = F::random(&mut rng);
+		let alpha = F::random(&mut rng);
 
 		// Test linearity property: f(αz0 + (1-α)z1) = αf(z0) + (1-α)f(z1)
 		let z_combined = alpha * z0 + (F::ONE - alpha) * z1;

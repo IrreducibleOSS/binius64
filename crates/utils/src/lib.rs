@@ -7,7 +7,6 @@ pub mod checked_arithmetics;
 pub mod env;
 pub mod error_utils;
 pub mod felts;
-pub mod formatting;
 pub mod graph;
 pub mod iter;
 pub mod mem;

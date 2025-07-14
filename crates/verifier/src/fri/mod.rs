@@ -23,9 +23,10 @@
 //! [BBHR17]: <https://eccc.weizmann.ac.il/report/2017/134/>
 //! [DP24]: <https://eprint.iacr.org/2024/504>
 
-pub mod common;
+mod common;
 mod error;
-mod fold;
+pub mod fold;
 pub mod verify;
 
+pub use common::*;
 pub use error::*;

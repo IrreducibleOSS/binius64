@@ -116,7 +116,7 @@ pub fn fold_rows<F: Field, Data: Deref<Target = [F]>>(
 mod tests {
 	use std::iter;
 
-	use binius_field::BinaryField128b as B128;
+	use binius_field::{BinaryField128b as B128, Random};
 	use rand::{SeedableRng, rngs::StdRng};
 
 	use super::*;
@@ -143,8 +143,8 @@ mod tests {
 		let vec = FieldBuffer::<B128>::from_values(&vec_values).unwrap();
 
 		// Generate random scalars
-		let scalar0 = <B128 as Field>::random(&mut rng);
-		let scalar1 = <B128 as Field>::random(&mut rng);
+		let scalar0 = B128::random(&mut rng);
+		let scalar1 = B128::random(&mut rng);
 
 		// Compute left side: (scalar0 * mat0 + scalar1 * mat1) * vec
 		let scaled_mat_values: Vec<B128> = iter::zip(&mat0_values, &mat1_values)
@@ -189,8 +189,8 @@ mod tests {
 		let vec1 = FieldBuffer::<B128>::from_values(&vec1_values).unwrap();
 
 		// Generate random scalars
-		let scalar0 = <B128 as Field>::random(&mut rng);
-		let scalar1 = <B128 as Field>::random(&mut rng);
+		let scalar0 = B128::random(&mut rng);
+		let scalar1 = B128::random(&mut rng);
 
 		// Compute left side: mat * (scalar0 * vec0 + scalar1 * vec1)
 		let scaled_vec_values: Vec<B128> = vec0_values
