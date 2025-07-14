@@ -113,6 +113,15 @@ where
 	}
 }
 
+impl<Challenger_> CanSampleBits<u32> for VerifierTranscript<Challenger_>
+where
+	Challenger_: Challenger,
+{
+	fn sample_bits(&mut self, bits: usize) -> u32 {
+		sample_bits_reader(self.combined.challenger.sampler(), bits)
+	}
+}
+
 pub struct TranscriptReader<'a, B: Buf> {
 	buffer: &'a mut B,
 	debug_assertions: bool,
