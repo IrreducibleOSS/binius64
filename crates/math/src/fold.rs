@@ -38,10 +38,15 @@ use crate::field_buffer::FieldBuffer;
 ///
 /// * Returns an error if `mat.len()` does not equal `vec.len() * out.len()`.
 /// * Returns an error if `mat` is not a subfield of `F`.
-pub fn fold_cols<F: Field, Data: Deref<Target = [F]>>(
-	mat: &FieldBuffer<F, Data>,
-	vec: &FieldBuffer<F, Data>,
-) -> Result<FieldBuffer<F>, Error> {
+pub fn fold_cols<F, DataMat, DataVec>(
+	mat: &FieldBuffer<F, DataMat>,
+	vec: &FieldBuffer<F, DataVec>,
+) -> Result<FieldBuffer<F>, Error>
+where
+	F: Field,
+	DataMat: Deref<Target = [F]>,
+	DataVec: Deref<Target = [F]>,
+{
 	let log_m = vec.log_len();
 	let Some(log_n) = mat.log_len().checked_sub(vec.log_len()) else {
 		return Err(Error::ArgumentRangeError {
@@ -90,10 +95,15 @@ pub fn fold_cols<F: Field, Data: Deref<Target = [F]>>(
 ///
 /// * Returns an error if `mat.len()` does not equal `vec.len() * out.len()`.
 /// * Returns an error if `mat` is not a subfield of `F`.
-pub fn fold_rows<F: Field, Data: Deref<Target = [F]>>(
-	mat: &FieldBuffer<F, Data>,
-	vec: &FieldBuffer<F, Data>,
-) -> Result<FieldBuffer<F>, Error> {
+pub fn fold_rows<F, DataMat, DataVec>(
+	mat: &FieldBuffer<F, DataMat>,
+	vec: &FieldBuffer<F, DataVec>,
+) -> Result<FieldBuffer<F>, Error>
+where
+	F: Field,
+	DataMat: Deref<Target = [F]>,
+	DataVec: Deref<Target = [F]>,
+{
 	let log_n = vec.log_len();
 	let Some(log_m) = mat.log_len().checked_sub(vec.log_len()) else {
 		return Err(Error::ArgumentRangeError {

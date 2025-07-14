@@ -26,9 +26,10 @@ thiserror.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+binius-math = { path = "../math", features = ["test-utils"] }
 blake2.workspace = true
 criterion.workspace = true
-itertools.workspace = true
+proptest.workspace = true
 rand = { workspace = true, features = ["std_rng"] }
 
 [[bench]]
