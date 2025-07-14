@@ -321,3 +321,70 @@ fn prop_compare_different(a_vals: Vec<u64>, b_vals: Vec<u64>) -> TestResult {
 
 	TestResult::passed()
 }
+
+#[quickcheck]
+fn prop_mod_reduce_multi_limb(a_val: u64, b_val: u64, mod_val: u32) -> TestResult {
+	// Skip if modulus is zero
+	if mod_val == 0 {
+		return TestResult::discard();
+	}
+
+	// Create a 4-limb dividend from two u64 values
+	let dividend_limbs = [a_val, b_val, 0, 0];
+	let modulus_limbs = [mod_val as u64, 0];
+
+	let builder = CircuitBuilder::new();
+
+	// Create witness wires (4 limbs for dividend, 2 for modulus)
+	let a: Vec<Wire> = (0..4).map(|_| builder.add_witness()).collect();
+	let modulus: Vec<Wire> = (0..2).map(|_| builder.add_witness()).collect();
+
+	// Create ModReduce circuit
+	let mod_reduce = ModReduce::new(&builder, a.clone(), modulus.clone());
+
+	let cs = builder.build();
+	let mut w = cs.new_witness_filler();
+
+	// Set input values
+	for (i, &val) in dividend_limbs.iter().enumerate() {
+		w[a[i]] = Word(val);
+	}
+
+	for (i, &val) in modulus_limbs.iter().enumerate() {
+		w[modulus[i]] = Word(val);
+	}
+
+	// Populate quotient and remainder
+	mod_reduce.populate_result(&mut w);
+
+	// Run the circuit
+	if let Err(e) = cs.populate_wire_witness(&mut w) {
+		return TestResult::error(format!("Circuit execution failed: {e:?}"));
+	}
+
+	// Verify mathematical correctness using BigUint
+	let a_val = limbs_to_biguint(&mod_reduce.a, &w);
+	let mod_val = limbs_to_biguint(&mod_reduce.modulus, &w);
+	let q_val = limbs_to_biguint(&mod_reduce.quotient, &w);
+	let r_val = limbs_to_biguint(&mod_reduce.remainder, &w);
+
+	// Check: a = q * modulus + r
+	let reconstructed = &q_val * &mod_val + &r_val;
+	if a_val != reconstructed {
+		return TestResult::error(format!(
+			"Division property failed: {a_val} != {q_val} * {mod_val} + {r_val}"
+		));
+	}
+
+	// Check: r < modulus
+	if r_val >= mod_val {
+		return TestResult::error(format!("Remainder {r_val} >= modulus {mod_val}"));
+	}
+
+	// Verify all constraints are satisfied
+	if let Err(e) = verify_constraints(&cs.constraint_system(), &w.into_value_vec()) {
+		return TestResult::error(format!("Constraint verification failed: {e:?}"));
+	}
+
+	TestResult::passed()
+}

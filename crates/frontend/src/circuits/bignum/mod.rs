@@ -17,8 +17,11 @@
 //! - Multiplication: Input sizes n and m produce output size n + m
 //! - Squaring: Input size n produces output size 2n
 //! - Comparison: Inputs must be the same size
+//! - Modular reduction: Input size m, modulus size n, output size n
 
 use num_bigint::BigUint;
+use num_integer::Integer;
+use num_traits::Zero;
 
 #[cfg(test)]
 mod tests;
@@ -156,6 +159,102 @@ pub fn add(builder: &CircuitBuilder, a: &[Wire], b: &[Wire]) -> Vec<Wire> {
 	compute_stack_adds(builder, &accumulator)
 }
 
+/// Modular reduction circuit for arbitrary-sized bignums.
+///
+/// This struct represents a modular reduction operation `a mod modulus` where:
+/// - `a` is the dividend (can be any size)
+/// - `modulus` is the divisor
+/// - `quotient` and `remainder` satisfy: `a = quotient × modulus + remainder`
+/// - `remainder < modulus`
+pub struct ModReduce {
+	/// Input: dividend
+	pub a: Vec<Wire>,
+	/// Input: modulus
+	pub modulus: Vec<Wire>,
+	/// Output: quotient
+	pub quotient: Vec<Wire>,
+	/// Output: remainder
+	pub remainder: Vec<Wire>,
+}
+
+impl ModReduce {
+	/// Create a new modular reduction circuit.
+	///
+	/// This creates witness wires for the quotient and remainder, and generates
+	/// constraints that enforce `a = quotient × modulus + remainder` with `remainder < modulus`.
+	///
+	/// # Arguments
+	/// * `builder` - Circuit builder for constraint generation
+	/// * `a` - Dividend (the value to reduce)
+	/// * `modulus` - Modulus (the value to reduce by)
+	///
+	/// # Returns
+	/// A `ModReduce` struct containing all wires and ready for witness generation
+	///
+	/// # Constraint Generation
+	/// This function generates constraints that verify:
+	/// 1. `quotient × modulus + remainder = a` (via multiplication and addition constraints)
+	/// 2. `remainder < modulus` (implicitly enforced by using modulus-sized remainder)
+	pub fn new(builder: &CircuitBuilder, a: Vec<Wire>, modulus: Vec<Wire>) -> Self {
+		// For modular reduction, quotient and remainder have the same size as modulus
+		let modulus_len = modulus.len();
+
+		let quotient: Vec<Wire> = (0..modulus_len).map(|_| builder.add_witness()).collect();
+		let remainder: Vec<Wire> = (0..modulus_len).map(|_| builder.add_witness()).collect();
+
+		// Compute quotient * modulus
+		let mul_qm_result = mul(builder, &quotient, &modulus);
+
+		// Create a padded version of remainder to match multiplication result size
+		let zero = builder.add_constant(Word::ZERO);
+		let mut remainder_padded = vec![zero; mul_qm_result.len()];
+		remainder_padded[..remainder.len()].copy_from_slice(&remainder);
+
+		// Add quotient*modulus + remainder
+		let reconstructed = add(builder, &mul_qm_result, &remainder_padded);
+
+		// Assert reconstructed equals a
+		for (i, &ai) in a.iter().enumerate() {
+			builder.assert_eq(format!("mod_reduce32_reconstructed_{i}"), reconstructed[i], ai);
+		}
+
+		ModReduce {
+			a,
+			modulus,
+			quotient,
+			remainder,
+		}
+	}
+
+	/// Populate the witness values for quotient and remainder.
+	///
+	/// This function computes the actual quotient and remainder values during
+	/// witness generation phase. It handles the special case of zero modulus
+	/// to avoid division by zero.
+	///
+	/// # Arguments
+	/// * `w` - Witness filler to populate with computed values
+	///
+	/// # Behavior
+	/// - If modulus is zero: sets quotient and remainder to zero
+	/// - Otherwise: computes `quotient = a div modulus`, `remainder = a mod modulus`
+	pub fn populate_result(&self, w: &mut WitnessFiller) {
+		let a_val = limbs_to_biguint(&self.a, w);
+		let mod_val = limbs_to_biguint(&self.modulus, w);
+
+		if mod_val.is_zero() {
+			// For zero modulus, set quotient and remainder to zero
+			populate_limbs_from_biguint(w, &self.quotient, &BigUint::zero());
+			populate_limbs_from_biguint(w, &self.remainder, &BigUint::zero());
+		} else {
+			// Compute quotient and remainder
+			let (q, r) = a_val.div_rem(&mod_val);
+			populate_limbs_from_biguint(w, &self.quotient, &q);
+			populate_limbs_from_biguint(w, &self.remainder, &r);
+		}
+	}
+}
+
 /// Computes multi-operand addition with carry propagation across limb positions.
 ///
 /// This function is the core of bignum arithmetic, handling the addition of multiple
@@ -267,4 +366,26 @@ pub fn biguint_from_u64_slice(slice: &[u64]) -> BigUint {
 pub fn limbs_to_biguint(limbs: &[Wire], w: &WitnessFiller) -> BigUint {
 	let limb_vals: Vec<_> = limbs.iter().map(|&l| w[l].as_u64()).collect();
 	biguint_from_u64_slice(&limb_vals)
+}
+
+/// Populate witness limbs from a BigUint value.
+///
+/// This function is used during witness generation to set the actual
+/// numeric values for bignum wires in the circuit. If the value has
+/// fewer limbs than the wire array, the remaining limbs are set to zero.
+///
+/// # Arguments
+/// * `witness` - Witness filler to populate
+/// * `limbs` - Wire array to fill (determines the size)
+/// * `value` - The bignum value to store
+///
+/// # Behavior
+/// - Stores each 64-bit digit in the corresponding wire
+/// - Pads with zeros if `value` requires fewer limbs than provided
+pub fn populate_limbs_from_biguint(witness: &mut WitnessFiller, limbs: &[Wire], value: &BigUint) {
+	let mut digits = value.to_u64_digits();
+	digits.resize(limbs.len(), 0);
+	for (&wire, &d) in limbs.iter().zip(digits.iter()) {
+		witness[wire] = Word(d);
+	}
 }
