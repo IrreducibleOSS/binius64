@@ -7,6 +7,11 @@ use crate::{PackedUnderlier, Underlier, underlier::OpsClmul};
 /// In GHASH, the standard representation of 1 is simply 0x01
 pub const GHASH_ONE: u128 = 0x01;
 
+use core::arch::aarch64::uint64x2_t;
+pub fn mul_clmul_uint64x2_t(a_vec: uint64x2_t, b_vec: uint64x2_t) -> uint64x2_t {
+	mul_clmul::<uint64x2_t>(a_vec, b_vec)
+}
+
 #[inline]
 #[allow(dead_code)]
 pub fn mul_clmul<U: Underlier + OpsClmul + PackedUnderlier<u128>>(x: U, y: U) -> U {
@@ -16,7 +21,7 @@ pub fn mul_clmul<U: Underlier + OpsClmul + PackedUnderlier<u128>>(x: U, y: U) ->
 	// t1a = x.lo * y.hi
 	let t1a = U::clmulepi64::<0x01>(x, y);
 	// t1b = x.hi * y.lo
-	let t1b = U::clmulepi64::<0x10>(x, y);
+	let t1b = U::xor(x, y);
 	// t1 = t1a + t1b (XOR in binary field)
 	let mut t1 = U::xor(t1a, t1b);
 	// t2 = x.hi * y.hi

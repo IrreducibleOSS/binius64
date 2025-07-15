@@ -27,3 +27,10 @@ pub use error::Error;
 pub use field_buffer::{FieldBuffer, FieldSlice, FieldSliceMut};
 pub use matrix::Matrix;
 pub use reed_solomon::ReedSolomonCode;
+
+pub fn evaluate_univariate<F: binius_field::Field>(coeffs: &[F], x: F) -> F {
+	// Evaluate using Horner's method
+	coeffs
+		.iter()
+		.rfold(F::ZERO, |eval, &coeff| eval * x + coeff)
+}
