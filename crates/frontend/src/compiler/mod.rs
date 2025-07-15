@@ -291,6 +291,7 @@ impl CircuitBuilder {
 	}
 
 	pub fn rotr_32(&self, a: Wire, n: u32) -> Wire {
+		assert!(n < 32, "shift amount n={n} out of range");
 		let gate = Rotr32::new(self, a, n);
 		let out = gate.c;
 		self.emit(gate);
@@ -298,6 +299,7 @@ impl CircuitBuilder {
 	}
 
 	pub fn shr_32(&self, a: Wire, n: u32) -> Wire {
+		assert!(n < 32, "shift amount n={n} out of range");
 		let gate = Shr32::new(self, a, n);
 		let out = gate.c;
 		self.emit(gate);
@@ -314,6 +316,7 @@ impl CircuitBuilder {
 	///
 	/// 1 AND constraint.
 	pub fn shl(&self, a: Wire, n: u32) -> Wire {
+		assert!(n < 64, "shift amount n={n} out of range");
 		let gate = Shl::new(self, a, n);
 		let out = gate.c;
 		self.emit(gate);
@@ -330,6 +333,7 @@ impl CircuitBuilder {
 	///
 	/// 1 AND constraint.
 	pub fn shr(&self, a: Wire, n: u32) -> Wire {
+		assert!(n < 64, "shift amount n={n} out of range");
 		let gate = Shr::new(self, a, n);
 		let out = gate.c;
 		self.emit(gate);
@@ -462,10 +466,15 @@ impl CircuitBuilder {
 	///
 	/// Returns the extracted byte (0-255) in the low 8 bits, with high 56 bits zero.
 	///
+	/// # Panics
+	///
+	/// Panics if j is greater than or equal to 8.
+	///
 	/// # Cost
 	///
 	/// 2 AND constraints.
 	pub fn extract_byte(&self, word: Wire, j: u32) -> Wire {
+		assert!(j < 8, "byte index out of range");
 		let gate = ExtractByte::new(self, word, j);
 		let out = gate.b;
 		self.emit(gate);

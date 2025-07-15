@@ -25,6 +25,8 @@ pub struct ShiftedValueIndex {
 	/// The flavour of the shift that the value must be shifted by.
 	pub shift_variant: ShiftVariant,
 	/// The number of bits by which the value must be shifted by.
+	///
+	/// Must be less than 64.
 	pub amount: usize,
 }
 
@@ -40,6 +42,7 @@ impl ShiftedValueIndex {
 
 	/// Shift Left Logical by the given number of bits.
 	pub fn sll(value_index: ValueIndex, amount: usize) -> Self {
+		assert!(amount < 64, "shift amount n={amount} out of range");
 		Self {
 			value_index,
 			shift_variant: ShiftVariant::Sll,
@@ -48,6 +51,7 @@ impl ShiftedValueIndex {
 	}
 
 	pub fn srl(value_index: ValueIndex, amount: usize) -> Self {
+		assert!(amount < 64, "shift amount n={amount} out of range");
 		Self {
 			value_index,
 			shift_variant: ShiftVariant::Slr,
@@ -56,6 +60,7 @@ impl ShiftedValueIndex {
 	}
 
 	pub fn sar(value_index: ValueIndex, amount: usize) -> Self {
+		assert!(amount < 64, "shift amount n={amount} out of range");
 		Self {
 			value_index,
 			shift_variant: ShiftVariant::Sar,
