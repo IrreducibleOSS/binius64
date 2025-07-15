@@ -8,6 +8,8 @@ pub enum Error {
 	MultilinearSizeMismatch,
 	#[error("number of eval claims does not match the number of multilinears")]
 	EvalClaimsNumberMismatch,
+	#[error("batched provers should have the same number of rounds")]
+	ProverRoundCountMismatch,
 	#[error("expected execute() call")]
 	ExpectedExecute,
 	#[error("expected fold() call")]
