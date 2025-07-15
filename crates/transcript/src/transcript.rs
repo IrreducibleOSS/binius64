@@ -2,7 +2,7 @@
 
 use std::{fs::File, io::Write, iter::repeat_with, slice};
 
-use binius_field::TowerField;
+use binius_field::Field;
 use binius_utils::{DeserializeBytes, SerializationMode, SerializeBytes};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
@@ -13,7 +13,7 @@ use super::{
 use crate::fiat_shamir::{CanSample, CanSampleBits, sample_bits_reader};
 
 /// Verifier transcript over some Challenger that reads from the internal tape and `CanSample<F:
-/// TowerField>`
+/// Field>`
 ///
 /// You must manually call the destructor with `finalize()` to check anything that's written is
 /// fully read out
@@ -103,7 +103,7 @@ impl<Challenger> Drop for VerifierTranscript<Challenger> {
 
 impl<F, Challenger_> CanSample<F> for VerifierTranscript<Challenger_>
 where
-	F: TowerField,
+	F: Field,
 	Challenger_: Challenger,
 {
 	fn sample(&mut self) -> F {
@@ -154,13 +154,13 @@ impl<B: Buf> TranscriptReader<'_, B> {
 		Ok(())
 	}
 
-	pub fn read_scalar<F: TowerField>(&mut self) -> Result<F, Error> {
+	pub fn read_scalar<F: Field>(&mut self) -> Result<F, Error> {
 		let mut out = F::default();
 		self.read_scalar_slice_into(slice::from_mut(&mut out))?;
 		Ok(out)
 	}
 
-	pub fn read_scalar_slice_into<F: TowerField>(&mut self, buf: &mut [F]) -> Result<(), Error> {
+	pub fn read_scalar_slice_into<F: Field>(&mut self, buf: &mut [F]) -> Result<(), Error> {
 		let mut buffer = self.buffer();
 		for elem in buf {
 			let mode = SerializationMode::CanonicalTower;
@@ -169,7 +169,7 @@ impl<B: Buf> TranscriptReader<'_, B> {
 		Ok(())
 	}
 
-	pub fn read_scalar_slice<F: TowerField>(&mut self, len: usize) -> Result<Vec<F>, Error> {
+	pub fn read_scalar_slice<F: Field>(&mut self, len: usize) -> Result<Vec<F>, Error> {
 		let mut elems = vec![F::default(); len];
 		self.read_scalar_slice_into(&mut elems)?;
 		Ok(elems)
@@ -186,7 +186,7 @@ impl<B: Buf> TranscriptReader<'_, B> {
 }
 
 /// Prover transcript over some Challenger that writes to the internal tape and `CanSample<F:
-/// TowerField>`
+/// Field>`
 ///
 /// A Transcript is an abstraction over Fiat-Shamir so the prover and verifier can send and receive
 /// data.
@@ -344,11 +344,11 @@ impl<B: BufMut> TranscriptWriter<'_, B> {
 		});
 	}
 
-	pub fn write_scalar<F: TowerField>(&mut self, f: F) {
+	pub fn write_scalar<F: Field>(&mut self, f: F) {
 		self.write_scalar_slice(slice::from_ref(&f));
 	}
 
-	pub fn write_scalar_iter<F: TowerField>(&mut self, it: impl IntoIterator<Item = F>) {
+	pub fn write_scalar_iter<F: Field>(&mut self, it: impl IntoIterator<Item = F>) {
 		self.proof_size_event_wrapper(move |buffer| {
 			for elem in it {
 				SerializeBytes::serialize(&elem, &mut *buffer, SerializationMode::CanonicalTower)
@@ -357,7 +357,7 @@ impl<B: BufMut> TranscriptWriter<'_, B> {
 		});
 	}
 
-	pub fn write_scalar_slice<F: TowerField>(&mut self, elems: &[F]) {
+	pub fn write_scalar_slice<F: Field>(&mut self, elems: &[F]) {
 		self.write_scalar_iter(elems.iter().copied());
 	}
 
@@ -378,7 +378,7 @@ impl<B: BufMut> TranscriptWriter<'_, B> {
 
 impl<F, Challenger_> CanSample<F> for ProverTranscript<Challenger_>
 where
-	F: TowerField,
+	F: Field,
 	Challenger_: Challenger,
 {
 	fn sample(&mut self) -> F {
