@@ -18,6 +18,7 @@ binius-utils = { path = "../utils" }
 bytemuck.workspace = true
 bytes.workspace = true
 digest.workspace = true
+either.workspace = true
 getset.workspace = true
 itertools.workspace = true
 serde.workspace = true

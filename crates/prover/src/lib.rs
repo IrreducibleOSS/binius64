@@ -3,6 +3,7 @@ mod formatting;
 pub mod fri;
 pub mod hash;
 pub mod merkle_tree;
+pub mod protocols;
 mod prove;
 
 pub use error::*;
