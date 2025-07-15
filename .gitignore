@@ -1,4 +1,5 @@
 /target
+.envrc
 profile.json
 Cargo.lock
 CLAUDE.local.md
