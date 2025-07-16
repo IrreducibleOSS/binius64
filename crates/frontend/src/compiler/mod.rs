@@ -599,6 +599,9 @@ impl Circuit {
 			gate.populate_wire_witness(w);
 		}
 
+		let elapsed = start.elapsed();
+		println!("fill_witness took {} microseconds", elapsed.as_micros());
+
 		if w.assertion_failed_count > 0 {
 			return Err(PopulateError {
 				messages: w.assertion_failed_message_vec.clone(),
@@ -606,8 +609,6 @@ impl Circuit {
 			});
 		}
 
-		let elapsed = start.elapsed();
-		println!("fill_witness took {} microseconds", elapsed.as_micros());
 		Ok(())
 	}
 
