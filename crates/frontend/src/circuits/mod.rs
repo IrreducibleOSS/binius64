@@ -2,6 +2,7 @@ pub mod base64;
 pub mod basic;
 pub mod concat;
 pub mod eqbool;
+pub mod fixed_byte_vec;
 pub mod hex;
 pub mod jwt_claims;
 pub mod sha256;
