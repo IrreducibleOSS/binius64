@@ -24,6 +24,7 @@ impl OneBitPCSVerifier {
         eval_point: &[BigField],
         fri_params: &FRIParams<BigField, FA>,
         vcs: &VCS,
+        n_vars: usize
     ) -> Result<(), String>
     where
         BigField: Field + BinaryField + ExtensionField<FA> + TowerField + PackedExtension<SmallField>,
@@ -68,6 +69,7 @@ impl OneBitPCSVerifier {
                 verifier_computed_sumcheck_claim,
                 fri_params,
                 vcs,
+                n_vars - KAPPA
             )
             .unwrap();
         // Final Basefold Verification
@@ -102,7 +104,7 @@ mod test {
         one_bit::{prover::OneBitPCSProver, verifier::OneBitPCSVerifier},
         utils::{
             constants::{
-                BigField, SmallField, FA, L, LOG_INV_RATE, L_PRIME, NUM_TEST_QUERIES,
+                BigField, SmallField, FA, LOG_INV_RATE, NUM_TEST_QUERIES, KAPPA,
             },
             eq_ind::eq_ind_mle,
             utils::lift_small_to_large_field,
@@ -123,10 +125,14 @@ mod test {
     fn test_ring_switched_pcs() {
         let mut rng = StdRng::from_seed([0; 32]);
 
+        let n_vars = 12;
+
+        let big_field_n_vars = n_vars - KAPPA;
+
         // prover has a small field polynomial he is interested in proving an eval claim about:
         // He wishes to evaluated the small field multilinear t at the vector of large field
         // elements r.
-        let packed_mle = (0..1 << L_PRIME)
+        let packed_mle = (0..1 << big_field_n_vars)
             .map(|_| BigField::random(&mut rng))
             .collect_vec();
 
@@ -176,7 +182,7 @@ mod test {
         prover_challenger.message().write(&codeword_commitment);
 
         // random evaluation point
-        let evaluation_point = (0..L).map(|_| BigField::random(&mut rng)).collect_vec();
+        let evaluation_point = (0..n_vars).map(|_| BigField::random(&mut rng)).collect_vec();
 
         // evaluate small field multilinear at the evaluation point
         // It is assumed the prover and verifier already know the evaluation claim
@@ -187,7 +193,7 @@ mod test {
 
         // Instantiate ring switch pcs
         let ring_switch_pcs_prover = OneBitPCSProver::new(
-            packed_mle.clone(),
+            packed_mle,
             evaluation_claim,
             evaluation_point.clone(),
         )
@@ -218,6 +224,7 @@ mod test {
             &evaluation_point,
             &fri_params,
             merkle_prover.scheme(),
+            n_vars
         )
         .unwrap();
     }

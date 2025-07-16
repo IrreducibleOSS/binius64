@@ -8,7 +8,6 @@ use binius_verifier::merkle_tree::MerkleTreeScheme;
 
 use crate::utils::{utils::fri_fold_arities_to_is_commit_round};
 use crate::utils::{
-    constants::L_PRIME,
     utils::verify_sumcheck_round,
 };
 
@@ -21,6 +20,7 @@ impl BigFieldBaseFoldVerifier {
         evaluation_claim: BigField,
         fri_params: &FRIParams<BigField, FA>,
         vcs: &VCS,
+        n_vars: usize
     ) -> Result<(BigField, BigField, Vec<BigField>), String>
     where
         BigField: Field + BinaryField + ExtensionField<FA> + TowerField,
@@ -38,7 +38,7 @@ impl BigFieldBaseFoldVerifier {
         let mut expected_sumcheck_round_claim = verifier_computed_sumcheck_claim;
         let mut round_commitments = vec![];
         let is_commit_round =
-            fri_fold_arities_to_is_commit_round(fri_params.fold_arities(), L_PRIME);
+            fri_fold_arities_to_is_commit_round(fri_params.fold_arities(), n_vars);
 
         for is_this_a_commit_round in is_commit_round.iter() {
             let round_msg = transcript
@@ -93,7 +93,7 @@ mod test {
     use crate::{
         basefold::prover::BigFieldBaseFoldProver,
         utils::{
-            constants::{BigField, FA, LOG_INV_RATE, L_PRIME, NUM_TEST_QUERIES},
+            constants::{BigField, FA, LOG_INV_RATE, NUM_TEST_QUERIES},
             eq_ind::{eq_ind_mle, eval_eq},
             utils::compute_mle_eq_sum,
         },
@@ -121,10 +121,12 @@ mod test {
     fn test_basefold() {
         let mut rng = StdRng::from_seed([0; 32]);
 
+        let n_vars = 8;
+
         // prover has a small field polynomial he is interested in proving an eval claim about:
         // He wishes to evaluated the small field multilinear t at the vector of large field
         // elements r.
-        let packed_mle = (0..1 << L_PRIME)
+        let packed_mle = (0..1 << n_vars)
             .map(|_| BigField::random(&mut rng))
             .collect_vec();
 
@@ -169,7 +171,7 @@ mod test {
         prover_challenger.message().write(&codeword_commitment);
 
         // random evaluation point
-        let evaluation_point = (0..L_PRIME)
+        let evaluation_point = (0..n_vars)
             .map(|_| BigField::random(&mut rng))
             .collect_vec();
 
@@ -193,7 +195,7 @@ mod test {
         .unwrap();
 
         // prove non-interactively
-        basefold_pcs_prover.prove_with_transcript(evaluation_claim, &mut prover_challenger);
+        basefold_pcs_prover.prove_with_transcript(evaluation_claim, n_vars,&mut prover_challenger);
 
         // convert the finalized prover transcript into a verifier transcript
         let mut verifier_challenger = prover_challenger.into_verifier();
@@ -210,6 +212,7 @@ mod test {
                 evaluation_claim,
                 &fri_params,
                 merkle_prover.scheme(),
+                n_vars
             )
             .unwrap();
 

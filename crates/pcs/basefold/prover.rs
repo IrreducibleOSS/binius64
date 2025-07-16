@@ -4,7 +4,6 @@ use crate::{
         sumcheck_prover::SumcheckProver,
     },
     utils::{
-        constants::L_PRIME,
         utils::verify_sumcheck_round,
     },
 };
@@ -63,6 +62,7 @@ where
         .unwrap();
 
         let log_n = packed_mle_owned.log_len();
+
         let sumcheck_prover = MultilinearSumcheckProver::<F>::new(
             vec![packed_mle_owned, transparent_poly_mle],
             claim,
@@ -88,13 +88,13 @@ where
         binius_prover::fri::Error
     > {
         self.sumcheck_prover.fold(challenge);
-
         self.fri_folder.execute_fold_round(challenge)
     }
 
     pub fn prove_with_transcript<TranscriptChallenger>(
         mut self,
         sumcheck_claim: F,
+        n_vars: usize,
         transcript: &mut ProverTranscript<TranscriptChallenger>,
     ) where
         TranscriptChallenger: Challenger,
@@ -103,7 +103,7 @@ where
         let mut expected_sumcheck_round_claim = sumcheck_claim;
 
         let mut round_commitments = vec![];
-        for _ in 0..L_PRIME {
+        for _ in 0..n_vars {
             // Execute FRI-Binius round
             let round_msg = self.execute();
 

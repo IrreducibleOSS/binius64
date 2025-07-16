@@ -101,6 +101,8 @@ where
             prover_eq_r_double_prime.as_ref(),
         );
 
+        let big_field_n_vars = self.packed_mle.log_len();
+
         // Prover receives ring switch eq, setting up for sumcheck
         let big_field_basefold_prover = self.setup_for_fri_sumcheck(
             &prover_r_double_prime,
@@ -112,7 +114,7 @@ where
             prover_computed_sumcheck_claim,
         );
 
-        big_field_basefold_prover.prove_with_transcript(prover_computed_sumcheck_claim, transcript);
+        big_field_basefold_prover.prove_with_transcript(prover_computed_sumcheck_claim, big_field_n_vars, transcript);
     }
 
     // send s_hat_v to the verifier

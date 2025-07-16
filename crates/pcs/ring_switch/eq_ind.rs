@@ -15,7 +15,7 @@ pub fn rs_eq_ind<BF: Field + binius_field::ExtensionField<binius_field::BinaryFi
 
     let row_batching_query= eq_ind_mle::<BF>(batching_challenges);
 
-    let mut rs_eq_mle = FieldBuffer::<BF>::zeros(big_field_hypercube_vertices);
+    let mut rs_eq_mle = FieldBuffer::<BF>::zeros(z_vals.len());
 
     for big_field_hypercube_vertex in 0..big_field_hypercube_vertices {
         for (index, bit) in <BF as ExtensionField<BinaryField1b>>::into_iter_bases(
