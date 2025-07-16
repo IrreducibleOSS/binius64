@@ -42,6 +42,7 @@ where
     VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
     <F as WithUnderlier>::Underlier: PackScalar<FA>,
 {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         ntt: &'a NTT,
         merkle_prover: &'a MerkleProver,

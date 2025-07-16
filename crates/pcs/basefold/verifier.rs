@@ -37,7 +37,7 @@ impl BigFieldBaseFoldVerifier {
         let is_commit_round =
             fri_fold_arities_to_is_commit_round(fri_params.fold_arities(), L_PRIME);
 
-        for round in 0..L_PRIME {
+        for is_this_a_commit_round in is_commit_round.iter() {
             let round_msg = transcript
                 .message()
                 .read_scalar_slice::<BigField>(3)
@@ -57,7 +57,7 @@ impl BigFieldBaseFoldVerifier {
 
             basefold_challenges.push(basefold_challenge);
 
-            if is_commit_round[round] {
+            if *is_this_a_commit_round {
                 round_commitments.push(transcript.message().read().unwrap());
             }
         }
@@ -65,7 +65,7 @@ impl BigFieldBaseFoldVerifier {
         // check c == t(r'_0, ..., r'_{\ell-1})
         // note that the prover is claiming that the final_message is [c]
         let verifier = FRIVerifier::new(
-            &fri_params,
+            fri_params,
             vcs,
             &codeword_commitment,
             &round_commitments,
@@ -96,7 +96,7 @@ mod test {
         },
     };
 
-    use binius_field::{BinaryField128b, Field, Random};
+    use binius_field::{ Random};
     use binius_math::{ntt::SingleThreadedNTT, ReedSolomonCode, FieldBuffer};
     use binius_prover::{
         fri::{self, CommitOutput},

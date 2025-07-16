@@ -333,7 +333,7 @@ pub mod test {
             let a = multilinear.get(i).unwrap();
             let eq_r_i = eq_r.get(i).unwrap();
 
-            if i % 2 == 0 {
+            if i.is_multiple_of(2) {
                 g_of_zero += a * eq_r_i;
             } else {
                 g_of_one += a * eq_r_i;

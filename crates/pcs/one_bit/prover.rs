@@ -124,7 +124,7 @@ where
         let (_, eval_point_high) = evaluation_point.split_at(KAPPA);
 
         // Lift the packed multilinear to the large field
-        let small_field_mle = <BigField as PackedExtension<SmallField>>::cast_bases(&packed_mle.as_ref());
+        let small_field_mle = <BigField as PackedExtension<SmallField>>::cast_bases(packed_mle.as_ref());
 
         let eq_at_high = eq_ind_mle(eval_point_high);
 
@@ -143,9 +143,10 @@ where
 
     // Wraps the setup_for_fri_sumcheck fuction in basefold prover by
     // creating ring switch eq for composition
+    #[allow(clippy::too_many_arguments)]
     pub fn setup_for_fri_sumcheck<'a, FA, NTT, MerkleProver, VCS>(
         self,
-        r_double_prime: &Vec<BigField>,
+        r_double_prime: &[BigField],
         ntt: &'a NTT,
         merkle_prover: &'a MerkleProver,
         fri_params: &'a FRIParams<BigField, FA>,
@@ -163,7 +164,7 @@ where
     {
         let (_, eval_point_high) = self.evaluation_point.split_at(KAPPA);
 
-        let rs_eq_ind = rs_eq_ind(&r_double_prime, &eval_point_high);
+        let rs_eq_ind = rs_eq_ind(r_double_prime, eval_point_high);
 
         BigFieldBaseFoldProver::new(
             ntt,

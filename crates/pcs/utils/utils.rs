@@ -48,10 +48,10 @@ pub fn compute_expected_sumcheck_claim<
     SmallField: Field,
     BigField: Field + ExtensionField<SmallField> + PackedExtension<SmallField>,
 >(
-    s_hat_u: &Vec<BigField>,
+    s_hat_u: &[BigField],
     eq_r_double_prime: &[BigField],
 ) -> BigField {
-    compute_mle_eq_sum(s_hat_u, &eq_r_double_prime)
+    compute_mle_eq_sum(s_hat_u, eq_r_double_prime)
 }
 
 // given 4 lagrange basis coefficients for a univariate polynomial, compute
@@ -102,8 +102,8 @@ pub fn verify_sumcheck_round<BigField: Field>(
 pub fn fri_fold_arities_to_is_commit_round(fri_fold_arities: &[usize], num_basefold_rounds: usize)->Vec<bool>{
     let mut result = vec![false; num_basefold_rounds];
     let mut result_idx = 0;
-    for fri_fold_arities_idx in 0..fri_fold_arities.len(){
-        result_idx += fri_fold_arities[fri_fold_arities_idx];
+    for arity in fri_fold_arities{
+        result_idx += arity;
         result[result_idx-1] = true;
     }
 

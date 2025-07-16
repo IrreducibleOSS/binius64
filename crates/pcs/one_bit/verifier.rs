@@ -20,7 +20,7 @@ impl OneBitPCSVerifier {
         codeword_commitment: VCS::Digest,
         transcript: &mut VerifierTranscript<TranscriptChallenger>,
         evaluation_claim: BigField,
-        eval_point: &Vec<BigField>,
+        eval_point: &[BigField],
         fri_params: &FRIParams<BigField, FA>,
         vcs: &VCS,
     ) -> Result<(), String>
@@ -38,7 +38,7 @@ impl OneBitPCSVerifier {
         let (eval_point_low, _) = eval_point.split_at(KAPPA);
         assert_eq!(
             evaluation_claim,
-            compute_mle_eq_sum(&s_hat_v, eq_ind_mle(&eval_point_low).as_ref())
+            compute_mle_eq_sum(&s_hat_v, eq_ind_mle(eval_point_low).as_ref())
         );
 
         // basis decompose/recombine s_hat_v across opposite dimension
@@ -62,7 +62,7 @@ impl OneBitPCSVerifier {
                 codeword_commitment,
                 transcript,
                 verifier_computed_sumcheck_claim,
-                &fri_params,
+                fri_params,
                 vcs,
             )
             .unwrap();
@@ -71,7 +71,7 @@ impl OneBitPCSVerifier {
         let rs_eq_at_basefold_challenges_verifier = eval_rs_eq(
             eval_point_high,
             &basefold_challenges,
-            &eq_ind_mle(&batching_scalars).as_ref(),
+            eq_ind_mle(&batching_scalars).as_ref(),
         );
 
         assert_eq!(
@@ -106,7 +106,7 @@ mod test {
         },
     };
 
-    use binius_field::{BinaryField128b, Field, Random};
+    use binius_field::{BinaryField128b, Random};
     use binius_math::{ntt::SingleThreadedNTT, ReedSolomonCode, FieldBuffer};
     use binius_prover::{merkle_tree::prover::BinaryMerkleTreeProver, fri::{CommitOutput, self}};
     use binius_transcript::ProverTranscript;
@@ -168,7 +168,7 @@ mod test {
         .unwrap();
 
         // commit codeword in prover transcript
-        let mut prover_challenger = ProverTranscript::new(StdChallenger::default());;
+        let mut prover_challenger = ProverTranscript::new(StdChallenger::default());
         prover_challenger.message().write(&codeword_commitment);
 
         // random evaluation point
@@ -178,7 +178,7 @@ mod test {
         // It is assumed the prover and verifier already know the evaluation claim
         let evaluation_claim = compute_mle_eq_sum(
             &lifted_small_field_mle,
-            &eq_ind_mle(&evaluation_point).as_ref(),
+            eq_ind_mle(&evaluation_point).as_ref(),
         );
 
         // Instantiate ring switch pcs
