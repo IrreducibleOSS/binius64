@@ -1,25 +1,17 @@
 use std::vec;
 
-use binius_field::{
-	BinaryField, ExtensionField, TowerField, as_packed_field::PackScalar, underlier::WithUnderlier,
-};
+use binius_field::{BinaryField, ExtensionField, TowerField, as_packed_field::PackScalar, underlier::WithUnderlier,};
 use binius_math::{FieldBuffer, ntt::AdditiveNTT};
 use binius_prover::{
 	fri::{FRIFolder, FoldRoundOutput},
 	merkle_tree::MerkleTreeProver,
+	protocols::sumcheck::SumcheckProver,
 };
-use binius_transcript::{
-	ProverTranscript,
-	fiat_shamir::{CanSample, Challenger},
-};
+use binius_transcript::{ProverTranscript, fiat_shamir::{CanSample, Challenger}};
 use binius_utils::SerializeBytes;
 use binius_verifier::{fri::FRIParams, merkle_tree::MerkleTreeScheme};
-
 use crate::{
-	multilinear_sumcheck::{
-		field_buffer_multilinear_sumcheck::{FoldDirection, MultilinearSumcheckProver},
-		sumcheck_prover::SumcheckProver,
-	},
+	multilinear_sumcheck::field_buffer_multilinear_sumcheck::{FoldDirection, MultilinearSumcheckProver},
 	utils::utils::verify_sumcheck_round,
 };
 
@@ -73,8 +65,8 @@ where
 		})
 	}
 
-	pub fn execute(&self) -> Vec<F> {
-		self.sumcheck_prover.round_message()
+	pub fn execute(&mut self) -> Vec<F> {
+		self.sumcheck_prover.execute().unwrap()[0].0.clone()
 	}
 
 	pub fn fold(
