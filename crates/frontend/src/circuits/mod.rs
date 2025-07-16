@@ -1,8 +1,7 @@
 pub mod base64;
-pub mod basic;
 pub mod concat;
-pub mod eqbool;
-pub mod hex;
+pub mod fixed_byte_vec;
 pub mod jwt_claims;
 pub mod sha256;
 pub mod slice;
+pub mod zklogin;

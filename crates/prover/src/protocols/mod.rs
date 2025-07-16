@@ -1,4 +1,3 @@
 // Copyright 2025 Irreducible Inc.
 
-pub mod eq;
-pub mod fold;
+pub mod sumcheck;

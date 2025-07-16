@@ -1,6 +1,6 @@
 use std::{
 	fmt,
-	ops::{BitAnd, BitOr, BitXor, Shl, Shr},
+	ops::{BitAnd, BitOr, BitXor, Not, Shl, Shr},
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -59,8 +59,20 @@ impl Shr<u32> for Word {
 	}
 }
 
+impl Not for Word {
+	type Output = Self;
+
+	fn not(self) -> Self::Output {
+		Word(!self.0)
+	}
+}
+
 impl Word {
-	pub fn iadd_32(self, rhs: Word) -> (Word, Word) {
+	/// Performs 32-bit addition.
+	///
+	/// Returns (sum, carry_out) where ith carry_out bit is set to one if there is a carry out at
+	/// that bit position.
+	pub fn iadd_cout_32(self, rhs: Word) -> (Word, Word) {
 		let Word(lhs) = self;
 		let Word(rhs) = rhs;
 		let sum = lhs.wrapping_add(rhs) & 0x00000000_FFFFFFFF;
@@ -69,10 +81,13 @@ impl Word {
 	}
 
 	/// Performs 64-bit addition with carry input bit.
-	/// Returns (sum, carry_word) where carry_word encodes all carry positions.
-	pub fn iadd_cin_cout(self, rhs: Word, cin: u64) -> (Word, Word) {
+	///
+	/// Returns (sum, carry_out) where ith carry_out bit is set to one if there is a carry out at
+	/// that bit position.
+	pub fn iadd_cin_cout(self, rhs: Word, cin: Word) -> (Word, Word) {
 		let Word(lhs) = self;
 		let Word(rhs) = rhs;
+		let Word(cin) = cin;
 		let sum = lhs.wrapping_add(rhs).wrapping_add(cin);
 		let cout = (lhs & rhs) | ((lhs ^ rhs) & !sum);
 		(Word(sum), Word(cout))
@@ -83,6 +98,14 @@ impl Word {
 		// Shift right logically by n bits and mask with 32-bit mask
 		let result = (value >> n) & 0x00000000_FFFFFFFF;
 		Word(result)
+	}
+
+	/// Shift Arithmetic Right by a given number of bits.
+	pub fn sar(&self, n: u32) -> Word {
+		let Word(value) = self;
+		let value = *value as i64;
+		let result = value >> n;
+		Word(result as u64)
 	}
 
 	pub fn rotr_32(self, n: u32) -> Word {

@@ -434,10 +434,10 @@ impl CircuitBuilder {
 	///
 	/// # Cost
 	///
-	/// 4 AND constraints.
+	/// 2 AND constraints.
 	pub fn icmp_ult(&self, a: Wire, b: Wire) -> Wire {
 		let gate = IcmpUlt::new(self, a, b);
-		let out = gate.result;
+		let out = gate.out_mask;
 		self.emit(gate);
 		out
 	}
@@ -452,10 +452,10 @@ impl CircuitBuilder {
 	///
 	/// # Cost
 	///
-	/// 8 AND constraints.
+	/// 2 AND constraints.
 	pub fn icmp_eq(&self, a: Wire, b: Wire) -> Wire {
 		let gate = IcmpEq::new(self, a, b);
-		let out = gate.result;
+		let out = gate.out_mask;
 		self.emit(gate);
 		out
 	}
@@ -599,6 +599,9 @@ impl Circuit {
 			gate.populate_wire_witness(w);
 		}
 
+		let elapsed = start.elapsed();
+		println!("fill_witness took {} microseconds", elapsed.as_micros());
+
 		if w.assertion_failed_count > 0 {
 			return Err(PopulateError {
 				messages: w.assertion_failed_message_vec.clone(),
@@ -606,8 +609,6 @@ impl Circuit {
 			});
 		}
 
-		let elapsed = start.elapsed();
-		println!("fill_witness took {} microseconds", elapsed.as_micros());
 		Ok(())
 	}
 
