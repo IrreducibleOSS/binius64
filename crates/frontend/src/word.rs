@@ -1,6 +1,6 @@
 use std::{
 	fmt,
-	ops::{BitAnd, BitOr, BitXor, Shl, Shr},
+	ops::{BitAnd, BitOr, BitXor, Not, Shl, Shr},
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -56,6 +56,14 @@ impl Shr<u32> for Word {
 
 	fn shr(self, rhs: u32) -> Self::Output {
 		Word(self.0 >> rhs)
+	}
+}
+
+impl Not for Word {
+	type Output = Self;
+
+	fn not(self) -> Self::Output {
+		Word(!self.0)
 	}
 }
 

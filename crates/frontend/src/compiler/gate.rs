@@ -512,41 +512,50 @@ impl Gate for AssertEqCond {
 	}
 }
 
-/// Unsigned less-than test (a < b ? all-1 : all-0) using 4 AND constraints.
+/// Unsigned less-than test returning a mask.
 ///
-/// Implements a < b by computing a - b = a + (~b) + 1 and checking the carry out.
-/// If there's no carry out from MSB (borrow occurred), then a < b.
+/// Returns `out_mask = all-1` if `x < y`, `all-0` otherwise.
+///
+/// # Algorithm
+///
+/// The gate computes `x < y` by checking if there's a borrow when computing `x - y`.
+/// This is done by computing `¬x + y` and checking if it carries out (≥ 2^64).
+///
+/// 1. Compute carry bits `bout` from `¬x + y` using the constraint: `(¬x ⊕ bin) ∧ (y ⊕ bin) = bin ⊕
+///    bout` where `bin = bout << 1`
+/// 2. The MSB of `bout` indicates the comparison result:
+///    - MSB = 1: carry out occurred, meaning `x < y`
+///    - MSB = 0: no carry out, meaning `x ≥ y`
+/// 3. Broadcast the MSB to all bits: `out_mask = bout SRA 63`
+///
+/// # Constraints
+///
+/// The gate generates three AND constraints:
+/// 1. Borrow propagation: `(¬x ⊕ bin) ∧ (y ⊕ bin) = bin ⊕ bout`
+/// 2. Difference computation: `diff = x ⊕ y ⊕ bin`
+/// 3. Mask generation: `out_mask = bout SRA 63`
 pub struct IcmpUlt {
-	pub a: Wire,
-	pub b: Wire,
-	pub result: Wire,
-	not_b: Wire,
-	cin: Wire,
+	pub x: Wire,
+	pub y: Wire,
+	pub out_mask: Wire,
 	diff: Wire,
-	cout: Wire,
+	bout: Wire,
 	all_1: Wire,
 }
 
 impl IcmpUlt {
-	pub fn new(builder: &CircuitBuilder, a: Wire, b: Wire) -> Self {
-		let result = builder.add_witness();
-		let not_b = builder.add_witness();
+	pub fn new(builder: &CircuitBuilder, x: Wire, y: Wire) -> Self {
+		let z = builder.add_witness();
 		let all_1 = builder.add_constant(Word::ALL_ONE);
-		// 1 in MSB for carry-in
-		let cin = builder.add_constant(Word::from_u64(1u64 << 63));
-		// internal carry-bits in diff calculation
-		let cout = builder.add_witness();
-		// holds a - b
+		let bout = builder.add_witness();
 		let diff = builder.add_witness();
 
 		Self {
-			a,
-			b,
-			result,
-			not_b,
-			cin,
+			x,
+			y,
+			out_mask: z,
 			diff,
-			cout,
+			bout,
 			all_1,
 		}
 	}
@@ -554,91 +563,72 @@ impl IcmpUlt {
 
 impl Gate for IcmpUlt {
 	fn populate_wire_witness(&self, w: &mut WitnessFiller) {
-		let a = w[self.a];
-		let b = w[self.b];
+		let x = w[self.x];
+		let y = w[self.y];
+		let all_1 = w[self.all_1];
 
-		let not_b = w[self.all_1] ^ b;
-		w[self.not_b] = not_b;
+		// Compute ¬x for the comparison
+		let nx = all_1 ^ x;
 
-		// extract the incoming carry-in (MSB of cin)
-		let cin_bit = w[self.cin].as_u64() >> 63;
+		// Compute carry bits from ¬x + y using standard carry propagation
+		// The MSB of bout indicates whether x < y:
+		// - If ¬x + y ≥ 2^64 (carries out), then x < y
+		// - If ¬x + y < 2^64 (no carry), then x ≥ y
+		let (_, bout) = nx.iadd_cin_cout(y, 0);
+		let bin = bout << 1;
+		w[self.diff] = x ^ y ^ bin;
+		w[self.bout] = bout;
 
-		// compute a - b = a + (~b) + 1
-		let (diff, carry_out) = a.iadd_cin_cout(not_b, cin_bit);
-		w[self.diff] = diff;
-		w[self.cout] = carry_out;
+		// Broadcast the MSB of bout to all bits to create the comparison mask
+		let Word(bout_val) = bout;
+		let bout_msb_broadcast = ((bout_val as i64) >> 63) as u64;
+		let out_mask = Word(bout_msb_broadcast);
 
-		// For unsigned comparison a < b:
-		// We compute a - b = a + (~b) + 1
-		// If there's a carry out from MSB (carry[63] = 1), then a >= b (no borrow)
-		// If there's no carry out from MSB (carry[63] = 0), then a < b (borrow occurred)
-		//
-		// Extract the carry_out bit
-		let carry_out_bit = carry_out.as_u64() >> 63;
-		// Negate the carry_out bit to get the borrow (1 if borrow occurred, 0 if
-		// borrow did not occur)
-		let borrow = carry_out_bit ^ 1;
-		// Result is zero if bottow = 0 and all-1 if borrow = 1
-		w[self.result] = Word::from_u64(borrow.wrapping_neg());
+		w[self.out_mask] = out_mask;
 	}
 
 	fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
-		let a = circuit.witness_index(self.a);
-		let b = circuit.witness_index(self.b);
-		let result = circuit.witness_index(self.result);
-		let not_b = circuit.witness_index(self.not_b);
+		let x = circuit.witness_index(self.x);
+		let y = circuit.witness_index(self.y);
+		let out_mask = circuit.witness_index(self.out_mask);
 		let all_1 = circuit.witness_index(self.all_1);
 		let diff = circuit.witness_index(self.diff);
-		let cout = circuit.witness_index(self.cout);
-		let cin = circuit.witness_index(self.cin);
+		let bout = circuit.witness_index(self.bout);
 
-		// Constraint 1: not_b = b ^ all_1
+		// Constraint 1: Borrow propagation
+		//
+		// (¬x ⊕ bin) ∧ (y ⊕ bin) = bin ⊕ bout
+		let bin = ShiftedValueIndex::sll(bout, 1);
 		cs.add_and_constraint(AndConstraint::abc(
-			[ShiftedValueIndex::plain(b), ShiftedValueIndex::plain(all_1)],
-			[ShiftedValueIndex::plain(all_1)],
-			[ShiftedValueIndex::plain(not_b)],
+			[
+				ShiftedValueIndex::plain(x),
+				ShiftedValueIndex::plain(all_1),
+				bin,
+			],
+			[ShiftedValueIndex::plain(y), bin],
+			[bin, ShiftedValueIndex::plain(bout)],
 		));
 
-		// Shift cout left by 1 to align bits with cin
-		let cout_sll_1 = ShiftedValueIndex::sll(cout, 1);
-		// The carry bit
-		let cin_msb = ShiftedValueIndex::srl(cin, 63);
-
-		// Constraint 2: Carry propagation constraint
-		// (a XOR (cout << 1) XOR cin_msb) AND (not_b XOR (cout << 1) XOR cin_msb)
-		// 		= cout XOR (cout << 1) XOR cin_msb
-		let a_operands = vec![ShiftedValueIndex::plain(a), cout_sll_1, cin_msb];
-		let b_operands = vec![ShiftedValueIndex::plain(not_b), cout_sll_1, cin_msb];
-		let c_operands = vec![ShiftedValueIndex::plain(cout), cout_sll_1, cin_msb];
-
-		cs.add_and_constraint(AndConstraint::abc(a_operands, b_operands, c_operands));
-
-		// Constraint 3: Diff constraint
-		let sum_operands = vec![
-			ShiftedValueIndex::plain(a),
-			ShiftedValueIndex::plain(not_b),
-			ShiftedValueIndex::sll(cout, 1),
-			cin_msb,
-		];
-
-		// (a XOR not_b XOR (cout << 1) XOR cin_msb) AND all_1 = diff
+		// Constraint 2: Difference computation
+		//
+		// diff = x ⊕ y ⊕ bin
 		cs.add_and_constraint(AndConstraint::abc(
-			sum_operands,
+			[
+				ShiftedValueIndex::plain(x),
+				ShiftedValueIndex::plain(y),
+				bin,
+			],
 			[ShiftedValueIndex::plain(all_1)],
 			[ShiftedValueIndex::plain(diff)],
 		));
 
-		// Constraint 4: Map carry MSB to result
-		// For unsigned less-than:
-		// - If carry[63] = 0 (no carry out, i.e., borrow), then result = all-1 (a < b)
-		// - If carry[63] = 1 (carry out, no borrow), then result = 0 (a >= b)
+		// Constraint 3: Mask generation
+		//
+		// out_mask = bout SRA 63
 		cs.add_and_constraint(AndConstraint::abc(
-			[
-				ShiftedValueIndex::sar(cout, 63),
-				ShiftedValueIndex::plain(all_1),
-			],
+			[ShiftedValueIndex::sar(bout, 63)],
 			[ShiftedValueIndex::plain(all_1)],
-			[ShiftedValueIndex::plain(result)],
+			[ShiftedValueIndex::plain(out_mask)],
 		));
 	}
 }
