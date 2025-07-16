@@ -530,15 +530,13 @@ impl Gate for AssertEqCond {
 ///
 /// # Constraints
 ///
-/// The gate generates three AND constraints:
+/// The gate generates 2 AND constraints:
 /// 1. Borrow propagation: `(¬x ⊕ bin) ∧ (y ⊕ bin) = bin ⊕ bout`
-/// 2. Difference computation: `diff = x ⊕ y ⊕ bin`
-/// 3. Mask generation: `out_mask = bout SRA 63`
+/// 2. Mask generation: `out_mask = bout SRA 63`
 pub struct IcmpUlt {
 	pub x: Wire,
 	pub y: Wire,
 	pub out_mask: Wire,
-	diff: Wire,
 	bout: Wire,
 	all_1: Wire,
 }
@@ -548,13 +546,11 @@ impl IcmpUlt {
 		let z = builder.add_witness();
 		let all_1 = builder.add_constant(Word::ALL_ONE);
 		let bout = builder.add_witness();
-		let diff = builder.add_witness();
 
 		Self {
 			x,
 			y,
 			out_mask: z,
-			diff,
 			bout,
 			all_1,
 		}
@@ -575,8 +571,6 @@ impl Gate for IcmpUlt {
 		// - If ¬x + y ≥ 2^64 (carries out), then x < y
 		// - If ¬x + y < 2^64 (no carry), then x ≥ y
 		let (_, bout) = nx.iadd_cin_cout(y, Word::ZERO);
-		let bin = bout << 1;
-		w[self.diff] = x ^ y ^ bin;
 		w[self.bout] = bout;
 
 		// Broadcast the MSB of bout to all bits to create the comparison mask
@@ -592,7 +586,6 @@ impl Gate for IcmpUlt {
 		let y = circuit.witness_index(self.y);
 		let out_mask = circuit.witness_index(self.out_mask);
 		let all_1 = circuit.witness_index(self.all_1);
-		let diff = circuit.witness_index(self.diff);
 		let bout = circuit.witness_index(self.bout);
 
 		// Constraint 1: Borrow propagation
@@ -609,22 +602,9 @@ impl Gate for IcmpUlt {
 			[bin, ShiftedValueIndex::plain(bout)],
 		));
 
-		// Constraint 2: Difference computation
+		// Constraint 2: Mask generation
 		//
-		// diff = x ⊕ y ⊕ bin
-		cs.add_and_constraint(AndConstraint::abc(
-			[
-				ShiftedValueIndex::plain(x),
-				ShiftedValueIndex::plain(y),
-				bin,
-			],
-			[ShiftedValueIndex::plain(all_1)],
-			[ShiftedValueIndex::plain(diff)],
-		));
-
-		// Constraint 3: Mask generation
-		//
-		// out_mask = bout SRA 63
+		// out_mask = bout sar 63
 		cs.add_and_constraint(AndConstraint::abc(
 			[ShiftedValueIndex::sar(bout, 63)],
 			[ShiftedValueIndex::plain(all_1)],
