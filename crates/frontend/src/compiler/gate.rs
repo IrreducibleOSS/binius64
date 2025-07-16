@@ -146,8 +146,8 @@ impl Gate for IaddCinCout {
 		let b = w[self.b];
 
 		// Extract carry-in bit from MSB of previous carry word
-		let Word(cin) = w[self.cin];
-		let carry_bit = cin >> 63;
+
+		let carry_bit = w[self.cin] >> 63;
 		let (sum, carry_out) = a.iadd_cin_cout(b, carry_bit);
 
 		w[self.sum] = sum;
@@ -217,7 +217,7 @@ impl Iadd32 {
 
 impl Gate for Iadd32 {
 	fn populate_wire_witness(&self, w: &mut WitnessFiller) {
-		let (sum, carry) = w[self.a].iadd_32(w[self.b]);
+		let (sum, carry) = w[self.a].iadd_cout_32(w[self.b]);
 
 		w[self.c] = sum;
 		w[self.cout] = carry;
@@ -574,7 +574,7 @@ impl Gate for IcmpUlt {
 		// The MSB of bout indicates whether x < y:
 		// - If ¬x + y ≥ 2^64 (carries out), then x < y
 		// - If ¬x + y < 2^64 (no carry), then x ≥ y
-		let (_, bout) = nx.iadd_cin_cout(y, 0);
+		let (_, bout) = nx.iadd_cin_cout(y, Word::ZERO);
 		let bin = bout << 1;
 		w[self.diff] = x ^ y ^ bin;
 		w[self.bout] = bout;

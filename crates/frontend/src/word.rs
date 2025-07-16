@@ -68,7 +68,11 @@ impl Not for Word {
 }
 
 impl Word {
-	pub fn iadd_32(self, rhs: Word) -> (Word, Word) {
+	/// Performs 32-bit addition.
+	///
+	/// Returns (sum, carry_out) where ith carry_out bit is set to one if there is a carry out at
+	/// that bit position.
+	pub fn iadd_cout_32(self, rhs: Word) -> (Word, Word) {
 		let Word(lhs) = self;
 		let Word(rhs) = rhs;
 		let sum = lhs.wrapping_add(rhs) & 0x00000000_FFFFFFFF;
@@ -77,10 +81,13 @@ impl Word {
 	}
 
 	/// Performs 64-bit addition with carry input bit.
-	/// Returns (sum, carry_word) where carry_word encodes all carry positions.
-	pub fn iadd_cin_cout(self, rhs: Word, cin: u64) -> (Word, Word) {
+	///
+	/// Returns (sum, carry_out) where ith carry_out bit is set to one if there is a carry out at
+	/// that bit position.
+	pub fn iadd_cin_cout(self, rhs: Word, cin: Word) -> (Word, Word) {
 		let Word(lhs) = self;
 		let Word(rhs) = rhs;
+		let Word(cin) = cin;
 		let sum = lhs.wrapping_add(rhs).wrapping_add(cin);
 		let cout = (lhs & rhs) | ((lhs ^ rhs) & !sum);
 		(Word(sum), Word(cout))
