@@ -6,7 +6,11 @@ use rayon::prelude::*;
 
 use crate::multilinear_sumcheck::sumcheck_prover::SumcheckProver;
 
-// ! Field Buffer MLE Sumcheck Prover
+
+// use binius_prover::protocols::sumcheck::SumcheckProver as NikitaSumcheckProver;
+// use binius_verifier::protocols::sumcheck::RoundCoeffs;
+// use binius_prover::protocols::sumcheck::Error;
+
 
 pub enum FoldDirection {
 	LowToHigh,
