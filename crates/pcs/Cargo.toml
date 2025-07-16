@@ -22,3 +22,4 @@ rayon = "1.10.0"
 bytemuck = "1.23.1"
 tracing = "0.1.38"
 tracing-profile = { version = "0.10.1", features = ["perfetto"] }
+either.workspace = true
