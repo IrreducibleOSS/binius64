@@ -452,10 +452,10 @@ impl CircuitBuilder {
 	///
 	/// # Cost
 	///
-	/// 8 AND constraints.
+	/// 2 AND constraints.
 	pub fn icmp_eq(&self, a: Wire, b: Wire) -> Wire {
 		let gate = IcmpEq::new(self, a, b);
-		let out = gate.result;
+		let out = gate.out_mask;
 		self.emit(gate);
 		out
 	}

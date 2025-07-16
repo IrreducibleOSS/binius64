@@ -635,59 +635,45 @@ impl Gate for IcmpUlt {
 
 /// 64-bit equality test that returns all-1 if equal, all-0 if not equal.
 ///
-/// Uses 8 AND constraints with a bit-folding approach to ensure soundness.
+/// Returns `out_mask = all-1` if `x == y`, `all-0` otherwise.
 ///
 /// # Algorithm
 ///
-/// The gate computes:
-/// 1. `v2 = ~(a ^ b)` (all-1 if equal, has zeros if not equal)
-/// 2. Folds all 64 bits down to a single bit using 6 AND operations
-/// 3. Broadcasts the single bit result to all 64 bits
+/// The gate exploits the property that when adding `all-1` to a value:
+/// - If the value is 0: `0 + all-1 = all-1` with no carry out (MSB of cout = 0)
+/// - If the value is non-zero: `value + all-1` wraps around with carry out (MSB of cout = 1)
+///
+/// 1. Compute `diff = x ⊕ y` (which is 0 iff x == y)
+/// 2. Compute carry bits `cout` from `diff + all-1` using the constraint: `(x ⊕ y ⊕ cin) ∧ (all-1 ⊕
+///    cin) = cin ⊕ cout` where `cin = cout << 1`
+/// 3. The MSB of `cout` indicates the comparison result:
+///    - MSB = 0: no carry out, meaning `diff = 0`, so `x == y`
+///    - MSB = 1: carry out occurred, meaning `diff ≠ 0`, so `x ≠ y`
+/// 4. Invert and broadcast the MSB: `out_mask = ¬(cout SRA 63)`
 ///
 /// # Constraints
 ///
-/// The gate generates 8 AND constraints:
-///
-/// 1. Compute `v2 = ~(a ^ b)`
-/// 2. Fold bits: v3 = v2 & (v2 >> 32), v4 = v3 & (v3 >> 16), etc.
-/// 3. Broadcast final bit to all 64 bits
+/// The gate generates two AND constraints:
+/// 1. Carry propagation: `(x ⊕ y ⊕ cin) ∧ (all-1 ⊕ cin) = cin ⊕ cout`
+/// 2. Mask generation: `out_mask = (cout SRA 63) ⊕ all-1`
 pub struct IcmpEq {
-	pub a: Wire,
-	pub b: Wire,
-	pub result: Wire,
-	v2: Wire, // ~(a ^ b)
-	v3: Wire, // fold 32
-	v4: Wire, // fold 16
-	v5: Wire, // fold 8
-	v6: Wire, // fold 4
-	v7: Wire, // fold 2
-	v8: Wire, // fold 1 - single bit result
+	pub x: Wire,
+	pub y: Wire,
+	pub out_mask: Wire,
+	cout: Wire,
 	all_1: Wire,
 }
 
 impl IcmpEq {
-	pub fn new(builder: &CircuitBuilder, a: Wire, b: Wire) -> Self {
-		let result = builder.add_witness();
-		let v2 = builder.add_witness();
-		let v3 = builder.add_witness();
-		let v4 = builder.add_witness();
-		let v5 = builder.add_witness();
-		let v6 = builder.add_witness();
-		let v7 = builder.add_witness();
-		let v8 = builder.add_witness();
+	pub fn new(builder: &CircuitBuilder, x: Wire, y: Wire) -> Self {
+		let out_mask = builder.add_witness();
+		let cout = builder.add_witness();
 		let all_1 = builder.add_constant(Word::ALL_ONE);
-
 		Self {
-			a,
-			b,
-			result,
-			v2,
-			v3,
-			v4,
-			v5,
-			v6,
-			v7,
-			v8,
+			x,
+			y,
+			out_mask,
+			cout,
 			all_1,
 		}
 	}
@@ -695,128 +681,45 @@ impl IcmpEq {
 
 impl Gate for IcmpEq {
 	fn populate_wire_witness(&self, w: &mut WitnessFiller) {
-		let a_val = w[self.a];
-		let b_val = w[self.b];
-
-		// Step 1: v2 = ~(a ^ b)
-		// If a == b, then a ^ b = 0, so v2 = ~0 = all-1
-		// If a != b, then a ^ b has some 1 bits, so v2 has some 0 bits
-		let v2_val = (a_val ^ b_val) ^ Word::ALL_ONE;
-		w[self.v2] = v2_val;
-
-		// Steps 2-7: Fold all 64 bits down to a single bit
-		// If v2 = all-1, then all folded values will be all-1, and v8 = 1
-		// If v2 has any 0 bit, the folding will propagate it, and v8 = 0
-
-		// v3 = v2 & (v2 >> 32)
-		let v3_val = v2_val & (v2_val >> 32);
-		w[self.v3] = v3_val;
-
-		// v4 = v3 & (v3 >> 16)
-		let v4_val = v3_val & (v3_val >> 16);
-		w[self.v4] = v4_val;
-
-		// v5 = v4 & (v4 >> 8)
-		let v5_val = v4_val & (v4_val >> 8);
-		w[self.v5] = v5_val;
-
-		// v6 = v5 & (v5 >> 4)
-		let v6_val = v5_val & (v5_val >> 4);
-		w[self.v6] = v6_val;
-
-		// v7 = v6 & (v6 >> 2)
-		let v7_val = v6_val & (v6_val >> 2);
-		w[self.v7] = v7_val;
-
-		// v8 = v7 & (v7 >> 1)
-		// At this point, v8 will have its LSB = 1 if all bits were 1, else 0
-		let v8_val = v7_val & (v7_val >> 1);
-		w[self.v8] = v8_val;
-
-		// Step 8: Broadcast v8's LSB to all 64 bits
-		// Extract the LSB and replicate it to all positions
-		let lsb = v8_val.as_u64() & 1;
-		w[self.result] = Word::from_u64(lsb.wrapping_neg());
+		let diff = w[self.x] ^ w[self.y];
+		let (_, cout) = Word::ALL_ONE.iadd_cin_cout(diff, Word::ZERO);
+		w[self.cout] = cout;
+		w[self.out_mask] = !cout.sar(63);
 	}
 
 	fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
-		let a = circuit.witness_index(self.a);
-		let b = circuit.witness_index(self.b);
-		let result = circuit.witness_index(self.result);
-		let v2 = circuit.witness_index(self.v2);
-		let v3 = circuit.witness_index(self.v3);
-		let v4 = circuit.witness_index(self.v4);
-		let v5 = circuit.witness_index(self.v5);
-		let v6 = circuit.witness_index(self.v6);
-		let v7 = circuit.witness_index(self.v7);
-		let v8 = circuit.witness_index(self.v8);
+		let x = circuit.witness_index(self.x);
+		let y = circuit.witness_index(self.y);
+		let out_mask = circuit.witness_index(self.out_mask);
+		let cout = circuit.witness_index(self.cout);
 		let all_1 = circuit.witness_index(self.all_1);
 
-		// Constraint 1: v2 = ~(a ^ b)
-		// ((a ^ b) ^ all_1) & all_1 = v2
+		let cin = ShiftedValueIndex::sll(cout, 1);
+
+		// Constraint 1: Constrain carry-out.
+		//
+		// (x ⊕ y ⊕ cin) ∧ (all-1 ⊕ cin) = cin ⊕ cout
 		cs.add_and_constraint(AndConstraint::abc(
 			[
-				ShiftedValueIndex::plain(a),
-				ShiftedValueIndex::plain(b),
+				ShiftedValueIndex::plain(x),
+				ShiftedValueIndex::plain(y),
+				cin,
+			],
+			[ShiftedValueIndex::plain(all_1), cin],
+			[cin, ShiftedValueIndex::plain(cout)],
+		));
+
+		// Constraint 2: Broadcast the carry-out MSB to all bits.
+		//
+		// out_mask = ¬(cout sar 63)
+		// out_mask = (cout sar 63) ⊕ all-1
+		cs.add_and_constraint(AndConstraint::abc(
+			[
+				ShiftedValueIndex::sar(cout, 63),
 				ShiftedValueIndex::plain(all_1),
 			],
 			[ShiftedValueIndex::plain(all_1)],
-			[ShiftedValueIndex::plain(v2)],
-		));
-
-		// Constraint 2: v3 = v2 & (v2 >> 32)
-		cs.add_and_constraint(AndConstraint::abc(
-			[ShiftedValueIndex::plain(v2)],
-			[ShiftedValueIndex::srl(v2, 32)],
-			[ShiftedValueIndex::plain(v3)],
-		));
-
-		// Constraint 3: v4 = v3 & (v3 >> 16)
-		cs.add_and_constraint(AndConstraint::abc(
-			[ShiftedValueIndex::plain(v3)],
-			[ShiftedValueIndex::srl(v3, 16)],
-			[ShiftedValueIndex::plain(v4)],
-		));
-
-		// Constraint 4: v5 = v4 & (v4 >> 8)
-		cs.add_and_constraint(AndConstraint::abc(
-			[ShiftedValueIndex::plain(v4)],
-			[ShiftedValueIndex::srl(v4, 8)],
-			[ShiftedValueIndex::plain(v5)],
-		));
-
-		// Constraint 5: v6 = v5 & (v5 >> 4)
-		cs.add_and_constraint(AndConstraint::abc(
-			[ShiftedValueIndex::plain(v5)],
-			[ShiftedValueIndex::srl(v5, 4)],
-			[ShiftedValueIndex::plain(v6)],
-		));
-
-		// Constraint 6: v7 = v6 & (v6 >> 2)
-		cs.add_and_constraint(AndConstraint::abc(
-			[ShiftedValueIndex::plain(v6)],
-			[ShiftedValueIndex::srl(v6, 2)],
-			[ShiftedValueIndex::plain(v7)],
-		));
-
-		// Constraint 7: v8 = v7 & (v7 >> 1)
-		cs.add_and_constraint(AndConstraint::abc(
-			[ShiftedValueIndex::plain(v7)],
-			[ShiftedValueIndex::srl(v7, 1)],
-			[ShiftedValueIndex::plain(v8)],
-		));
-
-		// Constraint 8: Broadcast v8's LSB to all 64 bits
-		// v8 ^ (v8 << 1) ^ (v8 << 2) ^ ... ^ (v8 << 63) & all_1 = result
-		let mut broadcast_operands = vec![ShiftedValueIndex::plain(v8)];
-		for i in 1..64 {
-			broadcast_operands.push(ShiftedValueIndex::sll(v8, i));
-		}
-
-		cs.add_and_constraint(AndConstraint::abc(
-			broadcast_operands,
-			[ShiftedValueIndex::plain(all_1)],
-			[ShiftedValueIndex::plain(result)],
+			[ShiftedValueIndex::plain(out_mask)],
 		));
 	}
 }

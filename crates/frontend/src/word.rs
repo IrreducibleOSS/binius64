@@ -100,6 +100,14 @@ impl Word {
 		Word(result)
 	}
 
+	/// Shift Arithmetic Right by a given number of bits.
+	pub fn sar(&self, n: u32) -> Word {
+		let Word(value) = self;
+		let value = *value as i64;
+		let result = value >> n;
+		Word(result as u64)
+	}
+
 	pub fn rotr_32(self, n: u32) -> Word {
 		let Word(value) = self;
 		let n = n % 32; // Ensure n is within 0-31 range
