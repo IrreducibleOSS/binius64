@@ -1,7 +1,6 @@
 use crate::{
     multilinear_sumcheck::{
         field_buffer_multilinear_sumcheck::{FoldDirection, MultilinearSumcheckProver},
-        sumcheck_prover::SumcheckProver,
     },
     utils::{
         constants::L_PRIME,
@@ -11,11 +10,12 @@ use crate::{
 
 
 
+
 use binius_field::{
     BinaryField, ExtensionField, TowerField, as_packed_field::PackScalar, underlier::WithUnderlier,
 };
 use binius_math::{ntt::AdditiveNTT, FieldBuffer};
-use binius_prover::{fri::{FRIFolder, FoldRoundOutput}, merkle_tree::MerkleTreeProver};
+use binius_prover::{fri::{FRIFolder, FoldRoundOutput}, merkle_tree::MerkleTreeProver, protocols::sumcheck::common::SumcheckProver};
 use binius_transcript::{ProverTranscript, fiat_shamir::{Challenger, CanSample}};
 use binius_utils::SerializeBytes;
 use binius_verifier::{merkle_tree::MerkleTreeScheme, fri::FRIParams};
@@ -76,8 +76,8 @@ where
         })
     }
 
-    pub fn execute(&self) -> Vec<F> {
-        self.sumcheck_prover.round_message()
+    pub fn execute(&mut self) -> Vec<F> {
+        self.sumcheck_prover.execute().unwrap()[0].0.clone()
     }
 
     pub fn fold(

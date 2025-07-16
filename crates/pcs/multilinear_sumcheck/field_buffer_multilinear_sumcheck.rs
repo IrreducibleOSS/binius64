@@ -1,4 +1,3 @@
-use crate::multilinear_sumcheck::sumcheck_prover::SumcheckProver;
 use binius_math::{FieldBuffer};
 use binius_field::{Field};
 use rayon::prelude::*;
@@ -126,7 +125,7 @@ impl<BF: Field> NikitaSumcheckProver<BF> for MultilinearSumcheckProver<BF> {
                         .sum();
     
                     // return round message
-                    Ok(RoundCoeffs::<BF>(vec![g_of_zero, g_of_one, g_leading]))
+                    Ok(vec![RoundCoeffs::<BF>(vec![g_of_zero, g_of_one, g_leading])])
                 }
                 FoldDirection::LowToHigh => {
                     // With low-to-high indexing:
@@ -145,7 +144,7 @@ impl<BF: Field> NikitaSumcheckProver<BF> for MultilinearSumcheckProver<BF> {
                             |(e1, o1, c1), (e2, o2, c2)| (e1 + e2, o1 + o2, c1 + c2),
                         );
     
-                        Ok(vec![RoundCoeffs([g_of_zero, g_of_one, g_leading])])
+                        Ok(vec![RoundCoeffs::<BF>(vec![g_of_zero, g_of_one, g_leading])])
                 }
             }
     }
@@ -174,81 +173,6 @@ impl<BF: Field> NikitaSumcheckProver<BF> for MultilinearSumcheckProver<BF> {
         ])
     }
 }
-
-// impl<BF: Field> SumcheckProver<BF> for MultilinearSumcheckProver<BF> {
-    
-    // fn fold(&mut self, challenge: BF) {
-    //     match self.fold_direction {
-    //         FoldDirection::HighToLow => {
-    //             for m in self.multilinears.iter_mut() {
-    //                 *m = fold_high_to_low(m.clone(), challenge); // ! temporary utility until we use monbijou fold funcs
-    //             }
-    //         }
-    //         FoldDirection::LowToHigh => {
-    //             for m in self.multilinears.iter_mut() {
-    //                 *m = fold_low_to_high(m.clone(), challenge); // ! temporary utility until we use monbijou fold funcs
-    //             }
-    //         }
-    //     }
-    // }
-
-    // fn round_message(&self) -> Vec<BF> {
-    //     let log_n = self.multilinears[0].log_len();
-    //     let n = 1 << log_n;
-    //     let n_half = n >> 1;
-
-    //     let a = &self.multilinears[0];
-    //     let b = &self.multilinears[1];
-
-    //     match self.fold_direction {
-    //         FoldDirection::HighToLow => {
-    //             // With high-to-low indexing:
-    //             // - g_of_zero: sum over indices 0..n_half (first variable = 0)
-    //             // - g_of_one: sum over indices n_half..n (first variable = 1)
-    //             let g_of_zero: BF = (0..n_half).into_par_iter().map(|i| a.get(i).unwrap() * b.get(i).unwrap()).sum();
-
-    //             let g_of_one: BF = (n_half..n).into_par_iter().map(|i| a.get(i).unwrap() * b.get(i).unwrap()).sum();
-
-    //             let g_leading: BF = (0..n_half)
-    //                 .into_par_iter()
-    //                 .zip((n_half..n).into_par_iter())
-    //                 .map(|(low, high)| (a.get(low).unwrap() + a.get(high).unwrap()) * (b.get(low).unwrap() + b.get(high).unwrap()))
-    //                 .sum();
-
-    //             // return round message
-    //             let mut round_msg = Vec::with_capacity(3);  
-    //             round_msg.extend([g_of_zero, g_of_one, g_leading]);
-    //             round_msg   
-    //         }
-    //         FoldDirection::LowToHigh => {
-    //             // With low-to-high indexing:
-    //             // - g_of_zero: sum over even indices (last bit = 0)
-    //             // - g_of_one: sum over odd indices (last bit = 1)
-    //             let (g_of_zero, g_of_one, g_leading) = (0..n_half)
-    //                 .into_par_iter()
-    //                 .map(|i| {
-    //                     let even = a.get(2 * i).unwrap() * b.get(2 * i).unwrap();
-    //                     let odd = a.get(2 * i + 1).unwrap() * b.get(2 * i + 1).unwrap();
-    //                     let cross = (a.get(2 * i).unwrap() + a.get(2 * i + 1).unwrap()) * (b.get(2 * i).unwrap() + b.get(2 * i + 1).unwrap());
-    //                     (even, odd, cross)
-    //                 })
-    //                 .reduce(
-    //                     || (BF::ZERO, BF::ZERO, BF::ZERO),
-    //                     |(e1, o1, c1), (e2, o2, c2)| (e1 + e2, o1 + o2, c1 + c2),
-    //                 );
-
-    //             vec![g_of_zero, g_of_one, g_leading]
-    //         }
-    //     }
-    // }
-
-    // fn final_eval_claims(self) -> Vec<BF> {
-    //     vec![
-    //         self.multilinears[0].get(0).unwrap(),
-    //         self.multilinears[1].get(0).unwrap(),
-    //     ]
-    // }
-// }
 
 #[cfg(test)]
 pub mod test {
@@ -311,7 +235,9 @@ pub mod test {
             sumcheck_challenges.push(sumcheck_challenge);
 
             // prover computes round message
-            let round_msg = prover.round_message();
+            let round_msg: Vec<RoundCoeffs<BF>> = prover.execute()?;
+            let round_msg: RoundCoeffs<BF> = round_msg[0].clone();
+            let round_msg: Vec<BF> = round_msg.0;
 
             // verifier checks round message against claim
             expected_next_round_claim = verify_sumcheck_round(
