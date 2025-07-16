@@ -7,3 +7,4 @@ pub mod hex;
 pub mod jwt_claims;
 pub mod sha256;
 pub mod slice;
+pub mod zklogin;
