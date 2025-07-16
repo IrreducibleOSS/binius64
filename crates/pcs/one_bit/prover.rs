@@ -46,7 +46,7 @@ where
         evaluation_claim: BigField,
         evaluation_point: Vec<BigField>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let s_hat_v = Self::intialize_proof(&packed_mle, &evaluation_point);
+        let s_hat_v = Self::initialize_proof(&packed_mle, &evaluation_point);
 
         Ok(Self {
             small_field_evaluation_claim: evaluation_claim,
@@ -101,7 +101,7 @@ where
             prover_eq_r_double_prime.as_ref(),
         );
 
-        // Prover recieves ring switch eq, setting up for sumcheck
+        // Prover receives ring switch eq, setting up for sumcheck
         let big_field_basefold_prover = self.setup_for_fri_sumcheck(
             &prover_r_double_prime,
             ntt,
@@ -116,7 +116,7 @@ where
     }
 
     // send s_hat_v to the verifier
-    fn intialize_proof(
+    fn initialize_proof(
         packed_mle: &FieldBuffer<BigField>,
         evaluation_point: &[BigField],
     ) -> Vec<BigField> {
@@ -141,7 +141,7 @@ where
         s_hat_v
     }
 
-    // Wraps the setup_for_fri_sumcheck fuction in basefold prover by
+    // Wraps the setup_for_fri_sumcheck function in basefold prover by
     // creating ring switch eq for composition
     #[allow(clippy::too_many_arguments)]
     pub fn setup_for_fri_sumcheck<'a, FA, NTT, MerkleProver, VCS>(
