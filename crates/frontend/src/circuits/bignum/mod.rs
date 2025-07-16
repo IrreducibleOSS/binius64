@@ -7,8 +7,12 @@
 #[cfg(test)]
 mod tests;
 
+use num_bigint::BigUint;
+use num_integer::Integer;
+
 use crate::{
-	compiler::{CircuitBuilder, Wire},
+	compiler::{Circuit, CircuitBuilder, Gate, Wire, WitnessFiller},
+	constraint_system::ConstraintSystem,
 	word::Word,
 };
 
@@ -17,6 +21,7 @@ use crate::{
 /// - Each `Wire` holds a 64-bit unsigned integer value (a "limb")
 /// - Limbs are stored in little-endian order (index 0 = least significant)
 /// - The total bit width is always a multiple of 64 bits (number of limbs × 64)
+#[derive(Clone)]
 pub struct BigNum {
 	pub limbs: Vec<Wire>,
 }
@@ -246,4 +251,92 @@ fn compute_stack_adds(builder: &CircuitBuilder, limb_stacks: &[Vec<Wire>]) -> Bi
 	}
 
 	BigNum { limbs: sums }
+}
+
+/// Modular reduction gate for arbitrary-sized bignums.
+///
+/// This struct represents a modular reduction operation `a mod modulus` where:
+/// - `a` is the dividend
+/// - `modulus` is the divisor
+/// - `quotient` and `remainder` satisfy: `a = quotient × modulus + remainder`
+pub struct ModReduce {
+	pub a: BigNum,
+	pub modulus: BigNum,
+	pub quotient: BigNum,
+	pub remainder: BigNum,
+}
+
+impl Gate for ModReduce {
+	fn populate_wire_witness(&self, w: &mut WitnessFiller) {
+		let a: Vec<u64> = self.a.limbs.iter().map(|&l| w[l].as_u64()).collect();
+		let modulus: Vec<u64> = self.modulus.limbs.iter().map(|&l| w[l].as_u64()).collect();
+
+		let a_big = from_u64_limbs(a);
+		let modulus_big = from_u64_limbs(modulus);
+
+		let (quotient_big, remainder_big) = a_big.div_rem(&modulus_big);
+
+		let mut quotient: Vec<u64> = quotient_big.to_u64_digits();
+		let mut remainder: Vec<u64> = remainder_big.to_u64_digits();
+
+		quotient.resize(self.quotient.limbs.len(), 0u64);
+		remainder.resize(self.remainder.limbs.len(), 0u64);
+
+		for (&limb, &wire) in quotient.iter().zip(&self.quotient.limbs) {
+			w[wire] = Word::from_u64(limb);
+		}
+
+		for (&limb, &wire) in remainder.iter().zip(&self.remainder.limbs) {
+			w[wire] = Word::from_u64(limb);
+		}
+	}
+
+	fn constrain(&self, _circuit: &Circuit, _cs: &mut ConstraintSystem) {
+		// No contstrains added as this Gate is only used for witness population
+	}
+}
+
+pub fn mod_reduce(builder: &CircuitBuilder, a: &BigNum, modulus: &BigNum) -> (BigNum, BigNum) {
+	let a_len = a.limbs.len();
+	let modulus_len = modulus.limbs.len();
+	let quotient = BigNum::new_witness(builder, a_len);
+	let remainder = BigNum::new_witness(builder, modulus_len);
+	let zero = builder.add_constant(Word::ZERO);
+
+	// Use the ModReduce gate to populate the quotient and remainder witnesses
+	let gate = ModReduce {
+		a: a.clone(),
+		modulus: modulus.clone(),
+		quotient: quotient.clone(),
+		remainder: remainder.clone(),
+	};
+	builder.emit(gate);
+
+	let product = mul(builder, &quotient, modulus);
+
+	let mut remainder_padded = remainder.limbs.clone();
+	remainder_padded.resize(product.limbs.len(), zero);
+	let remainder_padded = BigNum {
+		limbs: remainder_padded,
+	};
+
+	let reconstructed = add(builder, &product, &remainder_padded);
+
+	let mut a_padded = a.limbs.clone();
+	a_padded.resize(reconstructed.limbs.len(), zero);
+	let a_padded = BigNum { limbs: a_padded };
+
+	let eq = compare(builder, &reconstructed, &a_padded);
+	let all_ones = builder.add_constant(Word::ALL_ONE);
+	builder.assert_eq("mod_reduce_reconstruction", eq, all_ones);
+	(quotient, remainder)
+}
+
+/// Returns a BigUint from u64 limbs with little-endian ordering
+fn from_u64_limbs(limbs: Vec<u64>) -> BigUint {
+	let mut bytes = Vec::with_capacity(limbs.len() * 8);
+	for &word in &limbs {
+		bytes.extend_from_slice(&word.to_le_bytes());
+	}
+	BigUint::from_bytes_le(&bytes)
 }

@@ -5,8 +5,9 @@ use std::{
 	rc::Rc,
 };
 
+pub use gate::Gate;
 use gate::{
-	Assert0, AssertBand0, AssertEq, AssertEqCond, Band, Bor, Bxor, ExtractByte, Gate, Iadd32,
+	Assert0, AssertBand0, AssertEq, AssertEqCond, Band, Bor, Bxor, ExtractByte, Iadd32,
 	IaddCinCout, IcmpEq, IcmpUlt, Imul, Rotr32, Shl, Shr, Shr32,
 };
 
@@ -154,7 +155,7 @@ impl CircuitBuilder {
 		RefMut::map(self.shared.borrow_mut(), |shared| shared.as_mut().unwrap())
 	}
 
-	fn emit(&self, gate: impl Gate + 'static) {
+	pub fn emit(&self, gate: impl Gate + 'static) {
 		self.shared_mut().gates.push(Box::new(gate))
 	}
 
