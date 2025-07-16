@@ -4,6 +4,9 @@ use binius_field::{Field};
 use rayon::prelude::*;
 use std::vec;
 
+use binius_prover::protocols::sumcheck::SumcheckProver as ProverSumcheckProver;
+
+
 // ! Field Buffer MLE Sumcheck Prover
 
 pub enum FoldDirection {
