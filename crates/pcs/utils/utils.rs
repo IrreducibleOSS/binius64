@@ -87,7 +87,7 @@ pub fn verify_sumcheck_round<BigField: Field>(
     // (even/odd sum of boolean hypercube evals)
     assert_eq!(round_msg[0] + round_msg[1], round_sum_claim);
 
-    // When the verifier recieves the round message, it represents the coefficients
+    // When the verifier receives the round message, it represents the coefficients
     // of the current univariate, partially specialized composition polynomial. By
     // evaluating this polynomial at the challenge, we determine what the honest
     // prover will claim as the sum for the next round. This is because the when
