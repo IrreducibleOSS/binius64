@@ -107,6 +107,53 @@ impl<P: PackedField, Data: Deref<Target = [P]>> FieldBuffer<P, Data> {
 		Ok(val)
 	}
 
+	/// Get an aligned chunk of size `2^log_chunk_size`.
+	///
+	/// Chunk start offset divides chunk size; the result is essentially
+	/// `chunks(log_chunk_size).nth(chunk_index)` but unlike `chunks` it does
+	/// support sizes smaller than packing width.
+	pub fn chunk(
+		&self,
+		log_chunk_size: usize,
+		chunk_index: usize,
+	) -> Result<FieldSlice<'_, P>, Error> {
+		if log_chunk_size > self.log_len {
+			return Err(Error::ArgumentRangeError {
+				arg: "log_chunk_size".to_string(),
+				range: 0..self.log_len + 1,
+			});
+		}
+
+		let chunk_count = 1 << (self.log_len - log_chunk_size);
+		if chunk_index >= chunk_count {
+			return Err(Error::ArgumentRangeError {
+				arg: "chunk_index".to_string(),
+				range: 0..chunk_count,
+			});
+		}
+
+		let values = if log_chunk_size >= P::LOG_WIDTH {
+			let packed_log_chunk_size = log_chunk_size - P::LOG_WIDTH;
+			let chunk =
+				&self.values[chunk_index << packed_log_chunk_size..][..1 << packed_log_chunk_size];
+			FieldSliceData::Slice(chunk)
+		} else {
+			let packed_log_chunks = P::LOG_WIDTH - log_chunk_size;
+			let packed = self.values[chunk_index >> packed_log_chunks];
+			let chunk_subindex = chunk_index & ((1 << packed_log_chunks) - 1);
+			let mut chunk = P::zero();
+			for i in 0..1 << log_chunk_size {
+				chunk.set(i, packed.get(chunk_subindex << log_chunk_size | i));
+			}
+			FieldSliceData::Single(chunk)
+		};
+
+		Ok(FieldBuffer {
+			log_len: log_chunk_size,
+			values,
+		})
+	}
+
 	/// Split the buffer into chunks of size `2^log_chunk_size`.
 	///
 	/// # Errors
@@ -532,6 +579,33 @@ mod tests {
 		// Test out of bounds
 		assert!(buffer.get(8).is_err());
 		assert!(buffer.set(8, F::new(0)).is_err());
+	}
+
+	#[test]
+	fn test_chunk() {
+		let log_len = 8;
+		let values: Vec<F> = (0..1 << log_len).map(F::new).collect();
+		let buffer = FieldBuffer::<P>::from_values(&values).unwrap();
+
+		// Test invalid chunk size (too large)
+		assert!(buffer.chunk(log_len + 1, 0).is_err());
+
+		for log_chunk_size in 0..=log_len {
+			let chunk_count = 1 << (log_len - log_chunk_size);
+
+			// Test invalid chunk index
+			assert!(buffer.chunk(log_chunk_size, chunk_count).is_err());
+
+			for chunk_index in 0..chunk_count {
+				let chunk = buffer.chunk(log_chunk_size, chunk_index).unwrap();
+				for i in 0..1 << log_chunk_size {
+					assert_eq!(
+						chunk.get(i).unwrap(),
+						buffer.get(chunk_index << log_chunk_size | i).unwrap()
+					);
+				}
+			}
+		}
 	}
 
 	#[test]

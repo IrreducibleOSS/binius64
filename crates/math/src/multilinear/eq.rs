@@ -100,6 +100,57 @@ pub fn eq_ind_partial_eval<P: PackedField>(point: &[P::Scalar]) -> FieldBuffer<P
 	buffer
 }
 
+/// Truncate the equality indicator expansion to the low indexed variables.
+///
+/// This routine computes $\widetilde{eq}(X_0, ..., X_{n'-1}, r_0, ..., r_{n'-1})$ from
+/// $\widetilde{eq}(X_0, ..., X_{n-1}, r_0, ..., r_{n-1})$ where $n' \le n$ by repeatedly summing
+/// field buffer "halves" inplace. The equality indicator expansion occupies a prefix of
+/// the field buffer; scalars after the truncated length are zeroed out.
+pub fn eq_ind_truncate_low_inplace<P: PackedField, Data: DerefMut<Target = [P]>>(
+	log_n_values: usize,
+	values: &mut FieldBuffer<P, Data>,
+	truncated_log_n_values: usize,
+) -> Result<(), Error> {
+	if log_n_values > values.log_len() {
+		return Err(Error::IncorrectArgumentLength {
+			arg: "values".to_string(),
+			expected: 1 << log_n_values,
+		});
+	}
+
+	if truncated_log_n_values > log_n_values {
+		return Err(Error::ArgumentRangeError {
+			arg: "truncated_log_n_values".to_string(),
+			range: 0..log_n_values + 1,
+		});
+	}
+
+	if values.log_len() > log_n_values {
+		return values.split_half_mut(|lo, _| {
+			eq_ind_truncate_low_inplace(log_n_values, lo, truncated_log_n_values)
+		})?;
+	}
+
+	if values.log_len() == truncated_log_n_values {
+		return Ok(());
+	}
+
+	values.split_half_mut(|lo, hi| -> Result<(), Error> {
+		(lo.as_mut(), hi.as_mut())
+			.into_par_iter()
+			.for_each(|(zero, one)| {
+				*zero += *one;
+				*one = P::zero();
+			});
+
+		if lo.len() > truncated_log_n_values {
+			eq_ind_truncate_low_inplace(log_n_values - 1, lo, truncated_log_n_values)?;
+		}
+
+		Ok(())
+	})?
+}
+
 /// Evaluates the 2-variate multilinear which indicates the equality condition over the hypercube.
 ///
 /// This evaluates the bivariate polynomial
@@ -284,5 +335,31 @@ mod tests {
 		let eq_ind_value = eq_ind(&point, &index_bits);
 
 		assert_eq!(partial_eval_value, eq_ind_value);
+	}
+
+	#[test]
+	fn test_eq_ind_truncate_low_inplace() {
+		let mut rng = StdRng::seed_from_u64(0);
+
+		let reds = 4;
+		let n_vars = reds * (reds + 1) / 2;
+		let point = random_scalars(&mut rng, n_vars);
+
+		let mut eq_ind = eq_ind_partial_eval::<P>(&point);
+		let mut log_n_values = n_vars;
+
+		for reduction in (0..=reds).rev() {
+			let truncated_log_n_values = log_n_values - reduction;
+			eq_ind_truncate_low_inplace(log_n_values, &mut eq_ind, truncated_log_n_values).unwrap();
+
+			let eq_ind_ref = eq_ind_partial_eval::<P>(&point[..truncated_log_n_values]);
+			for i in 0..1 << n_vars {
+				assert_eq!(eq_ind.get(i).unwrap(), eq_ind_ref.get(i).unwrap_or_default());
+			}
+
+			log_n_values = truncated_log_n_values;
+		}
+
+		assert_eq!(log_n_values, 0);
 	}
 }
