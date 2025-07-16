@@ -1,3 +1,4 @@
+use binius_field::{BinaryField, ExtensionField, TowerField, Field, PackedExtension};
 use binius_transcript::{VerifierTranscript, fiat_shamir::{Challenger, CanSample}};
 use binius_utils::DeserializeBytes;
 use binius_verifier::{fri::FRIParams, merkle_tree::MerkleTreeScheme};
@@ -6,17 +7,17 @@ use itertools::Itertools;
 use crate::{
     basefold::verifier::BigFieldBaseFoldVerifier,
     utils::{
-        constants::{BigField, SmallField, KAPPA},
+        constants::{SmallField, KAPPA},
         eq_ind::eq_ind_mle,
         utils::{compute_expected_sumcheck_claim, compute_mle_eq_sum, construct_s_hat_u},
     },
 };
-use crate::{ring_switch::eq_ind_eval::eval_rs_eq, utils::constants::FA};
+use crate::{ring_switch::eq_ind_eval::eval_rs_eq};
 
 pub struct OneBitPCSVerifier {}
 
 impl OneBitPCSVerifier {
-    pub fn verify_transcript<TranscriptChallenger, VCS>(
+    pub fn verify_transcript<BigField, FA, TranscriptChallenger, VCS>(
         codeword_commitment: VCS::Digest,
         transcript: &mut VerifierTranscript<TranscriptChallenger>,
         evaluation_claim: BigField,
@@ -25,8 +26,11 @@ impl OneBitPCSVerifier {
         vcs: &VCS,
     ) -> Result<(), String>
     where
+        BigField: Field + BinaryField + ExtensionField<FA> + TowerField + PackedExtension<SmallField>,
+        FA: BinaryField,
         TranscriptChallenger: Challenger + Clone,
         VCS: MerkleTreeScheme<BigField, Digest: DeserializeBytes>,
+
     {
         // retrieve partial eval of t' at high degree variables
         let s_hat_v = transcript
@@ -82,7 +86,7 @@ impl OneBitPCSVerifier {
         Ok(())
     }
 
-    pub fn verifier_samples_batching_scalars<TranscriptChallenger>(
+    pub fn verifier_samples_batching_scalars<BigField: Field, TranscriptChallenger>(
         transcript: &mut VerifierTranscript<TranscriptChallenger>,
     ) -> Vec<BigField>
     where
