@@ -1,0 +1,24 @@
+[package]
+name = "simplified-pcs"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "pcs"
+path = "lib.rs"
+
+[dependencies]
+binius-field = { path = "../field"}
+binius-utils = { path = "../utils" }
+binius-math = { path = "../math" }
+binius-transcript = { path = "../transcript" }
+binius-prover = {path = "../prover"}
+binius-verifier = {path = "../verifier"}
+
+criterion = "0.6"
+itertools = "0.14.0"
+rand = { version = "0.9.1", default-features = false, features = ["std_rng"] }
+rayon = "1.10.0"
+bytemuck = "1.23.1"
+tracing = "0.1.38"
+tracing-profile = { version = "0.10.1", features = ["perfetto"] }
