@@ -1,3 +1,4 @@
+use binius_field::{Field, BinaryField, ExtensionField, TowerField};
 use binius_transcript::fiat_shamir::{CanSample, Challenger};
 use binius_transcript::VerifierTranscript;
 use binius_utils::DeserializeBytes;
@@ -5,16 +6,16 @@ use binius_verifier::fri::verify::FRIVerifier;
 use binius_verifier::fri::FRIParams;
 use binius_verifier::merkle_tree::MerkleTreeScheme;
 
-use crate::utils::{constants::BigField, utils::fri_fold_arities_to_is_commit_round};
+use crate::utils::{utils::fri_fold_arities_to_is_commit_round};
 use crate::utils::{
-    constants::{FA, L_PRIME},
+    constants::L_PRIME,
     utils::verify_sumcheck_round,
 };
 
 pub struct BigFieldBaseFoldVerifier {}
 
 impl BigFieldBaseFoldVerifier {
-    pub fn verify_transcript<VCS, TranscriptChallenger>(
+    pub fn verify_transcript<BigField, FA, VCS, TranscriptChallenger>(
         codeword_commitment: VCS::Digest,
         transcript: &mut VerifierTranscript<TranscriptChallenger>,
         evaluation_claim: BigField,
@@ -22,6 +23,8 @@ impl BigFieldBaseFoldVerifier {
         vcs: &VCS,
     ) -> Result<(BigField, BigField, Vec<BigField>), String>
     where
+        BigField: Field + BinaryField + ExtensionField<FA> + TowerField,
+        FA: BinaryField,
         TranscriptChallenger: Challenger + Clone,
         VCS: MerkleTreeScheme<BigField, Digest: DeserializeBytes>,
     {
