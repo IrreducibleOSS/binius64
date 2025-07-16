@@ -1,7 +1,7 @@
 use binius_field::{BinaryField1b, ExtensionField, Field};
 use binius_math::FieldBuffer;
 
-use crate::utils::{big_field_multilinear::{BigFieldMultilinear, mle_to_field_buffer}, eq_ind::{eq_ind_mle, eq_ind}};
+use crate::utils::{ eq_ind::{eq_ind_mle}};
 
 
 pub fn rs_eq_ind<BF: Field + binius_field::ExtensionField<binius_field::BinaryField1b>>(
@@ -15,7 +15,7 @@ pub fn rs_eq_ind<BF: Field + binius_field::ExtensionField<binius_field::BinaryFi
 
     let row_batching_query= eq_ind_mle::<BF>(batching_challenges);
 
-    let mut rs_eq_mle = bytemuck::zeroed_vec(big_field_hypercube_vertices);
+    let mut rs_eq_mle = FieldBuffer::<BF>::zeros(big_field_hypercube_vertices);
 
     for big_field_hypercube_vertex in 0..big_field_hypercube_vertices {
         for (index, bit) in <BF as ExtensionField<BinaryField1b>>::into_iter_bases(
@@ -24,15 +24,12 @@ pub fn rs_eq_ind<BF: Field + binius_field::ExtensionField<binius_field::BinaryFi
         .enumerate()
         {
             if bit == BinaryField1b::ONE {
-                rs_eq_mle[big_field_hypercube_vertex] += row_batching_query.as_ref()[index];
+                rs_eq_mle.as_mut()[big_field_hypercube_vertex] += row_batching_query.as_ref()[index];
             }
         }
     }
 
-    mle_to_field_buffer( BigFieldMultilinear {
-        n_vars: z_vals.len(),
-        packed_evals: rs_eq_mle,
-    }).unwrap()
+    rs_eq_mle
 }
 
 #[cfg(test)]
@@ -42,7 +39,7 @@ mod test {
     use binius_field::{BinaryField128b, Field, Random};
     use rand::{SeedableRng, rngs::StdRng};
 
-    use crate::{ring_switch::eq_ind_eval::eval_rs_eq, utils::{eq_ind::eq_ind_mle, big_field_multilinear::mle_to_field_buffer}};
+    use crate::{ring_switch::eq_ind_eval::eval_rs_eq, utils::{eq_ind::eq_ind_mle}};
 
     use super::{rs_eq_ind};
 

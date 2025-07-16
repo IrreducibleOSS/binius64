@@ -1,10 +1,9 @@
 use crate::{
     multilinear_sumcheck::{
-        multilinear_sumcheck::{FoldDirection, MultilinearSumcheckProver},
+        field_buffer_multilinear_sumcheck::{FoldDirection, MultilinearSumcheckProver},
         sumcheck_prover::SumcheckProver,
     },
     utils::{
-        big_field_multilinear::{field_buffer_to_mle},
         constants::L_PRIME,
         utils::verify_sumcheck_round,
     },
@@ -63,8 +62,8 @@ where
         .unwrap();
 
         let log_n = packed_mle_owned.log_len();
-        let sumcheck_prover = MultilinearSumcheckProver::new(
-            vec![field_buffer_to_mle( packed_mle_owned).unwrap(), field_buffer_to_mle( transparent_poly_mle).unwrap()],
+        let sumcheck_prover = MultilinearSumcheckProver::<F>::new(
+            vec![packed_mle_owned, transparent_poly_mle],
             claim,
             log_n,
             FoldDirection::LowToHigh,
