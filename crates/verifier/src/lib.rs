@@ -6,6 +6,7 @@ pub mod fri;
 pub mod hash;
 pub mod merkle_tree;
 pub mod protocols;
+pub mod pcs;
 mod verify;
 
 pub use error::*;
