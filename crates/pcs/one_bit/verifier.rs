@@ -4,14 +4,14 @@ use binius_transcript::{
 	fiat_shamir::{CanSample, Challenger},
 };
 use binius_utils::DeserializeBytes;
-use binius_verifier::{fri::FRIParams, merkle_tree::MerkleTreeScheme};
+use binius_verifier::{fields::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme};
 use itertools::Itertools;
 
 use crate::{
 	basefold::verifier::BigFieldBaseFoldVerifier,
 	ring_switch::eq_ind_eval::eval_rs_eq,
 	utils::{
-		constants::{KAPPA, SmallField},
+		constants::KAPPA,
 		eq_ind::eq_ind_mle,
 		utils::{compute_expected_sumcheck_claim, compute_mle_eq_sum, construct_s_hat_u},
 	},
@@ -30,8 +30,7 @@ impl OneBitPCSVerifier {
 		n_vars: usize,
 	) -> Result<(), String>
 	where
-		BigField:
-			Field + BinaryField + ExtensionField<FA> + TowerField + PackedExtension<SmallField>,
+		BigField: Field + BinaryField + ExtensionField<FA> + TowerField + PackedExtension<B1>,
 		FA: BinaryField,
 		TranscriptChallenger: Challenger + Clone,
 		VCS: MerkleTreeScheme<BigField, Digest: DeserializeBytes>,
@@ -50,7 +49,7 @@ impl OneBitPCSVerifier {
 		);
 
 		// basis decompose/recombine s_hat_v across opposite dimension
-		let s_hat_u: Vec<BigField> = construct_s_hat_u::<SmallField, BigField>(s_hat_v);
+		let s_hat_u: Vec<BigField> = construct_s_hat_u::<B1, BigField>(s_hat_v);
 
 		// retrieve batching scalars
 		let batching_scalars: Vec<BigField> =
@@ -59,10 +58,10 @@ impl OneBitPCSVerifier {
 		let verifier_eq_r_double_prime = eq_ind_mle(&batching_scalars);
 
 		// infer sumcheck claim from transcript
-		let verifier_computed_sumcheck_claim = compute_expected_sumcheck_claim::<
-			SmallField,
-			BigField,
-		>(&s_hat_u, verifier_eq_r_double_prime.as_ref());
+		let verifier_computed_sumcheck_claim = compute_expected_sumcheck_claim::<B1, BigField>(
+			&s_hat_u,
+			verifier_eq_r_double_prime.as_ref(),
+		);
 
 		let (fri_final_value, sumcheck_final_claim, basefold_challenges) =
 			BigFieldBaseFoldVerifier::verify_transcript(
@@ -99,7 +98,7 @@ impl OneBitPCSVerifier {
 
 #[cfg(test)]
 mod test {
-	use binius_field::{BinaryField128b, Random};
+	use binius_field::Random;
 	use binius_math::{FieldBuffer, ReedSolomonCode, ntt::SingleThreadedNTT};
 	use binius_prover::{
 		fri::{self, CommitOutput},
@@ -108,6 +107,7 @@ mod test {
 	use binius_transcript::ProverTranscript;
 	use binius_verifier::{
 		config::StdChallenger,
+		fields::{B1, B128},
 		fri::FRIParams,
 		hash::{StdCompression, StdDigest},
 	};
@@ -117,7 +117,7 @@ mod test {
 	use crate::{
 		one_bit::{prover::OneBitPCSProver, verifier::OneBitPCSVerifier},
 		utils::{
-			constants::{BigField, FA, KAPPA, LOG_INV_RATE, NUM_TEST_QUERIES, SmallField},
+			constants::{FA, KAPPA, LOG_INV_RATE, NUM_TEST_QUERIES},
 			eq_ind::eq_ind_mle,
 			utils::{
 				compute_mle_eq_sum, large_field_mle_to_small_field_mle, lift_small_to_large_field,
@@ -138,19 +138,18 @@ mod test {
 		// He wishes to evaluated the small field multilinear t at the vector of large field
 		// elements r.
 		let packed_mle = (0..1 << big_field_n_vars)
-			.map(|_| BigField::random(&mut rng))
+			.map(|_| B128::random(&mut rng))
 			.collect_vec();
 
-		let lifted_small_field_mle = lift_small_to_large_field(
-			&large_field_mle_to_small_field_mle::<SmallField, BigField>(&packed_mle),
-		);
+		let lifted_small_field_mle =
+			lift_small_to_large_field(&large_field_mle_to_small_field_mle::<B1, B128>(&packed_mle));
 
 		let packed_mle = FieldBuffer::from_values(&packed_mle).unwrap();
 
 		// parameters...
 
 		let merkle_prover =
-			BinaryMerkleTreeProver::<BinaryField128b, StdDigest, _>::new(StdCompression::default());
+			BinaryMerkleTreeProver::<B128, StdDigest, _>::new(StdCompression::default());
 
 		let committed_rs_code =
 			ReedSolomonCode::<FA>::new(packed_mle.log_len(), LOG_INV_RATE).unwrap();
@@ -181,9 +180,7 @@ mod test {
 		prover_challenger.message().write(&codeword_commitment);
 
 		// random evaluation point
-		let evaluation_point = (0..n_vars)
-			.map(|_| BigField::random(&mut rng))
-			.collect_vec();
+		let evaluation_point = (0..n_vars).map(|_| B128::random(&mut rng)).collect_vec();
 
 		// evaluate small field multilinear at the evaluation point
 		// It is assumed the prover and verifier already know the evaluation claim

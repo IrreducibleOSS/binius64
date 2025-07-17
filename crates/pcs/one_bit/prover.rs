@@ -9,14 +9,14 @@ use binius_transcript::{
 	fiat_shamir::{CanSample, Challenger},
 };
 use binius_utils::SerializeBytes;
-use binius_verifier::{fri::FRIParams, merkle_tree::MerkleTreeScheme};
+use binius_verifier::{fields::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme};
 use itertools::Itertools;
 
 use crate::{
 	basefold::prover::BigFieldBaseFoldProver,
 	ring_switch::eq_ind::rs_eq_ind,
 	utils::{
-		constants::{KAPPA, SmallField},
+		constants::KAPPA,
 		eq_ind::eq_ind_mle,
 		utils::{compute_expected_sumcheck_claim, construct_s_hat_u},
 	},
@@ -24,7 +24,7 @@ use crate::{
 
 pub struct OneBitPCSProver<BigField>
 where
-	BigField: TowerField + From<u128> + PackedExtension<SmallField>,
+	BigField: TowerField + From<u128> + PackedExtension<B1>,
 {
 	pub small_field_evaluation_claim: BigField,
 	pub evaluation_claim: BigField,
@@ -35,7 +35,7 @@ where
 
 impl<BigField> OneBitPCSProver<BigField>
 where
-	BigField: TowerField + From<u128> + PackedExtension<SmallField>,
+	BigField: TowerField + From<u128> + PackedExtension<B1>,
 {
 	pub fn new(
 		// We will need to figure out how to handle these parameters.
@@ -66,7 +66,7 @@ where
 		committed: &'a MerkleProver::Committed,
 	) where
 		TranscriptChallenger: Challenger,
-		BigField: TowerField + ExtensionField<FA> + From<u128> + PackedExtension<SmallField>,
+		BigField: TowerField + ExtensionField<FA> + From<u128> + PackedExtension<B1>,
 		FA: BinaryField,
 		NTT: AdditiveNTT<FA> + Sync,
 		MerkleProver: MerkleTreeProver<BigField, Scheme = VCS>,
@@ -81,8 +81,7 @@ where
 		// Verifier basis decomposes and recombines s_hat_v into s_hat_u
 		// A then undergoes a linear recombination across the opposite dimension for which it was
 		// decomposed. This is the same as reinterpreting the rows of matrix A as columns.
-		let prover_s_hat_u: Vec<BigField> =
-			construct_s_hat_u::<SmallField, BigField>(prover_s_hat_v);
+		let prover_s_hat_u: Vec<BigField> = construct_s_hat_u::<B1, BigField>(prover_s_hat_v);
 
 		// Verifier sends batching scalars
 		let prover_r_double_prime: Vec<BigField> = prover_samples_batching_scalars(transcript);
@@ -93,7 +92,7 @@ where
 
 		// The verifier computes the expected sumcheck claim for which the prover must convince
 		// the verifier is correct as to their prior commitment.
-		let prover_computed_sumcheck_claim = compute_expected_sumcheck_claim::<SmallField, BigField>(
+		let prover_computed_sumcheck_claim = compute_expected_sumcheck_claim::<B1, BigField>(
 			&prover_s_hat_u,
 			prover_eq_r_double_prime.as_ref(),
 		);
@@ -127,8 +126,7 @@ where
 		let (_, eval_point_high) = evaluation_point.split_at(KAPPA);
 
 		// Lift the packed multilinear to the large field
-		let small_field_mle =
-			<BigField as PackedExtension<SmallField>>::cast_bases(packed_mle.as_ref());
+		let small_field_mle = <BigField as PackedExtension<B1>>::cast_bases(packed_mle.as_ref());
 
 		let eq_at_high = eq_ind_mle(eval_point_high);
 
@@ -137,7 +135,7 @@ where
 		for (packed_elem, eq_at_high_value) in small_field_mle.iter().zip(eq_at_high.as_ref()) {
 			packed_elem.iter().enumerate().for_each(
 				|(low_vars_subcube_idx, bit_in_packed_field)| {
-					if bit_in_packed_field == SmallField::ONE {
+					if bit_in_packed_field == B1::ONE {
 						s_hat_v[low_vars_subcube_idx] += *eq_at_high_value;
 					}
 				},
@@ -161,7 +159,7 @@ where
 		basefold_sumcheck_claim: BigField,
 	) -> BigFieldBaseFoldProver<'a, BigField, FA, NTT, MerkleProver, VCS>
 	where
-		BigField: TowerField + ExtensionField<FA> + From<u128> + PackedExtension<SmallField>,
+		BigField: TowerField + ExtensionField<FA> + From<u128> + PackedExtension<B1>,
 		FA: BinaryField,
 		NTT: AdditiveNTT<FA> + Sync,
 		MerkleProver: MerkleTreeProver<BigField, Scheme = VCS>,

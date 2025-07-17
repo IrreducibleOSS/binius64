@@ -95,6 +95,7 @@ mod test {
 	use binius_transcript::ProverTranscript;
 	use binius_verifier::{
 		config::StdChallenger,
+		fields::B128,
 		fri::FRIParams,
 		hash::{StdCompression, StdDigest},
 	};
@@ -105,7 +106,7 @@ mod test {
 	use crate::{
 		basefold::prover::BigFieldBaseFoldProver,
 		utils::{
-			constants::{BigField, FA, LOG_INV_RATE, NUM_TEST_QUERIES},
+			constants::{FA, LOG_INV_RATE, NUM_TEST_QUERIES},
 			eq_ind::{eq_ind_mle, eval_eq},
 			utils::compute_mle_eq_sum,
 		},
@@ -122,7 +123,7 @@ mod test {
 		// He wishes to evaluated the small field multilinear t at the vector of large field
 		// elements r.
 		let packed_mle = (0..1 << n_vars)
-			.map(|_| BigField::random(&mut rng))
+			.map(|_| B128::random(&mut rng))
 			.collect_vec();
 
 		let packed_mle = FieldBuffer::from_values(&packed_mle).unwrap();
@@ -130,7 +131,7 @@ mod test {
 		// parameters...
 
 		let merkle_prover =
-			BinaryMerkleTreeProver::<BigField, StdDigest, _>::new(StdCompression::default());
+			BinaryMerkleTreeProver::<B128, StdDigest, _>::new(StdCompression::default());
 
 		let committed_rs_code =
 			ReedSolomonCode::<FA>::new(packed_mle.log_len(), LOG_INV_RATE).unwrap();
@@ -161,9 +162,7 @@ mod test {
 		prover_challenger.message().write(&codeword_commitment);
 
 		// random evaluation point
-		let evaluation_point = (0..n_vars)
-			.map(|_| BigField::random(&mut rng))
-			.collect_vec();
+		let evaluation_point = (0..n_vars).map(|_| B128::random(&mut rng)).collect_vec();
 
 		let eval_point_eq = eq_ind_mle(&evaluation_point);
 		// evaluate small field multilinear at the evaluation point
