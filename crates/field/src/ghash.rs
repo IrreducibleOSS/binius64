@@ -36,6 +36,7 @@ use crate::{
 	binary_field_arithmetic::{
 		invert_or_zero_using_packed, multiple_using_packed, square_using_packed,
 	},
+	linear_transformation::{FieldLinearTransformation, Transformation},
 	underlier::{IterationMethods, IterationStrategy, NumCast, U1, UnderlierWithBitOps},
 };
 
@@ -502,8 +503,404 @@ impl TowerField for BinaryField128bGhash {
 	}
 }
 
+pub const GHASH_TO_POLYVAL_TRANSFORMATION: FieldLinearTransformation<
+	crate::polyval::BinaryField128bPolyval,
+> = FieldLinearTransformation::new_const(&[
+	crate::polyval::BinaryField128bPolyval(0xc2000000000000000000000000000001),
+	crate::polyval::BinaryField128bPolyval(0x944dd5f5b43f7ac4876845d1b184bdc7),
+	crate::polyval::BinaryField128bPolyval(0x95dee109cd2cda72f15bb7c943635eaa),
+	crate::polyval::BinaryField128bPolyval(0xbb79ad7a1f4f7a86cdad5c4e926cf845),
+	crate::polyval::BinaryField128bPolyval(0xc46a8ec0685186900e77d57e86cdcafb),
+	crate::polyval::BinaryField128bPolyval(0xa84f0a129eb834bb68f28980cd82e241),
+	crate::polyval::BinaryField128bPolyval(0x83cc00a43bdfa90fd8100311df5edc29),
+	crate::polyval::BinaryField128bPolyval(0x47f14c058c98f0bb2c9b824805e3ae9b),
+	crate::polyval::BinaryField128bPolyval(0x2d6fa6b4c72ba881ccdb55cc4ec3a31c),
+	crate::polyval::BinaryField128bPolyval(0x1f58c089b445440f672bd265318d5244),
+	crate::polyval::BinaryField128bPolyval(0xcd1cfa3878b533842d9957c766bf5164),
+	crate::polyval::BinaryField128bPolyval(0xcc19f47bfd4f81aa57f89116c4a10d0d),
+	crate::polyval::BinaryField128bPolyval(0x5e13d19200068fd3aa4d26dc814fa72c),
+	crate::polyval::BinaryField128bPolyval(0x100eda7e77917daa46ff32a04f296905),
+	crate::polyval::BinaryField128bPolyval(0x6a6584352ad71441c04dc8eee8e39c71),
+	crate::polyval::BinaryField128bPolyval(0x569c895c4f8559882c192148ac8be42d),
+	crate::polyval::BinaryField128bPolyval(0xb1ddd94113ebcbdcec5ec0e3f9ce8baf),
+	crate::polyval::BinaryField128bPolyval(0x876a8aa146478581100faef5737ae3f6),
+	crate::polyval::BinaryField128bPolyval(0x2227fc3e77655374a1dba2fc6ff51469),
+	crate::polyval::BinaryField128bPolyval(0xdc03b57df30c618667760051808a31af),
+	crate::polyval::BinaryField128bPolyval(0x6f7412630abc83fae4731b3172e69924),
+	crate::polyval::BinaryField128bPolyval(0xe84e0b1e1a49f0b56acc2e9793b29361),
+	crate::polyval::BinaryField128bPolyval(0x06ec815ba453d69c11ed47dc826c2629),
+	crate::polyval::BinaryField128bPolyval(0xa33dd4ae130e6449c64cd55ebf9186cb),
+	crate::polyval::BinaryField128bPolyval(0xbfeb95483412040ad081de5e5dc7bc61),
+	crate::polyval::BinaryField128bPolyval(0xe201d3b7886adc92fa91fa13b519c02d),
+	crate::polyval::BinaryField128bPolyval(0xb77f42543d896adc095f2c784c080659),
+	crate::polyval::BinaryField128bPolyval(0x074561ca3597328da4d8a9739bab5941),
+	crate::polyval::BinaryField128bPolyval(0xeae0085c4ec0eed2c79cbabbba3eaaea),
+	crate::polyval::BinaryField128bPolyval(0x6a9a1a1289934e39c0160a8850b28e14),
+	crate::polyval::BinaryField128bPolyval(0x5d34e0e30548cf00e7b190e730f56725),
+	crate::polyval::BinaryField128bPolyval(0x216a308a8b117d7c24b152a1261f42e6),
+	crate::polyval::BinaryField128bPolyval(0x6b91ecd895e17bafa11e7a8e88b36cb2),
+	crate::polyval::BinaryField128bPolyval(0x547324dc51987bcef5e57963beae2bd3),
+	crate::polyval::BinaryField128bPolyval(0x7787142e5da78676e8f8c088a3bfe070),
+	crate::polyval::BinaryField128bPolyval(0x1395f0a3b0b23d3d37e97a2e521d8b00),
+	crate::polyval::BinaryField128bPolyval(0x0089ab0168df6752ae571466f2db2e49),
+	crate::polyval::BinaryField128bPolyval(0x88199925f985bbef31ca3e993f3e2c64),
+	crate::polyval::BinaryField128bPolyval(0x0f36f0f46d1108b2e78570a79acaf5f6),
+	crate::polyval::BinaryField128bPolyval(0x1a50fc4f36da7c3468b823f680fbe614),
+	crate::polyval::BinaryField128bPolyval(0x47a12ffccab058ced8a926e319361050),
+	crate::polyval::BinaryField128bPolyval(0xab0c10bf64df631f77a2667b5ff4fa0c),
+	crate::polyval::BinaryField128bPolyval(0xdd1bf498a726d80c9a00ac0c2c449438),
+	crate::polyval::BinaryField128bPolyval(0xa8912cf320f94054ae95f6efb2cbe321),
+	crate::polyval::BinaryField128bPolyval(0x72d3fd953e3b964b94970241f6076e29),
+	crate::polyval::BinaryField128bPolyval(0x9fa46ea7e5baddccb78b2ce01b92ed5d),
+	crate::polyval::BinaryField128bPolyval(0x55aa311d9c6fbbdddf251b17a68b5497),
+	crate::polyval::BinaryField128bPolyval(0xe5090f20fd3274b4b10fb82d919439eb),
+	crate::polyval::BinaryField128bPolyval(0xba3324c4ee18a5c9b09f0fbe9c36bb6d),
+	crate::polyval::BinaryField128bPolyval(0xc0a08d26afba863016fe9754b674a21c),
+	crate::polyval::BinaryField128bPolyval(0x755df942f918ccd1fc17f7f77ff04661),
+	crate::polyval::BinaryField128bPolyval(0x8e6a7a776265525650a284548f042645),
+	crate::polyval::BinaryField128bPolyval(0x36604add7d60ab8a991de031945f64c3),
+	crate::polyval::BinaryField128bPolyval(0xb1da40d0465379b7e853ecd020fa9b14),
+	crate::polyval::BinaryField128bPolyval(0xe5855d03e3f808a8be257ceb52971e70),
+	crate::polyval::BinaryField128bPolyval(0xa07e24e15ddf81f1036963f1d88336b6),
+	crate::polyval::BinaryField128bPolyval(0xd7eecf2ed67def6c2c69dea18babb2db),
+	crate::polyval::BinaryField128bPolyval(0xff19b715b9819acd4fbafd4aab1a4e83),
+	crate::polyval::BinaryField128bPolyval(0x40a4409d2933f9f4dda3374868bfac9f),
+	crate::polyval::BinaryField128bPolyval(0x2fc4d29a711e26801ae70c548105a3fe),
+	crate::polyval::BinaryField128bPolyval(0xd0a7995be7423fb7ecdb7a37a967ed15),
+	crate::polyval::BinaryField128bPolyval(0xdb46974a626f6c94c68c77fac77cbf79),
+	crate::polyval::BinaryField128bPolyval(0x3545420fdae53fcd855628a9637676e3),
+	crate::polyval::BinaryField128bPolyval(0x2719e45194c24ada21a12f8e124a10f7),
+	crate::polyval::BinaryField128bPolyval(0x6ddc82a8e6cda9ab99e1a24dc4019218),
+	crate::polyval::BinaryField128bPolyval(0x43e1cc01e2d643eda4b942f01c5f4f01),
+	crate::polyval::BinaryField128bPolyval(0xe7739cb0fc8b087ead209ea3ba3b7730),
+	crate::polyval::BinaryField128bPolyval(0xe49a758f719d5d3e209d8ccf1c2cfc55),
+	crate::polyval::BinaryField128bPolyval(0x7ecdaa0fedb074a4e6dff83541bc0ffe),
+	crate::polyval::BinaryField128bPolyval(0x62f0b1f28f3cc93c600838d7f4e00fae),
+	crate::polyval::BinaryField128bPolyval(0x07d5c0c80d9dcb66f0e54cab17a74f51),
+	crate::polyval::BinaryField128bPolyval(0x94a3bac012127d2a4799e43f10346d34),
+	crate::polyval::BinaryField128bPolyval(0x04e7f5b9af9b3b32562d34415976a555),
+	crate::polyval::BinaryField128bPolyval(0xf01f02abce0d7698da1039ea06eba45d),
+	crate::polyval::BinaryField128bPolyval(0x7ecbaf96cfe0dd2211e12cb0ea21ef61),
+	crate::polyval::BinaryField128bPolyval(0x8d3d926855f5eab23eab173cbd92cca6),
+	crate::polyval::BinaryField128bPolyval(0x5db79f89adea22828f64e5d6e237cd75),
+	crate::polyval::BinaryField128bPolyval(0xab6895bc5b345ada1f94b5fa39110a2d),
+	crate::polyval::BinaryField128bPolyval(0x225ce73ad25eb0245d943b5834e32cce),
+	crate::polyval::BinaryField128bPolyval(0x48f7d720297715b658819f44a593f401),
+	crate::polyval::BinaryField128bPolyval(0x7d07b3f8414616fe9bf701d138824db6),
+	crate::polyval::BinaryField128bPolyval(0x7eccfbf166fb4920822e48fd8854cc65),
+	crate::polyval::BinaryField128bPolyval(0x87f59ddf123377c9439851235e188939),
+	crate::polyval::BinaryField128bPolyval(0xeeaef3c882043054bde413ec06905aaa),
+	crate::polyval::BinaryField128bPolyval(0xc164894522f4e12ce371b828001e26ea),
+	crate::polyval::BinaryField128bPolyval(0x10ca87d592f1c9b5c57b4e98a875c545),
+	crate::polyval::BinaryField128bPolyval(0xa1a7985e8c2116c7184d319731aedc19),
+	crate::polyval::BinaryField128bPolyval(0xa9fdf8b949e25eb2ddd7b4b43db78201),
+	crate::polyval::BinaryField128bPolyval(0x175e005dbf565530ad252d5fb057bf3c),
+	crate::polyval::BinaryField128bPolyval(0xa27fb1ce9c30f86ab0e07aa46f178940),
+	crate::polyval::BinaryField128bPolyval(0x7c41dee659308fbd55a57e0132942fdf),
+	crate::polyval::BinaryField128bPolyval(0x0dd13c21d6e831ec90822dc03afeef64),
+	crate::polyval::BinaryField128bPolyval(0xd84d2951e6b54a89dcc34ca312bb0009),
+	crate::polyval::BinaryField128bPolyval(0xae54e440bceef933434de19cf4a211f7),
+	crate::polyval::BinaryField128bPolyval(0x5f4ec22b1c6f83654612b65a33ab6cce),
+	crate::polyval::BinaryField128bPolyval(0x2272cbdd29678345f7ff593695e01719),
+	crate::polyval::BinaryField128bPolyval(0x784a742d6e7a4c318d7aa7911a2d0104),
+	crate::polyval::BinaryField128bPolyval(0x1b51b2af3e2cf57ed4871d9e4351b658),
+	crate::polyval::BinaryField128bPolyval(0x889906019909f3ea120477b2179b0cae),
+	crate::polyval::BinaryField128bPolyval(0x4a72aa08abad9fea7221d35380d43e96),
+	crate::polyval::BinaryField128bPolyval(0xed13b089d5319074a5c1012a4c6b6228),
+	crate::polyval::BinaryField128bPolyval(0x14cad28781f6679632100042fee612ee),
+	crate::polyval::BinaryField128bPolyval(0xf7f263cb6dd828eb44ee7e0d36172529),
+	crate::polyval::BinaryField128bPolyval(0xbc29753d9272bd162ff45d5f8549349f),
+	crate::polyval::BinaryField128bPolyval(0xe83357af19ec579aa60f298835710ce2),
+	crate::polyval::BinaryField128bPolyval(0x2ccdd5a99c675cee0032af873a4bc9f2),
+	crate::polyval::BinaryField128bPolyval(0x1699cca0b1c49c62171c7b18ec750ecb),
+	crate::polyval::BinaryField128bPolyval(0x8d53ffa05238f60fda559c0b8b3fa883),
+	crate::polyval::BinaryField128bPolyval(0x2230ef04e9d7cbdb03e02c18ebe9f6aa),
+	crate::polyval::BinaryField128bPolyval(0x78b314b001287da18444b6c32fc4c98e),
+	crate::polyval::BinaryField128bPolyval(0x7256c40d5d3ef46abe43a1d38cd00b50),
+	crate::polyval::BinaryField128bPolyval(0x470f34500d221b571e215b8234c6ed60),
+	crate::polyval::BinaryField128bPolyval(0x2b65ef0d7f5cdbdde3e228af68187144),
+	crate::polyval::BinaryField128bPolyval(0x524148c0a65649fb4160e77810689cc2),
+	crate::polyval::BinaryField128bPolyval(0xd50b1d7ca7127f46babf0bb4d50f88d7),
+	crate::polyval::BinaryField128bPolyval(0xf7e8e8399c62d0454fe19c7dfe057131),
+	crate::polyval::BinaryField128bPolyval(0x385b519edcd0b7019f19f32548a58438),
+	crate::polyval::BinaryField128bPolyval(0xb21dfe8c12f91b1aaa5a9e05cd67a32c),
+	crate::polyval::BinaryField128bPolyval(0xd2b0b3a2bb68fcba4580c349919ae001),
+	crate::polyval::BinaryField128bPolyval(0x6eeed3758208a9b041a0c471eb396097),
+	crate::polyval::BinaryField128bPolyval(0x9080890111dc9f95c9ec4936849026ca),
+	crate::polyval::BinaryField128bPolyval(0xf11a31d33393c8c575b367ef89038c17),
+	crate::polyval::BinaryField128bPolyval(0x4efa48f8fbe59059f0bee4d3c270318b),
+	crate::polyval::BinaryField128bPolyval(0x5fdc3fd5a6b548858321e892539364a2),
+	crate::polyval::BinaryField128bPolyval(0xe998efe83f7cf7ac086a84e037a413ff),
+	crate::polyval::BinaryField128bPolyval(0x431d758f84316acb9c3cb05b3f47b1c2),
+	crate::polyval::BinaryField128bPolyval(0xa748b4c891720beae8d5445399863b34),
+	crate::polyval::BinaryField128bPolyval(0x3e052a357563d8e14f6442cebb327f06),
+]);
+
+impl From<BinaryField128bGhash> for crate::polyval::BinaryField128bPolyval {
+	fn from(value: BinaryField128bGhash) -> Self {
+		GHASH_TO_POLYVAL_TRANSFORMATION.transform(&value)
+	}
+}
+
+pub const POLYVAL_TO_GHASH_TRANSFORMATION: FieldLinearTransformation<BinaryField128bGhash> =
+	FieldLinearTransformation::new_const(&[
+		BinaryField128bGhash(0x83ad91f69582bddf38d15180f9de45ad),
+		BinaryField128bGhash(0x12f5319035acedbaaab4d02e8a509602),
+		BinaryField128bGhash(0x3d11fd74d4f1053a27678cea68ee3fc6),
+		BinaryField128bGhash(0xbf1f144bd8857f78f698028680f046a1),
+		BinaryField128bGhash(0x74088d3b4f386e67e613d03f5b882b81),
+		BinaryField128bGhash(0xbee84a17e4a0d8476cb7b43cd2b7f414),
+		BinaryField128bGhash(0x140b53c4e7e3b1b2f6461f219efef613),
+		BinaryField128bGhash(0x3ad713df46a560f83b0e5e557bdd9142),
+		BinaryField128bGhash(0x8b4d516f2cdf81f62d906bd02c90d28f),
+		BinaryField128bGhash(0x8723123bfd05bf8109a013fff815e851),
+		BinaryField128bGhash(0xd7a69fc21f93c99f27ffe39517ad16ed),
+		BinaryField128bGhash(0x458642bf3021abe811e9804ec2f2a82e),
+		BinaryField128bGhash(0xf6aca42d3ff5066abd352c0b095812ce),
+		BinaryField128bGhash(0x08e59653393a98396181c22da38ef6a4),
+		BinaryField128bGhash(0x792e1c1ed48cf39988b035dffc216ee2),
+		BinaryField128bGhash(0x2de297c5124ba29fdac83db7af971491),
+		BinaryField128bGhash(0x34ed81dfd80af8ae6a11469d3a0be37c),
+		BinaryField128bGhash(0x41afde873a1ebc8d43191f4702f549d2),
+		BinaryField128bGhash(0xfa6c477c562e02ee6f96d051de46c361),
+		BinaryField128bGhash(0xeaebba4870d31e1795c47003c4e6891f),
+		BinaryField128bGhash(0x21bfe87f27c077cd36cc639c295c90ff),
+		BinaryField128bGhash(0x18f98a721445aefc7b115d57a5a0d9c2),
+		BinaryField128bGhash(0x6d736bed13f11bd35c134adc985bd000),
+		BinaryField128bGhash(0x71f7fdf61814408428ce63937edb4409),
+		BinaryField128bGhash(0x3935b81ee1d9d2aa878504bfef17d702),
+		BinaryField128bGhash(0xbebf287f77a01d05eab27b58d9755cf5),
+		BinaryField128bGhash(0x588bcefefbca207006b3f74dc152fcbf),
+		BinaryField128bGhash(0xba8a8eb7235e907cb6127dc172f4836a),
+		BinaryField128bGhash(0x70fdb8976770e320a1b13a412be89162),
+		BinaryField128bGhash(0xf3fb597a59eab5a850106694a413a49d),
+		BinaryField128bGhash(0x96a9e2666e1debee182e2d2b2e0d5dd2),
+		BinaryField128bGhash(0x614b16d5b770d5be4136f498c0192c98),
+		BinaryField128bGhash(0xce4258db7e777e06a02e81596987ce4d),
+		BinaryField128bGhash(0x82eea79d952f848bb7a1e5dab172c493),
+		BinaryField128bGhash(0x968787b2d5deb00d1945e0dcc8d135bf),
+		BinaryField128bGhash(0x3524bbf64b9e849de8d00098a4be84cc),
+		BinaryField128bGhash(0x4cdb6192ec4b52810dbfa1689a4e9312),
+		BinaryField128bGhash(0x6de04f3f9c3bf82455f30438bc40e375),
+		BinaryField128bGhash(0x8e96e710aad42ed4a24330470afac510),
+		BinaryField128bGhash(0xaaf9f907fd0cf489ad6d7568b64f3914),
+		BinaryField128bGhash(0xbf3199da5b38dfafaa0c01afad05f5fb),
+		BinaryField128bGhash(0x0479669e84334e6a335674d1225bba40),
+		BinaryField128bGhash(0x3dc24fd56612ed51bae349328d2699c3),
+		BinaryField128bGhash(0xb3ff64dc9b9f18bb9db27e5cf469ce63),
+		BinaryField128bGhash(0xb7b08ca23e82d9a9b6520994307d8478),
+		BinaryField128bGhash(0xb63301a6277f347903ca96e3544475dd),
+		BinaryField128bGhash(0x44960597f2e87930ab613422b24705b6),
+		BinaryField128bGhash(0x1556e0a21774ced0f8c0aacf87b7caa9),
+		BinaryField128bGhash(0xafe9506e1b7f1058980cfd4773818b89),
+		BinaryField128bGhash(0x586318607d698631604a80acc1f966dd),
+		BinaryField128bGhash(0x60be19ffd5065fb3d57dcaa6f9766fb8),
+		BinaryField128bGhash(0xb6210adc982803415146965de637cf1f),
+		BinaryField128bGhash(0xb659b4f2a4c3785ddf8248c2025f7f17),
+		BinaryField128bGhash(0x0c2dc66495b1f3d8917b2c1d18d7295b),
+		BinaryField128bGhash(0x92cb70cdd8d844bdbdae478d9a305b78),
+		BinaryField128bGhash(0xda322e2f57015abf1ed59543a1323015),
+		BinaryField128bGhash(0xbfb001978d15c5d3a195ed0915630082),
+		BinaryField128bGhash(0x01caca15e7c9e9413ac875d2a4d6142f),
+		BinaryField128bGhash(0x30ebc80d30ada6175867807c40467272),
+		BinaryField128bGhash(0xffaa1e44f120478805f86db0df73bfb9),
+		BinaryField128bGhash(0x8f63e915fe7b70648f1c6f9c19c3225f),
+		BinaryField128bGhash(0x51c213f96dbf8447d3f9340830a37254),
+		BinaryField128bGhash(0x781d828c1c90d00843d124bfb3d654c4),
+		BinaryField128bGhash(0x25d62d8ef36b6bca3a4fb51e694668c4),
+		BinaryField128bGhash(0x83a513579eda579397b14587eebe264d),
+		BinaryField128bGhash(0x293bec00f4339e2a0eb2d935277c2816),
+		BinaryField128bGhash(0xd216229d1912b163960fd30c8ef003db),
+		BinaryField128bGhash(0xff913c3e74b087196169fd1677a0e7b3),
+		BinaryField128bGhash(0x3049d7819ed5ba584b01579c97e2ea39),
+		BinaryField128bGhash(0xee78235ebc75b56ec0f01074fb09aca4),
+		BinaryField128bGhash(0x3c529c02a9bb04d8a6d4db2f8dec1130),
+		BinaryField128bGhash(0xd6207e8a1765c40ea806614b3dd1add5),
+		BinaryField128bGhash(0x9a815f8c624a0f8bc49c205623795148),
+		BinaryField128bGhash(0x39fd6f039ca486ef80b9530e132061ba),
+		BinaryField128bGhash(0x08e0f5bcd167bb370eae263e193ed316),
+		BinaryField128bGhash(0xd663b5234d95e95bc73f823833307642),
+		BinaryField128bGhash(0x9f723e83836c7034f6d0de44b69327e7),
+		BinaryField128bGhash(0x97871cf64ae6803a7927fd16fad01ce2),
+		BinaryField128bGhash(0x657342c2c1b92a8060d27bd7578267ee),
+		BinaryField128bGhash(0x11e6621c69d62b2153a001bef84b5e9f),
+		BinaryField128bGhash(0x7905d42b52a4d7cf23c3939ff5f0ebcc),
+		BinaryField128bGhash(0x8358a5c04daccc9ae6dd10038d7bd892),
+		BinaryField128bGhash(0x21411f9121c0cf82ce57897255591ac0),
+		BinaryField128bGhash(0x783daa47e6f6f8edaef2f0e6225005b5),
+		BinaryField128bGhash(0x39a14f31c6938dac3fbf05a149a7a51b),
+		BinaryField128bGhash(0x4595bd8daafbcd17b601622bb6986544),
+		BinaryField128bGhash(0x7533d58574b3645beb741e5ef1c3e3f7),
+		BinaryField128bGhash(0xb7da75608f643d937e59577588cc0dda),
+		BinaryField128bGhash(0x556d4f005fa90a5cc67d8e4ca200cfd1),
+		BinaryField128bGhash(0xf7055b4e7f318d0e9f501f277ed049db),
+		BinaryField128bGhash(0x8b3e77d687defdd4f02eb1b478eb09c0),
+		BinaryField128bGhash(0x83085e93a8fccf6bccd32f138bb6152a),
+		BinaryField128bGhash(0x71b7cda5881fb66ce6cf61538f91a382),
+		BinaryField128bGhash(0x9aa041e6fbc9ffd0e663810cc7548af7),
+		BinaryField128bGhash(0x8672546414d5fa66b30111660bc857ee),
+		BinaryField128bGhash(0xd6832136912c7593bc87079b2e53c030),
+		BinaryField128bGhash(0x11b4a30358935542218289f09c0659ed),
+		BinaryField128bGhash(0xefd1691bcb105c03f674ef753ee2c865),
+		BinaryField128bGhash(0xbfa7ea54ddb5ee70891951b1f7284a4c),
+		BinaryField128bGhash(0x9fcd8c6cc379cc49cc3681996b596ec4),
+		BinaryField128bGhash(0x87f84223132d99ffc9fa4e549378b792),
+		BinaryField128bGhash(0x4c1a80abdc6620efdcd95aab468c37c3),
+		BinaryField128bGhash(0x5d0eef2d3c86c3439b722bb1a96120da),
+		BinaryField128bGhash(0x40b581f12cb827d17c561713f91798ed),
+		BinaryField128bGhash(0xf25b91a79835c1aac50d7013b109be19),
+		BinaryField128bGhash(0x9b6a413114a0b695b4cbdbe392fd26bc),
+		BinaryField128bGhash(0x9e4f7ca1f1dade76f36420d0655ef1e4),
+		BinaryField128bGhash(0x2d1365095406acae82c64ab662652c7f),
+		BinaryField128bGhash(0xff224e0682868b78fad6230528a19d48),
+		BinaryField128bGhash(0x1467ca3a52ac0c682a5660b035a2dda0),
+		BinaryField128bGhash(0xbe7acdc28a2d87e7153c512d35ebbd60),
+		BinaryField128bGhash(0x10b6481d192423271d30b7ed7a367d93),
+		BinaryField128bGhash(0x01afdeffd35e5fde54e1a6f865fe82b9),
+		BinaryField128bGhash(0xe3c6cc1d3201af2257c5a38b43d70191),
+		BinaryField128bGhash(0xca90b45e3394828a63308fbdc813db85),
+		BinaryField128bGhash(0x04e29eefcf4772d3ff94c1a90ddc8e79),
+		BinaryField128bGhash(0x507e7bec7fbfc0543dd1cba4330511bd),
+		BinaryField128bGhash(0x79453ea2e6412dc1e02e9f09f0cfc8af),
+		BinaryField128bGhash(0x3994a7cf382ff3e9ba1fea4d86631551),
+		BinaryField128bGhash(0xc6335d7c2449f71f26ede4bf1a096036),
+		BinaryField128bGhash(0xb715594eb7756558cad0352d30b311b4),
+		BinaryField128bGhash(0x15add135d0873278ba98255ee5bed35b),
+		BinaryField128bGhash(0x00f1f1c928152ffecfc8e5d505ad2355),
+		BinaryField128bGhash(0x281860e73954cbdb2e13e2f00c767502),
+		BinaryField128bGhash(0x8b69509b312d6501ea618e11df04ea1e),
+		BinaryField128bGhash(0xdac1600e3177fe0b629aa72ceb27316d),
+		BinaryField128bGhash(0x860140d2541486c693c692c775187987),
+		BinaryField128bGhash(0x1001001111110961118fe6196978ef70),
+	]);
+
+impl From<crate::polyval::BinaryField128bPolyval> for BinaryField128bGhash {
+	fn from(value: crate::polyval::BinaryField128bPolyval) -> Self {
+		POLYVAL_TO_GHASH_TRANSFORMATION.transform(&value)
+	}
+}
+
 #[inline(always)]
 pub fn is_ghash_tower<F: TowerField>() -> bool {
 	TypeId::of::<F>() == TypeId::of::<BinaryField128bGhash>()
 		|| TypeId::of::<F>() == TypeId::of::<BinaryField1b>()
+}
+
+#[cfg(test)]
+mod tests {
+	use proptest::{prelude::any, proptest};
+
+	use super::*;
+	use crate::polyval::BinaryField128bPolyval;
+
+	#[test]
+	fn test_ghash_mul() {
+		let a = BinaryField128bGhash(1u128);
+		let b = BinaryField128bGhash(1u128);
+		let c = a * b;
+
+		assert_eq!(c, BinaryField128bGhash::from(1u128));
+
+		let a = BinaryField128bGhash(1u128);
+		let b = BinaryField128bGhash(2u128);
+		let c = a * b;
+
+		assert_eq!(c, BinaryField128bGhash::from(2u128));
+
+		let a = BinaryField128bGhash(1u128);
+		let b = BinaryField128bGhash(1297182698762987u128);
+		let c = a * b;
+
+		assert_eq!(c, BinaryField128bGhash::from(1297182698762987u128));
+
+		let a = BinaryField128bGhash(2u128);
+		let b = BinaryField128bGhash(2u128);
+		let c = a * b;
+
+		assert_eq!(c, BinaryField128bGhash::from(4u128));
+
+		let a = BinaryField128bGhash(2u128);
+		let b = BinaryField128bGhash(3u128);
+		let c = a * b;
+
+		assert_eq!(c, BinaryField128bGhash::from(6u128));
+
+		let a = BinaryField128bGhash(3u128);
+		let b = BinaryField128bGhash(3u128);
+		let c = a * b;
+
+		assert_eq!(c, BinaryField128bGhash::from(5u128));
+
+		let a = BinaryField128bGhash(1u128 << 127);
+		let b = BinaryField128bGhash(2u128);
+		let c = a * b;
+
+		assert_eq!(c, BinaryField128bGhash::from(0b10000111));
+
+		let a = BinaryField128bGhash((1u128 << 127) + 1);
+		let b = BinaryField128bGhash(2u128);
+		let c = a * b;
+
+		assert_eq!(c, BinaryField128bGhash::from(0b10000101));
+
+		let a = BinaryField128bGhash(3u128 << 126);
+		let b = BinaryField128bGhash(2u128);
+		let c = a * b;
+
+		assert_eq!(c, BinaryField128bGhash::from(0b10000111 + (1u128 << 127)));
+
+		let a = BinaryField128bGhash(1u128 << 127);
+		let b = BinaryField128bGhash(4u128);
+		let c = a * b;
+
+		assert_eq!(c, BinaryField128bGhash::from(0b10000111 << 1));
+
+		let a = BinaryField128bGhash(1u128 << 127);
+		let b = BinaryField128bGhash(1u128 << 122);
+		let c = a * b;
+
+		assert_eq!(c, BinaryField128bGhash::from((0b00000111 << 121) + 0b10000111));
+	}
+
+	#[test]
+	fn test_polyval_x_is_polynomial_root() {
+		let x = BinaryField128bPolyval::new(0x2);
+		let x = BinaryField128bGhash::from(x);
+
+		let polyval_polynomial_value =
+			x.pow([128]) + x.pow([127]) + x.pow([126]) + x.pow([121]) + BinaryField128bGhash::ONE;
+
+		assert_eq!(polyval_polynomial_value, BinaryField128bGhash::ZERO);
+	}
+
+	proptest! {
+		#[test]
+		fn test_to_from_polyval_basis(a_val in any::<u128>(), b_val in any::<u128>()) {
+			let a_tower = BinaryField128bGhash::new(a_val);
+			let b_tower = BinaryField128bGhash::new(b_val);
+			let a_polyval = BinaryField128bPolyval::from(a_tower);
+			let b_polyval = BinaryField128bPolyval::from(b_tower);
+			assert_eq!(BinaryField128bGhash::from(a_polyval * b_polyval), a_tower * b_tower);
+		}
+
+		#[test]
+		fn test_conversion_roundtrip(a in any::<u128>()) {
+			let a_val = BinaryField128bPolyval(a);
+			let converted = BinaryField128bGhash::from(a_val);
+			assert_eq!(a_val, BinaryField128bPolyval::from(converted));
+
+			let a_val = BinaryField128bGhash(a);
+			let converted = BinaryField128bPolyval::from(a_val);
+			assert_eq!(a_val, BinaryField128bGhash::from(converted));
+		}
+
+		#[test]
+		fn test_conversion_mul_consistency(a in any::<u128>(), b in any::<u128>()) {
+			let a_val = BinaryField128bGhash::new(a);
+			let b_val = BinaryField128bGhash::new(b);
+			let converted_a = BinaryField128bPolyval::from(a_val);
+			let converted_b = BinaryField128bPolyval::from(b_val);
+			assert_eq!(BinaryField128bPolyval::from(a_val * b_val), converted_a * converted_b);
+		}
+	}
 }

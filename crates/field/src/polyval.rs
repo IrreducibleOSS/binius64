@@ -1,6 +1,6 @@
 // Copyright 2023-2025 Irreducible Inc.
 
-//! Binary field implementation of GF(2^128) with a modulus of X^128 + X^127 + X^126 + 1.
+//! Binary field implementation of GF(2^128) with a modulus of X^128 + X^127 + X^126 + x^121 + 1.
 
 use std::{
 	any::TypeId,
@@ -1170,6 +1170,15 @@ mod tests {
 			let a_val = AESTowerField128b(a);
 			let converted = BinaryField128bPolyval::from(a_val);
 			assert_eq!(a_val, AESTowerField128b::from(converted));
+		}
+
+		#[test]
+		fn test_conversion_mul_consistency(a in any::<u128>(), b in any::<u128>()) {
+			let a_val = BinaryField128b::new(a);
+			let b_val = BinaryField128b::new(b);
+			let converted_a = BinaryField128bPolyval::from(a_val);
+			let converted_b = BinaryField128bPolyval::from(b_val);
+			assert_eq!(BinaryField128bPolyval::from(a_val * b_val), converted_a * converted_b);
 		}
 
 		#[test]
