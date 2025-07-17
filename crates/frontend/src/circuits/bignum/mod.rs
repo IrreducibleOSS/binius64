@@ -14,14 +14,44 @@
 //! # Size Conventions
 //!
 //! - Addition: Input size n produces output size n (with overflow checks)
+//! - Multiplication: Input sizes n and m produce output size n + m
+
+use num_bigint::BigUint;
 
 #[cfg(test)]
 mod tests;
 
 use crate::{
-	compiler::{CircuitBuilder, Wire},
+	compiler::{CircuitBuilder, Wire, WitnessFiller},
 	word::Word,
 };
+
+/// Multiply two arbitrary-sized bignums.
+///
+/// Computes `a * b` where both inputs are big integers represented as slices of 64-bit limbs.
+/// The result will have `a.len() + b.len()` limbs to accommodate the full product without overflow.
+///
+/// # Arguments
+/// * `builder` - Circuit builder for constraint generation
+/// * `a` - First multiplicand as little-endian limbs
+/// * `b` - Second multiplicand as little-endian limbs
+///
+/// # Returns
+/// Product as a vector of limbs with length `a.len() + b.len()`
+pub fn mul(builder: &CircuitBuilder, a: &[Wire], b: &[Wire]) -> Vec<Wire> {
+	// Multiply argument's limbs pairwise
+	// The accumulator has exactly a.len() + b.len() slots to hold all partial products
+	let mut accumulator = vec![vec![]; a.len() + b.len()];
+	for (i, &ai) in a.iter().enumerate() {
+		for (j, &bj) in b.iter().enumerate() {
+			let (hi, lo) = builder.imul(ai, bj);
+			let k = i + j;
+			accumulator[k].push(lo);
+			accumulator[k + 1].push(hi);
+		}
+	}
+	compute_stack_adds(builder, &accumulator)
+}
 
 /// Add two arbitrary-sized bignums with carry propagation.
 ///
@@ -129,4 +159,36 @@ fn compute_stack_adds(builder: &CircuitBuilder, limb_stacks: &[Vec<Wire>]) -> Ve
 	}
 
 	sums
+}
+
+/// Convert a slice of u64 limbs (little-endian ordering) to a BigUint.
+///
+/// # Arguments
+/// * `slice` - Limbs in little-endian order (slice\[0\] is least significant)
+///
+/// # Returns
+/// The value as a `BigUint` for arbitrary precision arithmetic
+pub fn biguint_from_u64_slice(slice: &[u64]) -> BigUint {
+	BigUint::from_bytes_le(
+		&slice
+			.iter()
+			.flat_map(|&v| v.to_le_bytes())
+			.collect::<Vec<u8>>(),
+	)
+}
+
+/// Convert witness limbs to BigUint for computation.
+///
+/// This function is used during witness generation to extract the actual
+/// numeric value from a bignum represented as wires in the circuit.
+///
+/// # Arguments
+/// * `limbs` - Wire array representing the bignum in little-endian order
+/// * `w` - Witness filler containing the actual values
+///
+/// # Returns
+/// The bignum value as a `BigUint`
+pub fn limbs_to_biguint(limbs: &[Wire], w: &WitnessFiller) -> BigUint {
+	let limb_vals: Vec<_> = limbs.iter().map(|&l| w[l].as_u64()).collect();
+	biguint_from_u64_slice(&limb_vals)
 }
