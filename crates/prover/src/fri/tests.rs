@@ -3,12 +3,8 @@
 use std::vec;
 
 use binius_field::{
-	BinaryField, BinaryField16b, BinaryField32b, BinaryField128b, ExtensionField, PackedField,
-	TowerField,
-	arch::OptimalUnderlier128b,
-	as_packed_field::{PackScalar, PackedType},
-	underlier::UnderlierType,
-	util::inner_product_par,
+	BinaryField, BinaryField16b, BinaryField32b, BinaryField128b, ExtensionField, PackedExtension,
+	PackedField, arch::OptimalUnderlier128b, as_packed_field::PackedType, util::inner_product_par,
 };
 use binius_math::{
 	ReedSolomonCode, multilinear::eq::eq_ind_partial_eval, ntt::SingleThreadedNTT,
@@ -26,17 +22,15 @@ use rand::prelude::*;
 use super::{CommitOutput, FRIFolder, FoldRoundOutput, commit_interleaved};
 use crate::merkle_tree::{MerkleTreeProver, prover::BinaryMerkleTreeProver};
 
-fn test_commit_prove_verify_success<U, F, FA>(
+fn test_commit_prove_verify_success<F, FA, P>(
 	log_dimension: usize,
 	log_inv_rate: usize,
 	log_batch_size: usize,
 	arities: &[usize],
 ) where
-	U: UnderlierType + PackScalar<F> + PackScalar<FA>,
-	F: TowerField + ExtensionField<FA> + PackedField<Scalar = F>,
+	F: BinaryField + ExtensionField<FA>,
 	FA: BinaryField,
-	PackedType<U, F>: PackedField,
-	PackedType<U, FA>: PackedField,
+	P: PackedField<Scalar = F> + PackedExtension<FA>,
 {
 	let mut rng = StdRng::seed_from_u64(0);
 
@@ -54,7 +48,7 @@ fn test_commit_prove_verify_success<U, F, FA>(
 	let n_round_commitments = arities.len();
 
 	// Generate a random message
-	let msg = random_field_buffer::<PackedType<U, F>>(&mut rng, params.log_msg_len());
+	let msg = random_field_buffer::<P>(&mut rng, params.log_msg_len());
 
 	// Prover commits the message
 	let CommitOutput {
@@ -152,12 +146,11 @@ fn test_commit_prove_verify_success_128b_full() {
 	let log_inv_rate = 2;
 	let arities = vec![1; log_dimension - log_final_dimension];
 
-	test_commit_prove_verify_success::<OptimalUnderlier128b, BinaryField128b, BinaryField16b>(
-		log_dimension,
-		log_inv_rate,
-		0,
-		&arities,
-	);
+	test_commit_prove_verify_success::<
+		BinaryField128b,
+		BinaryField16b,
+		PackedType<OptimalUnderlier128b, BinaryField128b>,
+	>(log_dimension, log_inv_rate, 0, &arities);
 }
 
 #[test]
@@ -166,12 +159,11 @@ fn test_commit_prove_verify_success_128b_higher_arity() {
 	let log_inv_rate = 2;
 	let arities = [3, 2, 1];
 
-	test_commit_prove_verify_success::<OptimalUnderlier128b, BinaryField128b, BinaryField16b>(
-		log_dimension,
-		log_inv_rate,
-		0,
-		&arities,
-	);
+	test_commit_prove_verify_success::<
+		BinaryField128b,
+		BinaryField16b,
+		PackedType<OptimalUnderlier128b, BinaryField128b>,
+	>(log_dimension, log_inv_rate, 0, &arities);
 }
 
 #[test]
@@ -181,12 +173,11 @@ fn test_commit_prove_verify_success_128b_interleaved() {
 	let log_batch_size = 2;
 	let arities = [3, 2, 1];
 
-	test_commit_prove_verify_success::<OptimalUnderlier128b, BinaryField128b, BinaryField16b>(
-		log_dimension,
-		log_inv_rate,
-		log_batch_size,
-		&arities,
-	);
+	test_commit_prove_verify_success::<
+		BinaryField128b,
+		BinaryField16b,
+		PackedType<OptimalUnderlier128b, BinaryField128b>,
+	>(log_dimension, log_inv_rate, log_batch_size, &arities);
 }
 
 #[test]
@@ -196,12 +187,11 @@ fn test_commit_prove_verify_success_128b_interleaved_packed() {
 	let log_batch_size = 2;
 	let arities = [3, 2, 1];
 
-	test_commit_prove_verify_success::<OptimalUnderlier128b, BinaryField32b, BinaryField16b>(
-		log_dimension,
-		log_inv_rate,
-		log_batch_size,
-		&arities,
-	);
+	test_commit_prove_verify_success::<
+		BinaryField32b,
+		BinaryField16b,
+		PackedType<OptimalUnderlier128b, BinaryField32b>,
+	>(log_dimension, log_inv_rate, log_batch_size, &arities);
 }
 
 #[test]
@@ -210,10 +200,9 @@ fn test_commit_prove_verify_success_without_folding() {
 	let log_inv_rate = 2;
 	let log_batch_size = 2;
 
-	test_commit_prove_verify_success::<OptimalUnderlier128b, BinaryField128b, BinaryField16b>(
-		log_dimension,
-		log_inv_rate,
-		log_batch_size,
-		&[],
-	);
+	test_commit_prove_verify_success::<
+		BinaryField128b,
+		BinaryField16b,
+		PackedType<OptimalUnderlier128b, BinaryField128b>,
+	>(log_dimension, log_inv_rate, log_batch_size, &[]);
 }
