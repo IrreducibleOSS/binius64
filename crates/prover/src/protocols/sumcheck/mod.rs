@@ -6,3 +6,4 @@ pub mod common;
 mod error;
 pub mod rerand_mle;
 mod round_evals;
+pub mod selector_mle;
