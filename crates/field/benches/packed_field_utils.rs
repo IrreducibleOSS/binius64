@@ -277,6 +277,11 @@ macro_rules! benchmark_packed_operation {
 				PackedBinaryPolyval2x128b
 				PackedBinaryPolyval4x128b
 
+				// Packed GHASH fields
+				PackedBinaryGhash1x128b
+				PackedBinaryGhash2x128b
+				PackedBinaryGhash4x128b
+
 				// Byte sliced AES fields
 				ByteSlicedAES16x128b
 				ByteSlicedAES16x64b
