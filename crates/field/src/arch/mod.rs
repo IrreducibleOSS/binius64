@@ -4,6 +4,7 @@ use cfg_if::cfg_if;
 
 mod arch_optimal;
 mod binary_utils;
+mod shared;
 mod strategies;
 
 cfg_if! {
@@ -19,8 +20,8 @@ cfg_if! {
 		mod portable;
 
 		mod aarch64;
-		pub use aarch64::{packed_128, packed_polyval_128, packed_aes_128};
-		pub use portable::{packed_256, packed_512, packed_aes_256, packed_aes_512, packed_polyval_256, packed_polyval_512, packed_ghash_128, packed_ghash_256, packed_ghash_512};
+		pub use aarch64::{packed_128, packed_polyval_128, packed_aes_128, packed_ghash_128};
+		pub use portable::{packed_256, packed_512, packed_aes_256, packed_aes_512, packed_polyval_256, packed_polyval_512, packed_ghash_256, packed_ghash_512};
 	} else {
 		mod portable;
 		pub use portable::{packed_128, packed_256, packed_512, packed_aes_128, packed_aes_256, packed_aes_512, packed_polyval_128, packed_polyval_256, packed_polyval_512, packed_ghash_128, packed_ghash_256, packed_ghash_512};

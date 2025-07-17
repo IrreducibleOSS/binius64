@@ -24,7 +24,7 @@ use super::super::portable::{
 	packed_arithmetic::{UnderlierWithBitConstants, interleave_mask_even, interleave_mask_odd},
 };
 use crate::{
-	BinaryField, Random,
+	BinaryField,
 	arch::binary_utils::{as_array_mut, as_array_ref},
 	arithmetic_traits::Broadcast,
 	tower_levels::TowerLevel,
