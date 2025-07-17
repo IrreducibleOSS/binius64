@@ -16,7 +16,7 @@ use binius_field::{
 };
 use rand::prelude::*;
 
-use crate::ntt::{AdditiveNTT, NTTShape, SingleThreadedNTT, dynamic_dispatch::DynamicDispatchNTT};
+use crate::ntt::{AdditiveNTT, NTTShape, SingleThreadedNTT};
 
 /// Check that forward and inverse transformation of `math` on `data` is the same as forward and
 /// inverse transformation of `reference_ntt` on `data` and that the result of the roundtrip is the
@@ -97,9 +97,6 @@ fn check_roundtrip_all_ntts<P>(
 		.unwrap()
 		.precompute_twiddles()
 		.multithreaded_with_max_threads(1);
-	let dynamic_dispatch_ntt = DynamicDispatchNTT::SingleThreaded(
-		SingleThreadedNTT::<P::Scalar>::new(log_domain_size).unwrap(),
-	);
 
 	let mut rng = StdRng::seed_from_u64(0);
 	let data = (0..1u128 << log_data_size)
@@ -164,15 +161,6 @@ fn check_roundtrip_all_ntts<P>(
 					check_roundtrip_with_reference(
 						&simple_ntt,
 						&multithreaded_precompute_ntt_2,
-						&data,
-						shape,
-						cosets.clone(),
-						max_log_coset,
-						skip_rounds,
-					);
-					check_roundtrip_with_reference(
-						&simple_ntt,
-						&dynamic_dispatch_ntt,
 						&data,
 						shape,
 						cosets.clone(),
@@ -292,9 +280,6 @@ fn check_packed_extension_roundtrip_all_ntts<P, PE>(
 		.unwrap()
 		.precompute_twiddles()
 		.multithreaded();
-	let dynamic_dispatch_ntt = DynamicDispatchNTT::SingleThreaded(
-		SingleThreadedNTT::<P::Scalar>::new(log_domain_size).unwrap(),
-	);
 
 	let mut data = (0..1u128 << log_data_size)
 		.map(|i| PE::from_underlier(NumCast::num_cast_from(i)))
@@ -328,13 +313,6 @@ fn check_packed_extension_roundtrip_all_ntts<P, PE>(
 		&multithreaded_precompute_ntt,
 		&mut data,
 		cosets.clone(),
-		max_log_coset,
-	);
-	check_packed_extension_roundtrip_with_reference(
-		&simple_ntt,
-		&dynamic_dispatch_ntt,
-		&mut data,
-		cosets,
 		max_log_coset,
 	);
 }
