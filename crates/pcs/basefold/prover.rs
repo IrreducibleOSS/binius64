@@ -16,12 +16,12 @@ use binius_utils::SerializeBytes;
 use binius_verifier::{fri::FRIParams, merkle_tree::MerkleTreeScheme};
 
 use crate::{
-	multilinear_sumcheck::{
-		field_buffer_multilinear_sumcheck::{FoldDirection, MultilinearSumcheckProver},
-		sumcheck_prover::SumcheckProver,
-	},
+	multilinear_sumcheck::field_buffer_multilinear_sumcheck::{FoldDirection, MultilinearSumcheckProver},
 	utils::utils::verify_sumcheck_round,
 };
+
+use binius_prover::protocols::sumcheck::SumcheckProver;
+
 
 pub struct BigFieldBaseFoldProver<'a, F, FA, NTT, MerkleProver, VCS>
 where
@@ -73,8 +73,8 @@ where
 		})
 	}
 
-	pub fn execute(&self) -> Vec<F> {
-		self.sumcheck_prover.round_message()
+	pub fn execute(&mut self) -> Vec<F> {
+		self.sumcheck_prover.execute().unwrap()[0].0.clone()
 	}
 
 	pub fn fold(
