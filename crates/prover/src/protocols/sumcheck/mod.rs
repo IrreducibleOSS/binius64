@@ -2,3 +2,6 @@
 
 pub mod common;
 mod error;
+
+pub use common::SumcheckProver;
+pub use error::Error;
