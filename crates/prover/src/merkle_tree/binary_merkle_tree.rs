@@ -2,7 +2,7 @@
 
 use std::{array, fmt::Debug, mem::MaybeUninit};
 
-use binius_field::TowerField;
+use binius_field::Field;
 use binius_maybe_rayon::{prelude::*, slice::ParallelSlice};
 use binius_utils::{bail, checked_arithmetics::log2_strict_usize, mem::slice_assume_init_mut};
 use binius_verifier::{hash::PseudoCompressionFunction, merkle_tree::Error};
@@ -30,7 +30,7 @@ pub fn build<F, H, C>(
 	batch_size: usize,
 ) -> Result<BinaryMerkleTree<Output<H::Digest>>, Error>
 where
-	F: TowerField,
+	F: Field,
 	H: ParallelDigest<Digest: BlockSizeUser + FixedOutputReset>,
 	C: PseudoCompressionFunction<Output<H::Digest>, 2> + Sync,
 {
@@ -105,7 +105,7 @@ pub fn build_from_iterator<F, H, C, ParIter>(
 	log_len: usize,
 ) -> Result<BinaryMerkleTree<Output<H::Digest>>, Error>
 where
-	F: TowerField,
+	F: Field,
 	H: ParallelDigest<Digest: BlockSizeUser + FixedOutputReset>,
 	C: PseudoCompressionFunction<Output<H::Digest>, 2> + Sync,
 	ParIter: IndexedParallelIterator<Item: IntoIterator<Item = F>>,
@@ -180,7 +180,7 @@ fn hash_interleaved<F, H>(
 	digests: &mut [MaybeUninit<Output<H::Digest>>],
 ) -> Result<(), Error>
 where
-	F: TowerField,
+	F: Field,
 	H: ParallelDigest<Digest: BlockSizeUser + FixedOutputReset>,
 {
 	if !elems.len().is_multiple_of(digests.len()) {
@@ -200,7 +200,7 @@ fn hash_iterated<F, H, ParIter>(
 	digests: &mut [MaybeUninit<Output<H::Digest>>],
 ) -> Result<(), Error>
 where
-	F: TowerField,
+	F: Field,
 	H: ParallelDigest<Digest: BlockSizeUser + FixedOutputReset>,
 	ParIter: IndexedParallelIterator<Item: IntoIterator<Item = F>>,
 {

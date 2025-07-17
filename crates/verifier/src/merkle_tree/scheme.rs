@@ -2,7 +2,7 @@
 
 use std::{array, fmt::Debug, marker::PhantomData};
 
-use binius_field::TowerField;
+use binius_field::Field;
 use binius_transcript::{Buf, TranscriptReader};
 use binius_utils::{
 	bail,
@@ -37,7 +37,7 @@ impl<T, H, C> BinaryMerkleTreeScheme<T, H, C> {
 
 impl<F, H, C> MerkleTreeScheme<F> for BinaryMerkleTreeScheme<F, H, C>
 where
-	F: TowerField,
+	F: Field,
 	H: Digest + BlockSizeUser,
 	C: PseudoCompressionFunction<Output<H>, 2> + Sync,
 {

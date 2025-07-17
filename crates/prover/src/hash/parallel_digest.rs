@@ -2,7 +2,6 @@
 
 use std::{array, mem::MaybeUninit};
 
-use binius_field::TowerField;
 use binius_maybe_rayon::{
 	iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
 	slice::ParallelSliceMut,
@@ -67,7 +66,7 @@ pub trait Serializable {
 	fn serialize(self, buffer: impl BufMut);
 }
 
-impl<F: TowerField, I: IntoIterator<Item = F>> Serializable for I {
+impl<F: SerializeBytes, I: IntoIterator<Item = F>> Serializable for I {
 	fn serialize(self, mut buffer: impl BufMut) {
 		let mode = SerializationMode::CanonicalTower;
 		for elem in self {
