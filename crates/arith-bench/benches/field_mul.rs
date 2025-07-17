@@ -21,7 +21,7 @@ use rand::{
 fn run_google_mul_benchmark<U, R>(
 	group: &mut BenchmarkGroup<'_, criterion::measurement::WallTime>,
 	name: &str,
-	mul_fn: fn(U, U) -> U,
+	mul_fn: impl Fn(U, U) -> U,
 	rng: &mut R,
 	element_bits: usize,
 	underlier_bits: usize,
@@ -71,7 +71,7 @@ fn run_google_mul_benchmark<U, R>(
 fn run_mul_benchmark<T, R>(
 	group: &mut BenchmarkGroup<'_, criterion::measurement::WallTime>,
 	name: &str,
-	mul_fn: fn(T, T) -> T,
+	mul_fn: impl Fn(T, T) -> T,
 	mut rng: R,
 	element_bits: usize,
 	underlier_bits: usize,

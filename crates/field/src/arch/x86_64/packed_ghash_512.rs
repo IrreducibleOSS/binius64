@@ -46,6 +46,7 @@ cfg_if! {
 		impl Mul for PackedBinaryGhash4x128b {
 			type Output = Self;
 
+			#[inline]
 			fn mul(self, rhs: Self) -> Self::Output {
 				crate::tracing::trace_multiplication!(PackedBinaryGhash4x128b);
 
@@ -59,6 +60,7 @@ cfg_if! {
 		impl Mul for PackedBinaryGhash4x128b {
 			type Output = Self;
 
+			#[inline]
 			fn mul(self, rhs: Self) -> Self::Output {
 				crate::tracing::trace_multiplication!(PackedBinaryGhash4x128b);
 

@@ -51,6 +51,7 @@ pub type PackedBinaryGhash1x128b = PackedPrimitiveType<M128, BinaryField128bGhas
 impl Mul for PackedBinaryGhash1x128b {
 	type Output = Self;
 
+	#[inline]
 	fn mul(self, rhs: Self) -> Self::Output {
 		crate::tracing::trace_multiplication!(PackedBinaryGhash1x128b);
 

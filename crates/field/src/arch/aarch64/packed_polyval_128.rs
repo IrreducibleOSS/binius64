@@ -30,6 +30,7 @@ pub type PackedBinaryPolyval1x128b = PackedPrimitiveType<M128, BinaryField128bPo
 impl Mul for PackedBinaryPolyval1x128b {
 	type Output = Self;
 
+	#[inline]
 	fn mul(self, rhs: Self) -> Self::Output {
 		crate::tracing::trace_multiplication!(PackedBinaryPolyval1x128b);
 
