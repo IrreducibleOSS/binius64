@@ -3,7 +3,7 @@ use binius_field::{
 	as_packed_field::PackScalar, underlier::WithUnderlier,
 };
 use binius_math::{FieldBuffer, ntt::AdditiveNTT};
-use binius_prover::merkle_tree::MerkleTreeProver;
+// use binius_prover::merkle_tree::MerkleTreeProver;
 use binius_transcript::{
 	ProverTranscript,
 	fiat_shamir::{CanSample, Challenger},
@@ -12,15 +12,48 @@ use binius_utils::SerializeBytes;
 use binius_verifier::{fields::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme};
 use itertools::Itertools;
 
+
 use crate::{
-	basefold::prover::BigFieldBaseFoldProver,
-	ring_switch::eq_ind::rs_eq_ind,
-	utils::{
-		constants::KAPPA,
-		eq_ind::eq_ind_mle,
-		utils::{compute_expected_sumcheck_claim, construct_s_hat_u},
-	},
+    fri,
+    fri::{FRIFolder, FoldRoundOutput},
+    merkle_tree::MerkleTreeProver,
+    protocols::sumcheck::common::SumcheckProver,
+    basefold::sumcheck::{FoldDirection, MultilinearSumcheckProver},
+    basefold::utils::verify_sumcheck_round,
 };
+
+
+use crate::{
+	basefold::prover::BaseFoldProver,
+	// basefold::utils::compute_expected_sumcheck_claim,
+	// ring_switch::eq_ind::rs_eq_ind,
+	// utils::{
+	// 	constants::KAPPA,
+	// 	eq_ind::eq_ind_mle,
+	// 	utils::{compute_expected_sumcheck_claim, construct_s_hat_u},
+	// },
+};
+
+use binius_math::ring_switch::{eq_ind_mle, rs_eq_ind, construct_s_hat_u};
+
+pub fn compute_mle_eq_sum<BigField: Field>(
+	mle_values: &[BigField],
+	eq_values: &[BigField],
+) -> BigField {
+	mle_values.iter().zip(eq_values).map(|(m, e)| *m * *e).sum()
+}
+
+pub fn compute_expected_sumcheck_claim<
+	SmallField: Field,
+	BigField: Field + ExtensionField<SmallField> + PackedExtension<SmallField>,
+>(
+	s_hat_u: &[BigField],
+	eq_r_double_prime: &[BigField],
+) -> BigField {
+	compute_mle_eq_sum(s_hat_u, eq_r_double_prime)
+}
+
+pub const KAPPA: usize = 7;
 
 pub struct OneBitPCSProver<BigField>
 where
@@ -157,7 +190,7 @@ where
 		committed_codeword: &'a [BigField],
 		committed: &'a MerkleProver::Committed,
 		basefold_sumcheck_claim: BigField,
-	) -> BigFieldBaseFoldProver<'a, BigField, FA, NTT, MerkleProver, VCS>
+	) -> BaseFoldProver<'a, BigField, FA, NTT, MerkleProver, VCS>
 	where
 		BigField: TowerField + ExtensionField<FA> + From<u128> + PackedExtension<B1>,
 		FA: BinaryField,
@@ -170,7 +203,7 @@ where
 
 		let rs_eq_ind = rs_eq_ind(r_double_prime, eval_point_high);
 
-		BigFieldBaseFoldProver::new(
+		BaseFoldProver::new(
 			ntt,
 			merkle_prover,
 			fri_params,
@@ -188,4 +221,152 @@ pub fn prover_samples_batching_scalars<F: Field + TowerField, TranscriptChalleng
 	transcript: &mut ProverTranscript<TranscriptChallenger>,
 ) -> Vec<F> {
 	(0..KAPPA).map(|_| transcript.sample()).collect_vec()
+}
+
+
+#[cfg(test)]
+mod test {
+	use super::{OneBitPCSProver, KAPPA, compute_mle_eq_sum};
+	use binius_field::{Random, ExtensionField, Field};
+	use binius_math::{FieldBuffer, ReedSolomonCode, ntt::SingleThreadedNTT};
+	use crate::{
+		fri::{self, CommitOutput},
+		merkle_tree::prover::BinaryMerkleTreeProver,
+	};
+	use binius_transcript::ProverTranscript;
+	use binius_verifier::{
+		config::StdChallenger,
+		fields::{B1, B128},
+		fri::FRIParams,
+		hash::{StdCompression, StdDigest},
+	};
+	use itertools::Itertools;
+	use rand::{SeedableRng, rngs::StdRng};
+	use binius_verifier::pcs::verifier::OneBitPCSVerifier;
+	use binius_math::ring_switch::{eq_ind_mle};
+	
+	const LOG_INV_RATE: usize = 1;
+	const NUM_TEST_QUERIES: usize = 3;
+
+	type FA = B128;
+
+	pub fn large_field_mle_to_small_field_mle<
+		SmallField: Field,
+		BigField: Field + ExtensionField<SmallField>,
+	>(
+		large_field_mle: &[BigField],
+	) -> Vec<SmallField> {
+		large_field_mle
+			.iter()
+			.flat_map(|elm| ExtensionField::<SmallField>::iter_bases(elm))
+			.collect()
+	}
+
+	pub fn lift_small_to_large_field<
+		SmallField: Field,
+		BigField: Field + ExtensionField<SmallField>,
+	>(
+		small_field_elms: &[SmallField],
+	) -> Vec<BigField> {
+		small_field_elms
+			.iter()
+			.map(|&elm| BigField::from(elm))
+			.collect()
+	}
+
+
+	#[test]
+	#[allow(non_snake_case)]
+	fn test_ring_switched_pcs() {
+		let mut rng = StdRng::from_seed([0; 32]);
+
+		let n_vars = 12;
+
+		let big_field_n_vars = n_vars - KAPPA;
+
+		// prover has a small field polynomial he is interested in proving an eval claim about:
+		// He wishes to evaluated the small field multilinear t at the vector of large field
+		// elements r.
+		let packed_mle = (0..1 << big_field_n_vars)
+			.map(|_| B128::random(&mut rng))
+			.collect_vec();
+
+		let lifted_small_field_mle =
+			lift_small_to_large_field(&large_field_mle_to_small_field_mle::<B1, B128>(&packed_mle));
+
+		let packed_mle = FieldBuffer::from_values(&packed_mle).unwrap();
+
+		// parameters...
+
+		let merkle_prover =
+			BinaryMerkleTreeProver::<B128, StdDigest, _>::new(StdCompression::default());
+
+		let committed_rs_code =
+			ReedSolomonCode::<FA>::new(packed_mle.log_len(), LOG_INV_RATE).unwrap();
+
+		let fri_log_batch_size = 0;
+		let fri_arities = vec![1; packed_mle.log_len() - 1];
+		let fri_params =
+			FRIParams::new(committed_rs_code, fri_log_batch_size, fri_arities, NUM_TEST_QUERIES)
+				.unwrap();
+
+		// Commit packed mle codeword to transcript
+		let ntt = SingleThreadedNTT::new(fri_params.rs_code().log_len()).unwrap();
+		let CommitOutput {
+			commitment: codeword_commitment,
+			committed: codeword_committed,
+			codeword,
+		} = fri::commit_interleaved(
+			&fri_params,
+			&ntt,
+			&merkle_prover,
+			packed_mle.to_ref(),
+		)
+		.unwrap();
+
+		// commit codeword in prover transcript
+		let mut prover_challenger = ProverTranscript::new(StdChallenger::default());
+		prover_challenger.message().write(&codeword_commitment);
+
+		// random evaluation point
+		let evaluation_point = (0..n_vars).map(|_| B128::random(&mut rng)).collect_vec();
+
+		// evaluate small field multilinear at the evaluation point
+		// It is assumed the prover and verifier already know the evaluation claim
+		let evaluation_claim =
+			compute_mle_eq_sum(&lifted_small_field_mle, eq_ind_mle(&evaluation_point).as_ref());
+
+		// Instantiate ring switch pcs
+		let ring_switch_pcs_prover =
+			OneBitPCSProver::new(packed_mle, evaluation_claim, evaluation_point.clone()).unwrap();
+
+		// prove non-interactively
+		ring_switch_pcs_prover.prove_with_transcript(
+			&mut prover_challenger,
+			&ntt,
+			&merkle_prover,
+			&fri_params,
+			&codeword,
+			&codeword_committed,
+		);
+
+		// convert the finalized prover transcript into a verifier transcript
+		let mut verifier_challenger = prover_challenger.into_verifier();
+		// retrieve the initial commitment from the transcript
+		let codeword_commitment = verifier_challenger.message().read().unwrap();
+
+		// REST OF THE PROTOCOL IS VERIFIED HERE
+
+		// verify non-interactively
+		OneBitPCSVerifier::verify_transcript(
+			codeword_commitment,
+			&mut verifier_challenger,
+			evaluation_claim,
+			&evaluation_point,
+			&fri_params,
+			merkle_prover.scheme(),
+			n_vars,
+		)
+		.unwrap();
+	}
 }

@@ -195,7 +195,7 @@ mod test {
 		// parameters...
 
 		let merkle_prover =
-			BinaryMerkleTreeProver::<B128, StdDigest, _>::new(StdCompression::default());
+			BinaryMerkleTreeProver::<FA, StdDigest, _>::new(StdCompression::default());
 
 		let committed_rs_code = ReedSolomonCode::<FA>::new(packed_mle.log_len(), LOG_INV_RATE)
 			.expect("failed to create Reed-Solomon code");
