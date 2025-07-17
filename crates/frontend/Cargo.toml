@@ -10,6 +10,7 @@ workspace = true
 [dependencies]
 num-bigint = "0.4"
 num-integer = "0.1"
+num-traits = "0.2"
 
 [dev-dependencies]
 rand = { workspace = true, features = ["std_rng", "thread_rng"] }
