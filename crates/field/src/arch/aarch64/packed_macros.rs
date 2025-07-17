@@ -7,7 +7,7 @@ macro_rules! maybe_impl_broadcast {
 macro_rules! maybe_impl_tower_constants {
 	($scalar:path, $underlier:ty, _) => {};
 	($scalar:path, M128, $alpha_idx:tt) => {
-		impl_tower_constants!($scalar, M128, { M128(alphas!(u128, $alpha_idx)) });
+		impl_tower_constants!($scalar, M128, { M128::from_u128(alphas!(u128, $alpha_idx)) });
 	};
 }
 

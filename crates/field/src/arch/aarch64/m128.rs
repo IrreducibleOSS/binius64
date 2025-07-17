@@ -2,7 +2,7 @@
 
 use std::{
 	arch::aarch64::*,
-	ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Shl, Shr},
+	ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Shl, Shr},
 };
 
 use binius_utils::{
@@ -11,7 +11,6 @@ use binius_utils::{
 	serialization::{assert_enough_data_for, assert_enough_space_for},
 };
 use bytemuck::{Pod, Zeroable};
-use derive_more::Not;
 use rand::{
 	Rng,
 	distr::{Distribution, StandardUniform},
@@ -35,17 +34,21 @@ use crate::{
 };
 
 /// 128-bit value that is used for 128-bit SIMD operations
-#[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Pod, Zeroable, Not)]
+#[derive(Copy, Clone)]
 #[repr(transparent)]
-pub struct M128(pub u128);
+pub struct M128(uint64x2_t);
 
 impl M128 {
 	pub const fn from_le_bytes(bytes: [u8; 16]) -> Self {
-		Self(u128::from_le_bytes(bytes))
+		Self(unsafe { std::mem::transmute::<u128, uint64x2_t>(u128::from_le_bytes(bytes)) })
 	}
 
 	pub const fn from_be_bytes(bytes: [u8; 16]) -> Self {
-		Self(u128::from_be_bytes(bytes))
+		Self(unsafe { std::mem::transmute::<u128, uint64x2_t>(u128::from_be_bytes(bytes)) })
+	}
+
+	pub const fn from_u128(value: u128) -> Self {
+		Self(unsafe { std::mem::transmute::<u128, uint64x2_t>(value) })
 	}
 
 	#[inline]
@@ -54,70 +57,102 @@ impl M128 {
 	}
 }
 
+impl Default for M128 {
+	fn default() -> Self {
+		Self(unsafe { vdupq_n_u64(0) })
+	}
+}
+
+impl PartialEq for M128 {
+	fn eq(&self, other: &Self) -> bool {
+		unsafe {
+			let cmp = vceqq_u64(self.0, other.0);
+			vminvq_u32(vreinterpretq_u32_u64(cmp)) == u32::MAX
+		}
+	}
+}
+
+impl Eq for M128 {}
+
+impl PartialOrd for M128 {
+	fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+		u128::from(*self).partial_cmp(&u128::from(*other))
+	}
+}
+
+impl Ord for M128 {
+	fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+		u128::from(*self).cmp(&u128::from(*other))
+	}
+}
+
+unsafe impl Zeroable for M128 {}
+unsafe impl Pod for M128 {}
+
 impl From<M128> for u128 {
 	fn from(value: M128) -> Self {
-		value.0
+		unsafe { vreinterpretq_p128_u64(value.0) }
 	}
 }
 impl From<M128> for uint8x16_t {
 	fn from(value: M128) -> Self {
-		unsafe { vreinterpretq_u8_p128(value.0) }
+		unsafe { vreinterpretq_u8_u64(value.0) }
 	}
 }
 impl From<M128> for uint16x8_t {
 	fn from(value: M128) -> Self {
-		unsafe { vreinterpretq_u16_p128(value.0) }
+		unsafe { vreinterpretq_u16_u64(value.0) }
 	}
 }
 impl From<M128> for uint32x4_t {
 	fn from(value: M128) -> Self {
-		unsafe { vreinterpretq_u32_p128(value.0) }
+		unsafe { vreinterpretq_u32_u64(value.0) }
 	}
 }
 impl From<M128> for uint64x2_t {
 	fn from(value: M128) -> Self {
-		unsafe { vreinterpretq_u64_p128(value.0) }
+		value.0
 	}
 }
 impl From<M128> for poly8x16_t {
 	fn from(value: M128) -> Self {
-		unsafe { vreinterpretq_p8_p128(value.0) }
+		unsafe { vreinterpretq_p8_u64(value.0) }
 	}
 }
 impl From<M128> for poly16x8_t {
 	fn from(value: M128) -> Self {
-		unsafe { vreinterpretq_p16_p128(value.0) }
+		unsafe { vreinterpretq_p16_u64(value.0) }
 	}
 }
 impl From<M128> for poly64x2_t {
 	fn from(value: M128) -> Self {
-		unsafe { vreinterpretq_p64_p128(value.0) }
+		unsafe { vreinterpretq_p64_u64(value.0) }
 	}
 }
 
 impl From<u128> for M128 {
 	fn from(value: u128) -> Self {
-		Self(value)
+		Self(unsafe { vreinterpretq_u64_p128(value) })
 	}
 }
 impl From<u64> for M128 {
 	fn from(value: u64) -> Self {
-		Self(value as u128)
+		Self::from(value as u128)
 	}
 }
 impl From<u32> for M128 {
 	fn from(value: u32) -> Self {
-		Self(value as u128)
+		Self::from(value as u128)
 	}
 }
 impl From<u16> for M128 {
 	fn from(value: u16) -> Self {
-		Self(value as u128)
+		Self::from(value as u128)
 	}
 }
 impl From<u8> for M128 {
 	fn from(value: u8) -> Self {
-		Self(value as u128)
+		Self::from(value as u128)
 	}
 }
 
@@ -129,37 +164,37 @@ impl<const N: usize> From<SmallU<N>> for M128 {
 
 impl From<uint8x16_t> for M128 {
 	fn from(value: uint8x16_t) -> Self {
-		Self(unsafe { vreinterpretq_p128_u8(value) })
+		Self(unsafe { vreinterpretq_u64_u8(value) })
 	}
 }
 impl From<uint16x8_t> for M128 {
 	fn from(value: uint16x8_t) -> Self {
-		Self(unsafe { vreinterpretq_p128_u16(value) })
+		Self(unsafe { vreinterpretq_u64_u16(value) })
 	}
 }
 impl From<uint32x4_t> for M128 {
 	fn from(value: uint32x4_t) -> Self {
-		Self(unsafe { vreinterpretq_p128_u32(value) })
+		Self(unsafe { vreinterpretq_u64_u32(value) })
 	}
 }
 impl From<uint64x2_t> for M128 {
 	fn from(value: uint64x2_t) -> Self {
-		Self(unsafe { vreinterpretq_p128_u64(value) })
+		Self(value)
 	}
 }
 impl From<poly8x16_t> for M128 {
 	fn from(value: poly8x16_t) -> Self {
-		Self(unsafe { vreinterpretq_p128_p8(value) })
+		Self(unsafe { vreinterpretq_u64_p8(value) })
 	}
 }
 impl From<poly16x8_t> for M128 {
 	fn from(value: poly16x8_t) -> Self {
-		Self(unsafe { vreinterpretq_p128_p16(value) })
+		Self(unsafe { vreinterpretq_u64_p16(value) })
 	}
 }
 impl From<poly64x2_t> for M128 {
 	fn from(value: poly64x2_t) -> Self {
-		Self(unsafe { vreinterpretq_p128_p64(value) })
+		Self(unsafe { vreinterpretq_u64_p64(value) })
 	}
 }
 
@@ -171,7 +206,7 @@ impl SerializeBytes for M128 {
 	) -> Result<(), SerializationError> {
 		assert_enough_space_for(&write_buf, std::mem::size_of::<Self>())?;
 
-		write_buf.put_u128_le(self.0);
+		write_buf.put_u128_le(u128::from(*self));
 
 		Ok(())
 	}
@@ -187,19 +222,28 @@ impl DeserializeBytes for M128 {
 	{
 		assert_enough_data_for(&read_buf, std::mem::size_of::<Self>())?;
 
-		Ok(Self(read_buf.get_u128_le()))
+		Ok(Self::from(read_buf.get_u128_le()))
 	}
 }
 
 impl_divisible!(@pairs M128, u128, u64, u32, u16, u8);
 impl_pack_scalar!(M128);
 
+impl Not for M128 {
+	type Output = Self;
+
+	#[inline]
+	fn not(self) -> Self::Output {
+		unsafe { vmvnq_u8(self.into()).into() }
+	}
+}
+
 impl BitAnd for M128 {
 	type Output = Self;
 
 	#[inline]
 	fn bitand(self, rhs: Self) -> Self::Output {
-		unsafe { vandq_u8(self.into(), rhs.into()).into() }
+		unsafe { vandq_u64(self.0, rhs.0).into() }
 	}
 }
 
@@ -214,7 +258,7 @@ impl BitOr for M128 {
 
 	#[inline]
 	fn bitor(self, rhs: Self) -> Self::Output {
-		unsafe { vorrq_u8(self.into(), rhs.into()).into() }
+		unsafe { vorrq_u64(self.0, rhs.0).into() }
 	}
 }
 
@@ -229,7 +273,7 @@ impl BitXor for M128 {
 
 	#[inline]
 	fn bitxor(self, rhs: Self) -> Self::Output {
-		unsafe { veorq_u8(self.into(), rhs.into()).into() }
+		unsafe { veorq_u64(self.0, rhs.0).into() }
 	}
 }
 
@@ -244,7 +288,7 @@ impl Shr<usize> for M128 {
 
 	#[inline]
 	fn shr(self, rhs: usize) -> Self::Output {
-		Self(self.0 >> rhs)
+		Self::from(u128::from(self) >> rhs)
 	}
 }
 
@@ -253,13 +297,13 @@ impl Shl<usize> for M128 {
 
 	#[inline]
 	fn shl(self, rhs: usize) -> Self::Output {
-		Self(self.0 << rhs)
+		Self::from(u128::from(self) << rhs)
 	}
 }
 
 impl ConstantTimeEq for M128 {
 	fn ct_eq(&self, other: &Self) -> subtle::Choice {
-		self.0.ct_eq(&other.0)
+		u128::from(*self).ct_eq(&u128::from(*other))
 	}
 }
 
@@ -271,7 +315,7 @@ impl ConditionallySelectable for M128 {
 
 impl Distribution<M128> for StandardUniform {
 	fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> M128 {
-		M128(rng.random())
+		M128::from(rng.random::<u128>())
 	}
 }
 
@@ -293,12 +337,12 @@ impl UnderlierType for M128 {
 }
 
 impl UnderlierWithBitOps for M128 {
-	const ZERO: Self = Self(0);
-	const ONE: Self = Self(1);
-	const ONES: Self = Self(u128::MAX);
+	const ZERO: Self = Self::from_u128(0);
+	const ONE: Self = Self::from_u128(1);
+	const ONES: Self = Self::from_u128(u128::MAX);
 
 	fn fill_with_bit(val: u8) -> Self {
-		Self(u128::fill_with_bit(val))
+		Self(unsafe { vdupq_n_u64(u64::fill_with_bit(val)) })
 	}
 
 	#[inline(always)]
@@ -377,12 +421,12 @@ impl UnderlierWithBitOps for M128 {
 
 	#[inline(always)]
 	fn shl_128b_lanes(self, rhs: usize) -> Self {
-		Self(self.0 << rhs)
+		self << rhs
 	}
 
 	#[inline(always)]
 	fn shr_128b_lanes(self, rhs: usize) -> Self {
-		Self(self.0 >> rhs)
+		self >> rhs
 	}
 
 	#[inline(always)]
@@ -457,22 +501,22 @@ impl UnderlierWithBitOps for M128 {
 
 impl UnderlierWithBitConstants for M128 {
 	const INTERLEAVE_EVEN_MASK: &'static [Self] = &[
-		Self(interleave_mask_even!(u128, 0)),
-		Self(interleave_mask_even!(u128, 1)),
-		Self(interleave_mask_even!(u128, 2)),
-		Self(interleave_mask_even!(u128, 3)),
-		Self(interleave_mask_even!(u128, 4)),
-		Self(interleave_mask_even!(u128, 5)),
-		Self(interleave_mask_even!(u128, 6)),
+		Self::from_u128(interleave_mask_even!(u128, 0)),
+		Self::from_u128(interleave_mask_even!(u128, 1)),
+		Self::from_u128(interleave_mask_even!(u128, 2)),
+		Self::from_u128(interleave_mask_even!(u128, 3)),
+		Self::from_u128(interleave_mask_even!(u128, 4)),
+		Self::from_u128(interleave_mask_even!(u128, 5)),
+		Self::from_u128(interleave_mask_even!(u128, 6)),
 	];
 	const INTERLEAVE_ODD_MASK: &'static [Self] = &[
-		Self(interleave_mask_odd!(u128, 0)),
-		Self(interleave_mask_odd!(u128, 1)),
-		Self(interleave_mask_odd!(u128, 2)),
-		Self(interleave_mask_odd!(u128, 3)),
-		Self(interleave_mask_odd!(u128, 4)),
-		Self(interleave_mask_odd!(u128, 5)),
-		Self(interleave_mask_odd!(u128, 6)),
+		Self::from_u128(interleave_mask_odd!(u128, 0)),
+		Self::from_u128(interleave_mask_odd!(u128, 1)),
+		Self::from_u128(interleave_mask_odd!(u128, 2)),
+		Self::from_u128(interleave_mask_odd!(u128, 3)),
+		Self::from_u128(interleave_mask_odd!(u128, 4)),
+		Self::from_u128(interleave_mask_odd!(u128, 5)),
+		Self::from_u128(interleave_mask_odd!(u128, 6)),
 	];
 
 	#[inline]

@@ -103,7 +103,7 @@ define_packed_binary_fields!(
 // PackedBinaryField16x8b is constructed separately
 pub type PackedBinaryField16x8b = PackedPrimitiveType<M128, BinaryField8b>;
 impl_serialize_deserialize_for_packed_binary_field!(PackedBinaryField16x8b);
-impl_tower_constants!(BinaryField8b, M128, { M128(alphas!(u128, 3)) });
+impl_tower_constants!(BinaryField8b, M128, { M128::from_u128(alphas!(u128, 3)) });
 
 impl Mul for PackedBinaryField16x8b {
 	type Output = Self;

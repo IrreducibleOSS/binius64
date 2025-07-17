@@ -72,7 +72,9 @@ define_packed_binary_fields!(
 );
 
 pub type PackedAESBinaryField16x8b = PackedPrimitiveType<M128, AESTowerField8b>;
-impl_tower_constants!(AESTowerField8b, M128, { M128(0x00d300d300d300d300d300d300d300d3) });
+impl_tower_constants!(AESTowerField8b, M128, {
+	M128::from_u128(0x00d300d300d300d300d300d300d300d3)
+});
 impl Mul for PackedAESBinaryField16x8b {
 	type Output = Self;
 
