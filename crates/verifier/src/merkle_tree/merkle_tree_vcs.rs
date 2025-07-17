@@ -17,7 +17,7 @@ pub struct Commitment<Digest> {
 }
 
 /// A Merkle tree scheme.
-pub trait MerkleTreeScheme<T>: Sync {
+pub trait MerkleTreeScheme<T> {
 	type Digest: Clone + PartialEq + Eq;
 
 	/// Returns the optimal layer that the verifier should verify only once.

@@ -211,6 +211,11 @@ impl ValueVec {
 		&self.data[start..end]
 	}
 
+	/// Returns the combined values vector.
+	pub fn combined_witness(&self) -> &[Word] {
+		&self.data
+	}
+
 	pub fn assert_filled(&self) {}
 }
 

@@ -23,7 +23,7 @@ use super::{
 ///
 /// [Reed–Solomon]: <https://en.wikipedia.org/wiki/Reed%E2%80%93Solomon_error_correction>
 /// [LCH14]: <https://arxiv.org/abs/1404.3458>
-#[derive(Debug, Getters, CopyGetters)]
+#[derive(Debug, Clone, Getters, CopyGetters)]
 pub struct ReedSolomonCode<F: BinaryField> {
 	#[get = "pub"]
 	subspace: BinarySubspace<F>,

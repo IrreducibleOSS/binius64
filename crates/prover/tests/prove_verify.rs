@@ -1,12 +1,20 @@
+use binius_field::{arch::OptimalUnderlier256b, as_packed_field::PackedType};
 use binius_frontend::{
 	circuits::sha256::{Compress, State},
 	compiler,
 	compiler::Wire,
 	word::Word,
 };
-use binius_prover::prove;
+use binius_math::ntt::SingleThreadedNTT;
+use binius_prover::{merkle_tree::prover::BinaryMerkleTreeProver, prove};
 use binius_transcript::{ProverTranscript, fiat_shamir::HasherChallenger};
-use binius_verifier::{Params, fields::B128, verify};
+use binius_verifier::{
+	Params,
+	fields::B128,
+	hash::{StdCompression, StdDigest},
+	merkle_tree::BinaryMerkleTreeScheme,
+	verify,
+};
 use blake2::{Blake2b, digest::consts::U32};
 
 type Blake2b256 = Blake2b<U32>;
@@ -49,16 +57,25 @@ fn test_prove_verify_sha256_preimage() {
 	circuit.populate_wire_witness(&mut w).unwrap();
 
 	let cs = circuit.constraint_system();
-	println!("Number of AND constraints: {}", cs.n_and_constraints());
-	println!("Number of gates: {}", circuit.n_gates());
-
 	let witness = w.into_value_vec();
 
-	let params = Params {};
+	const LOG_INV_RATE: usize = 1;
+	let merkle_scheme = BinaryMerkleTreeScheme::<_, StdDigest, _>::new(StdCompression::default());
+	let params = Params::new(&cs, LOG_INV_RATE, merkle_scheme).unwrap();
 
+	let ntt = SingleThreadedNTT::with_subspace(params.fri_params().rs_code().subspace()).unwrap();
+	let merkle_prover = BinaryMerkleTreeProver::<_, StdDigest, _>::new(StdCompression::default());
 	let mut prover_transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::default();
-	prove::<B128, _>(&params, &cs, witness.clone(), &mut prover_transcript).unwrap();
+	prove::<PackedType<OptimalUnderlier256b, B128>, _, _, _, _>(
+		&params,
+		witness.clone(),
+		&mut prover_transcript,
+		&ntt,
+		&merkle_prover,
+	)
+	.unwrap();
 
 	let mut verifier_transcript = prover_transcript.into_verifier();
-	verify::<B128, _>(&params, &cs, witness.inout(), &mut verifier_transcript).unwrap();
+	verify(&params, &cs, witness.inout(), &mut verifier_transcript).unwrap();
+	verifier_transcript.finalize().unwrap();
 }

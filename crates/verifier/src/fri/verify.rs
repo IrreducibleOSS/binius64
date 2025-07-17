@@ -2,7 +2,7 @@
 
 use std::iter;
 
-use binius_field::{BinaryField, ExtensionField, TowerField};
+use binius_field::{BinaryField, ExtensionField};
 use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval, ntt::SingleThreadedNTT};
 use binius_transcript::{
 	TranscriptReader, VerifierTranscript,
@@ -46,7 +46,7 @@ where
 
 impl<'a, F, FA, VCS> FRIVerifier<'a, F, FA, VCS>
 where
-	F: TowerField + ExtensionField<FA>,
+	F: BinaryField + ExtensionField<FA>,
 	FA: BinaryField,
 	VCS: MerkleTreeScheme<F, Digest: DeserializeBytes>,
 {
@@ -368,7 +368,7 @@ fn verify_coset_opening<F, MTScheme, B>(
 	advice: &mut TranscriptReader<B>,
 ) -> Result<Vec<F>, Error>
 where
-	F: TowerField,
+	F: BinaryField,
 	MTScheme: MerkleTreeScheme<F>,
 	B: Buf,
 {

@@ -1,8 +1,6 @@
 // Copyright 2024-2025 Irreducible Inc.
 
-use binius_field::{
-	BinaryField, ExtensionField, PackedField, TowerField, packed::len_packed_slice,
-};
+use binius_field::{BinaryField, ExtensionField, PackedField, packed::len_packed_slice};
 use binius_math::{multilinear::eq::eq_ind_partial_eval, ntt::AdditiveNTT};
 use binius_maybe_rayon::prelude::*;
 use binius_transcript::{
@@ -54,7 +52,7 @@ where
 
 impl<'a, F, FA, P, NTT, MerkleProver, VCS> FRIFolder<'a, F, FA, P, NTT, MerkleProver, VCS>
 where
-	F: TowerField + ExtensionField<FA>,
+	F: BinaryField + ExtensionField<FA>,
 	FA: BinaryField,
 	P: PackedField<Scalar = F>,
 	NTT: AdditiveNTT<FA> + Sync,

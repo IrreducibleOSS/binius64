@@ -88,11 +88,12 @@ fn test_commit_prove_verify_success<U, F, FA>(
 	codeword_commitment = verifier_challenger.message().read().unwrap();
 	let mut verifier_challenges = Vec::with_capacity(params.n_fold_rounds());
 
-	assert_eq!(round_commitments.len(), n_round_commitments);
-	for (i, commitment) in round_commitments.iter().enumerate() {
-		verifier_challenges.append(&mut verifier_challenger.sample_vec(params.fold_arities()[i]));
-		let mut _commitment = *commitment;
-		_commitment = verifier_challenger.message().read().unwrap();
+	assert_eq!(params.fold_arities().len(), n_round_commitments);
+	let mut round_commitments = Vec::with_capacity(params.n_oracles());
+	for &round_arity in params.fold_arities() {
+		verifier_challenges.append(&mut verifier_challenger.sample_vec(round_arity));
+		let commitment = verifier_challenger.message().read().unwrap();
+		round_commitments.push(commitment);
 	}
 
 	verifier_challenges.append(&mut verifier_challenger.sample_vec(params.n_final_challenges()));

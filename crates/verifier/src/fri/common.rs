@@ -11,7 +11,7 @@ use super::error::Error;
 use crate::merkle_tree::MerkleTreeScheme;
 
 /// Parameters for an FRI interleaved code proximity protocol.
-#[derive(Debug, Getters, CopyGetters)]
+#[derive(Debug, Clone, Getters, CopyGetters)]
 pub struct FRIParams<F, FA>
 where
 	F: BinaryField,

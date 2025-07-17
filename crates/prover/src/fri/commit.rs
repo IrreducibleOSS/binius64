@@ -29,6 +29,7 @@ pub struct CommitOutput<P, VCSCommitment, VCSCommitted> {
 /// * `message` - the interleaved message to encode and commit
 #[instrument(skip_all, level = "debug")]
 pub fn commit_interleaved<F, FA, P, PA, NTT, MerkleProver, VCS>(
+	// TODO: Remove rs_code and use rs_code from params
 	rs_code: &ReedSolomonCode<FA>,
 	params: &FRIParams<F, FA>,
 	ntt: &NTT,

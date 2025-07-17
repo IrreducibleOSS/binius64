@@ -1,5 +1,5 @@
 use binius_field::{
-	BinaryField, ExtensionField, PackedField, TowerField, packed::iter_packed_slice_with_offset,
+	BinaryField, ExtensionField, PackedField, packed::iter_packed_slice_with_offset,
 };
 use binius_transcript::TranscriptWriter;
 use binius_verifier::{
@@ -31,7 +31,7 @@ where
 
 impl<F, FA, P, MerkleProver, VCS> FRIQueryProver<'_, F, FA, P, MerkleProver, VCS>
 where
-	F: TowerField + ExtensionField<FA>,
+	F: BinaryField + ExtensionField<FA>,
 	FA: BinaryField,
 	P: PackedField<Scalar = F>,
 	MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
@@ -124,7 +124,7 @@ fn prove_coset_opening<F, P, MTProver, B>(
 	advice: &mut TranscriptWriter<B>,
 ) -> Result<(), Error>
 where
-	F: TowerField,
+	F: BinaryField,
 	P: PackedField<Scalar = F>,
 	MTProver: MerkleTreeProver<F>,
 	B: BufMut,
