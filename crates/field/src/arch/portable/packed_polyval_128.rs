@@ -8,12 +8,12 @@
 //!
 //! <https://bearssl.org/gitweb/?p=BearSSL;a=blob;f=src/hash/ghash_ctmul64.c;hb=4b6046412>
 
-use std::{
-	num::Wrapping,
-	ops::{BitXor, Mul},
-};
+use std::{num::Wrapping, ops::Mul};
 
-use super::{packed::PackedPrimitiveType, packed_macros::impl_broadcast};
+use super::{
+	nibble_invert_128b::nibble_invert_128b, packed::PackedPrimitiveType,
+	packed_macros::impl_broadcast,
+};
 use crate::{
 	BinaryField128bPolyval,
 	arch::{PairwiseStrategy, ReuseMultiplyStrategy},
@@ -43,38 +43,13 @@ impl_square_with!(PackedBinaryPolyval1x128b @ ReuseMultiplyStrategy);
 // Define invert
 impl InvertOrZero for PackedBinaryPolyval1x128b {
 	fn invert_or_zero(self) -> Self {
-		// The algorithm is ported from https://github.com/reyzin/GF2t/blob/master/src/main/gf2t/GF2_128.java#L400
-		// The only change is the way how x^(2^(2^k)) is calculated.
-		// Computes self^{2^128-2}
-		// self * self^(2^128 - 2) = self ^ (2^128-1) = 1 if self != 0
-
-		// Contains self raised to the power whose binary representation is 2^k ones
-		let mut self_pow_2_pow_k1s = self.get(0);
-
-		// Square res to get its exponent to be 10 in binary
-		let mut res = pow_2_2_n(self_pow_2_pow_k1s, 0);
-
-		// Contains sel raised to the power whose binary representation is 2^k ones followed by 2^k
-		// zeros
-		let mut self_pow_2_pow_k1s_to_k0s = res;
-
-		// Loop invariant
-		// res contains z raised to the power whose binary representation is 2^{k+1}-1 ones followed
-		// by a single zero self_pow_2_pow_k1s contains z raised to the power whose binary
-		// representation is 2^k ones self_pow_2_pow_k1s_to_k0s contains z raised to the power
-		// whose binary representation is 2^k ones followed by 2^k zeros
-		for k in 1..7 {
-			// Fill in the zeros in the exponent of self_pow_2_pow_k1s_to_k0s with ones
-			self_pow_2_pow_k1s *= self_pow_2_pow_k1s_to_k0s;
-
-			// self_pow_2_pow_k1s_to_k0s = pow_2_2_n with 2^k zeros appended to the exponent
-			self_pow_2_pow_k1s_to_k0s = pow_2_2_n(self_pow_2_pow_k1s, k);
-
-			// prepend 2^k ones to res
-			res *= self_pow_2_pow_k1s_to_k0s;
-		}
-
-		Self::set_single(res)
+		// Use the generic nibble-based inversion algorithm
+		let result = nibble_invert_128b(
+			self.get(0),
+			|f| f.from_montgomery().0, // Convert from Montgomery form to basis representation
+			&POLYVAL_NIBBLE_POW_2_N_TABLE,
+		);
+		Self::set_single(result)
 	}
 }
 
@@ -165,30 +140,6 @@ const fn rev64(mut x: u64) -> u64 {
 	x = ((x & 0x00ff_00ff_00ff_00ff) << 8) | ((x >> 8) & 0x00ff_00ff_00ff_00ff);
 	x = ((x & 0xffff_0000_ffff) << 16) | ((x >> 16) & 0xffff_0000_ffff);
 	x.rotate_right(32)
-}
-
-/// Calculates `value^(2^(2^n))`
-fn pow_2_2_n(value: BinaryField128bPolyval, n: usize) -> BinaryField128bPolyval {
-	match n {
-		// value^(2^(2^0)) = value
-		0 => value.square(),
-		1..=6 => {
-			// Use the fact that for finite fields with characteristics 2
-			// (x_0 + .. x_k)^(2^n) = x_0^(2^n) + ... + x_k^(2^n)
-			// Split value into 4-bit nibbles and use precalculated values.
-			let bases_form = BinaryField128bPolyval::from_montgomery(value).0;
-			let result = (0..32)
-				.map(|nibble_index| {
-					let nibble_value = (bases_form >> (nibble_index * 4)) & 0x0F;
-
-					POLYVAL_NIBBLE_POW_2_N_TABLE[n - 1][nibble_index][nibble_value as usize]
-				})
-				.fold(0, BitXor::bitxor);
-
-			BinaryField128bPolyval(result)
-		}
-		_ => value,
-	}
 }
 
 /// Table where `value[i][k][j] = BinaryField128bPolyval(j << 4 * k) ^ (2^(i+1))`
@@ -3668,12 +3619,18 @@ mod tests {
 	use proptest::{arbitrary::any, proptest};
 
 	use super::*;
+	use crate::{
+		arch::portable::nibble_invert_128b::{
+			generate_nibble_pow_2_n_table, pow_2_2_n, print_nibble_table,
+		},
+		underlier::WithUnderlier,
+	};
 
 	proptest! {
 		#[test]
 		fn test_pow_2_2_n(a_val in any::<u128>(), n in 1..4usize) {
 			let a = BinaryField128bPolyval::new(a_val);
-			let result = pow_2_2_n(a, n);
+			let result = pow_2_2_n(a, n, &|val| val.from_montgomery().0, &POLYVAL_NIBBLE_POW_2_N_TABLE);
 			let mut expected = a;
 			for _ in 0..((1 << (1 << n)) - 1) {
 				expected *= a;
@@ -3684,34 +3641,13 @@ mod tests {
 	}
 
 	// The following code is used to generate `POLVAL_NIBBLE_POW_2_N_TABLE`
-	// #[test]
-	// fn generate_nibbles_pow_2_2_n_table() {
-	// 	let mut results = <[[[u128; 16]; 32]; 6]>::default();
-	// 	for nibble_index in 0..32 {
-	// 		for nibble_value in 0..16 {
-	// 			let nibble_val = BinaryField128bPolyval::new(nibble_value << (4 * nibble_index));
-	// 			for n in 0..6 {
-	// 				let mut result = nibble_val;
-	// 				for _ in 0..(1 << (n + 1)) {
-	// 					result = result.square();
-	// 				}
-	// 				results[n][nibble_index][nibble_value as usize] = result.0;
-	// 			}
-	// 		}
-	// 	}
+	#[test]
+	#[ignore]
+	fn generate_nibbles_pow_2_2_n_table() {
+		let table = generate_nibble_pow_2_n_table(BinaryField128bPolyval::new, |field| {
+			field.to_underlier()
+		});
 
-	// 	println!("[");
-	// 	for n in 0..6 {
-	// 		println!("    [");
-	// 		for nibble_index in 0..32 {
-	// 			print!("[");
-	// 			for value in results[n][nibble_index] {
-	// 				print!("{value}, ");
-	// 			}
-	// 			println!("],")
-	// 		}
-	// 		println!("    ],");
-	// 	}
-	// 	println!("]");
-	// }
+		print_nibble_table(&table, "POLYVAL_NIBBLE_POW_2_N_TABLE");
+	}
 }
