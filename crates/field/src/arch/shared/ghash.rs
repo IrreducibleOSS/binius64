@@ -5,12 +5,13 @@ use crate::underlier::UnderlierWithBitOps;
 /// Trait for underliers that support CLMUL operations which are needed for the
 /// GHASH multiplication algorithm.
 pub trait ClMulUnderlier: UnderlierWithBitOps + From<u64> + From<u128> {
+	/// Performs CLMUL operation on two 64-bit values that are selected from 128-bit lanes
+	/// by the bytes of the IMM8 parameter.
 	fn clmulepi64<const IMM8: i32>(a: Self, b: Self) -> Self;
 
-	/// Shifts 128-bit value left by IMM8 bytes while shifting in zeros.
-	///
-	/// For 256-bit values, this operates on each 128-bit lane independently.
-	fn slli_si128<const IMM8: i32>(a: Self) -> Self;
+	/// For each 128-bit lane, shifts the lower 64 bits to the upper 64 bits and zeroes the lower
+	/// 64-bit.
+	fn move_64_to_hi(a: Self) -> Self;
 }
 
 #[inline]
@@ -52,7 +53,7 @@ fn gf2_128_reduce<U: ClMulUnderlier>(mut t0: U, t1: U) -> U {
 
 	// t0 = t0 XOR (t1 << 64)
 	// In SIMD, left shift by 64 bits is shifting by 8 bytes
-	t0 ^= U::slli_si128::<8>(t1);
+	t0 ^= U::move_64_to_hi(t1);
 
 	// t0 = t0 XOR clmul(t1, poly, 0x01)
 	// This multiplies the high 64 bits of t1 with the low 64 bits of poly

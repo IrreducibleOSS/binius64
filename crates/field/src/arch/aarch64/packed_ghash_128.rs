@@ -35,24 +35,14 @@ impl ClMulUnderlier for M128 {
 	}
 
 	#[inline]
-	fn slli_si128<const IMM8: i32>(a: Self) -> Self {
+	fn move_64_to_hi(a: Self) -> Self {
 		let a_u64x2: uint64x2_t = a.into();
-		// Shift left by IMM8 bytes
+		// Shift left by 8 bytes
 		unsafe {
-			match IMM8 {
-				0 => a,
-				1..=15 => {
-					let a_bytes: uint8x16_t = std::mem::transmute(a_u64x2);
-					let zero: uint8x16_t = vdupq_n_u8(0);
-					let shifted: uint8x16_t = vextq_u8::<IMM8>(zero, a_bytes);
-					std::mem::transmute::<uint8x16_t, uint64x2_t>(shifted).into()
-				}
-				16.. => M128::from(0u128),
-				_ => {
-					// For negative shifts, return zero
-					M128::from(0u128)
-				}
-			}
+			let a_bytes: uint8x16_t = std::mem::transmute(a_u64x2);
+			let zero: uint8x16_t = vdupq_n_u8(0);
+			let shifted: uint8x16_t = vextq_u8::<8>(zero, a_bytes);
+			std::mem::transmute::<uint8x16_t, uint64x2_t>(shifted).into()
 		}
 	}
 }

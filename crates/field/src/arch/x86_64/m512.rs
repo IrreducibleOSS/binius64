@@ -20,7 +20,7 @@ use seq_macro::seq;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
 use crate::{
-	BinaryField, Random,
+	BinaryField,
 	arch::{
 		binary_utils::{as_array_mut, as_array_ref, make_func_to_i8},
 		portable::{
