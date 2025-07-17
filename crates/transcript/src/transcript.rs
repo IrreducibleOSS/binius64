@@ -21,16 +21,22 @@ use crate::fiat_shamir::{CanSample, CanSampleBits, sample_bits_reader};
 pub struct VerifierTranscript<Challenger> {
 	combined: FiatShamirBuf<Bytes, Challenger>,
 	debug_assertions: bool,
+	serialization_mode: SerializationMode,
 }
 
 impl<Challenger_: Challenger> VerifierTranscript<Challenger_> {
 	pub fn new(challenger: Challenger_, vec: Vec<u8>) -> Self {
+		Self::with_mode(challenger, vec, SerializationMode::Native)
+	}
+
+	pub fn with_mode(challenger: Challenger_, vec: Vec<u8>, mode: SerializationMode) -> Self {
 		Self {
 			combined: FiatShamirBuf {
 				buffer: Bytes::from(vec),
 				challenger,
 			},
 			debug_assertions: cfg!(debug_assertions),
+			serialization_mode: mode,
 		}
 	}
 }
@@ -60,6 +66,7 @@ impl<Challenger_: Challenger> VerifierTranscript<Challenger_> {
 		TranscriptWriter {
 			buffer: self.combined.challenger.observer(),
 			debug_assertions: self.debug_assertions,
+			serialization_mode: self.serialization_mode,
 		}
 	}
 
@@ -72,6 +79,7 @@ impl<Challenger_: Challenger> VerifierTranscript<Challenger_> {
 		TranscriptReader {
 			buffer: &mut self.combined.buffer,
 			debug_assertions: self.debug_assertions,
+			serialization_mode: self.serialization_mode,
 		}
 	}
 
@@ -85,6 +93,7 @@ impl<Challenger_: Challenger> VerifierTranscript<Challenger_> {
 		TranscriptReader {
 			buffer: &mut self.combined,
 			debug_assertions: self.debug_assertions,
+			serialization_mode: self.serialization_mode,
 		}
 	}
 }
@@ -107,8 +116,7 @@ where
 	Challenger_: Challenger,
 {
 	fn sample(&mut self) -> F {
-		let mode = SerializationMode::CanonicalTower;
-		DeserializeBytes::deserialize(self.combined.challenger.sampler(), mode)
+		DeserializeBytes::deserialize(self.combined.challenger.sampler(), self.serialization_mode)
 			.expect("challenger has infinite buffer")
 	}
 }
@@ -125,6 +133,7 @@ where
 pub struct TranscriptReader<'a, B: Buf> {
 	buffer: &'a mut B,
 	debug_assertions: bool,
+	serialization_mode: SerializationMode,
 }
 
 impl<B: Buf> TranscriptReader<'_, B> {
@@ -133,12 +142,12 @@ impl<B: Buf> TranscriptReader<'_, B> {
 	}
 
 	pub fn read<T: DeserializeBytes>(&mut self) -> Result<T, Error> {
-		let mode = SerializationMode::CanonicalTower;
+		let mode = self.serialization_mode;
 		T::deserialize(self.buffer(), mode).map_err(Into::into)
 	}
 
 	pub fn read_vec<T: DeserializeBytes>(&mut self, n: usize) -> Result<Vec<T>, Error> {
-		let mode = SerializationMode::CanonicalTower;
+		let mode = self.serialization_mode;
 		let mut buffer = self.buffer();
 		repeat_with(move || T::deserialize(&mut buffer, mode).map_err(Into::into))
 			.take(n)
@@ -161,9 +170,9 @@ impl<B: Buf> TranscriptReader<'_, B> {
 	}
 
 	pub fn read_scalar_slice_into<F: Field>(&mut self, buf: &mut [F]) -> Result<(), Error> {
+		let mode = self.serialization_mode;
 		let mut buffer = self.buffer();
 		for elem in buf {
-			let mode = SerializationMode::CanonicalTower;
 			*elem = DeserializeBytes::deserialize(&mut buffer, mode)?;
 		}
 		Ok(())
@@ -194,6 +203,7 @@ impl<B: Buf> TranscriptReader<'_, B> {
 pub struct ProverTranscript<Challenger> {
 	combined: FiatShamirBuf<BytesMut, Challenger>,
 	debug_assertions: bool,
+	serialization_mode: SerializationMode,
 }
 
 impl<Challenger_: Challenger> ProverTranscript<Challenger_> {
@@ -202,21 +212,27 @@ impl<Challenger_: Challenger> ProverTranscript<Challenger_> {
 	/// By default debug assertions are set to the feature flag `debug_assertions`. You may also
 	/// change the debug flag with [`Self::set_debug`].
 	pub fn new(challenger: Challenger_) -> Self {
+		Self::with_mode(challenger, SerializationMode::Native)
+	}
+
+	pub fn with_mode(challenger: Challenger_, mode: SerializationMode) -> Self {
 		Self {
 			combined: FiatShamirBuf {
 				buffer: BytesMut::default(),
 				challenger,
 			},
 			debug_assertions: cfg!(debug_assertions),
+			serialization_mode: mode,
 		}
 	}
 }
 
 impl<Challenger_: Default + Challenger> ProverTranscript<Challenger_> {
 	pub fn into_verifier(self) -> VerifierTranscript<Challenger_> {
+		let mode = self.serialization_mode;
 		let transcript = self.finalize();
 
-		VerifierTranscript::new(Challenger_::default(), transcript)
+		VerifierTranscript::with_mode(Challenger_::default(), transcript, mode)
 	}
 }
 
@@ -278,6 +294,7 @@ impl<Challenger_: Challenger> ProverTranscript<Challenger_> {
 		TranscriptWriter {
 			buffer: self.combined.challenger.observer(),
 			debug_assertions: self.debug_assertions,
+			serialization_mode: self.serialization_mode,
 		}
 	}
 
@@ -293,6 +310,7 @@ impl<Challenger_: Challenger> ProverTranscript<Challenger_> {
 		TranscriptWriter {
 			buffer: &mut self.combined.buffer,
 			debug_assertions: self.debug_assertions,
+			serialization_mode: self.serialization_mode,
 		}
 	}
 
@@ -306,6 +324,7 @@ impl<Challenger_: Challenger> ProverTranscript<Challenger_> {
 		TranscriptWriter {
 			buffer: &mut self.combined,
 			debug_assertions: self.debug_assertions,
+			serialization_mode: self.serialization_mode,
 		}
 	}
 }
@@ -313,6 +332,7 @@ impl<Challenger_: Challenger> ProverTranscript<Challenger_> {
 pub struct TranscriptWriter<'a, B: BufMut> {
 	buffer: &'a mut B,
 	debug_assertions: bool,
+	serialization_mode: SerializationMode,
 }
 
 impl<B: BufMut> TranscriptWriter<'_, B> {
@@ -321,18 +341,20 @@ impl<B: BufMut> TranscriptWriter<'_, B> {
 	}
 
 	pub fn write<T: SerializeBytes>(&mut self, value: &T) {
-		self.proof_size_event_wrapper(|buffer| {
+		let mode = self.serialization_mode;
+		self.proof_size_event_wrapper(move |buffer| {
 			value
-				.serialize(buffer, SerializationMode::CanonicalTower)
+				.serialize(buffer, mode)
 				.expect("TODO: propagate error");
 		});
 	}
 
 	pub fn write_slice<T: SerializeBytes>(&mut self, values: &[T]) {
-		self.proof_size_event_wrapper(|buffer| {
+		let mode = self.serialization_mode;
+		self.proof_size_event_wrapper(move |buffer| {
 			for value in values {
 				value
-					.serialize(&mut *buffer, SerializationMode::CanonicalTower)
+					.serialize(&mut *buffer, mode)
 					.expect("TODO: propagate error");
 			}
 		});
@@ -349,9 +371,10 @@ impl<B: BufMut> TranscriptWriter<'_, B> {
 	}
 
 	pub fn write_scalar_iter<F: Field>(&mut self, it: impl IntoIterator<Item = F>) {
+		let mode = self.serialization_mode;
 		self.proof_size_event_wrapper(move |buffer| {
 			for elem in it {
-				SerializeBytes::serialize(&elem, &mut *buffer, SerializationMode::CanonicalTower)
+				SerializeBytes::serialize(&elem, &mut *buffer, mode)
 					.expect("TODO: propagate error");
 			}
 		});
@@ -382,8 +405,7 @@ where
 	Challenger_: Challenger,
 {
 	fn sample(&mut self) -> F {
-		let mode = SerializationMode::CanonicalTower;
-		DeserializeBytes::deserialize(self.combined.challenger.sampler(), mode)
+		DeserializeBytes::deserialize(self.combined.challenger.sampler(), self.serialization_mode)
 			.expect("challenger has infinite buffer")
 	}
 }
@@ -415,7 +437,11 @@ mod tests {
 
 	#[test]
 	fn test_transcript_interactions() {
-		let mut prover_transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::default();
+		// Use CanonicalTower mode since this test mixes AES tower fields and binary fields
+		let mut prover_transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::with_mode(
+			HasherChallenger::<Blake2b256>::default(),
+			SerializationMode::CanonicalTower,
+		);
 		let mut writable = prover_transcript.message();
 
 		writable.write_scalar(BinaryField8b::new(0x96));
@@ -477,7 +503,11 @@ mod tests {
 
 	#[test]
 	fn test_advising() {
-		let mut prover_transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::default();
+		// Use CanonicalTower mode since this test mixes AES tower fields and binary fields
+		let mut prover_transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::with_mode(
+			HasherChallenger::<Blake2b256>::default(),
+			SerializationMode::CanonicalTower,
+		);
 		let mut advice_writer = prover_transcript.decommitment();
 
 		advice_writer.write_scalar(BinaryField8b::new(0x96));
@@ -587,5 +617,43 @@ mod tests {
 			.into_verifier()
 			.message()
 			.read_debug("test_transcript_debug_should_fail");
+	}
+
+	#[test]
+	fn test_serialization_mode_configurable() {
+		// Test with Native mode (default)
+		let mut prover_native = ProverTranscript::<HasherChallenger<Blake2b256>>::new(
+			HasherChallenger::<Blake2b256>::default(),
+		);
+		prover_native
+			.message()
+			.write_scalar(BinaryField32b::new(0xDEADBEEF));
+		let mut verifier_native = prover_native.into_verifier();
+		assert_eq!(
+			verifier_native
+				.message()
+				.read_scalar::<BinaryField32b>()
+				.unwrap()
+				.val(),
+			0xDEADBEEF
+		);
+
+		// Test with CanonicalTower mode
+		let mut prover_canonical = ProverTranscript::<HasherChallenger<Blake2b256>>::with_mode(
+			HasherChallenger::<Blake2b256>::default(),
+			SerializationMode::CanonicalTower,
+		);
+		prover_canonical
+			.message()
+			.write_scalar(AESTowerField32b::new(0x12345678));
+		let mut verifier_canonical = prover_canonical.into_verifier();
+		assert_eq!(
+			verifier_canonical
+				.message()
+				.read_scalar::<AESTowerField32b>()
+				.unwrap()
+				.val(),
+			0x12345678
+		);
 	}
 }
