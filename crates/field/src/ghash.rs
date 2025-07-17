@@ -483,7 +483,7 @@ impl DeserializeBytes for BinaryField128bGhash {
 }
 
 impl BinaryField for BinaryField128bGhash {
-	const MULTIPLICATIVE_GENERATOR: Self = Self(0x2); // TODO: Find actual multiplicative generator for GHASH field
+	const MULTIPLICATIVE_GENERATOR: Self = Self(0x494ef99794d5244f9152df59d87a9186);
 }
 
 impl TowerField for BinaryField128bGhash {
@@ -791,7 +791,9 @@ mod tests {
 	use proptest::{prelude::any, proptest};
 
 	use super::*;
-	use crate::polyval::BinaryField128bPolyval;
+	use crate::{
+		binary_field::tests::is_binary_field_valid_generator, polyval::BinaryField128bPolyval,
+	};
 
 	#[test]
 	fn test_ghash_mul() {
@@ -871,6 +873,11 @@ mod tests {
 			x.pow([128]) + x.pow([127]) + x.pow([126]) + x.pow([121]) + BinaryField128bGhash::ONE;
 
 		assert_eq!(polyval_polynomial_value, BinaryField128bGhash::ZERO);
+	}
+
+	#[test]
+	fn test_multiplicative_generator() {
+		assert!(is_binary_field_valid_generator::<BinaryField128bGhash>());
 	}
 
 	proptest! {
