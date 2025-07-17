@@ -68,6 +68,18 @@ pub fn eval_rs_eq<BF: Field + ExtensionField<B1> + PackedExtension<B1>>(
 	tensor_eval.fold_vertical(expanded_row_batch_query)
 }
 
+// basis decompose/recombine list of big field elements across opposite dimension
+pub fn construct_s_hat_u<
+	SmallField: Field,
+	BigField: Field + ExtensionField<SmallField> + PackedExtension<SmallField>,
+>(
+	s_hat_v: Vec<BigField>,
+) -> Vec<BigField> {
+	<TensorAlgebra<SmallField, BigField>>::new(s_hat_v)
+		.transpose()
+		.elems
+}
+
 #[cfg(test)]
 mod test {
 	use std::iter::repeat_with;
