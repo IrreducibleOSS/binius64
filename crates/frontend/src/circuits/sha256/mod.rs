@@ -522,7 +522,10 @@ mod tests {
 	use hex_literal::hex;
 
 	use super::Sha256;
-	use crate::compiler::{self, Wire};
+	use crate::{
+		compiler::{self, Wire},
+		constraint_verifier::verify_constraints,
+	};
 
 	fn mk_circuit(b: &mut compiler::CircuitBuilder, max_n: usize) -> Sha256 {
 		let len = b.add_witness();
@@ -571,6 +574,7 @@ mod tests {
 		let mut b = compiler::CircuitBuilder::new();
 		let c = mk_circuit(&mut b, 2048);
 		let circuit = b.build();
+		let cs = circuit.constraint_system();
 		let mut w = circuit.new_witness_filler();
 
 		c.populate_len(&mut w, message.len());
@@ -578,6 +582,7 @@ mod tests {
 		c.populate_digest(&mut w, expected_digest);
 
 		circuit.populate_wire_witness(&mut w).unwrap();
+		verify_constraints(&cs, &w.into_value_vec()).unwrap();
 	}
 
 	#[test]
