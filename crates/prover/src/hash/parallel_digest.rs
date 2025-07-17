@@ -66,16 +66,6 @@ pub trait Serializable {
 	fn serialize(self, buffer: impl BufMut);
 }
 
-impl<F: SerializeBytes, I: IntoIterator<Item = F>> Serializable for I {
-	fn serialize(self, mut buffer: impl BufMut) {
-		let mode = SerializationMode::CanonicalTower;
-		for elem in self {
-			SerializeBytes::serialize(&elem, &mut buffer, mode)
-				.expect("buffer must have enough capacity");
-		}
-	}
-}
-
 pub trait ParallelDigest: Send {
 	/// The corresponding non-parallelized hash function.
 	type Digest: Digest + Send;
@@ -86,11 +76,19 @@ pub trait ParallelDigest: Send {
 	/// Create new hasher instance which has processed the provided data.
 	fn new_with_prefix(data: impl AsRef<[u8]>) -> Self;
 
-	/// Calculate the digest of multiple hashes where each of them is serialized into
-	/// the same number of bytes.
-	fn digest(
+	/// Calculate the digest of multiple hashes by processing a parallel iterator of iterators.
+	///
+	/// The source parameter provides a parallel iterator where:
+	/// - Each element of the outer iterator maps to one leaf/digest in the output
+	/// - Each element contains an inner iterator of items that will be serialized and concatenated
+	///   to form that leaf's content
+	///
+	/// # Panics
+	/// All items must be able to serialize with SerializationMode::Native without error, or this
+	/// method will panic.
+	fn digest<I: IntoIterator<Item: SerializeBytes>>(
 		&self,
-		source: impl IndexedParallelIterator<Item: Serializable>,
+		source: impl IndexedParallelIterator<Item = I>,
 		out: &mut [MaybeUninit<Output<Self::Digest>>],
 	);
 }
@@ -112,9 +110,9 @@ impl<D: MultiDigest<N, Digest: Send> + Send + Sync, const N: usize> ParallelDige
 		Self(D::new_with_prefix(data.as_ref()))
 	}
 
-	fn digest(
+	fn digest<I: IntoIterator<Item: SerializeBytes>>(
 		&self,
-		source: impl IndexedParallelIterator<Item: Serializable>,
+		source: impl IndexedParallelIterator<Item = I>,
 		out: &mut [MaybeUninit<Output<Self::Digest>>],
 	) {
 		let buffers = array::from_fn::<_, N, _>(|_| BytesMut::new());
@@ -122,9 +120,12 @@ impl<D: MultiDigest<N, Digest: Send> + Send + Sync, const N: usize> ParallelDige
 			buffers,
 			|buffers, (data, out_chunk)| {
 				let mut hasher = self.0.clone();
-				for (buf, chunk) in buffers.iter_mut().zip(data.into_iter()) {
+				for (mut buf, chunk) in buffers.iter_mut().zip(data.into_iter()) {
 					buf.clear();
-					chunk.serialize(buf);
+					for item in chunk {
+						item.serialize(&mut buf, SerializationMode::Native)
+							.expect("pre-condition: items must serialize without error")
+					}
 				}
 				let data = array::from_fn(|i| buffers[i].as_ref());
 				hasher.update(data);
@@ -155,16 +156,19 @@ impl<D: Digest + BlockSizeUser + Send + Sync + Clone> ParallelDigest for D {
 		Digest::new_with_prefix(data)
 	}
 
-	fn digest(
+	fn digest<I: IntoIterator<Item: SerializeBytes>>(
 		&self,
-		source: impl IndexedParallelIterator<Item: Serializable>,
+		source: impl IndexedParallelIterator<Item = I>,
 		out: &mut [MaybeUninit<Output<Self::Digest>>],
 	) {
-		source.zip(out.par_iter_mut()).for_each(|(data, out)| {
+		source.zip(out.par_iter_mut()).for_each(|(items, out)| {
 			let mut hasher = self.clone();
 			{
 				let mut buffer = HashBuffer::new(&mut hasher);
-				data.serialize(&mut buffer);
+				for item in items {
+					item.serialize(&mut buffer, SerializationMode::Native)
+						.expect("pre-condition: items must serialize without error")
+				}
 			}
 			out.write(hasher.finalize());
 		});
@@ -215,7 +219,7 @@ mod tests {
 	}
 
 	impl FixedOutput for MockDigest {
-		fn finalize_into(self, out: &mut digest::Output<Self>) {
+		fn finalize_into(self, out: &mut Output<Self>) {
 			out[0] = self.state;
 			for byte in &mut out[1..] {
 				*byte = 0;
@@ -271,23 +275,14 @@ mod tests {
 		}
 	}
 
-	struct DataWrapper(Vec<u8>);
-
-	impl Serializable for &DataWrapper {
-		fn serialize(self, mut buffer: impl BufMut) {
-			buffer.put_slice(&self.0);
-		}
-	}
-
-	fn generate_mock_data(n_hashes: usize, chunk_size: usize) -> Vec<DataWrapper> {
+	fn generate_mock_data(n_hashes: usize, chunk_size: usize) -> Vec<Vec<u8>> {
 		let mut rng = StdRng::seed_from_u64(0);
 
 		(0..n_hashes)
 			.map(|_| {
 				let mut chunk = vec![0; chunk_size];
 				rng.fill_bytes(&mut chunk);
-
-				DataWrapper(chunk)
+				chunk
 			})
 			.collect()
 	}
@@ -295,7 +290,7 @@ mod tests {
 	fn check_parallel_digest_consistency<
 		D: ParallelDigest<Digest: BlockSizeUser + Send + Sync + Clone>,
 	>(
-		data: Vec<DataWrapper>,
+		data: Vec<Vec<u8>>,
 	) {
 		let parallel_digest = D::new();
 		let mut parallel_results = repeat_with(MaybeUninit::<Output<D::Digest>>::uninit)
@@ -309,9 +304,7 @@ mod tests {
 			.collect::<Vec<_>>();
 		single_digest_as_parallel.digest(data.par_iter(), &mut single_results);
 
-		let serial_results = data
-			.iter()
-			.map(move |data| <D::Digest as Digest>::digest(&data.0));
+		let serial_results = data.iter().map(<D::Digest as Digest>::digest);
 
 		for (parallel, single, serial) in izip!(parallel_results, single_results, serial_results) {
 			assert_eq!(unsafe { parallel.assume_init() }, serial);
