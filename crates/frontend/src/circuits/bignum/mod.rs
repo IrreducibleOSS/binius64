@@ -15,6 +15,7 @@
 //!
 //! - Addition: Input size n produces output size n (with overflow checks)
 //! - Multiplication: Input sizes n and m produce output size n + m
+//! - Squaring: Input size n produces output size 2n
 
 use num_bigint::BigUint;
 
@@ -48,6 +49,35 @@ pub fn mul(builder: &CircuitBuilder, a: &[Wire], b: &[Wire]) -> Vec<Wire> {
 			let k = i + j;
 			accumulator[k].push(lo);
 			accumulator[k + 1].push(hi);
+		}
+	}
+	compute_stack_adds(builder, &accumulator)
+}
+
+/// Square an arbitrary-sized bignum.
+///
+/// Computes `a * a` using an optimized algorithm that takes advantage of the symmetry
+/// in squaring (each cross-product appears twice). This is more efficient than
+/// using general multiplication.
+///
+/// # Arguments
+/// * `builder` - Circuit builder for constraint generation
+/// * `a` - Input bignum as little-endian limbs
+///
+/// # Returns
+/// Square as a vector of limbs with length `2 × a.len()`
+pub fn square(builder: &CircuitBuilder, a: &[Wire]) -> Vec<Wire> {
+	let mut accumulator = vec![vec![]; a.len() + a.len()];
+	for (i, &ai) in a.iter().enumerate() {
+		for (j, &aj) in a.iter().enumerate().skip(i) {
+			let (hi, lo) = builder.imul(ai, aj);
+			accumulator[i + j].push(lo);
+			accumulator[i + j + 1].push(hi);
+			if i != j {
+				// Off-diagonal elements appear twice
+				accumulator[i + j].push(lo);
+				accumulator[i + j + 1].push(hi);
+			}
 		}
 	}
 	compute_stack_adds(builder, &accumulator)

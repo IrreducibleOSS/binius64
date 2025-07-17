@@ -172,3 +172,73 @@ fn test_mul_with_values(a_limbs: Vec<u64>, b_limbs: Vec<u64>) -> TestResult {
 
 	TestResult::passed()
 }
+
+#[quickcheck]
+fn test_square_with_values(a_limbs: Vec<u64>) -> TestResult {
+	let builder = CircuitBuilder::new();
+
+	let a: Vec<Wire> = (0..a_limbs.len()).map(|_| builder.add_witness()).collect();
+	let result = square(&builder, &a);
+
+	let cs = builder.build();
+
+	let mut w = cs.new_witness_filler();
+	for (i, &val) in a_limbs.iter().enumerate() {
+		w[a[i]] = Word(val);
+	}
+
+	let a_big = biguint_from_u64_slice(&a_limbs);
+	let expected = &a_big * &a_big;
+
+	cs.populate_wire_witness(&mut w).unwrap();
+
+	let result_big = limbs_to_biguint(&result, &w);
+
+	if result_big != expected {
+		return TestResult::error(format!(
+			"Squaring failed: {a_big}^2 = {result_big} (expected {expected})"
+		));
+	}
+
+	if let Err(e) = verify_constraints(&cs.constraint_system(), &w.into_value_vec()) {
+		return TestResult::error(format!("Constraint verification failed: {e:?}"));
+	}
+
+	TestResult::passed()
+}
+
+#[quickcheck]
+fn prop_square_vs_mul_equivalence(vals: Vec<u64>) -> TestResult {
+	if vals.is_empty() || vals.len() > 8 {
+		return TestResult::discard();
+	}
+
+	let builder = CircuitBuilder::new();
+
+	let a: Vec<Wire> = (0..vals.len()).map(|_| builder.add_witness()).collect();
+
+	let square_result = square(&builder, &a);
+	let mul_result = mul(&builder, &a, &a);
+
+	let cs = builder.build();
+	let mut w = cs.new_witness_filler();
+
+	for (i, &val) in vals.iter().enumerate() {
+		w[a[i]] = Word(val);
+	}
+
+	cs.populate_wire_witness(&mut w).unwrap();
+
+	let square_big = limbs_to_biguint(&square_result, &w);
+	let mul_big = limbs_to_biguint(&mul_result, &w);
+
+	if square_big != mul_big {
+		return TestResult::error(format!("square(a) != mul(a,a): {square_big} != {mul_big}"));
+	}
+
+	if let Err(e) = verify_constraints(&cs.constraint_system(), &w.into_value_vec()) {
+		return TestResult::error(format!("Constraint verification failed: {e:?}"));
+	}
+
+	TestResult::passed()
+}
