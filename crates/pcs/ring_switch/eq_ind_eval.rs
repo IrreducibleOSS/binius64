@@ -1,17 +1,17 @@
 use std::iter;
 
 use binius_field::{ExtensionField, Field, PackedExtension};
+use binius_verifier::fields::B1;
 
 use super::tensor_algebra::TensorAlgebra;
-use crate::utils::constants::SmallField;
 
-pub fn eval_rs_eq<BF: Field + ExtensionField<SmallField> + PackedExtension<SmallField>>(
+pub fn eval_rs_eq<BF: Field + ExtensionField<B1> + PackedExtension<B1>>(
 	z_vals: &[BF],
 	query: &[BF],
 	expanded_row_batch_query: &[BF],
 ) -> BF {
 	let tensor_eval = iter::zip(z_vals, query).fold(
-		<TensorAlgebra<SmallField, BF>>::from_vertical(BF::ONE),
+		<TensorAlgebra<B1, BF>>::from_vertical(BF::ONE),
 		|eval, (&vert_i, &hztl_i)| {
 			// This formula is specific to characteristic 2 fields
 			// Here we know that $h v + (1 - h) (1 - v) = 1 + h + v$.
