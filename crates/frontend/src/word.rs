@@ -75,8 +75,9 @@ impl Word {
 	pub fn iadd_cout_32(self, rhs: Word) -> (Word, Word) {
 		let Word(lhs) = self;
 		let Word(rhs) = rhs;
-		let sum = lhs.wrapping_add(rhs) & 0x00000000_FFFFFFFF;
-		let cout = (lhs & rhs) | ((lhs ^ rhs) & !sum);
+		let full_sum = lhs.wrapping_add(rhs);
+		let sum = full_sum & 0x00000000_FFFFFFFF;
+		let cout = (lhs & rhs) | ((lhs ^ rhs) & !full_sum);
 		(Word(sum), Word(cout))
 	}
 
