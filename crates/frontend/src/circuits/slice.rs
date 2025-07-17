@@ -73,72 +73,54 @@ impl Slice {
 
 		// Verify bounds: offset + len_slice <= len_input
 		let offset_plus_len_slice = b.iadd_32(offset, len_slice);
-
-		// Check that offset + len_slice <= len_input
 		let overflow = b.icmp_ult(len_input, offset_plus_len_slice);
 		b.assert_0("bounds_check", overflow);
 
-		// For each byte position in the slice, verify it matches the corresponding
-		// byte in the input array
-		for byte_idx in 0..max_n_slice {
-			let b = b.subcircuit(format!("byte[{byte_idx}]"));
+		// Decompose offset = word_offset * 8 + byte_offset
+		let word_offset = b.shr(offset, 3); // offset / 8
+		let byte_offset = b.band(offset, b.add_constant(Word(7))); // offset % 8
 
-			// Check if this byte index is within the actual slice length
-			let byte_idx_wire = b.add_constant(Word(byte_idx as u64));
-			let within_slice = b.icmp_ult(byte_idx_wire, len_slice);
+		// Check if aligned (byte_offset == 0)
+		let is_aligned_mask = b.icmp_eq(byte_offset, b.add_constant(Word::ZERO));
 
-			// Calculate the source byte position: offset + byte_idx
-			let source_pos = b.iadd_32(offset, byte_idx_wire);
+		// Go over every word in the slice and check that it was copied from the input byte string
+		// correctly.
+		for (slice_idx, &slice_word) in slice.iter().enumerate() {
+			let b = b.subcircuit(format!("slice_word[{slice_idx}]"));
 
-			// ---- Extract source byte from input array
-			//
-			// We need to extract the byte at position source_pos from the input array.
-			// Since input is packed as 8-byte words, we must:
-			// 1. Calculate which word contains the byte: word_idx = source_pos / 8
-			// 2. Calculate byte offset within that word: byte_offset = source_pos % 8
-			// 3. Extract the byte from input[word_idx] at byte_offset
-			//
-			// However, we can't directly index arrays in circuits, so we use a multiplexer
-			// pattern: extract from all possible positions and select the right one using masks.
-			let word_idx = b.shr(source_pos, 3);
-			let byte_offset = b.band(source_pos, b.add_constant(Word(7)));
+			// Check if this word is within the actual slice
+			let word_start = b.add_constant(Word((slice_idx * 8) as u64));
+			let word_end = b.add_constant(Word(((slice_idx + 1) * 8) as u64));
+			let word_fully_valid_mask = b.icmp_ult(word_end, len_slice);
+			let word_partially_valid_mask = b.icmp_ult(word_start, len_slice);
 
-			let mut extracted_byte = b.add_constant(Word::ZERO);
+			// Calculate which input word(s) we need
+			let input_word_idx = b.iadd_32(word_offset, b.add_constant(Word(slice_idx as u64)));
 
-			// Outer loop: find which word contains our byte
-			for i in 0..input.len() {
-				let i_wire = b.add_constant(Word(i as u64));
-				let is_correct_word = b.icmp_eq(word_idx, i_wire);
+			let extracted_word =
+				extract_word(&b, &input, input_word_idx, byte_offset, is_aligned_mask);
 
-				// Inner loop: extract byte at all 8 positions, select the right one
-				let mut byte_from_word = b.add_constant(Word::ZERO);
+			// Handle partial last word
+			if slice_idx == slice.len() - 1 {
+				// Calculate valid bytes in last word
+				let last_word_offset = slice_idx * 8;
+				let neg_offset = b.add_constant(Word((-(last_word_offset as i64)) as u64));
+				let valid_bytes = b.iadd_32(len_slice, neg_offset);
+				let mask = create_byte_mask(&b, valid_bytes);
 
-				for j in 0..8 {
-					let j_wire = b.add_constant(Word(j as u64));
-					let is_correct_offset = b.icmp_eq(byte_offset, j_wire);
-					let extracted = b.extract_byte(input[i], j as u32);
-					// Mask will be all-1s only when both word and offset match
-					let mask = b.band(is_correct_word, is_correct_offset);
-					let masked_byte = b.band(extracted, mask);
-					byte_from_word = b.bor(byte_from_word, masked_byte);
-				}
+				let masked_slice = b.band(slice_word, mask);
+				let masked_extracted = b.band(extracted_word, mask);
 
-				extracted_byte = b.bor(extracted_byte, byte_from_word);
+				b.assert_eq_cond(
+					"partial_word",
+					masked_slice,
+					masked_extracted,
+					word_partially_valid_mask,
+				);
+			} else {
+				// Full word comparison
+				b.assert_eq_cond("full_word", slice_word, extracted_word, word_fully_valid_mask);
 			}
-
-			// Extract the corresponding byte from the slice array.
-			// Since we know byte_idx at compile time, we can directly calculate indices.
-			let slice_word_idx = byte_idx / 8;
-			let slice_byte_offset = byte_idx % 8;
-			let slice_byte = b.extract_byte(slice[slice_word_idx], slice_byte_offset as u32);
-
-			// Conditionally assert equality if within slice bounds
-			b.assert_eq_cond(
-				"within_slice_bounds".to_string(),
-				extracted_byte,
-				slice_byte,
-				within_slice,
-			);
 		}
 
 		Slice {
@@ -224,6 +206,114 @@ impl Slice {
 	pub fn populate_offset(&self, w: &mut crate::compiler::WitnessFiller, offset: usize) {
 		w[self.offset] = Word(offset as u64);
 	}
+}
+
+/// Extracts a word from the input array at the specified word index and byte offset.
+///
+/// This function handles both aligned and unaligned word extraction:
+/// - **Aligned** (byte_offset = 0): Directly selects the word at `word_idx`
+/// - **Unaligned** (byte_offset = 1-7): Combines bytes from two adjacent words
+///
+/// # Arguments
+/// * `b` - Circuit builder
+/// * `input` - Array of input words to extract from
+/// * `word_idx` - Index of the word to extract
+/// * `byte_offset` - Byte offset within the word (0-7)
+/// * `is_aligned_mask` - Wire that's all-1 if byte_offset is 0, 0 otherwise
+///
+/// # Returns
+/// A wire containing the extracted 8-byte word
+fn extract_word(
+	b: &CircuitBuilder,
+	input: &[Wire],
+	word_idx: Wire,
+	byte_offset: Wire,
+	is_aligned_mask: Wire,
+) -> Wire {
+	// Aligned case: directly select the word
+	let mut aligned_word = b.add_constant(Word::ZERO);
+	for (i, &word) in input.iter().enumerate() {
+		let i_wire = b.add_constant(Word(i as u64));
+		let is_this_word = b.icmp_eq(word_idx, i_wire);
+		let masked = b.band(word, is_this_word);
+		aligned_word = b.bor(aligned_word, masked);
+	}
+
+	// Unaligned case: need to combine two adjacent words.
+	//
+	// First we extract both words: lo_word and hi_word. lo_word contains some bytes of the
+	// slice we are looking for and the hi_word contains the rest.
+	//
+	// Once we found that we shift those s.t. when we bitwise-or them together we get a full
+	// word. That's going to be our `unaligned_word`.
+	let next_word_idx = b.iadd_32(word_idx, b.add_constant(Word(1)));
+	let mut lo_word = b.add_constant(Word::ZERO);
+	let mut hi_word = b.add_constant(Word::ZERO);
+	for (i, &word) in input.iter().enumerate() {
+		let i_wire = b.add_constant(Word(i as u64));
+		let is_lo = b.icmp_eq(word_idx, i_wire);
+		let is_hi = b.icmp_eq(next_word_idx, i_wire);
+
+		let masked_low = b.band(word, is_lo);
+		let masked_high = b.band(word, is_hi);
+
+		lo_word = b.bor(lo_word, masked_low);
+		hi_word = b.bor(hi_word, masked_high);
+	}
+	let mut unaligned_word = b.add_constant(Word::ZERO);
+	for offset in 1..8 {
+		let offset_wire = b.add_constant(Word(offset as u64));
+		let is_this_offset = b.icmp_eq(byte_offset, offset_wire);
+
+		let lo_shifted = b.shr(lo_word, (offset * 8) as u32);
+		let hi_shifted = b.shl(hi_word, ((8 - offset) * 8) as u32);
+		let combined = b.bor(lo_shifted, hi_shifted);
+
+		let masked = b.band(combined, is_this_offset);
+		unaligned_word = b.bor(unaligned_word, masked);
+	}
+
+	// Finally select the aligned or unaligned word.
+	let aligned_masked = b.band(aligned_word, is_aligned_mask);
+	let unaligned_masked = b.band(unaligned_word, b.bnot(is_aligned_mask));
+	b.bor(aligned_masked, unaligned_masked)
+}
+
+/// Creates a byte mask with the first `n_bytes` bytes set to 0xFF and remaining bytes to 0x00.
+///
+/// This function generates masks for partial word validation:
+/// - n_bytes = 0: 0x0000000000000000
+/// - n_bytes = 1: 0x00000000000000FF
+/// - n_bytes = 2: 0x000000000000FFFF
+/// - ...
+/// - n_bytes = 8: 0xFFFFFFFFFFFFFFFF
+///
+/// # Arguments
+/// * `b` - Circuit builder
+/// * `n_bytes` - Number of bytes to include in the mask (0-8)
+///
+/// # Returns
+/// A wire containing the byte mask
+fn create_byte_mask(b: &CircuitBuilder, n_bytes: Wire) -> Wire {
+	let mut byte_mask = b.add_constant(Word::ZERO);
+
+	for i in 0..=8 {
+		let i_wire = b.add_constant(Word(i as u64));
+		let is_this_count_mask = b.icmp_eq(n_bytes, i_wire);
+
+		let mask_value = b.add_constant_64(if i == 0 {
+			0
+		} else if i == 8 {
+			u64::MAX
+		} else {
+			(1 << (i * 8)) - 1
+		});
+
+		let this_mask = b.band(mask_value, is_this_count_mask);
+		byte_mask = b.bor(byte_mask, this_mask);
+	}
+
+	byte_mask
 }
 
 #[cfg(test)]
@@ -493,172 +583,6 @@ mod tests {
 	}
 
 	#[test]
-	fn test_large_offset_overflow() {
-		let b = CircuitBuilder::new();
-
-		let max_n_input = 16;
-		let max_n_slice = 8;
-
-		let len_input = b.add_inout();
-		let len_slice = b.add_inout();
-		let offset = b.add_inout();
-
-		let input: Vec<Wire> = (0..max_n_input / 8).map(|_| b.add_inout()).collect();
-		let slice: Vec<Wire> = (0..max_n_slice / 8).map(|_| b.add_inout()).collect();
-
-		let verifier =
-			Slice::new(&b, max_n_input, max_n_slice, len_input, len_slice, input, slice, offset);
-		let circuit = b.build();
-
-		// Test with very large offset that could cause overflow
-		let mut filler = circuit.new_witness_filler();
-		verifier.populate_len_input(&mut filler, 10);
-		verifier.populate_len_slice(&mut filler, 5);
-		verifier.populate_offset(&mut filler, (1u64 << 32) as usize); // Large offset
-
-		let input_data = vec![0u8; 10];
-		let slice_data = vec![0u8; 5];
-		verifier.populate_input(&mut filler, &input_data);
-		verifier.populate_slice(&mut filler, &slice_data);
-
-		// This should fail bounds check
-		let result = circuit.populate_wire_witness(&mut filler);
-		assert!(result.is_err(), "Large offset should fail bounds check");
-	}
-
-	#[test]
-	fn test_32bit_validation() {
-		let b = CircuitBuilder::new();
-
-		let max_n_input = 16;
-		let max_n_slice = 8;
-
-		let len_input = b.add_inout();
-		let len_slice = b.add_inout();
-		let offset = b.add_inout();
-
-		let input: Vec<Wire> = (0..max_n_input / 8).map(|_| b.add_inout()).collect();
-		let slice: Vec<Wire> = (0..max_n_slice / 8).map(|_| b.add_inout()).collect();
-
-		let verifier =
-			Slice::new(&b, max_n_input, max_n_slice, len_input, len_slice, input, slice, offset);
-		let circuit = b.build();
-
-		// Test with value that has upper 32 bits set (should fail 32-bit check)
-		let mut filler = circuit.new_witness_filler();
-		verifier.populate_len_input(&mut filler, 10);
-		verifier.populate_len_slice(&mut filler, 5);
-		verifier.populate_offset(&mut filler, (1u64 << 33) as usize); // 2^33 has bit 33 set
-
-		let input_data = vec![0u8; 10];
-		let slice_data = vec![0u8; 5];
-		verifier.populate_input(&mut filler, &input_data);
-		verifier.populate_slice(&mut filler, &slice_data);
-
-		// This should fail the 32-bit check on offset
-		let result = circuit.populate_wire_witness(&mut filler);
-		assert!(result.is_err(), "Values with upper 32 bits set should fail");
-	}
-
-	#[test]
-	fn test_edge_case_len_input_zero() {
-		let b = CircuitBuilder::new();
-
-		let max_n_input = 16;
-		let max_n_slice = 8;
-
-		let len_input = b.add_inout();
-		let len_slice = b.add_inout();
-		let offset = b.add_inout();
-
-		let input: Vec<Wire> = (0..max_n_input / 8).map(|_| b.add_inout()).collect();
-		let slice: Vec<Wire> = (0..max_n_slice / 8).map(|_| b.add_inout()).collect();
-
-		let verifier =
-			Slice::new(&b, max_n_input, max_n_slice, len_input, len_slice, input, slice, offset);
-		let circuit = b.build();
-
-		// Test with len_input = 0
-		let mut filler = circuit.new_witness_filler();
-		verifier.populate_len_input(&mut filler, 0);
-		verifier.populate_len_slice(&mut filler, 0);
-		verifier.populate_offset(&mut filler, 0);
-		verifier.populate_input(&mut filler, &[]);
-		verifier.populate_slice(&mut filler, &[]);
-
-		// This should succeed - empty input with empty slice at offset 0
-		let result = circuit.populate_wire_witness(&mut filler);
-		assert!(result.is_ok(), "Empty input with empty slice should succeed");
-	}
-
-	#[test]
-	fn test_edge_case_len_input_zero_with_nonzero_slice() {
-		let b = CircuitBuilder::new();
-
-		let max_n_input = 16;
-		let max_n_slice = 8;
-
-		let len_input = b.add_inout();
-		let len_slice = b.add_inout();
-		let offset = b.add_inout();
-
-		let input: Vec<Wire> = (0..max_n_input / 8).map(|_| b.add_inout()).collect();
-		let slice: Vec<Wire> = (0..max_n_slice / 8).map(|_| b.add_inout()).collect();
-
-		let verifier =
-			Slice::new(&b, max_n_input, max_n_slice, len_input, len_slice, input, slice, offset);
-		let circuit = b.build();
-
-		// Test with len_input = 0 but len_slice > 0
-		let mut filler = circuit.new_witness_filler();
-		verifier.populate_len_input(&mut filler, 0);
-		verifier.populate_len_slice(&mut filler, 1);
-		verifier.populate_offset(&mut filler, 0);
-		verifier.populate_input(&mut filler, &[]);
-		verifier.populate_slice(&mut filler, &[0]);
-
-		// This should fail - can't have non-empty slice from empty input
-		let result = circuit.populate_wire_witness(&mut filler);
-		assert!(result.is_err(), "Non-empty slice from empty input should fail");
-	}
-
-	#[test]
-	fn test_padding_beyond_actual_data() {
-		let b = CircuitBuilder::new();
-
-		let max_n_input = 32; // 4 words
-		let max_n_slice = 16; // 2 words
-
-		let len_input = b.add_inout();
-		let len_slice = b.add_inout();
-		let offset = b.add_inout();
-
-		let input: Vec<Wire> = (0..max_n_input / 8).map(|_| b.add_inout()).collect();
-		let slice: Vec<Wire> = (0..max_n_slice / 8).map(|_| b.add_inout()).collect();
-
-		let verifier =
-			Slice::new(&b, max_n_input, max_n_slice, len_input, len_slice, input, slice, offset);
-		let circuit = b.build();
-
-		// Test with small actual data but accessing padded region
-		let mut filler = circuit.new_witness_filler();
-		verifier.populate_len_input(&mut filler, 5); // Only 5 bytes of actual data
-		verifier.populate_len_slice(&mut filler, 3);
-		verifier.populate_offset(&mut filler, 0);
-
-		// Input: 5 bytes, but rest should be padded with zeros
-		let input_data = vec![1, 2, 3, 4, 5];
-		let slice_data = vec![1, 2, 3];
-
-		verifier.populate_input(&mut filler, &input_data);
-		verifier.populate_slice(&mut filler, &slice_data);
-
-		// This should succeed
-		let result = circuit.populate_wire_witness(&mut filler);
-		assert!(result.is_ok(), "Slice within actual data bounds should succeed");
-	}
-
-	#[test]
 	fn test_multiple_byte_extraction_paths() {
 		// This test verifies that byte extraction works correctly for all paths
 		let b = CircuitBuilder::new();
@@ -704,5 +628,209 @@ mod tests {
 				);
 			}
 		}
+	}
+
+	#[test]
+	fn test_large_offset_overflow() {
+		let b = CircuitBuilder::new();
+
+		let max_n_input = 16;
+		let max_n_slice = 8;
+
+		let len_input = b.add_inout();
+		let len_slice = b.add_inout();
+		let offset = b.add_inout();
+
+		let input: Vec<Wire> = (0..max_n_input / 8).map(|_| b.add_inout()).collect();
+		let slice: Vec<Wire> = (0..max_n_slice / 8).map(|_| b.add_inout()).collect();
+
+		let verifier =
+			Slice::new(&b, max_n_input, max_n_slice, len_input, len_slice, input, slice, offset);
+		let circuit = b.build();
+
+		// Test with very large offset that should fail 32-bit check
+		let mut filler = circuit.new_witness_filler();
+		verifier.populate_len_input(&mut filler, 10);
+		verifier.populate_len_slice(&mut filler, 5);
+
+		// Try to set offset with upper 32 bits set
+		// This tests that the circuit properly validates 32-bit constraints
+		filler[offset] = Word(1u64 << 32); // Direct assignment to test constraint
+
+		let input_data = vec![0u8; 10];
+		let slice_data = vec![0u8; 5];
+		verifier.populate_input(&mut filler, &input_data);
+		verifier.populate_slice(&mut filler, &slice_data);
+
+		// This should fail the 32-bit check
+		let result = circuit.populate_wire_witness(&mut filler);
+		assert!(result.is_err(), "Large offset should fail 32-bit check");
+	}
+
+	#[test]
+	fn test_32bit_validation() {
+		let b = CircuitBuilder::new();
+
+		let max_n_input = 16;
+		let max_n_slice = 8;
+
+		let len_input = b.add_inout();
+		let len_slice = b.add_inout();
+		let offset = b.add_inout();
+
+		let input: Vec<Wire> = (0..max_n_input / 8).map(|_| b.add_inout()).collect();
+		let slice: Vec<Wire> = (0..max_n_slice / 8).map(|_| b.add_inout()).collect();
+
+		let verifier =
+			Slice::new(&b, max_n_input, max_n_slice, len_input, len_slice, input, slice, offset);
+		let circuit = b.build();
+
+		// Test multiple 32-bit constraint violations
+		// Test 1: offset with bit 33 set
+		let mut filler = circuit.new_witness_filler();
+		verifier.populate_len_input(&mut filler, 10);
+		verifier.populate_len_slice(&mut filler, 5);
+		filler[offset] = Word(1u64 << 33);
+
+		let input_data = vec![0u8; 10];
+		let slice_data = vec![0u8; 5];
+		verifier.populate_input(&mut filler, &input_data);
+		verifier.populate_slice(&mut filler, &slice_data);
+
+		let result = circuit.populate_wire_witness(&mut filler);
+		assert!(result.is_err(), "Offset with bit 33 set should fail");
+
+		// Test 2: len_input with upper bits set
+		let mut filler = circuit.new_witness_filler();
+		filler[len_input] = Word(0xFFFFFFFF00000010); // Upper 32 bits set
+		verifier.populate_len_slice(&mut filler, 5);
+		verifier.populate_offset(&mut filler, 0);
+		verifier.populate_input(&mut filler, &input_data);
+		verifier.populate_slice(&mut filler, &slice_data);
+
+		let result = circuit.populate_wire_witness(&mut filler);
+		assert!(result.is_err(), "len_input with upper 32 bits set should fail");
+
+		// Test 3: len_slice with upper bits set
+		let mut filler = circuit.new_witness_filler();
+		verifier.populate_len_input(&mut filler, 10);
+		filler[len_slice] = Word(0x100000005); // Bit 32 set
+		verifier.populate_offset(&mut filler, 0);
+		verifier.populate_input(&mut filler, &input_data);
+		verifier.populate_slice(&mut filler, &slice_data);
+
+		let result = circuit.populate_wire_witness(&mut filler);
+		assert!(result.is_err(), "len_slice with upper bits set should fail");
+	}
+
+	#[test]
+	fn test_edge_case_len_input_zero() {
+		let b = CircuitBuilder::new();
+
+		let max_n_input = 16;
+		let max_n_slice = 8;
+
+		let len_input = b.add_inout();
+		let len_slice = b.add_inout();
+		let offset = b.add_inout();
+
+		let input: Vec<Wire> = (0..max_n_input / 8).map(|_| b.add_inout()).collect();
+		let slice: Vec<Wire> = (0..max_n_slice / 8).map(|_| b.add_inout()).collect();
+
+		let verifier =
+			Slice::new(&b, max_n_input, max_n_slice, len_input, len_slice, input, slice, offset);
+		let circuit = b.build();
+
+		// Test empty input with empty slice at offset 0
+		let mut filler = circuit.new_witness_filler();
+		verifier.populate_len_input(&mut filler, 0);
+		verifier.populate_len_slice(&mut filler, 0);
+		verifier.populate_offset(&mut filler, 0);
+
+		// Empty arrays
+		verifier.populate_input(&mut filler, &[]);
+		verifier.populate_slice(&mut filler, &[]);
+
+		// This should succeed - empty input with empty slice at offset 0
+		let result = circuit.populate_wire_witness(&mut filler);
+		assert!(result.is_ok(), "Empty input with empty slice should succeed");
+	}
+
+	#[test]
+	fn test_edge_case_len_input_zero_with_nonzero_slice() {
+		let b = CircuitBuilder::new();
+
+		let max_n_input = 16;
+		let max_n_slice = 8;
+
+		let len_input = b.add_inout();
+		let len_slice = b.add_inout();
+		let offset = b.add_inout();
+
+		let input: Vec<Wire> = (0..max_n_input / 8).map(|_| b.add_inout()).collect();
+		let slice: Vec<Wire> = (0..max_n_slice / 8).map(|_| b.add_inout()).collect();
+
+		let verifier =
+			Slice::new(&b, max_n_input, max_n_slice, len_input, len_slice, input, slice, offset);
+		let circuit = b.build();
+
+		// Test empty input with non-empty slice
+		let mut filler = circuit.new_witness_filler();
+		verifier.populate_len_input(&mut filler, 0);
+		verifier.populate_len_slice(&mut filler, 5);
+		verifier.populate_offset(&mut filler, 0);
+
+		verifier.populate_input(&mut filler, &[]);
+		verifier.populate_slice(&mut filler, &[1, 2, 3, 4, 5]);
+
+		// This should fail - can't extract non-empty slice from empty input
+		let result = circuit.populate_wire_witness(&mut filler);
+		assert!(result.is_err(), "Non-empty slice from empty input should fail");
+	}
+
+	#[test]
+	fn test_padding_beyond_actual_data() {
+		let b = CircuitBuilder::new();
+
+		let max_n_input = 24; // 3 words
+		let max_n_slice = 16; // 2 words
+
+		let len_input = b.add_inout();
+		let len_slice = b.add_inout();
+		let offset = b.add_inout();
+
+		let input: Vec<Wire> = (0..max_n_input / 8).map(|_| b.add_inout()).collect();
+		let slice: Vec<Wire> = (0..max_n_slice / 8).map(|_| b.add_inout()).collect();
+
+		// Save wire references before moving vectors
+		let input_wire_2 = input[2];
+		let slice_wire_1 = slice[1];
+
+		let verifier =
+			Slice::new(&b, max_n_input, max_n_slice, len_input, len_slice, input, slice, offset);
+		let circuit = b.build();
+
+		// Test with actual data smaller than allocated space
+		let mut filler = circuit.new_witness_filler();
+		verifier.populate_len_input(&mut filler, 12); // 1.5 words
+		verifier.populate_len_slice(&mut filler, 8); // 1 word
+		verifier.populate_offset(&mut filler, 2);
+
+		// Input: 12 bytes (will be padded to 3 words)
+		let input_data = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+		verifier.populate_input(&mut filler, &input_data);
+
+		// Slice at offset 2: bytes 2-9
+		let slice_data = vec![2, 3, 4, 5, 6, 7, 8, 9];
+		verifier.populate_slice(&mut filler, &slice_data);
+
+		// Verify the circuit handles padding correctly
+		let result = circuit.populate_wire_witness(&mut filler);
+		assert!(result.is_ok(), "Should handle data with padding correctly");
+
+		// Also verify that padded words in input are zeroed
+		assert_eq!(filler[input_wire_2], Word::ZERO, "Third input word should be zero");
+		// Second slice word should also be zero since slice is only 1 word
+		assert_eq!(filler[slice_wire_1], Word::ZERO, "Second slice word should be zero");
 	}
 }
