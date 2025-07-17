@@ -78,7 +78,7 @@ where
 		let mut buffer = HashBuffer::new(&mut hasher);
 		for item in items {
 			item.borrow()
-				.serialize(&mut buffer, SerializationMode::CanonicalTower)?;
+				.serialize(&mut buffer, SerializationMode::Native)?;
 		}
 	}
 	Ok(hasher.finalize())

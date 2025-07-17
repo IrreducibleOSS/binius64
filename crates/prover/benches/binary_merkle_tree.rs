@@ -5,16 +5,16 @@ use std::iter::repeat_with;
 use binius_field::Random;
 use binius_prover::merkle_tree::{MerkleTreeProver, prover::BinaryMerkleTreeProver};
 use binius_verifier::{
-	fields::B64,
+	fields::B128,
 	hash::{StdCompression, StdDigest},
 };
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use digest::{FixedOutputReset, Output, core_api::BlockSizeUser};
 
 const LOG_ELEMS: usize = 17;
-const LOG_ELEMS_IN_LEAF: usize = 5;
+const LOG_ELEMS_IN_LEAF: usize = 4;
 
-type F = B64;
+type F = B128;
 
 fn bench_binary_merkle_tree<H, C>(c: &mut Criterion, compression: C, hash_name: &str)
 where
