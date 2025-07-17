@@ -452,7 +452,7 @@ fn create_byte_mask(b: &CircuitBuilder, n_bytes: Wire) -> Wire {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::compiler::CircuitBuilder;
+	use crate::{compiler::CircuitBuilder, constraint_verifier::verify_constraints};
 
 	// Test utilities
 
@@ -508,6 +508,11 @@ mod tests {
 		}
 
 		circuit.populate_wire_witness(&mut filler)?;
+
+		// Verify constraints
+		let cs = circuit.constraint_system();
+		verify_constraints(&cs, &filler.into_value_vec())?;
+
 		Ok(())
 	}
 

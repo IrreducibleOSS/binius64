@@ -318,7 +318,8 @@ fn create_byte_mask(b: &CircuitBuilder, n_bytes: Wire) -> Wire {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use super::{CircuitBuilder, Slice, Wire, Word};
+	use crate::constraint_verifier::verify_constraints;
 
 	#[test]
 	fn test_aligned_slice() {
@@ -360,6 +361,10 @@ mod tests {
 
 		// Fill the circuit - this should succeed
 		circuit.populate_wire_witness(&mut filler).unwrap();
+
+		// Verify constraints
+		let cs = circuit.constraint_system();
+		verify_constraints(&cs, &filler.into_value_vec()).unwrap();
 	}
 
 	#[test]
@@ -404,6 +409,10 @@ mod tests {
 
 		// Fill the circuit - this should succeed
 		circuit.populate_wire_witness(&mut filler).unwrap();
+
+		// Verify constraints
+		let cs = circuit.constraint_system();
+		verify_constraints(&cs, &filler.into_value_vec()).unwrap();
 	}
 
 	#[test]
@@ -478,6 +487,10 @@ mod tests {
 		// This should succeed since offset(5) + len_slice(5) == len_input(10)
 		let result = circuit.populate_wire_witness(&mut filler);
 		assert!(result.is_ok(), "Valid boundary case should succeed");
+
+		// Verify constraints
+		let cs = circuit.constraint_system();
+		verify_constraints(&cs, &filler.into_value_vec()).unwrap();
 	}
 
 	#[test]
@@ -511,6 +524,10 @@ mod tests {
 		// Empty slice should be valid
 		let result = circuit.populate_wire_witness(&mut filler);
 		assert!(result.is_ok(), "Empty slice should be valid");
+
+		// Verify constraints
+		let cs = circuit.constraint_system();
+		verify_constraints(&cs, &filler.into_value_vec()).unwrap();
 	}
 
 	#[test]
@@ -580,6 +597,10 @@ mod tests {
 		// This should succeed - empty slice at end
 		let result = circuit.populate_wire_witness(&mut filler);
 		assert!(result.is_ok(), "Empty slice at end should be valid");
+
+		// Verify constraints
+		let cs = circuit.constraint_system();
+		verify_constraints(&cs, &filler.into_value_vec()).unwrap();
 	}
 
 	#[test]
@@ -626,6 +647,10 @@ mod tests {
 					result.is_ok(),
 					"Extraction from word {word_idx} byte {byte_offset} failed"
 				);
+
+				// Verify constraints
+				let cs = circuit.constraint_system();
+				verify_constraints(&cs, &filler.into_value_vec()).unwrap();
 			}
 		}
 	}
@@ -754,6 +779,10 @@ mod tests {
 		// This should succeed - empty input with empty slice at offset 0
 		let result = circuit.populate_wire_witness(&mut filler);
 		assert!(result.is_ok(), "Empty input with empty slice should succeed");
+
+		// Verify constraints
+		let cs = circuit.constraint_system();
+		verify_constraints(&cs, &filler.into_value_vec()).unwrap();
 	}
 
 	#[test]
@@ -832,5 +861,9 @@ mod tests {
 		assert_eq!(filler[input_wire_2], Word::ZERO, "Third input word should be zero");
 		// Second slice word should also be zero since slice is only 1 word
 		assert_eq!(filler[slice_wire_1], Word::ZERO, "Second slice word should be zero");
+
+		// Verify constraints
+		let cs = circuit.constraint_system();
+		verify_constraints(&cs, &filler.into_value_vec()).unwrap();
 	}
 }

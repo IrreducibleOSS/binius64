@@ -301,8 +301,8 @@ impl JwtClaims {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use crate::compiler::CircuitBuilder;
+	use super::{Attribute, JwtClaims, Wire};
+	use crate::{compiler::CircuitBuilder, constraint_verifier::verify_constraints};
 
 	#[test]
 	fn test_single_attribute() {
@@ -334,6 +334,10 @@ mod tests {
 		jwt_claims.attributes[0].populate_value(&mut filler, b"1234567890");
 
 		circuit.populate_wire_witness(&mut filler).unwrap();
+
+		// Verify constraints
+		let cs = circuit.constraint_system();
+		verify_constraints(&cs, &filler.into_value_vec()).unwrap();
 	}
 
 	#[test]
@@ -386,6 +390,10 @@ mod tests {
 		jwt_claims.attributes[2].populate_value(&mut filler, b"4074087");
 
 		circuit.populate_wire_witness(&mut filler).unwrap();
+
+		// Verify constraints
+		let cs = circuit.constraint_system();
+		verify_constraints(&cs, &filler.into_value_vec()).unwrap();
 	}
 
 	#[test]
@@ -500,6 +508,10 @@ mod tests {
 		jwt_claims.attributes[1].populate_value(&mut filler, b"1234567890");
 
 		circuit.populate_wire_witness(&mut filler).unwrap();
+
+		// Verify constraints
+		let cs = circuit.constraint_system();
+		verify_constraints(&cs, &filler.into_value_vec()).unwrap();
 	}
 
 	#[test]
@@ -533,6 +545,10 @@ mod tests {
 		jwt_claims.attributes[0].populate_value(&mut filler, b"");
 
 		circuit.populate_wire_witness(&mut filler).unwrap();
+
+		// Verify constraints
+		let cs = circuit.constraint_system();
+		verify_constraints(&cs, &filler.into_value_vec()).unwrap();
 	}
 
 	#[test]
@@ -576,6 +592,10 @@ mod tests {
 		jwt_claims.attributes[1].populate_value(&mut filler, b"7-VU9fuWeWtgDLHmVJ2UtRrine8");
 
 		circuit.populate_wire_witness(&mut filler).unwrap();
+
+		// Verify constraints
+		let cs = circuit.constraint_system();
+		verify_constraints(&cs, &filler.into_value_vec()).unwrap();
 	}
 
 	#[test]
@@ -619,5 +639,9 @@ mod tests {
 		jwt_claims.attributes[1].populate_value(&mut filler, b"value123");
 
 		circuit.populate_wire_witness(&mut filler).unwrap();
+
+		// Verify constraints
+		let cs = circuit.constraint_system();
+		verify_constraints(&cs, &filler.into_value_vec()).unwrap();
 	}
 }

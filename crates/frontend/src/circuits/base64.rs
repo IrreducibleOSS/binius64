@@ -485,8 +485,8 @@ fn compute_expected_base64_char(builder: &CircuitBuilder, six_bit_val: Wire) -> 
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use crate::compiler::CircuitBuilder;
+	use super::{Base64UrlSafe, Wire};
+	use crate::{compiler::CircuitBuilder, constraint_verifier::verify_constraints};
 
 	/// Encodes bytes to base64 using URL-safe alphabet.
 	fn encode_base64(input: &[u8]) -> Vec<u8> {
@@ -552,6 +552,10 @@ mod tests {
 
 		// Verify circuit
 		compiled.populate_wire_witness(&mut witness).unwrap();
+
+		// Verify constraints
+		let cs = compiled.constraint_system();
+		verify_constraints(&cs, &witness.into_value_vec()).unwrap();
 	}
 
 	#[test]
