@@ -10,6 +10,8 @@ pub enum Error {
 	EvalClaimsNumberMismatch,
 	#[error("batched provers should have the same number of rounds")]
 	ProverRoundCountMismatch,
+	#[error("provided bit masks do not have equal length")]
+	BitmasksSizeMismatch,
 	#[error("expected execute() call")]
 	ExpectedExecute,
 	#[error("expected fold() call")]
