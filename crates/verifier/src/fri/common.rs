@@ -134,8 +134,8 @@ where
 		Self::new(rs_code, log_batch_size, fold_arities, n_test_queries)
 	}
 
-	pub const fn n_fold_rounds(&self) -> usize {
-		self.rs_code.log_dim() + self.log_batch_size
+	pub fn n_fold_rounds(&self) -> usize {
+		self.log_msg_len()
 	}
 
 	/// Number of oracles sent during the fold rounds.
@@ -164,7 +164,12 @@ where
 
 	/// The binary logarithm of the length of the initial oracle.
 	pub fn log_len(&self) -> usize {
-		self.rs_code().log_len() + self.log_batch_size()
+		self.rs_code.log_len() + self.log_batch_size()
+	}
+
+	/// The binary logarithm of the length of the initial message.
+	pub fn log_msg_len(&self) -> usize {
+		self.rs_code.log_dim() + self.log_batch_size()
 	}
 }
 

@@ -2,8 +2,10 @@
 
 use std::iter::repeat_with;
 
-use binius_field::Field;
+use binius_field::{Field, PackedField};
 use rand::RngCore;
+
+use crate::FieldBuffer;
 
 /// Generates a vector of random field elements.
 ///
@@ -17,6 +19,26 @@ use rand::RngCore;
 /// Vector containing n random field elements
 pub fn random_scalars<F: Field>(mut rng: impl RngCore, n: usize) -> Vec<F> {
 	repeat_with(|| F::random(&mut rng)).take(n).collect()
+}
+
+/// Generates a [`FieldBuffer`] of random elements.
+///
+/// # Arguments
+///
+/// * `rng` - Random number generator implementing RngCore
+/// * `log_n` - log2 the number of random field elements to generate
+///
+/// # Returns
+///
+/// Vector containing `2^log_n` random field elements
+pub fn random_field_buffer<P: PackedField>(mut rng: impl RngCore, log_n: usize) -> FieldBuffer<P> {
+	FieldBuffer::new(
+		log_n,
+		repeat_with(|| P::random(&mut rng))
+			.take(1 << log_n.saturating_sub(P::LOG_WIDTH))
+			.collect(),
+	)
+	.expect("correct number of packed elements are generated")
 }
 
 /// Converts an index to a hypercube point representation.

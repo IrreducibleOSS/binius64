@@ -88,7 +88,7 @@ where
 	}
 
 	/// Number of fold rounds, including the final fold.
-	pub const fn n_rounds(&self) -> usize {
+	pub fn n_rounds(&self) -> usize {
 		self.params.n_fold_rounds()
 	}
 

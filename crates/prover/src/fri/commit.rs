@@ -1,5 +1,5 @@
 use binius_field::{BinaryField, PackedExtension, PackedField};
-use binius_math::{ReedSolomonCode, ntt::AdditiveNTT};
+use binius_math::{FieldSlice, ntt::AdditiveNTT};
 use binius_maybe_rayon::prelude::*;
 use binius_utils::bail;
 use binius_verifier::{fri::FRIParams, merkle_tree::MerkleTreeScheme};
@@ -29,12 +29,10 @@ pub struct CommitOutput<P, VCSCommitment, VCSCommitted> {
 /// * `message` - the interleaved message to encode and commit
 #[instrument(skip_all, level = "debug")]
 pub fn commit_interleaved<F, FA, P, PA, NTT, MerkleProver, VCS>(
-	// TODO: Remove rs_code and use rs_code from params
-	rs_code: &ReedSolomonCode<FA>,
 	params: &FRIParams<F, FA>,
 	ntt: &NTT,
 	merkle_prover: &MerkleProver,
-	message: &[P],
+	message: FieldSlice<P>,
 ) -> Result<CommitOutput<P, VCS::Digest, MerkleProver::Committed>, Error>
 where
 	F: BinaryField,
@@ -45,15 +43,14 @@ where
 	MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 	VCS: MerkleTreeScheme<F>,
 {
-	let n_elems = rs_code.dim() << params.log_batch_size();
-	if message.len() * P::WIDTH != n_elems {
+	if message.log_len() != params.log_msg_len() {
 		bail!(Error::InvalidArgs(
 			"interleaved message length does not match code parameters".to_string()
 		));
 	}
 
 	commit_interleaved_with(params, ntt, merkle_prover, move |buffer| {
-		buffer.copy_from_slice(message)
+		buffer.copy_from_slice(message.as_ref())
 	})
 }
 

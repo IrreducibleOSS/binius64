@@ -41,13 +41,7 @@ where
 		commitment: trace_commitment,
 		committed: trace_committed,
 		codeword: trace_codeword,
-	} = fri::commit_interleaved(
-		params.fri_params().rs_code(),
-		params.fri_params(),
-		ntt,
-		merkle_prover,
-		witness_packed.as_ref(),
-	)?;
+	} = fri::commit_interleaved(params.fri_params(), ntt, merkle_prover, witness_packed.to_ref())?;
 	transcript.message().write(&trace_commitment);
 
 	// Run the FRI proximity test protocol on the witness commitment.

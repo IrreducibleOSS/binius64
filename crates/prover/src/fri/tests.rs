@@ -1,16 +1,19 @@
 // Copyright 2024-2025 Irreducible Inc.
 
-use std::{iter::repeat_with, vec};
+use std::vec;
 
 use binius_field::{
 	BinaryField, BinaryField16b, BinaryField32b, BinaryField128b, ExtensionField, PackedField,
-	Random, TowerField,
+	TowerField,
 	arch::OptimalUnderlier128b,
 	as_packed_field::{PackScalar, PackedType},
 	underlier::UnderlierType,
 	util::inner_product_par,
 };
-use binius_math::{ReedSolomonCode, multilinear::eq::eq_ind_partial_eval, ntt::SingleThreadedNTT};
+use binius_math::{
+	ReedSolomonCode, multilinear::eq::eq_ind_partial_eval, ntt::SingleThreadedNTT,
+	test_utils::random_field_buffer,
+};
 use binius_transcript::{ProverTranscript, fiat_shamir::CanSample};
 use binius_utils::checked_arithmetics::log2_strict_usize;
 use binius_verifier::{
@@ -46,22 +49,19 @@ fn test_commit_prove_verify_success<U, F, FA>(
 		FRIParams::new(committed_rs_code, log_batch_size, arities.to_vec(), n_test_queries)
 			.unwrap();
 
-	let committed_rs_code = ReedSolomonCode::<FA>::new(log_dimension, log_inv_rate).unwrap();
 	let ntt = SingleThreadedNTT::new(params.rs_code().log_len()).unwrap();
 
 	let n_round_commitments = arities.len();
 
 	// Generate a random message
-	let msg = repeat_with(|| <PackedType<U, F>>::random(&mut rng))
-		.take(committed_rs_code.dim() << log_batch_size >> <PackedType<U, F>>::LOG_WIDTH)
-		.collect::<Vec<_>>();
+	let msg = random_field_buffer::<PackedType<U, F>>(&mut rng, params.log_msg_len());
 
 	// Prover commits the message
 	let CommitOutput {
 		commitment: mut codeword_commitment,
 		committed: codeword_committed,
 		codeword,
-	} = commit_interleaved(&committed_rs_code, &params, &ntt, &merkle_prover, &msg).unwrap();
+	} = commit_interleaved(&params, &ntt, &merkle_prover, msg.to_ref()).unwrap();
 
 	// Run the prover to generate the proximity proof
 	let mut round_prover =
@@ -105,7 +105,7 @@ fn test_commit_prove_verify_success<U, F, FA>(
 	let eval_query = eq_ind_partial_eval::<F>(&verifier_challenges);
 	// recall that msg, the message the prover commits to, is (the evaluations on the Boolean
 	// hypercube of) a multilinear polynomial.
-	let computed_eval = inner_product_par(eval_query.as_ref(), &msg);
+	let computed_eval = inner_product_par(eval_query.as_ref(), msg.as_ref());
 
 	let verifier = FRIVerifier::new(
 		&params,
