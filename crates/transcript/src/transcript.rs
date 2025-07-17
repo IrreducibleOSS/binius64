@@ -12,6 +12,24 @@ use super::{
 };
 use crate::fiat_shamir::{CanSample, CanSampleBits, sample_bits_reader};
 
+/// Configuration options for transcript behavior
+#[derive(Debug, Clone, Copy)]
+pub struct Options {
+	/// Whether to enable debug assertions
+	pub debug_assertions: bool,
+	/// The serialization mode to use
+	pub serialization_mode: SerializationMode,
+}
+
+impl Default for Options {
+	fn default() -> Self {
+		Self {
+			debug_assertions: cfg!(debug_assertions),
+			serialization_mode: SerializationMode::Native,
+		}
+	}
+}
+
 /// Verifier transcript over some Challenger that reads from the internal tape and `CanSample<F:
 /// Field>`
 ///
@@ -20,24 +38,34 @@ use crate::fiat_shamir::{CanSample, CanSampleBits, sample_bits_reader};
 #[derive(Debug, Clone)]
 pub struct VerifierTranscript<Challenger> {
 	combined: FiatShamirBuf<Bytes, Challenger>,
-	debug_assertions: bool,
-	serialization_mode: SerializationMode,
+	options: Options,
 }
 
 impl<Challenger_: Challenger> VerifierTranscript<Challenger_> {
 	pub fn new(challenger: Challenger_, vec: Vec<u8>) -> Self {
-		Self::with_mode(challenger, vec, SerializationMode::Native)
+		Self::with_opts(challenger, vec, Options::default())
 	}
 
-	pub fn with_mode(challenger: Challenger_, vec: Vec<u8>, mode: SerializationMode) -> Self {
+	pub fn with_opts(challenger: Challenger_, vec: Vec<u8>, options: Options) -> Self {
 		Self {
 			combined: FiatShamirBuf {
 				buffer: Bytes::from(vec),
 				challenger,
 			},
-			debug_assertions: cfg!(debug_assertions),
-			serialization_mode: mode,
+			options,
 		}
+	}
+
+	// Deprecated: use with_opts instead
+	pub fn with_mode(challenger: Challenger_, vec: Vec<u8>, mode: SerializationMode) -> Self {
+		Self::with_opts(
+			challenger,
+			vec,
+			Options {
+				serialization_mode: mode,
+				..Default::default()
+			},
+		)
 	}
 }
 
@@ -51,10 +79,6 @@ impl<Challenger_: Challenger> VerifierTranscript<Challenger_> {
 		Ok(())
 	}
 
-	pub const fn set_debug(&mut self, debug: bool) {
-		self.debug_assertions = debug;
-	}
-
 	/// Returns a writable buffer that only observes the data written, without reading it from the
 	/// proof tape.
 	///
@@ -65,8 +89,7 @@ impl<Challenger_: Challenger> VerifierTranscript<Challenger_> {
 	{
 		TranscriptWriter {
 			buffer: self.combined.challenger.observer(),
-			debug_assertions: self.debug_assertions,
-			serialization_mode: self.serialization_mode,
+			options: self.options,
 		}
 	}
 
@@ -78,8 +101,7 @@ impl<Challenger_: Challenger> VerifierTranscript<Challenger_> {
 	pub fn decommitment(&mut self) -> TranscriptReader<'_, impl Buf + '_> {
 		TranscriptReader {
 			buffer: &mut self.combined.buffer,
-			debug_assertions: self.debug_assertions,
-			serialization_mode: self.serialization_mode,
+			options: self.options,
 		}
 	}
 
@@ -92,8 +114,7 @@ impl<Challenger_: Challenger> VerifierTranscript<Challenger_> {
 	{
 		TranscriptReader {
 			buffer: &mut self.combined,
-			debug_assertions: self.debug_assertions,
-			serialization_mode: self.serialization_mode,
+			options: self.options,
 		}
 	}
 }
@@ -116,8 +137,11 @@ where
 	Challenger_: Challenger,
 {
 	fn sample(&mut self) -> F {
-		DeserializeBytes::deserialize(self.combined.challenger.sampler(), self.serialization_mode)
-			.expect("challenger has infinite buffer")
+		DeserializeBytes::deserialize(
+			self.combined.challenger.sampler(),
+			self.options.serialization_mode,
+		)
+		.expect("challenger has infinite buffer")
 	}
 }
 
@@ -132,8 +156,7 @@ where
 
 pub struct TranscriptReader<'a, B: Buf> {
 	buffer: &'a mut B,
-	debug_assertions: bool,
-	serialization_mode: SerializationMode,
+	options: Options,
 }
 
 impl<B: Buf> TranscriptReader<'_, B> {
@@ -142,12 +165,12 @@ impl<B: Buf> TranscriptReader<'_, B> {
 	}
 
 	pub fn read<T: DeserializeBytes>(&mut self) -> Result<T, Error> {
-		let mode = self.serialization_mode;
+		let mode = self.options.serialization_mode;
 		T::deserialize(self.buffer(), mode).map_err(Into::into)
 	}
 
 	pub fn read_vec<T: DeserializeBytes>(&mut self, n: usize) -> Result<Vec<T>, Error> {
-		let mode = self.serialization_mode;
+		let mode = self.options.serialization_mode;
 		let mut buffer = self.buffer();
 		repeat_with(move || T::deserialize(&mut buffer, mode).map_err(Into::into))
 			.take(n)
@@ -170,7 +193,7 @@ impl<B: Buf> TranscriptReader<'_, B> {
 	}
 
 	pub fn read_scalar_slice_into<F: Field>(&mut self, buf: &mut [F]) -> Result<(), Error> {
-		let mode = self.serialization_mode;
+		let mode = self.options.serialization_mode;
 		let mut buffer = self.buffer();
 		for elem in buf {
 			*elem = DeserializeBytes::deserialize(&mut buffer, mode)?;
@@ -185,7 +208,7 @@ impl<B: Buf> TranscriptReader<'_, B> {
 	}
 
 	pub fn read_debug(&mut self, msg: &str) {
-		if self.debug_assertions {
+		if self.options.debug_assertions {
 			let msg_bytes = msg.as_bytes();
 			let mut buffer = vec![0; msg_bytes.len()];
 			assert!(self.read_bytes(&mut buffer).is_ok());
@@ -202,37 +225,34 @@ impl<B: Buf> TranscriptReader<'_, B> {
 #[derive(Debug)]
 pub struct ProverTranscript<Challenger> {
 	combined: FiatShamirBuf<BytesMut, Challenger>,
-	debug_assertions: bool,
-	serialization_mode: SerializationMode,
+	options: Options,
 }
 
 impl<Challenger_: Challenger> ProverTranscript<Challenger_> {
 	/// Creates a new prover transcript.
 	///
-	/// By default debug assertions are set to the feature flag `debug_assertions`. You may also
-	/// change the debug flag with [`Self::set_debug`].
+	/// By default debug assertions are set to the feature flag `debug_assertions`.
 	pub fn new(challenger: Challenger_) -> Self {
-		Self::with_mode(challenger, SerializationMode::Native)
+		Self::with_opts(challenger, Options::default())
 	}
 
-	pub fn with_mode(challenger: Challenger_, mode: SerializationMode) -> Self {
+	pub fn with_opts(challenger: Challenger_, options: Options) -> Self {
 		Self {
 			combined: FiatShamirBuf {
 				buffer: BytesMut::default(),
 				challenger,
 			},
-			debug_assertions: cfg!(debug_assertions),
-			serialization_mode: mode,
+			options,
 		}
 	}
 }
 
 impl<Challenger_: Default + Challenger> ProverTranscript<Challenger_> {
 	pub fn into_verifier(self) -> VerifierTranscript<Challenger_> {
-		let mode = self.serialization_mode;
+		let options = self.options;
 		let transcript = self.finalize();
 
-		VerifierTranscript::with_mode(Challenger_::default(), transcript, mode)
+		VerifierTranscript::with_opts(Challenger_::default(), transcript, options)
 	}
 }
 
@@ -275,14 +295,6 @@ impl<Challenger_: Challenger> ProverTranscript<Challenger_> {
 		transcript
 	}
 
-	/// Sets the debug flag.
-	///
-	/// This flag is used to enable debug assertions in the [`TranscriptReader`] and
-	/// [`TranscriptWriter`] methods.
-	pub const fn set_debug(&mut self, debug: bool) {
-		self.debug_assertions = debug;
-	}
-
 	/// Returns a writeable buffer that only observes the data written, without writing it to the
 	/// proof tape.
 	///
@@ -293,8 +305,7 @@ impl<Challenger_: Challenger> ProverTranscript<Challenger_> {
 	{
 		TranscriptWriter {
 			buffer: self.combined.challenger.observer(),
-			debug_assertions: self.debug_assertions,
-			serialization_mode: self.serialization_mode,
+			options: self.options,
 		}
 	}
 
@@ -309,8 +320,7 @@ impl<Challenger_: Challenger> ProverTranscript<Challenger_> {
 	pub fn decommitment(&mut self) -> TranscriptWriter<'_, impl BufMut> {
 		TranscriptWriter {
 			buffer: &mut self.combined.buffer,
-			debug_assertions: self.debug_assertions,
-			serialization_mode: self.serialization_mode,
+			options: self.options,
 		}
 	}
 
@@ -323,16 +333,14 @@ impl<Challenger_: Challenger> ProverTranscript<Challenger_> {
 	{
 		TranscriptWriter {
 			buffer: &mut self.combined,
-			debug_assertions: self.debug_assertions,
-			serialization_mode: self.serialization_mode,
+			options: self.options,
 		}
 	}
 }
 
 pub struct TranscriptWriter<'a, B: BufMut> {
 	buffer: &'a mut B,
-	debug_assertions: bool,
-	serialization_mode: SerializationMode,
+	options: Options,
 }
 
 impl<B: BufMut> TranscriptWriter<'_, B> {
@@ -341,7 +349,7 @@ impl<B: BufMut> TranscriptWriter<'_, B> {
 	}
 
 	pub fn write<T: SerializeBytes>(&mut self, value: &T) {
-		let mode = self.serialization_mode;
+		let mode = self.options.serialization_mode;
 		self.proof_size_event_wrapper(move |buffer| {
 			value
 				.serialize(buffer, mode)
@@ -350,7 +358,7 @@ impl<B: BufMut> TranscriptWriter<'_, B> {
 	}
 
 	pub fn write_slice<T: SerializeBytes>(&mut self, values: &[T]) {
-		let mode = self.serialization_mode;
+		let mode = self.options.serialization_mode;
 		self.proof_size_event_wrapper(move |buffer| {
 			for value in values {
 				value
@@ -371,7 +379,7 @@ impl<B: BufMut> TranscriptWriter<'_, B> {
 	}
 
 	pub fn write_scalar_iter<F: Field>(&mut self, it: impl IntoIterator<Item = F>) {
-		let mode = self.serialization_mode;
+		let mode = self.options.serialization_mode;
 		self.proof_size_event_wrapper(move |buffer| {
 			for elem in it {
 				SerializeBytes::serialize(&elem, &mut *buffer, mode)
@@ -385,7 +393,7 @@ impl<B: BufMut> TranscriptWriter<'_, B> {
 	}
 
 	pub fn write_debug(&mut self, msg: &str) {
-		if self.debug_assertions {
+		if self.options.debug_assertions {
 			self.write_bytes(msg.as_bytes())
 		}
 	}
@@ -405,8 +413,11 @@ where
 	Challenger_: Challenger,
 {
 	fn sample(&mut self) -> F {
-		DeserializeBytes::deserialize(self.combined.challenger.sampler(), self.serialization_mode)
-			.expect("challenger has infinite buffer")
+		DeserializeBytes::deserialize(
+			self.combined.challenger.sampler(),
+			self.options.serialization_mode,
+		)
+		.expect("challenger has infinite buffer")
 	}
 }
 
@@ -438,9 +449,12 @@ mod tests {
 	#[test]
 	fn test_transcript_interactions() {
 		// Use CanonicalTower mode since this test mixes AES tower fields and binary fields
-		let mut prover_transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::with_mode(
+		let mut prover_transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::with_opts(
 			HasherChallenger::<Blake2b256>::default(),
-			SerializationMode::CanonicalTower,
+			Options {
+				serialization_mode: SerializationMode::CanonicalTower,
+				..Default::default()
+			},
 		);
 		let mut writable = prover_transcript.message();
 
@@ -504,9 +518,12 @@ mod tests {
 	#[test]
 	fn test_advising() {
 		// Use CanonicalTower mode since this test mixes AES tower fields and binary fields
-		let mut prover_transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::with_mode(
+		let mut prover_transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::with_opts(
 			HasherChallenger::<Blake2b256>::default(),
-			SerializationMode::CanonicalTower,
+			Options {
+				serialization_mode: SerializationMode::CanonicalTower,
+				..Default::default()
+			},
 		);
 		let mut advice_writer = prover_transcript.decommitment();
 
@@ -639,9 +656,12 @@ mod tests {
 		);
 
 		// Test with CanonicalTower mode
-		let mut prover_canonical = ProverTranscript::<HasherChallenger<Blake2b256>>::with_mode(
+		let mut prover_canonical = ProverTranscript::<HasherChallenger<Blake2b256>>::with_opts(
 			HasherChallenger::<Blake2b256>::default(),
-			SerializationMode::CanonicalTower,
+			Options {
+				serialization_mode: SerializationMode::CanonicalTower,
+				..Default::default()
+			},
 		);
 		prover_canonical
 			.message()
