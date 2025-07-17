@@ -276,4 +276,51 @@ mod tests {
 		// Compare results
 		assert_eq!(fold_cols_values, fold_rows_values);
 	}
+
+	#[test]
+	fn test_fold_cols_tensor_product() {
+		let mut rng = StdRng::seed_from_u64(0);
+
+		// Parameters: n = 10, m1 = 3, m2 = 4
+		let n = 10;
+		let m1 = 3;
+		let m2 = 4;
+
+		// Generate two vectors
+		let vec1_size = 1 << m1; // 2^3 = 8
+		let vec1_values = random_scalars::<B128>(&mut rng, vec1_size);
+		let vec1 = FieldBuffer::<B128>::from_values(&vec1_values).unwrap();
+
+		let vec2_size = 1 << m2; // 2^4 = 16
+		let vec2_values = random_scalars::<B128>(&mut rng, vec2_size);
+		let vec2 = FieldBuffer::<B128>::from_values(&vec2_values).unwrap();
+
+		// Compute tensor product of vec2 and vec1 (note the order!)
+		// The tensor product v2 ⊗ v1 has components (v2 ⊗ v1)[j*|v1| + i] = v2[j] * v1[i]
+		let tensor_product_size = vec2_size * vec1_size; // 16 * 8 = 128
+		let mut tensor_product_values = Vec::with_capacity(tensor_product_size);
+		for &v2 in vec2_values.iter() {
+			for &v1 in vec1_values.iter() {
+				tensor_product_values.push(v2 * v1);
+			}
+		}
+		let tensor_product = FieldBuffer::<B128>::from_values(&tensor_product_values).unwrap();
+
+		// Generate a random matrix of size 2^n
+		let matrix_values = random_scalars::<B128>(&mut rng, 1 << n);
+		let matrix = FieldBuffer::<B128>::from_values(&matrix_values).unwrap();
+
+		// Method 1: Sequential folding
+		// First fold: matrix is viewed as 2^(n-m1) x 2^m1
+		let intermediate = fold_cols(&matrix, &vec1).unwrap();
+		// Second fold: intermediate is viewed as 2^(n-m1-m2) x 2^m2
+		let sequential_result = fold_cols(&intermediate, &vec2).unwrap();
+
+		// Method 2: Direct tensor product folding
+		// Matrix is viewed as 2^(n-m1-m2) x 2^(m1+m2)
+		let direct_result = fold_cols(&matrix, &tensor_product).unwrap();
+
+		// Compare results
+		assert_eq!(sequential_result.as_ref(), direct_result.as_ref());
+	}
 }
