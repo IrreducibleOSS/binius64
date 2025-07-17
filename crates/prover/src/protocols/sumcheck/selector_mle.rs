@@ -154,8 +154,6 @@ where
 		const MAX_CHUNK_VARS: usize = 12;
 		let chunk_vars = max(MAX_CHUNK_VARS, P::LOG_WIDTH).min(self.n_rounds_remaining - 1);
 
-		let selected_prefix = self.selected.chunk(self.n_rounds_remaining, 0)?;
-
 		let is_first_round = self.n_rounds_remaining == self.n_vars;
 		let scratchpad_len = 1 << chunk_vars.saturating_sub(P::LOG_WIDTH);
 		let packed_prime_evals = (0..1 << (self.n_rounds_remaining - 1 - chunk_vars))
@@ -171,7 +169,7 @@ where
 				|(mut packed_prime_evals, mut scratchpad_zero, mut scratchpad_one),
 				 chunk_index|
 				 -> Result<_, Error> {
-					let (selected_zero, selected_one) = selected_prefix.split_half()?;
+					let (selected_zero, selected_one) = self.selected.split_half()?;
 
 					let selected_zero = selected_zero.chunk(chunk_vars, chunk_index)?;
 					let selected_one = selected_one.chunk(chunk_vars, chunk_index)?;
@@ -319,6 +317,7 @@ where
 						}
 					})
 				}
+				selector.folded = Some(folded);
 			}
 
 			if let Some(folded) = &mut selector.folded {
