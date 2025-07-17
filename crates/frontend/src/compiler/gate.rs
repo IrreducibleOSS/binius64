@@ -768,12 +768,14 @@ pub struct Shr {
 	pub a: Wire,
 	pub c: Wire,
 	pub n: u32,
+	all_1: Wire,
 }
 
 impl Shr {
 	pub fn new(builder: &CircuitBuilder, a: Wire, n: u32) -> Self {
 		let c = builder.add_witness();
-		Self { a, c, n }
+		let all_1 = builder.add_constant(Word::ALL_ONE);
+		Self { a, c, n, all_1 }
 	}
 }
 
@@ -786,11 +788,11 @@ impl Gate for Shr {
 	fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
 		let a = circuit.witness_index(self.a);
 		let c = circuit.witness_index(self.c);
+		let all_1 = circuit.witness_index(self.all_1);
 
-		// SHR64 = srl(x, n)
 		cs.add_and_constraint(AndConstraint::abc(
 			[ShiftedValueIndex::srl(a, self.n as usize)],
-			[],
+			[ShiftedValueIndex::plain(all_1)],
 			[ShiftedValueIndex::plain(c)],
 		));
 	}
@@ -800,12 +802,14 @@ pub struct Shl {
 	pub a: Wire,
 	pub c: Wire,
 	pub n: u32,
+	all_1: Wire,
 }
 
 impl Shl {
 	pub fn new(builder: &CircuitBuilder, a: Wire, n: u32) -> Self {
 		let c = builder.add_witness();
-		Self { a, c, n }
+		let all_1 = builder.add_constant(Word::ALL_ONE);
+		Self { a, c, n, all_1 }
 	}
 }
 
@@ -818,11 +822,11 @@ impl Gate for Shl {
 	fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
 		let a = circuit.witness_index(self.a);
 		let c = circuit.witness_index(self.c);
+		let all_1 = circuit.witness_index(self.all_1);
 
-		// SHL = sll(x, n)
 		cs.add_and_constraint(AndConstraint::abc(
 			[ShiftedValueIndex::sll(a, self.n as usize)],
-			[],
+			[ShiftedValueIndex::plain(all_1)],
 			[ShiftedValueIndex::plain(c)],
 		));
 	}
