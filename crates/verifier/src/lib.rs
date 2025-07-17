@@ -1,3 +1,4 @@
+pub mod basefold;
 pub mod config;
 mod error;
 pub mod fields;
