@@ -21,6 +21,7 @@ pub mod multilinear;
 pub mod ntt;
 pub mod tensor_algebra;
 pub mod reed_solomon;
+pub mod ring_switch;
 #[cfg(feature = "test-utils")]
 pub mod test_utils;
 
