@@ -39,12 +39,14 @@ pub struct Bxor {
 	pub a: Wire,
 	pub b: Wire,
 	pub c: Wire,
+	all_1: Wire,
 }
 
 impl Bxor {
 	pub fn new(builder: &CircuitBuilder, a: Wire, b: Wire) -> Self {
 		let c = builder.add_witness();
-		Self { a, b, c }
+		let all_1 = builder.add_constant(Word::ALL_ONE);
+		Self { a, b, c, all_1 }
 	}
 }
 
@@ -57,7 +59,8 @@ impl Gate for Bxor {
 		let a = circuit.witness_index(self.a);
 		let b = circuit.witness_index(self.b);
 		let c = circuit.witness_index(self.c);
-		cs.add_and_constraint(AndConstraint::plain_abc([a, b], [], [c]));
+		let all_1 = circuit.witness_index(self.all_1);
+		cs.add_and_constraint(AndConstraint::plain_abc([a, b], [all_1], [c]));
 	}
 }
 
