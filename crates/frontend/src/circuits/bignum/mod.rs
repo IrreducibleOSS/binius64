@@ -3,20 +3,6 @@
 //! This module provides operations on big integers represented as vectors of `Wire` elements,
 //! where each `Wire` represents a 64-bit limb. The representation uses little-endian ordering,
 //! meaning the least significant limb is at index 0.
-//!
-//! # BigNum Representation
-//!
-//! A bignum is represented as `&[Wire]` or `Vec<Wire>` where:
-//! - Each `Wire` holds a 64-bit unsigned integer value (a "limb")
-//! - Limbs are stored in little-endian order (index 0 = least significant)
-//! - The number of limbs determines the maximum value that can be represented
-//!
-//! # Size Conventions
-//!
-//! - Addition: Input size n produces output size n (with overflow checks)
-//! - Multiplication: Input sizes n and m produce output size n + m
-//! - Squaring: Input size n produces output size 2n
-//! - Comparison: Inputs must be the same size
 
 #[cfg(test)]
 mod tests;
@@ -26,24 +12,50 @@ use crate::{
 	word::Word,
 };
 
-/// Multiply two arbitrary-sized bignums.
+/// Represents an arbitrarily large unsigned integer using a vector of `Wire`s
 ///
-/// Computes `a * b` where both inputs are big integers represented as slices of 64-bit limbs.
-/// The result will have `a.len() + b.len()` limbs to accommodate the full product without overflow.
+/// - Each `Wire` holds a 64-bit unsigned integer value (a "limb")
+/// - Limbs are stored in little-endian order (index 0 = least significant)
+/// - The total bit width is always a multiple of 64 bits (number of limbs × 64)
+pub struct BigNum {
+	pub limbs: Vec<Wire>,
+}
+
+impl BigNum {
+	/// Creates a new BigNum with the given number of limbs as inout wires.
+	pub fn new_inout(b: &CircuitBuilder, num_limbs: usize) -> Self {
+		let limbs = (0..num_limbs).map(|_| b.add_inout()).collect();
+		BigNum { limbs }
+	}
+
+	/// Creates a new Bignum with the given number of limbs as witness wires.
+	pub fn new_witness(b: &CircuitBuilder, num_limbs: usize) -> Self {
+		let limbs = (0..num_limbs).map(|_| b.add_witness()).collect();
+		BigNum { limbs }
+	}
+}
+
+/// Multiply two arbitrary-sized `BigNum`s.
+///
+/// Computes `a * b` where both inputs are `BigNum`s. The result will have
+/// `a.limbs.len() + b.limbs.len()` limbs to accommodate the full product
+/// without overflow.
 ///
 /// # Arguments
 /// * `builder` - Circuit builder for constraint generation
-/// * `a` - First multiplicand as little-endian limbs
-/// * `b` - Second multiplicand as little-endian limbs
+/// * `a` - First operand `BigNum`
+/// * `b` - Second operand `BigNum`
 ///
 /// # Returns
-/// Product as a vector of limbs with length `a.len() + b.len()`
-pub fn mul(builder: &CircuitBuilder, a: &[Wire], b: &[Wire]) -> Vec<Wire> {
-	// Multiply argument's limbs pairwise
-	// The accumulator has exactly a.len() + b.len() slots to hold all partial products
-	let mut accumulator = vec![vec![]; a.len() + b.len()];
-	for (i, &ai) in a.iter().enumerate() {
-		for (j, &bj) in b.iter().enumerate() {
+/// Product `BigNum` with `a.limbs.len() + b.limbs.len()` limbs
+pub fn mul(builder: &CircuitBuilder, a: &BigNum, b: &BigNum) -> BigNum {
+	// Multiply argument's limbs pairwise.
+	//
+	// The accumulator has exactly a.limbs.len() + b.limbs.len() slots to hold
+	// all partial products
+	let mut accumulator = vec![vec![]; a.limbs.len() + b.limbs.len()];
+	for (i, &ai) in a.limbs.iter().enumerate() {
+		for (j, &bj) in b.limbs.iter().enumerate() {
 			let (hi, lo) = builder.imul(ai, bj);
 			let k = i + j;
 			accumulator[k].push(lo);
@@ -53,7 +65,7 @@ pub fn mul(builder: &CircuitBuilder, a: &[Wire], b: &[Wire]) -> Vec<Wire> {
 	compute_stack_adds(builder, &accumulator)
 }
 
-/// Square an arbitrary-sized bignum.
+/// Square an arbitrary-sized `BigNum`.
 ///
 /// Computes `a * a` using an optimized algorithm that takes advantage of the symmetry
 /// in squaring (each cross-product appears twice). This is more efficient than
@@ -61,14 +73,14 @@ pub fn mul(builder: &CircuitBuilder, a: &[Wire], b: &[Wire]) -> Vec<Wire> {
 ///
 /// # Arguments
 /// * `builder` - Circuit builder for constraint generation
-/// * `a` - Input bignum as little-endian limbs
+/// * `a` - The `BigNum` to be squared
 ///
 /// # Returns
-/// Square as a vector of limbs with length `2 × a.len()`
-pub fn square(builder: &CircuitBuilder, a: &[Wire]) -> Vec<Wire> {
-	let mut accumulator = vec![vec![]; a.len() + a.len()];
-	for (i, &ai) in a.iter().enumerate() {
-		for (j, &aj) in a.iter().enumerate().skip(i) {
+/// The square of `a` as a `BigNum` with `2 * a.limbs.len()` limbs
+pub fn square(builder: &CircuitBuilder, a: &BigNum) -> BigNum {
+	let mut accumulator = vec![vec![]; a.limbs.len() + a.limbs.len()];
+	for (i, &ai) in a.limbs.iter().enumerate() {
+		for (j, &aj) in a.limbs.iter().enumerate().skip(i) {
 			let (hi, lo) = builder.imul(ai, aj);
 			accumulator[i + j].push(lo);
 			accumulator[i + j + 1].push(hi);
@@ -82,12 +94,12 @@ pub fn square(builder: &CircuitBuilder, a: &[Wire]) -> Vec<Wire> {
 	compute_stack_adds(builder, &accumulator)
 }
 
-/// Compare two arbitrary-sized bignums for equality.
+/// Compare two arbitrary-sized `BigNum`s for equality.
 ///
 /// # Arguments
 /// * `builder` - Circuit builder for constraint generation
-/// * `a` - First bignum as little-endian limbs
-/// * `b` - Second bignum as little-endian limbs (must have same length as `a`)
+/// * `a` - First operand `BigNum`
+/// * `b` - Second operand `BigNum` (must have same number of limbs as `a`)
 ///
 /// # Returns
 /// A `Wire` that evaluates to:
@@ -95,11 +107,11 @@ pub fn square(builder: &CircuitBuilder, a: &[Wire]) -> Vec<Wire> {
 /// - `0x0000000000000000` (all zeros) if `a != b`
 ///
 /// # Panics
-/// Panics if `a` and `b` have different lengths.
-pub fn compare(builder: &CircuitBuilder, a: &[Wire], b: &[Wire]) -> Wire {
-	assert_eq!(a.len(), b.len(), "compare: inputs must have the same length");
+/// Panics if `a` and `b` have different number of limbs.
+pub fn compare(builder: &CircuitBuilder, a: &BigNum, b: &BigNum) -> Wire {
+	assert_eq!(a.limbs.len(), b.limbs.len(), "compare: inputs must have the same number of limbs");
 
-	if a.is_empty() {
+	if a.limbs.is_empty() {
 		return builder.add_constant(Word::ALL_ONE);
 	}
 
@@ -115,8 +127,9 @@ pub fn compare(builder: &CircuitBuilder, a: &[Wire], b: &[Wire]) -> Wire {
 
 	// For each limb pair, compute equality (all 1s if equal, all 0s if not)
 	let eq_results: Vec<Wire> = a
+		.limbs
 		.iter()
-		.zip(b.iter())
+		.zip(b.limbs.iter())
 		.map(|(&x, &y)| builder.icmp_eq(x, y))
 		.collect();
 
@@ -127,7 +140,7 @@ pub fn compare(builder: &CircuitBuilder, a: &[Wire], b: &[Wire]) -> Wire {
 		.unwrap()
 }
 
-/// Add two arbitrary-sized bignums with carry propagation.
+/// Add two arbitrary-sized `BigNums`s with carry propagation.
 ///
 /// Computes `a + b` with proper carry handling between limbs. The result
 /// has the same number of limbs as the inputs. Overflow beyond the most
@@ -135,21 +148,21 @@ pub fn compare(builder: &CircuitBuilder, a: &[Wire], b: &[Wire]) -> Wire {
 ///
 /// # Arguments
 /// * `builder` - Circuit builder for constraint generation
-/// * `a` - First addend as little-endian limbs
-/// * `b` - Second addend as little-endian limbs (must have same length as `a`)
+/// * `a` - First operand
+/// * `b` - Second operand (must have same number of limbs as `a`)
 ///
 /// # Returns
-/// Sum as a vector of limbs with same length as inputs
+/// Sum as a `BigNum` with the same number of limbs as the inputs
 ///
 /// # Panics
-/// - Panics if `a` and `b` have different lengths
-pub fn add(builder: &CircuitBuilder, a: &[Wire], b: &[Wire]) -> Vec<Wire> {
-	assert_eq!(a.len(), b.len(), "add: inputs must have the same length");
+/// - Panics if `a` and `b` have different number of limbs
+pub fn add(builder: &CircuitBuilder, a: &BigNum, b: &BigNum) -> BigNum {
+	assert_eq!(a.limbs.len(), b.limbs.len(), "add: inputs must have the same number of limbs");
 
-	let mut accumulator = vec![vec![]; a.len()];
-	for i in 0..a.len() {
-		accumulator[i].push(a[i]);
-		accumulator[i].push(b[i]);
+	let mut accumulator = vec![vec![]; a.limbs.len()];
+	for i in 0..a.limbs.len() {
+		accumulator[i].push(a.limbs[i]);
+		accumulator[i].push(b.limbs[i]);
 	}
 	compute_stack_adds(builder, &accumulator)
 }
@@ -168,7 +181,7 @@ pub fn add(builder: &CircuitBuilder, a: &[Wire], b: &[Wire]) -> Vec<Wire> {
 /// # Constraints
 /// - Final carries must be zero (enforced by circuit constraints) This ensures the result fits in
 ///   the allocated number of limbs without overflow
-fn compute_stack_adds(builder: &CircuitBuilder, limb_stacks: &[Vec<Wire>]) -> Vec<Wire> {
+fn compute_stack_adds(builder: &CircuitBuilder, limb_stacks: &[Vec<Wire>]) -> BigNum {
 	let mut sums = Vec::new();
 	let mut carries = Vec::new();
 	let zero = builder.add_constant(Word::ZERO);
@@ -232,5 +245,5 @@ fn compute_stack_adds(builder: &CircuitBuilder, limb_stacks: &[Vec<Wire>]) -> Ve
 		builder.assert_eq(format!("compute_stack_adds_carry_zero_{i}"), carry_msb, zero);
 	}
 
-	sums
+	BigNum { limbs: sums }
 }

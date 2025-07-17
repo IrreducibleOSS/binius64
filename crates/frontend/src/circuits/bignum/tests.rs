@@ -25,19 +25,19 @@ pub fn biguint_from_u64_slice(slice: &[u64]) -> BigUint {
 	)
 }
 
-/// Convert witness limbs to BigUint for computation.
+/// Convert witness BigNum to BigUint for computation.
 ///
 /// This function is used during witness generation to extract the actual
 /// numeric value from a bignum represented as wires in the circuit.
 ///
 /// # Arguments
-/// * `limbs` - Wire array representing the bignum in little-endian order
+/// * `bignum` - The `BigNum` to covert
 /// * `w` - Witness filler containing the actual values
 ///
 /// # Returns
 /// The bignum value as a `BigUint`
-pub fn limbs_to_biguint(limbs: &[Wire], w: &WitnessFiller) -> BigUint {
-	let limb_vals: Vec<_> = limbs.iter().map(|&l| w[l].as_u64()).collect();
+pub fn bignum_to_biguint(bignum: &BigNum, w: &WitnessFiller) -> BigUint {
+	let limb_vals: Vec<_> = bignum.limbs.iter().map(|&l| w[l].as_u64()).collect();
 	biguint_from_u64_slice(&limb_vals)
 }
 
@@ -67,8 +67,8 @@ fn prop_add_multi_limb(vals: Vec<(u64, u64)>) -> TestResult {
 	let builder = CircuitBuilder::new();
 	let num_limbs = vals.len();
 
-	let a: Vec<Wire> = (0..num_limbs).map(|_| builder.add_witness()).collect();
-	let b: Vec<Wire> = (0..num_limbs).map(|_| builder.add_witness()).collect();
+	let a = BigNum::new_witness(&builder, num_limbs);
+	let b = BigNum::new_witness(&builder, num_limbs);
 
 	let result = add(&builder, &a, &b);
 
@@ -77,18 +77,18 @@ fn prop_add_multi_limb(vals: Vec<(u64, u64)>) -> TestResult {
 
 	// Set input values
 	for (i, &(a_val, b_val)) in vals.iter().enumerate() {
-		w[a[i]] = Word(a_val);
-		w[b[i]] = Word(b_val);
+		w[a.limbs[i]] = Word(a_val);
+		w[b.limbs[i]] = Word(b_val);
 	}
 
 	cs.populate_wire_witness(&mut w).unwrap();
 
 	// Compare result with expected
 	for i in 0..num_limbs {
-		if w[result[i]] != Word(expected[i]) {
+		if w[result.limbs[i]] != Word(expected[i]) {
 			return TestResult::error(format!(
 				"Result Limb {} mismatch: got {}, expected {}",
-				i, w[result[i]].0, expected[i]
+				i, w[result.limbs[i]].0, expected[i]
 			));
 		}
 	}
@@ -106,8 +106,12 @@ fn test_add_overflow_detection_via_final_carry() {
 	// We'll try to add values that would overflow the allocated limbs
 	let builder = CircuitBuilder::new();
 
-	let a = vec![builder.add_witness()];
-	let b = vec![builder.add_witness()];
+	let a = BigNum {
+		limbs: vec![builder.add_witness()],
+	};
+	let b = BigNum {
+		limbs: vec![builder.add_witness()],
+	};
 
 	add(&builder, &a, &b);
 
@@ -115,8 +119,8 @@ fn test_add_overflow_detection_via_final_carry() {
 	let mut w = cs.new_witness_filler();
 
 	// Set both to MAX - this will overflow a single limb
-	w[a[0]] = Word(u64::MAX);
-	w[b[0]] = Word(u64::MAX);
+	w[a.limbs[0]] = Word(u64::MAX);
+	w[b.limbs[0]] = Word(u64::MAX);
 
 	// This should fail due to the final carry check
 	let result = cs.populate_wire_witness(&mut w);
@@ -128,8 +132,8 @@ fn test_mul_single_case() {
 	let builder = CircuitBuilder::new();
 
 	// Create 2048-bit numbers for inputs (32 limbs)
-	let a: Vec<Wire> = (0..32).map(|_| builder.add_witness()).collect();
-	let b: Vec<Wire> = (0..32).map(|_| builder.add_witness()).collect();
+	let a = BigNum::new_witness(&builder, 32);
+	let b = BigNum::new_witness(&builder, 32);
 
 	let mul = mul(&builder, &a, &b);
 
@@ -137,18 +141,18 @@ fn test_mul_single_case() {
 	let mut w = cs.new_witness_filler();
 
 	// Set inputs: a = 2^64 + 1, b = 2^64 + 2
-	// a[0] = 1, a[1] = 1, rest = 0
-	// b[0] = 2, b[1] = 1, rest = 0
-	w[a[0]] = Word(1);
-	w[a[1]] = Word(1);
+	// a.limbs[0] = 1, a.limbs[1] = 1, rest = 0
+	// b.limbs[0] = 2, b.limbs[1] = 1, rest = 0
+	w[a.limbs[0]] = Word(1);
+	w[a.limbs[1]] = Word(1);
 	for i in 2..32 {
-		w[a[i]] = Word(0);
+		w[a.limbs[i]] = Word(0);
 	}
 
-	w[b[0]] = Word(2);
-	w[b[1]] = Word(1);
+	w[b.limbs[0]] = Word(2);
+	w[b.limbs[1]] = Word(1);
 	for i in 2..32 {
-		w[b[i]] = Word(0);
+		w[b.limbs[i]] = Word(0);
 	}
 
 	// Run the circuit to verify all constraints
@@ -159,11 +163,11 @@ fn test_mul_single_case() {
 	// result[1] = 3
 	// result[2] = 1
 	// rest = 0
-	assert_eq!(w[mul[0]], Word(2));
-	assert_eq!(w[mul[1]], Word(3));
-	assert_eq!(w[mul[2]], Word(1));
+	assert_eq!(w[mul.limbs[0]], Word(2));
+	assert_eq!(w[mul.limbs[1]], Word(3));
+	assert_eq!(w[mul.limbs[2]], Word(1));
 	for i in 3..64 {
-		assert_eq!(w[mul[i]], Word(0));
+		assert_eq!(w[mul.limbs[i]], Word(0));
 	}
 
 	// Verify all constraints are satisfied
@@ -174,8 +178,8 @@ fn test_mul_single_case() {
 fn test_mul_with_values(a_limbs: Vec<u64>, b_limbs: Vec<u64>) -> TestResult {
 	let builder = CircuitBuilder::new();
 
-	let a: Vec<Wire> = (0..a_limbs.len()).map(|_| builder.add_witness()).collect();
-	let b: Vec<Wire> = (0..b_limbs.len()).map(|_| builder.add_witness()).collect();
+	let a = BigNum::new_inout(&builder, a_limbs.len());
+	let b = BigNum::new_inout(&builder, b_limbs.len());
 
 	let result = mul(&builder, &a, &b);
 
@@ -183,10 +187,10 @@ fn test_mul_with_values(a_limbs: Vec<u64>, b_limbs: Vec<u64>) -> TestResult {
 	let mut w = cs.new_witness_filler();
 
 	for (i, &val) in a_limbs.iter().enumerate() {
-		w[a[i]] = Word(val);
+		w[a.limbs[i]] = Word(val);
 	}
 	for (i, &val) in b_limbs.iter().enumerate() {
-		w[b[i]] = Word(val);
+		w[b.limbs[i]] = Word(val);
 	}
 
 	let a_big = biguint_from_u64_slice(&a_limbs);
@@ -195,7 +199,7 @@ fn test_mul_with_values(a_limbs: Vec<u64>, b_limbs: Vec<u64>) -> TestResult {
 
 	cs.populate_wire_witness(&mut w).unwrap();
 
-	let result_big = limbs_to_biguint(&result, &w);
+	let result_big = bignum_to_biguint(&result, &w);
 
 	if result_big != expected {
 		return TestResult::error(format!(
@@ -214,14 +218,14 @@ fn test_mul_with_values(a_limbs: Vec<u64>, b_limbs: Vec<u64>) -> TestResult {
 fn test_square_with_values(a_limbs: Vec<u64>) -> TestResult {
 	let builder = CircuitBuilder::new();
 
-	let a: Vec<Wire> = (0..a_limbs.len()).map(|_| builder.add_witness()).collect();
+	let a = BigNum::new_witness(&builder, a_limbs.len());
 	let result = square(&builder, &a);
 
 	let cs = builder.build();
 
 	let mut w = cs.new_witness_filler();
 	for (i, &val) in a_limbs.iter().enumerate() {
-		w[a[i]] = Word(val);
+		w[a.limbs[i]] = Word(val);
 	}
 
 	let a_big = biguint_from_u64_slice(&a_limbs);
@@ -229,7 +233,7 @@ fn test_square_with_values(a_limbs: Vec<u64>) -> TestResult {
 
 	cs.populate_wire_witness(&mut w).unwrap();
 
-	let result_big = limbs_to_biguint(&result, &w);
+	let result_big = bignum_to_biguint(&result, &w);
 
 	if result_big != expected {
 		return TestResult::error(format!(
@@ -252,7 +256,7 @@ fn prop_square_vs_mul_equivalence(vals: Vec<u64>) -> TestResult {
 
 	let builder = CircuitBuilder::new();
 
-	let a: Vec<Wire> = (0..vals.len()).map(|_| builder.add_witness()).collect();
+	let a = BigNum::new_witness(&builder, vals.len());
 
 	let square_result = square(&builder, &a);
 	let mul_result = mul(&builder, &a, &a);
@@ -261,13 +265,13 @@ fn prop_square_vs_mul_equivalence(vals: Vec<u64>) -> TestResult {
 	let mut w = cs.new_witness_filler();
 
 	for (i, &val) in vals.iter().enumerate() {
-		w[a[i]] = Word(val);
+		w[a.limbs[i]] = Word(val);
 	}
 
 	cs.populate_wire_witness(&mut w).unwrap();
 
-	let square_big = limbs_to_biguint(&square_result, &w);
-	let mul_big = limbs_to_biguint(&mul_result, &w);
+	let square_big = bignum_to_biguint(&square_result, &w);
+	let mul_big = bignum_to_biguint(&mul_result, &w);
 
 	if square_big != mul_big {
 		return TestResult::error(format!("square(a) != mul(a,a): {square_big} != {mul_big}"));
@@ -287,8 +291,8 @@ fn prop_compare_equal(vals: Vec<u64>) -> TestResult {
 	}
 
 	let builder = CircuitBuilder::new();
-	let a: Vec<Wire> = (0..vals.len()).map(|_| builder.add_witness()).collect();
-	let b: Vec<Wire> = (0..vals.len()).map(|_| builder.add_witness()).collect();
+	let a = BigNum::new_witness(&builder, vals.len());
+	let b = BigNum::new_witness(&builder, vals.len());
 
 	let result = compare(&builder, &a, &b);
 
@@ -297,8 +301,8 @@ fn prop_compare_equal(vals: Vec<u64>) -> TestResult {
 
 	// Set same values for both inputs
 	for (i, &val) in vals.iter().enumerate() {
-		w[a[i]] = Word(val);
-		w[b[i]] = Word(val);
+		w[a.limbs[i]] = Word(val);
+		w[b.limbs[i]] = Word(val);
 	}
 
 	cs.populate_wire_witness(&mut w).unwrap();
@@ -327,8 +331,8 @@ fn prop_compare_different(a_vals: Vec<u64>, b_vals: Vec<u64>) -> TestResult {
 	}
 
 	let builder = CircuitBuilder::new();
-	let a: Vec<Wire> = (0..a_vals.len()).map(|_| builder.add_witness()).collect();
-	let b: Vec<Wire> = (0..b_vals.len()).map(|_| builder.add_witness()).collect();
+	let a = BigNum::new_witness(&builder, a_vals.len());
+	let b = BigNum::new_witness(&builder, b_vals.len());
 
 	let result = compare(&builder, &a, &b);
 
@@ -336,10 +340,10 @@ fn prop_compare_different(a_vals: Vec<u64>, b_vals: Vec<u64>) -> TestResult {
 	let mut w = cs.new_witness_filler();
 
 	for (i, &val) in a_vals.iter().enumerate() {
-		w[a[i]] = Word(val);
+		w[a.limbs[i]] = Word(val);
 	}
 	for (i, &val) in b_vals.iter().enumerate() {
-		w[b[i]] = Word(val);
+		w[b.limbs[i]] = Word(val);
 	}
 
 	// Run the circuit - this might fail for some cases
