@@ -27,8 +27,8 @@ trait_set! {
 }
 
 pub struct Claim<F: Field> {
-	point: Vec<F>,
-	value: F,
+	pub point: Vec<F>,
+	pub value: F,
 }
 
 enum RoundCoeffsOrSums<F: Field> {
@@ -136,7 +136,7 @@ impl<'b, F, P, B> SumcheckProver<F> for SelectorMlecheckProver<'b, P, B>
 where
 	F: Field,
 	P: PackedField<Scalar = F>,
-	B: Bitwise,
+	B: Bitwise + std::fmt::Debug,
 {
 	fn n_vars(&self) -> usize {
 		self.n_vars
@@ -188,32 +188,31 @@ where
 							scratchpad_zero.copy_from_slice(folded_zero.as_ref());
 							scratchpad_one.copy_from_slice(folded_one.as_ref());
 						} else if is_first_round {
-							for (
-								scratchpad_zero,
-								scratchpad_one,
-								selected_zero,
-								selected_one,
-								masks,
-							) in izip!(
+							let half_len = self.bitmasks.len() / 2;
+							let (first_half, second_half) = self.bitmasks.split_at(half_len);
+							let masks_zero = first_half.chunks(P::WIDTH);
+							let masks_one = second_half.chunks(P::WIDTH);
+
+							for (scratchpad_zero, scratchpad_one, masks_zero, masks_one) in izip!(
 								&mut scratchpad_zero,
 								&mut scratchpad_one,
-								selected_zero.as_ref(),
-								selected_one.as_ref(),
-								self.bitmasks.chunks(P::WIDTH)
+								masks_zero,
+								masks_one,
 							) {
 								*scratchpad_zero = P::from_fn(|i| {
-									if (masks[i] >> bit_offset) & B::from(1u8) != B::from(0u8) {
-										selected_zero.get(i)
+									if (masks_zero[i] >> bit_offset) & B::from(1u8) != B::from(0u8)
+									{
+										P::Scalar::ONE
 									} else {
-										P::Scalar::zero()
+										P::Scalar::ZERO
 									}
 								});
 
 								*scratchpad_one = P::from_fn(|i| {
-									if (masks[i] >> bit_offset) & B::from(1u8) != B::from(0u8) {
-										selected_one.get(i)
+									if (masks_one[i] >> bit_offset) & B::from(1u8) != B::from(0u8) {
+										P::Scalar::ONE
 									} else {
-										P::Scalar::zero()
+										P::Scalar::ZERO
 									}
 								});
 							}
@@ -221,6 +220,7 @@ where
 							// TODO: switchover
 							unreachable!();
 						};
+						let packed_one = P::from_fn(|_| F::ONE);
 
 						for (
 							&eq,
@@ -235,10 +235,12 @@ where
 							&scratchpad_zero,
 							&scratchpad_one,
 						) {
-							round_evals.one += eq * selected_one * scratchpad_one;
+							round_evals.one += eq
+								* (selected_one * scratchpad_one + (packed_one + scratchpad_one));
 							round_evals.inf += eq
-								* (selected_zero + selected_one)
-								* (scratchpad_zero + scratchpad_one);
+								* ((selected_zero + selected_one)
+									* (scratchpad_zero + scratchpad_one)
+									+ (packed_one + (scratchpad_zero + scratchpad_one)));
 						}
 					}
 
@@ -343,7 +345,6 @@ where
 		}
 
 		let mut multilinear_evals = Vec::with_capacity(self.selectors.len() + 1);
-		multilinear_evals.push(self.selected.get(0).expect("multilinear.len() == 1"));
 
 		for selector in self.selectors {
 			let eval = selector
@@ -354,6 +355,8 @@ where
 
 			multilinear_evals.push(eval);
 		}
+
+		multilinear_evals.push(self.selected.get(0).expect("multilinear.len() == 1"));
 
 		Ok(multilinear_evals)
 	}
