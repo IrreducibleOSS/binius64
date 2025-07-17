@@ -9,14 +9,14 @@ use binius_transcript::{
 	fiat_shamir::{CanSample, Challenger},
 };
 use binius_utils::SerializeBytes;
-use binius_verifier::{fri::FRIParams, merkle_tree::MerkleTreeScheme, fields::B1};
+use binius_verifier::{fields::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme};
 use itertools::Itertools;
 
 use crate::{
 	basefold::prover::BigFieldBaseFoldProver,
 	ring_switch::eq_ind::rs_eq_ind,
 	utils::{
-		constants::{KAPPA},
+		constants::KAPPA,
 		eq_ind::eq_ind_mle,
 		utils::{compute_expected_sumcheck_claim, construct_s_hat_u},
 	},
@@ -81,8 +81,7 @@ where
 		// Verifier basis decomposes and recombines s_hat_v into s_hat_u
 		// A then undergoes a linear recombination across the opposite dimension for which it was
 		// decomposed. This is the same as reinterpreting the rows of matrix A as columns.
-		let prover_s_hat_u: Vec<BigField> =
-			construct_s_hat_u::<B1, BigField>(prover_s_hat_v);
+		let prover_s_hat_u: Vec<BigField> = construct_s_hat_u::<B1, BigField>(prover_s_hat_v);
 
 		// Verifier sends batching scalars
 		let prover_r_double_prime: Vec<BigField> = prover_samples_batching_scalars(transcript);
@@ -127,8 +126,7 @@ where
 		let (_, eval_point_high) = evaluation_point.split_at(KAPPA);
 
 		// Lift the packed multilinear to the large field
-		let small_field_mle =
-			<BigField as PackedExtension<B1>>::cast_bases(packed_mle.as_ref());
+		let small_field_mle = <BigField as PackedExtension<B1>>::cast_bases(packed_mle.as_ref());
 
 		let eq_at_high = eq_ind_mle(eval_point_high);
 
