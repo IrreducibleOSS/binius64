@@ -3,7 +3,7 @@
 pub mod batch;
 pub mod bivariate_mle;
 pub mod common;
-mod error;
+pub mod error;
 pub mod rerand_mle;
 mod round_evals;
 pub mod selector_mle;
