@@ -6,18 +6,11 @@ use binius_field::Field;
 pub fn evaluate_round_polynomial_at<F: Field>(x: F, round_msg: Vec<F>) -> F {
 	let (x_0, y_0) = (F::ZERO, round_msg[0]);
 	let (x_1, y_1) = (F::ONE, round_msg[1]);
-
 	let y_leading_coeff = round_msg[2];
 
 	// lagrange basis polynomials
-	let l_0 = (x - x_1)
-		* (x_0 - x_1)
-			.invert()
-			.expect("x_0 - x_1 should be non-zero (x_0=0, x_1=1)");
-	let l_1 = (x - x_0)
-		* (x_1 - x_0)
-			.invert()
-			.expect("x_1 - x_0 should be non-zero (x_0=0, x_1=1)");
+	let l_0 = (x - x_1) * (x_0 - x_1).invert().unwrap();
+	let l_1 = (x - x_0) * (x_1 - x_0).invert().unwrap();
 	let poly_with_leading_coeff = (x - x_0) * (x - x_1);
 
 	l_0 * y_0 + l_1 * y_1 + poly_with_leading_coeff * y_leading_coeff
@@ -29,7 +22,6 @@ pub fn verify_sumcheck_round<F: Field>(
 	round_msg: Vec<F>,
 	sumcheck_challenge: F,
 ) -> F {
-
 	// first two coefficients of round message should match the sum claim
 	// these are the evaluations of the univariate polynomial at 0, 1 and
 	// (even/odd sum of boolean hypercube evals)
@@ -37,7 +29,7 @@ pub fn verify_sumcheck_round<F: Field>(
 
 	// When the verifier receives the round message, it represents the coefficients
 	// of the current univariate, partially specialized composition polynomial. By
-	// evaluating this polynomial at the challenge, we determine what the honest
+	// evaluating this polynomial at the challenge, we determine what the hon
 	// prover will claim as the sum for the next round. This is because the when
 	// we fold the challenge into the multilinear, it is the same as partially
 	// specializing the current composition polynomial w/ the challenge point.
