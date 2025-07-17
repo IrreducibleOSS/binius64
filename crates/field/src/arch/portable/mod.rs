@@ -27,6 +27,8 @@ pub mod packed_polyval_256;
 pub mod packed_polyval_512;
 
 pub mod packed_ghash_128;
+pub mod packed_ghash_256;
+pub mod packed_ghash_512;
 
 mod nibble_invert_128b;
 
