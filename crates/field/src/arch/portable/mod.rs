@@ -26,6 +26,8 @@ pub mod packed_polyval_128;
 pub mod packed_polyval_256;
 pub mod packed_polyval_512;
 
+pub mod packed_ghash_128;
+
 pub mod byte_sliced;
 
 pub(super) mod packed_scaled;
