@@ -310,7 +310,7 @@ where
 
 			if selector.folded.is_none() {
 				let mut folded = FieldBuffer::zeros(self.n_rounds_remaining);
-				for (folded, masks) in izip!(folded.as_mut(), self.bitmasks.chunks(P::LOG_WIDTH)) {
+				for (folded, masks) in izip!(folded.as_mut(), self.bitmasks.chunks(P::WIDTH)) {
 					*folded = P::from_fn(|i| {
 						if (masks[i] >> bit_offset) & B::from(1u8) != B::from(0u8) {
 							P::Scalar::ONE
