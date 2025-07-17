@@ -463,9 +463,7 @@ mod tests {
 	use std::iter::repeat_with;
 
 	use assert_matches::assert_matches;
-	use binius_field::{
-		BinaryField8b, BinaryField16b, Field, PackedBinaryField8x16b, PackedFieldIndexable, Random,
-	};
+	use binius_field::{BinaryField8b, BinaryField16b, Field, PackedBinaryField8x16b, Random};
 	use rand::{SeedableRng, rngs::StdRng};
 
 	use super::*;
@@ -549,7 +547,7 @@ mod tests {
 
 		let mut packed_copy = packed;
 
-		let unpacked = PackedBinaryField8x16b::unpack_scalars_mut(&mut packed_copy);
+		let unpacked: &mut [BinaryField16b; 8] = bytemuck::must_cast_mut(&mut packed_copy);
 
 		let shape = NTTShape {
 			log_x: 0,
@@ -571,7 +569,7 @@ mod tests {
 
 		let mut packed_copy = packed;
 
-		let unpacked = PackedBinaryField8x16b::unpack_scalars_mut(&mut packed_copy);
+		let unpacked: &mut [BinaryField16b; 8] = bytemuck::must_cast_mut(&mut packed_copy);
 
 		let shape = NTTShape {
 			log_x: 0,
@@ -593,7 +591,8 @@ mod tests {
 
 		let mut packed_copy = packed;
 
-		let unpacked = &mut PackedBinaryField8x16b::unpack_scalars_mut(&mut packed_copy)[0..4];
+		let unpacked =
+			&mut bytemuck::must_cast_mut::<_, [BinaryField16b; 8]>(&mut packed_copy)[0..4];
 
 		let shape = NTTShape {
 			log_x: 0,
@@ -615,7 +614,8 @@ mod tests {
 
 		let mut packed_copy = packed;
 
-		let unpacked = &mut PackedBinaryField8x16b::unpack_scalars_mut(&mut packed_copy)[0..4];
+		let unpacked =
+			&mut bytemuck::must_cast_mut::<_, [BinaryField16b; 8]>(&mut packed_copy)[0..4];
 
 		let shape = NTTShape {
 			log_x: 0,

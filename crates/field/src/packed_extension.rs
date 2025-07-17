@@ -6,7 +6,7 @@ use crate::{
 	underlier::{Divisible, WithUnderlier},
 };
 
-/// A [`PackedField`] that can be safely cast to indexable slices of scalars.
+/// This is a marker trait showing that [`PackedField`] can be safely cast to a slice of scalars.
 ///
 /// Not all packed fields can index individual scalar elements. Notably, packed fields of
 /// $\mathbb{F}_2$ elements can pack multiple scalars into a single byte.
@@ -17,23 +17,13 @@ use crate::{
 /// In order for the above relation to be guaranteed, the memory representation of a slice of
 /// `PackedExtensionIndexable` elements must be the same as a slice of the underlying scalar
 /// elements, differing only in the slice lengths.
-pub unsafe trait PackedFieldIndexable: PackedField {
-	fn unpack_scalars(packed: &[Self]) -> &[Self::Scalar];
-	fn unpack_scalars_mut(packed: &mut [Self]) -> &mut [Self::Scalar];
-}
+unsafe trait PackedFieldIndexable: PackedField {}
 
 unsafe impl<S, P> PackedFieldIndexable for P
 where
 	S: Field,
 	P: PackedDivisible<S, Scalar = S>,
 {
-	fn unpack_scalars(packed: &[Self]) -> &[Self::Scalar] {
-		P::divide(packed)
-	}
-
-	fn unpack_scalars_mut(packed: &mut [Self]) -> &mut [Self::Scalar] {
-		P::divide_mut(packed)
-	}
 }
 
 /// Check if `P` implements `PackedFieldIndexable`.
@@ -304,29 +294,8 @@ where
 {
 }
 
-/// This trait adds shortcut methods for the case `PackedExtension<F, PackedSubfield:
-/// PackedFieldIndexable>` which is a quite common case in our codebase.
-pub trait PackedExtensionIndexable<F: Field>:
-	PackedExtension<F, PackedSubfield: PackedFieldIndexable> + PackedField<Scalar: ExtensionField<F>>
-{
-	fn unpack_base_scalars(packed: &[Self]) -> &[F] {
-		Self::PackedSubfield::unpack_scalars(Self::cast_bases(packed))
-	}
-
-	fn unpack_base_scalars_mut(packed: &mut [Self]) -> &mut [F] {
-		Self::PackedSubfield::unpack_scalars_mut(Self::cast_bases_mut(packed))
-	}
-}
-
-impl<F, PT> PackedExtensionIndexable<F> for PT
-where
-	F: Field,
-	PT: PackedExtension<F, PackedSubfield: PackedFieldIndexable>,
-{
-}
-
-/// Trait represents a relationship between a packed struct of field elements and a smaller packed
-/// struct the same field elements.
+/// A marker trait that represents a relationship between a packed struct of field elements and a
+/// smaller packed struct the same field elements.
 ///
 /// This trait can be used to safely cast memory slices from larger packed fields to smaller ones.
 ///
@@ -335,12 +304,10 @@ where
 /// In order for the above relation to be guaranteed, the memory representation of a slice of
 /// `PackedDivisible` elements must be the same as a slice of the underlying `PackedField`
 /// elements, differing only in the slice lengths.
-pub unsafe trait PackedDivisible<P>: PackedField
+unsafe trait PackedDivisible<P>: PackedField
 where
 	P: PackedField<Scalar = Self::Scalar>,
 {
-	fn divide(packed: &[Self]) -> &[P];
-	fn divide_mut(packed: &mut [Self]) -> &mut [P];
 }
 
 unsafe impl<PT1, PT2> PackedDivisible<PT2> for PT1
@@ -348,17 +315,6 @@ where
 	PT2: PackedField + WithUnderlier,
 	PT1: PackedField<Scalar = PT2::Scalar> + WithUnderlier<Underlier: Divisible<PT2::Underlier>>,
 {
-	fn divide(packed: &[Self]) -> &[PT2] {
-		let underliers = PT1::to_underliers_ref(packed);
-		let underliers: &[PT2::Underlier] = PT1::Underlier::split_slice(underliers);
-		PT2::from_underliers_ref(underliers)
-	}
-
-	fn divide_mut(packed: &mut [Self]) -> &mut [PT2] {
-		let underliers = PT1::to_underliers_ref_mut(packed);
-		let underliers: &mut [PT2::Underlier] = PT1::Underlier::split_slice_mut(underliers);
-		PT2::from_underliers_ref_mut(underliers)
-	}
 }
 
 #[cfg(test)]

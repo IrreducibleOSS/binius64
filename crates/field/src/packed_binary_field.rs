@@ -871,7 +871,7 @@ pub mod test_utils {
 
 #[cfg(test)]
 mod tests {
-	use std::{iter::repeat_with, ops::Mul, slice};
+	use std::{iter::repeat_with, ops::Mul};
 
 	use binius_utils::{DeserializeBytes, SerializationMode, SerializeBytes, bytes::BytesMut};
 	use proptest::prelude::*;
@@ -886,7 +886,7 @@ mod tests {
 		*,
 	};
 	use crate::{
-		PackedField, PackedFieldIndexable, Random,
+		PackedField, Random,
 		arch::{
 			packed_aes_16::*, packed_aes_32::*, packed_aes_64::*, packed_aes_128::*,
 			packed_aes_256::*, packed_aes_512::*,
@@ -934,15 +934,6 @@ mod tests {
 		}
 	}
 
-	fn test_elements_order<P: PackedFieldIndexable>() {
-		let mut rng = StdRng::seed_from_u64(0);
-		let packed = P::random(&mut rng);
-		let scalars = P::unpack_scalars(slice::from_ref(&packed));
-		for (i, val) in scalars.iter().enumerate() {
-			assert_eq!(packed.get(i), *val, "index: {i}");
-		}
-	}
-
 	fn test_serialize_then_deserialize<P: PackedField + DeserializeBytes + SerializeBytes>() {
 		let mode = SerializationMode::Native;
 		let mut buffer = BytesMut::new();
@@ -978,13 +969,6 @@ mod tests {
 	}
 
 	#[test]
-	fn test_elements_order_32b() {
-		test_elements_order::<PackedBinaryField4x32b>();
-		test_elements_order::<PackedBinaryField8x32b>();
-		test_elements_order::<PackedBinaryField16x32b>();
-	}
-
-	#[test]
 	fn test_serialize_then_deserialize_32b() {
 		test_serialize_then_deserialize::<PackedBinaryField4x32b>();
 		test_serialize_then_deserialize::<PackedBinaryField8x32b>();
@@ -999,13 +983,6 @@ mod tests {
 	}
 
 	#[test]
-	fn test_elements_order_64b() {
-		test_elements_order::<PackedBinaryField2x64b>();
-		test_elements_order::<PackedBinaryField4x64b>();
-		test_elements_order::<PackedBinaryField8x64b>();
-	}
-
-	#[test]
 	fn test_serialize_then_deserialize_64b() {
 		test_serialize_then_deserialize::<PackedBinaryField2x64b>();
 		test_serialize_then_deserialize::<PackedBinaryField4x64b>();
@@ -1017,13 +994,6 @@ mod tests {
 		test_set_then_get::<PackedBinaryField1x128b>();
 		test_set_then_get::<PackedBinaryField2x128b>();
 		test_set_then_get::<PackedBinaryField4x128b>();
-	}
-
-	#[test]
-	fn test_elements_order_128b() {
-		test_elements_order::<PackedBinaryField1x128b>();
-		test_elements_order::<PackedBinaryField2x128b>();
-		test_elements_order::<PackedBinaryField4x128b>();
 	}
 
 	#[test]
