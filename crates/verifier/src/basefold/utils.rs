@@ -29,7 +29,7 @@ pub fn verify_sumcheck_round<F: Field>(
 
 	// When the verifier receives the round message, it represents the coefficients
 	// of the current univariate, partially specialized composition polynomial. By
-	// evaluating this polynomial at the challenge, we determine what the hon
+	// evaluating this polynomial at the challenge, we determine what the honest
 	// prover will claim as the sum for the next round. This is because the when
 	// we fold the challenge into the multilinear, it is the same as partially
 	// specializing the current composition polynomial w/ the challenge point.
