@@ -106,7 +106,8 @@ where
 						let one = one.chunk(chunk_vars, chunk_index)?;
 
 						for (&eq, &one) in izip!(eq.as_ref(), one.as_ref()) {
-							round_evals.one += eq * one;
+							round_evals.one += eq;
+							//  * one;
 						}
 					}
 

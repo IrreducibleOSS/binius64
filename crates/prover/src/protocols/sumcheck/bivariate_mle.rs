@@ -124,8 +124,10 @@ where
 							l_one.as_ref(),
 							r_one.as_ref()
 						) {
-							round_evals.one += eq * l_one * r_one;
-							round_evals.inf += eq * (l_zero + l_one) * (r_zero + r_one);
+							round_evals.one += eq;
+							//  * l_one * r_one;
+							round_evals.inf += eq;
+							//  * (l_zero + l_one) * (r_zero + r_one);
 						}
 					}
 

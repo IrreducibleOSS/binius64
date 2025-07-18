@@ -18,7 +18,7 @@ fn pow2_64<F: Field>(generator: F) -> F {
 	result
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Layers<P: PackedField> {
 	n_vars: usize,
 	layers: Vec<Vec<FieldBuffer<P>>>,
@@ -73,6 +73,7 @@ impl<P: PackedField> Iterator for LayersIterator<P> {
 	}
 }
 
+#[derive(Clone)]
 pub struct ProverData<'a, P: PackedField> {
 	pub n_vars: usize,
 	pub a_exponents: &'a [u64],

@@ -235,12 +235,12 @@ where
 							&scratchpad_zero,
 							&scratchpad_one,
 						) {
-							round_evals.one += eq
-								* (selected_one * scratchpad_one + (packed_one + scratchpad_one));
-							round_evals.inf += eq
-								* ((selected_zero + selected_one)
-									* (scratchpad_zero + scratchpad_one)
-									+ (packed_one + (scratchpad_zero + scratchpad_one)));
+							round_evals.one += eq;
+							// * (selected_one * scratchpad_one + (packed_one + scratchpad_one));
+							round_evals.inf += eq;
+							// * ((selected_zero + selected_one)
+							// 	* (scratchpad_zero + scratchpad_one)
+							// 	+ (packed_one + (scratchpad_zero + scratchpad_one)));
 						}
 					}
 

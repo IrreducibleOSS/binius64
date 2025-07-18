@@ -37,3 +37,7 @@ rand = { workspace = true, features = ["std_rng", "thread_rng"] }
 [[bench]]
 name = "binary_merkle_tree"
 harness = false
+
+[[bench]]
+name = "intmul"
+harness = false
