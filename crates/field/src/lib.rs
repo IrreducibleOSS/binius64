@@ -33,7 +33,6 @@ pub mod polyval;
 mod random;
 #[cfg(test)]
 mod tests;
-pub mod tower;
 pub mod tower_levels;
 mod tracing;
 pub mod transpose;
