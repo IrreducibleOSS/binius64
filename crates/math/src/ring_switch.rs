@@ -1,12 +1,11 @@
-use binius_field::{BinaryField1b, BinaryField128b, ExtensionField, Field, PackedExtension};
-use crate::FieldBuffer;
-use crate::multilinear::eq::tensor_prod_eq_ind;
-use crate::tensor_algebra::TensorAlgebra;
 use std::iter;
+
+use binius_field::{BinaryField1b, BinaryField128b, ExtensionField, Field, PackedExtension};
+
+use crate::{FieldBuffer, multilinear::eq::tensor_prod_eq_ind, tensor_algebra::TensorAlgebra};
 
 pub type B1 = BinaryField1b;
 pub type B128 = BinaryField128b;
-
 
 pub fn eq_ind_mle<F: Field>(zerocheck_challenges: &[F]) -> FieldBuffer<F> {
 	let mut mle = FieldBuffer::<F>::zeros(zerocheck_challenges.len());
@@ -43,7 +42,6 @@ pub fn rs_eq_ind<BF: Field + ExtensionField<B1> + PackedExtension<B1>>(
 
 	rs_eq_mle
 }
-
 
 pub fn eval_rs_eq<BF: Field + ExtensionField<B1> + PackedExtension<B1>>(
 	z_vals: &[BF],
@@ -87,7 +85,7 @@ mod test {
 	use binius_field::{BinaryField128b, Field, Random};
 	use rand::{SeedableRng, rngs::StdRng};
 
-	use super::{rs_eq_ind, eval_rs_eq, eq_ind_mle};
+	use super::{eq_ind_mle, eval_rs_eq, rs_eq_ind};
 
 	type BF = BinaryField128b;
 
