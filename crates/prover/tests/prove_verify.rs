@@ -1,4 +1,4 @@
-use binius_field::{arch::OptimalUnderlier256b, as_packed_field::PackedType};
+use binius_field::arch::OptimalPackedB128;
 use binius_frontend::{
 	circuits::sha256::{Compress, State},
 	compiler,
@@ -10,7 +10,6 @@ use binius_prover::{merkle_tree::prover::BinaryMerkleTreeProver, prove};
 use binius_transcript::{ProverTranscript, fiat_shamir::HasherChallenger};
 use binius_verifier::{
 	Params,
-	fields::B128,
 	hash::{StdCompression, StdDigest},
 	merkle_tree::BinaryMerkleTreeScheme,
 	verify,
@@ -66,7 +65,7 @@ fn test_prove_verify_sha256_preimage() {
 	let ntt = SingleThreadedNTT::with_subspace(params.fri_params().rs_code().subspace()).unwrap();
 	let merkle_prover = BinaryMerkleTreeProver::<_, StdDigest, _>::new(StdCompression::default());
 	let mut prover_transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::default();
-	prove::<PackedType<OptimalUnderlier256b, B128>, _, _, _, _>(
+	prove::<OptimalPackedB128, _, _, _, _>(
 		&params,
 		witness.clone(),
 		&mut prover_transcript,

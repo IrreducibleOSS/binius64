@@ -3,8 +3,10 @@
 use std::iter::repeat_with;
 
 use binius_field::{
-	BinaryField1b, BinaryField8b, BinaryField128b, PackedField, arch::ArchOptimal,
-	byte_iteration::create_partial_sums_lookup_tables, packed::PackedSlice,
+	PackedField,
+	arch::{OptimalPackedB1, OptimalPackedB128},
+	byte_iteration::create_partial_sums_lookup_tables,
+	packed::PackedSlice,
 };
 use criterion::{
 	BenchmarkGroup, Criterion, criterion_group, criterion_main, measurement::WallTime,
@@ -37,17 +39,12 @@ fn partial_sums_benchmark(c: &mut Criterion) {
 	let mut group = c.benchmark_group("create_partial_sums_lookup_tables");
 	let counts = [8, 64, 128];
 
-	bench_create_partial_sums::<<BinaryField1b as ArchOptimal>::OptimalThroughputPacked>(
+	bench_create_partial_sums::<OptimalPackedB1>(
 		&mut group,
 		"BinaryField1b",
 		counts.iter().copied(),
 	);
-	bench_create_partial_sums::<<BinaryField8b as ArchOptimal>::OptimalThroughputPacked>(
-		&mut group,
-		"BinaryField8b",
-		counts.iter().copied(),
-	);
-	bench_create_partial_sums::<<BinaryField128b as ArchOptimal>::OptimalThroughputPacked>(
+	bench_create_partial_sums::<OptimalPackedB128>(
 		&mut group,
 		"BinaryField128b",
 		counts.iter().copied(),

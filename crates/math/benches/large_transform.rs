@@ -3,10 +3,8 @@
 use std::iter::repeat_with;
 
 use binius_field::{
-	AESTowerField32b, AESTowerField128b, BinaryField32b, BinaryField128b, BinaryField128bPolyval,
 	PackedExtension, TowerField,
-	arch::{OptimalUnderlier, OptimalUnderlierByteSliced},
-	as_packed_field::PackedType,
+	arch::{OptimalB128, OptimalPackedB128},
 };
 use binius_math::ntt::{AdditiveNTT, NTTShape, SingleThreadedNTT};
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
@@ -48,34 +46,13 @@ fn bench_large_transform<F: TowerField, PE: PackedExtension<F>>(c: &mut Criterio
 	}
 }
 
-// We are ignoring the transposition associated with byte slicing
-fn bench_byte_sliced(c: &mut Criterion) {
-	bench_large_transform::<
-		AESTowerField32b,
-		PackedType<OptimalUnderlierByteSliced, AESTowerField128b>,
-	>(c, "bytesliced=AESTowerField128b");
-}
-
 fn bench_packed128b(c: &mut Criterion) {
-	bench_large_transform::<BinaryField32b, PackedType<OptimalUnderlier, BinaryField128b>>(
-		c,
-		"field=BinaryField128b",
-	);
-
-	bench_large_transform::<AESTowerField32b, PackedType<OptimalUnderlier, AESTowerField128b>>(
-		c,
-		"field=AESTowerField128b",
-	);
-
-	bench_large_transform::<
-		BinaryField128bPolyval,
-		PackedType<OptimalUnderlier, BinaryField128bPolyval>,
-	>(c, "field=BinaryField128bPolyval");
+	bench_large_transform::<OptimalB128, OptimalPackedB128>(c, "field=OptimalPackedB128");
 }
 
 criterion_group! {
 	name = large_transform;
 	config = Criterion::default().sample_size(10);
-	targets = bench_packed128b, bench_byte_sliced
+	targets = bench_packed128b
 }
 criterion_main!(large_transform);
