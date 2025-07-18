@@ -240,14 +240,14 @@ impl CircuitBuilder {
 
 	pub fn band(&self, a: Wire, b: Wire) -> Wire {
 		let gate = Band::new(self, a, b);
-		let out = gate.c;
+		let out = gate.z;
 		self.emit(gate);
 		out
 	}
 
 	pub fn bxor(&self, a: Wire, b: Wire) -> Wire {
 		let gate = Bxor::new(self, a, b);
-		let out = gate.c;
+		let out = gate.z;
 		self.emit(gate);
 		out
 	}
@@ -260,14 +260,14 @@ impl CircuitBuilder {
 
 	pub fn bor(&self, a: Wire, b: Wire) -> Wire {
 		let gate = Bor::new(self, a, b);
-		let out = gate.c;
+		let out = gate.z;
 		self.emit(gate);
 		out
 	}
 
 	pub fn iadd_32(&self, a: Wire, b: Wire) -> Wire {
 		let gate = Iadd32::new(self, a, b);
-		let out = gate.c;
+		let out = gate.z;
 		self.emit(gate);
 		out
 	}
@@ -293,7 +293,7 @@ impl CircuitBuilder {
 	pub fn rotr_32(&self, a: Wire, n: u32) -> Wire {
 		assert!(n < 32, "shift amount n={n} out of range");
 		let gate = Rotr32::new(self, a, n);
-		let out = gate.c;
+		let out = gate.z;
 		self.emit(gate);
 		out
 	}
@@ -301,7 +301,7 @@ impl CircuitBuilder {
 	pub fn shr_32(&self, a: Wire, n: u32) -> Wire {
 		assert!(n < 32, "shift amount n={n} out of range");
 		let gate = Shr32::new(self, a, n);
-		let out = gate.c;
+		let out = gate.z;
 		self.emit(gate);
 		out
 	}
@@ -318,7 +318,7 @@ impl CircuitBuilder {
 	pub fn shl(&self, a: Wire, n: u32) -> Wire {
 		assert!(n < 64, "shift amount n={n} out of range");
 		let gate = Shl::new(self, a, n);
-		let out = gate.c;
+		let out = gate.z;
 		self.emit(gate);
 		out
 	}
@@ -335,7 +335,7 @@ impl CircuitBuilder {
 	pub fn shr(&self, a: Wire, n: u32) -> Wire {
 		assert!(n < 64, "shift amount n={n} out of range");
 		let gate = Shr::new(self, a, n);
-		let out = gate.c;
+		let out = gate.z;
 		self.emit(gate);
 		out
 	}
@@ -476,7 +476,7 @@ impl CircuitBuilder {
 	pub fn extract_byte(&self, word: Wire, j: u32) -> Wire {
 		assert!(j < 8, "byte index out of range");
 		let gate = ExtractByte::new(self, word, j);
-		let out = gate.b;
+		let out = gate.z;
 		self.emit(gate);
 		out
 	}

@@ -9,84 +9,139 @@ pub trait Gate {
 	fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem);
 }
 
+/// Bitwise AND operation.
+///
+/// Returns `z = x & y`.
+///
+/// # Algorithm
+///
+/// Computes the bitwise AND of two 64-bit words using a single AND constraint.
+///
+/// # Constraints
+///
+/// The gate generates 1 AND constraint:
+/// - `x ∧ y = z`
 pub struct Band {
-	pub a: Wire,
-	pub b: Wire,
-	pub c: Wire,
+	pub x: Wire,
+	pub y: Wire,
+	pub z: Wire,
 }
 
 impl Band {
 	pub fn new(builder: &CircuitBuilder, a: Wire, b: Wire) -> Self {
-		let c = builder.add_witness();
-		Self { a, b, c }
+		let z = builder.add_witness();
+		Self { x: a, y: b, z }
 	}
 }
 
 impl Gate for Band {
 	fn populate_wire_witness(&self, w: &mut WitnessFiller) {
-		w[self.c] = w[self.a] & w[self.b];
+		w[self.z] = w[self.x] & w[self.y];
 	}
 
 	fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
-		let a = circuit.witness_index(self.a);
-		let b = circuit.witness_index(self.b);
-		let c = circuit.witness_index(self.c);
-		cs.add_and_constraint(AndConstraint::plain_abc([a], [b], [c]));
+		let x = circuit.witness_index(self.x);
+		let y = circuit.witness_index(self.y);
+		let z = circuit.witness_index(self.z);
+
+		// Constraint: Bitwise AND
+		//
+		// x ∧ y = z
+		cs.add_and_constraint(AndConstraint::plain_abc([x], [y], [z]));
 	}
 }
 
+/// Bitwise XOR operation.
+///
+/// Returns `z = x ^ y`.
+///
+/// # Algorithm
+///
+/// Computes the bitwise XOR using the identity: `x ^ y = ¬(x ∧ y)`.
+/// This is implemented as `(x ⊕ y) ∧ all-1 = z`.
+///
+/// # Constraints
+///
+/// The gate generates 1 AND constraint:
+/// - `(x ⊕ y) ∧ all-1 = z`
 pub struct Bxor {
-	pub a: Wire,
-	pub b: Wire,
-	pub c: Wire,
+	pub x: Wire,
+	pub y: Wire,
+	pub z: Wire,
 	all_1: Wire,
 }
 
 impl Bxor {
 	pub fn new(builder: &CircuitBuilder, a: Wire, b: Wire) -> Self {
-		let c = builder.add_witness();
+		let z = builder.add_witness();
 		let all_1 = builder.add_constant(Word::ALL_ONE);
-		Self { a, b, c, all_1 }
+		Self {
+			x: a,
+			y: b,
+			z,
+			all_1,
+		}
 	}
 }
 
 impl Gate for Bxor {
 	fn populate_wire_witness(&self, w: &mut WitnessFiller) {
-		w[self.c] = w[self.a] ^ w[self.b];
+		w[self.z] = w[self.x] ^ w[self.y];
 	}
 
 	fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
-		let a = circuit.witness_index(self.a);
-		let b = circuit.witness_index(self.b);
-		let c = circuit.witness_index(self.c);
+		let x = circuit.witness_index(self.x);
+		let y = circuit.witness_index(self.y);
+		let z = circuit.witness_index(self.z);
 		let all_1 = circuit.witness_index(self.all_1);
-		cs.add_and_constraint(AndConstraint::plain_abc([a, b], [all_1], [c]));
+
+		// Constraint: Bitwise XOR
+		//
+		// (x ⊕ y) ∧ all-1 = z
+		cs.add_and_constraint(AndConstraint::plain_abc([x, y], [all_1], [z]));
 	}
 }
 
+/// Bitwise OR operation.
+///
+/// Returns `z = x | y`.
+///
+/// # Algorithm
+///
+/// Computes the bitwise OR using De Morgan's law: `x | y = ¬(¬x ∧ ¬y)`.
+/// This is implemented as `x ∧ y = (x ⊕ y ⊕ z)`.
+///
+/// # Constraints
+///
+/// The gate generates 1 AND constraint:
+/// - `x ∧ y = x ⊕ y ⊕ z`
 pub struct Bor {
-	pub a: Wire,
-	pub b: Wire,
-	pub c: Wire,
+	pub x: Wire,
+	pub y: Wire,
+	pub z: Wire,
 }
 
 impl Bor {
 	pub fn new(builder: &CircuitBuilder, a: Wire, b: Wire) -> Self {
-		let c = builder.add_witness();
-		Self { a, b, c }
+		let z = builder.add_witness();
+		Self { x: a, y: b, z }
 	}
 }
 
 impl Gate for Bor {
 	fn populate_wire_witness(&self, w: &mut WitnessFiller) {
-		w[self.c] = w[self.a] | w[self.b];
+		w[self.z] = w[self.x] | w[self.y];
 	}
 
 	fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
-		let a = circuit.witness_index(self.a);
-		let b = circuit.witness_index(self.b);
-		let c = circuit.witness_index(self.c);
-		cs.add_and_constraint(AndConstraint::plain_abc([a], [b], [a, b, c]));
+		let x = circuit.witness_index(self.x);
+		let y = circuit.witness_index(self.y);
+		let z = circuit.witness_index(self.z);
+
+		// Constraint: Bitwise OR
+		//
+		// x ∧ y = x ⊕ y ⊕ z
+		cs.add_and_constraint(AndConstraint::plain_abc([x], [y], [x, y, z]));
 	}
 }
 
@@ -103,7 +158,7 @@ impl Gate for Bor {
 ///
 /// ## Carry-out Computation
 ///
-/// The carry-out is computed as: `cout = (a & b) | ((a ^ b) & !sum)`
+/// The carry-out is computed as: `cout = (a & b) | ((a ^ b) & ¬sum)`
 ///
 /// For example:
 /// - `0x0000000000000003 + 0x0000000000000001 = 0x0000000000000004` with `cout =
@@ -169,13 +224,10 @@ impl Gate for IaddCinCout {
 		// The carry bit
 		let cin_msb = ShiftedValueIndex::srl(cin, 63);
 
-		// (a XOR (cout << 1) XOR cin_msb) AND (b XOR (cout << 1) XOR cin_msb)
-		// 		= cout XOR (cout << 1) XOR cin_msb
 		let a_operands = vec![ShiftedValueIndex::plain(a), cout_sll_1, cin_msb];
 		let b_operands = vec![ShiftedValueIndex::plain(b), cout_sll_1, cin_msb];
 		let c_operands = vec![ShiftedValueIndex::plain(cout), cout_sll_1, cin_msb];
 
-		// a XOR b XOR (cout << 1) XOR cin_msb
 		let sum_operands = vec![
 			ShiftedValueIndex::plain(a),
 			ShiftedValueIndex::plain(b),
@@ -183,10 +235,14 @@ impl Gate for IaddCinCout {
 			cin_msb,
 		];
 
-		// carry propagation constraint
+		// Constraint 1: Carry propagation
+		//
+		// (a ⊕ (cout << 1) ⊕ cin_msb) ∧ (b ⊕ (cout << 1) ⊕ cin_msb) = cout ⊕ (cout << 1) ⊕ cin_msb
 		cs.add_and_constraint(AndConstraint::abc(a_operands, b_operands, c_operands));
 
-		// sum equality constraint
+		// Constraint 2: Sum equality
+		//
+		// (a ⊕ b ⊕ (cout << 1) ⊕ cin_msb) ∧ all-1 = sum
 		cs.add_and_constraint(AndConstraint::abc(
 			sum_operands,
 			[ShiftedValueIndex::plain(all_ones)],
@@ -195,23 +251,38 @@ impl Gate for IaddCinCout {
 	}
 }
 
+/// 32-bit unsigned integer addition with carry propagation.
+///
+/// Returns `z = (x + y) & MASK_32` and `cout` containing carry bits.
+///
+/// # Algorithm
+///
+/// Performs 32-bit addition by computing the full 64-bit result and masking:
+/// 1. Compute carry bits `cout` from `x + y` using carry propagation
+/// 2. Extract the lower 32 bits: `z = (x ⊕ y ⊕ (cout << 1)) ∧ MASK_32`
+///
+/// # Constraints
+///
+/// The gate generates 2 AND constraints:
+/// 1. Carry propagation: `(x ⊕ (cout << 1)) ∧ (y ⊕ (cout << 1)) = cout ⊕ (cout << 1)`
+/// 2. Result masking: `(x ⊕ y ⊕ (cout << 1)) ∧ MASK_32 = z`
 pub struct Iadd32 {
-	pub a: Wire,
-	pub b: Wire,
-	pub c: Wire,
+	pub x: Wire,
+	pub y: Wire,
+	pub z: Wire,
 	pub cout: Wire,
 	pub mask32: Wire,
 }
 
 impl Iadd32 {
 	pub fn new(builder: &CircuitBuilder, a: Wire, b: Wire) -> Self {
-		let c = builder.add_witness();
+		let z = builder.add_witness();
 		let cout = builder.add_witness();
 		let mask32 = builder.add_constant(Word::MASK_32);
 		Self {
-			a,
-			b,
-			c,
+			x: a,
+			y: b,
+			z,
 			cout,
 			mask32,
 		}
@@ -220,123 +291,167 @@ impl Iadd32 {
 
 impl Gate for Iadd32 {
 	fn populate_wire_witness(&self, w: &mut WitnessFiller) {
-		let (sum, carry) = w[self.a].iadd_cout_32(w[self.b]);
+		let (sum, carry) = w[self.x].iadd_cout_32(w[self.y]);
 
-		w[self.c] = sum;
+		w[self.z] = sum;
 		w[self.cout] = carry;
 	}
 
 	fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
-		let a = circuit.witness_index(self.a);
-		let b = circuit.witness_index(self.b);
-		let c = circuit.witness_index(self.c);
+		let x = circuit.witness_index(self.x);
+		let y = circuit.witness_index(self.y);
+		let z = circuit.witness_index(self.z);
 		let cout = circuit.witness_index(self.cout);
 		let mask32 = circuit.witness_index(self.mask32);
 
-		// (x XOR (cout << 1)) AND (y XOR (cout << 1)) = (cout << 1) XOR cout
+		// Constraint 1: Carry propagation
+		//
+		// (x ⊕ (cout << 1)) ∧ (y ⊕ (cout << 1)) = cout ⊕ (cout << 1)
 		cs.add_and_constraint(AndConstraint::abc(
-			[ShiftedValueIndex::plain(a), ShiftedValueIndex::sll(cout, 1)],
-			[ShiftedValueIndex::plain(b), ShiftedValueIndex::sll(cout, 1)],
+			[ShiftedValueIndex::plain(x), ShiftedValueIndex::sll(cout, 1)],
+			[ShiftedValueIndex::plain(y), ShiftedValueIndex::sll(cout, 1)],
 			[
 				ShiftedValueIndex::plain(cout),
 				ShiftedValueIndex::sll(cout, 1),
 			],
 		));
 
-		// (x XOR y XOR (cout << 1)) AND M32 = z
+		// Constraint 2: Result masking
+		//
+		// (x ⊕ y ⊕ (cout << 1)) ∧ MASK_32 = z
 		cs.add_and_constraint(AndConstraint::abc(
 			[
-				ShiftedValueIndex::plain(a),
-				ShiftedValueIndex::plain(b),
+				ShiftedValueIndex::plain(x),
+				ShiftedValueIndex::plain(y),
 				ShiftedValueIndex::sll(cout, 1),
 			],
 			[ShiftedValueIndex::plain(mask32)],
-			[ShiftedValueIndex::plain(c)],
+			[ShiftedValueIndex::plain(z)],
 		));
 	}
 }
 
+/// 32-bit logical right shift.
+///
+/// Returns `z = (x >> n) & MASK_32`.
+///
+/// # Algorithm
+///
+/// Shifts the input right by `n` bits and masks to 32 bits.
+///
+/// # Constraints
+///
+/// The gate generates 1 AND constraint:
+/// - `(x >> n) ∧ MASK_32 = z`
 pub struct Shr32 {
-	pub a: Wire,
-	pub c: Wire,
+	pub x: Wire,
+	pub z: Wire,
 	pub mask32: Wire,
 	pub n: u32,
 }
 
 impl Shr32 {
 	pub fn new(builder: &CircuitBuilder, a: Wire, n: u32) -> Self {
-		let c = builder.add_witness();
+		let z = builder.add_witness();
 		let mask32 = builder.add_constant(Word::MASK_32);
-		Self { a, c, mask32, n }
+		Self { x: a, z, mask32, n }
 	}
 }
 
 impl Gate for Shr32 {
 	fn populate_wire_witness(&self, w: &mut WitnessFiller) {
-		let result = w[self.a].shr_32(self.n);
-		w[self.c] = result;
+		let result = w[self.x].shr_32(self.n);
+		w[self.z] = result;
 	}
 
 	fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
-		let a = circuit.witness_index(self.a);
-		let c = circuit.witness_index(self.c);
+		let x = circuit.witness_index(self.x);
+		let z = circuit.witness_index(self.z);
 		let mask32 = circuit.witness_index(self.mask32);
 
-		// SHR = AND(srl(x, n), M32)
+		// Constraint: Shift right with masking
+		//
+		// (x >> n) ∧ MASK_32 = z
 		cs.add_and_constraint(AndConstraint::abc(
-			[ShiftedValueIndex::srl(a, self.n as usize)],
+			[ShiftedValueIndex::srl(x, self.n as usize)],
 			[ShiftedValueIndex::plain(mask32)],
-			[ShiftedValueIndex::plain(c)],
+			[ShiftedValueIndex::plain(z)],
 		));
 	}
 }
 
+/// 32-bit rotate right.
+///
+/// Returns `z = ((x >> n) | (x << (32-n))) & MASK_32`.
+///
+/// # Algorithm
+///
+/// Rotates a 32-bit value right by `n` positions:
+/// 1. Shift right by n: `t1 = x >> n` (bits n-31 move to positions 0-(31-n))
+/// 2. Shift left by 32-n: `t2 = x << (32-n)` (bits 0-(n-1) move to positions (32-n)-31)
+/// 3. Combine with XOR: Since the shifted ranges don't overlap, `t1 | t2 = t1 ^ t2`
+/// 4. Mask to 32 bits: `z = (t1 ^ t2) & MASK_32`
+///
+/// The non-overlapping property is crucial: right-shifted bits occupy positions 0-(31-n),
+/// while left-shifted bits occupy positions (32-n)-31, with no overlap.
+///
+/// # Constraints
+///
+/// The gate generates 1 AND constraint:
+/// - `((x >> n) ⊕ (x << (32-n))) ∧ MASK_32 = z`
 pub struct Rotr32 {
-	pub a: Wire,
-	pub c: Wire,
+	pub x: Wire,
+	pub z: Wire,
 	pub mask32: Wire,
 	pub n: u32,
 }
 
 impl Rotr32 {
 	pub fn new(builder: &CircuitBuilder, a: Wire, n: u32) -> Self {
-		let c = builder.add_witness();
+		let z = builder.add_witness();
 		let mask32 = builder.add_constant(Word::MASK_32);
-		Self { a, c, mask32, n }
+		Self { x: a, z, mask32, n }
 	}
 }
 
 impl Gate for Rotr32 {
 	fn populate_wire_witness(&self, w: &mut WitnessFiller) {
-		let result = w[self.a].rotr_32(self.n);
-		w[self.c] = result;
+		let result = w[self.x].rotr_32(self.n);
+		w[self.z] = result;
 	}
 
 	fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
-		let a = circuit.witness_index(self.a);
-		let c = circuit.witness_index(self.c);
+		let x = circuit.witness_index(self.x);
+		let z = circuit.witness_index(self.z);
 		let mask32 = circuit.witness_index(self.mask32);
 
-		// ROTR(x, n):
-		//     t1 = srl(x, n),
-		//     t2 = sll(x, 32-n),
-		//     r = OR(t1, t2),
-		//     return AND(r, M32)
+		// Constraint: Rotate right
 		//
-		// This translates to:
-		//
-		// AND(OR(srl(x, n), sll(x, 32-n)), M32) = c
+		// ((x >> n) ⊕ (x << (32-n))) ∧ MASK_32 = z
 		cs.add_and_constraint(AndConstraint::abc(
 			[
-				ShiftedValueIndex::srl(a, self.n as usize),
-				ShiftedValueIndex::sll(a, (32 - self.n) as usize),
+				ShiftedValueIndex::srl(x, self.n as usize),
+				ShiftedValueIndex::sll(x, (32 - self.n) as usize),
 			],
 			[ShiftedValueIndex::plain(mask32)],
-			[ShiftedValueIndex::plain(c)],
+			[ShiftedValueIndex::plain(z)],
 		));
 	}
 }
 
+/// Equality assertion.
+///
+/// Enforces `x = y` using an AND constraint.
+///
+/// # Algorithm
+///
+/// Uses the property that `x = y` iff `x ^ y = 0`.
+/// This is enforced as `(x ⊕ y) ∧ all-1 = 0`.
+///
+/// # Constraints
+///
+/// The gate generates 1 AND constraint:
+/// - `(x ⊕ y) ∧ all-1 = 0`
 pub struct AssertEq {
 	pub name: String,
 	pub x: Wire,
@@ -365,14 +480,28 @@ impl Gate for AssertEq {
 		let x = circuit.witness_index(self.x);
 		let y = circuit.witness_index(self.y);
 		let all_1 = circuit.witness_index(self.all_1);
+
+		// Constraint: Equality assertion
+		//
+		// (x ⊕ y) ∧ all-1 = 0
 		cs.add_and_constraint(AndConstraint::plain_abc([x, y], [all_1], []));
 	}
 }
 
-/// Assert0 enforces that a wire equals zero using a single AND constraint.
-/// Pattern: AND(a, ALL_1, 0) which constrains a = 0
+/// Assert that a wire equals zero.
+///
+/// Enforces `x = 0` using an AND constraint.
+///
+/// # Algorithm
+///
+/// Uses the constraint `x ∧ all-1 = 0`, which forces `x = 0`.
+///
+/// # Constraints
+///
+/// The gate generates 1 AND constraint:
+/// - `x ∧ all-1 = 0`
 pub struct Assert0 {
-	pub a: Wire,
+	pub x: Wire,
 	pub all_1: Wire,
 	pub name: String,
 }
@@ -380,31 +509,43 @@ pub struct Assert0 {
 impl Assert0 {
 	pub fn new(builder: &CircuitBuilder, name: String, a: Wire) -> Self {
 		let all_1 = builder.add_constant(Word::ALL_ONE);
-		Self { name, a, all_1 }
+		Self { name, x: a, all_1 }
 	}
 }
 
 impl Gate for Assert0 {
 	fn populate_wire_witness(&self, w: &mut WitnessFiller) {
-		// The constraint is: a & ALL_1 = 0, which means a must be 0
-		if w[self.a] != Word::ZERO {
-			w.flag_assertion_failed(format!("{} failed: {:?} != ZERO", self.name, self.a));
+		// The constraint is: x & ALL_1 = 0, which means x must be 0
+		if w[self.x] != Word::ZERO {
+			w.flag_assertion_failed(format!("{} failed: {:?} != ZERO", self.name, self.x));
 		}
 	}
 
 	fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
-		let a = circuit.witness_index(self.a);
+		let x = circuit.witness_index(self.x);
 		let all_1 = circuit.witness_index(self.all_1);
 
-		// Constraint: AND(a, ALL_1, 0) => a & ALL_1 = 0 => a = 0
-		cs.add_and_constraint(AndConstraint::plain_abc([a], [all_1], []));
+		// Constraint: Assert zero
+		//
+		// x ∧ all-1 = 0
+		cs.add_and_constraint(AndConstraint::plain_abc([x], [all_1], []));
 	}
 }
 
-/// Assert that bitwise AND of wire with constant equals zero.
-/// Pattern: AND(a, constant, 0) which constrains a & constant = 0
+/// Assert that bitwise AND equals zero.
+///
+/// Enforces `x & constant = 0`.
+///
+/// # Algorithm
+///
+/// Directly constrains that the bitwise AND of `x` with a constant equals zero.
+///
+/// # Constraints
+///
+/// The gate generates 1 AND constraint:
+/// - `x ∧ constant = 0`
 pub struct AssertBand0 {
-	pub a: Wire,
+	pub x: Wire,
 	pub constant: Wire,
 	pub name: String,
 }
@@ -412,35 +553,41 @@ pub struct AssertBand0 {
 impl AssertBand0 {
 	pub fn new(builder: &CircuitBuilder, name: String, a: Wire, constant: Word) -> Self {
 		let constant = builder.add_constant(constant);
-		Self { name, a, constant }
+		Self {
+			name,
+			x: a,
+			constant,
+		}
 	}
 }
 
 impl Gate for AssertBand0 {
 	fn populate_wire_witness(&self, w: &mut WitnessFiller) {
-		let result = w[self.a] & w[self.constant];
+		let result = w[self.x] & w[self.constant];
 		if result != Word::ZERO {
 			w.flag_assertion_failed(format!(
 				"{} failed: {:?} & {:?} = {:?} != ZERO",
-				self.name, w[self.a], w[self.constant], result
+				self.name, w[self.x], w[self.constant], result
 			));
 		}
 	}
 
 	fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
-		let a = circuit.witness_index(self.a);
+		let x = circuit.witness_index(self.x);
 		let constant = circuit.witness_index(self.constant);
 
-		// Constraint: AND(a, constant, 0) => a & constant = 0
-		cs.add_and_constraint(AndConstraint::plain_abc([a], [constant], []));
+		// Constraint: Assert bitwise AND equals zero
+		//
+		// x ∧ constant = 0
+		cs.add_and_constraint(AndConstraint::plain_abc([x], [constant], []));
 	}
 }
 
 /// Imul gate implements 64-bit × 64-bit → 128-bit unsigned multiplication.
-/// Uses the MulConstraint: A * B = (HI << 64) | LO
+/// Uses the MulConstraint: X * Y = (HI << 64) | LO
 pub struct Imul {
-	pub a: Wire,
-	pub b: Wire,
+	pub x: Wire,
+	pub y: Wire,
 	pub hi: Wire,
 	pub lo: Wire,
 }
@@ -449,27 +596,27 @@ impl Imul {
 	pub fn new(builder: &CircuitBuilder, a: Wire, b: Wire) -> Self {
 		let hi = builder.add_witness();
 		let lo = builder.add_witness();
-		Self { a, b, hi, lo }
+		Self { x: a, y: b, hi, lo }
 	}
 }
 
 impl Gate for Imul {
 	fn populate_wire_witness(&self, w: &mut WitnessFiller) {
-		let (hi, lo) = w[self.a].imul(w[self.b]);
+		let (hi, lo) = w[self.x].imul(w[self.y]);
 		w[self.hi] = hi;
 		w[self.lo] = lo;
 	}
 
 	fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
-		let a = circuit.witness_index(self.a);
-		let b = circuit.witness_index(self.b);
+		let x = circuit.witness_index(self.x);
+		let y = circuit.witness_index(self.y);
 		let hi = circuit.witness_index(self.hi);
 		let lo = circuit.witness_index(self.lo);
 
-		// Create MulConstraint: A * B = (HI << 64) | LO
+		// Create MulConstraint: X * Y = (HI << 64) | LO
 		let mul_constraint = MulConstraint {
-			a: vec![ShiftedValueIndex::plain(a)],
-			b: vec![ShiftedValueIndex::plain(b)],
+			a: vec![ShiftedValueIndex::plain(x)],
+			b: vec![ShiftedValueIndex::plain(y)],
 			hi: vec![ShiftedValueIndex::plain(hi)],
 			lo: vec![ShiftedValueIndex::plain(lo)],
 		};
@@ -478,40 +625,59 @@ impl Gate for Imul {
 	}
 }
 
-/// Conditional equality for a single byte inside the boundary word
-/// Pattern: AND((v_a ^ v_b), m, 0) where m is mask (all-1 => enforce; 0 => no-op)
+/// Conditional equality assertion.
+///
+/// Enforces `x = y` when `mask = all-1`, no constraint when `mask = 0`.
+///
+/// # Algorithm
+///
+/// Uses a mask to conditionally enforce equality: `(x ^ y) & mask = 0`.
+/// When mask is all-1, this enforces `x = y`. When mask is 0, the constraint is satisfied
+/// trivially.
+///
+/// # Constraints
+///
+/// The gate generates 1 AND constraint:
+/// - `(x ⊕ y) ∧ mask = 0`
 pub struct AssertEqCond {
-	pub a: Wire,
-	pub b: Wire,
+	pub x: Wire,
+	pub y: Wire,
 	pub mask: Wire,
 	pub name: String,
 }
 
 impl AssertEqCond {
 	pub fn new(name: String, a: Wire, b: Wire, mask: Wire) -> Self {
-		Self { a, b, mask, name }
+		Self {
+			x: a,
+			y: b,
+			mask,
+			name,
+		}
 	}
 }
 
 impl Gate for AssertEqCond {
 	fn populate_wire_witness(&self, w: &mut WitnessFiller) {
-		let diff = w[self.a] ^ w[self.b];
+		let diff = w[self.x] ^ w[self.y];
 		let masked_diff = diff & w[self.mask];
 		if masked_diff != Word::ZERO {
 			w.flag_assertion_failed(format!(
 				"{} failed: {:?} != {:?}",
-				self.name, w[self.a], w[self.b],
+				self.name, w[self.x], w[self.y],
 			));
 		}
 	}
 
 	fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
-		let a = circuit.witness_index(self.a);
-		let b = circuit.witness_index(self.b);
+		let x = circuit.witness_index(self.x);
+		let y = circuit.witness_index(self.y);
 		let mask = circuit.witness_index(self.mask);
 
-		// Constraint: AND((v_a ^ v_b), m, 0)
-		cs.add_and_constraint(AndConstraint::plain_abc([a, b], [mask], []));
+		// Constraint: Conditional equality
+		//
+		// (x ⊕ y) ∧ mask = 0
+		cs.add_and_constraint(AndConstraint::plain_abc([x, y], [mask], []));
 	}
 }
 
@@ -707,13 +873,26 @@ impl Gate for IcmpEq {
 	}
 }
 
-/// Extract byte j from word using 2 AND constraints (j=0 is least significant byte).
+/// Extract byte from word (little-endian).
 ///
-/// 1. AND((word srl (8*j)) ^ b, 0xFF, 0) - forces low 8 bits of b to equal the byte
-/// 2. AND(b, 0xFFFFFFFFFFFFFF00, 0) - forces high 56 bits of b to zero
+/// Returns `z = (word >> (8*j)) & 0xFF` where j=0 is the least significant byte.
+///
+/// # Algorithm
+///
+/// Extracts byte j from a 64-bit word using little-endian byte ordering:
+/// - j=0: bits 0-7 (least significant byte)
+/// - j=1: bits 8-15
+/// - ...
+/// - j=7: bits 56-63 (most significant byte)
+///
+/// # Constraints
+///
+/// The gate generates 2 AND constraints:
+/// 1. Low byte extraction: `((word >> (8*j)) ⊕ z) ∧ 0xFF = 0`
+/// 2. High bits zeroing: `z ∧ 0xFFFFFFFFFFFFFF00 = 0`
 pub struct ExtractByte {
 	pub word: Wire,
-	pub b: Wire,
+	pub z: Wire,
 	pub j: u32,
 	pub mask_ff: Wire,
 	pub mask_high56: Wire,
@@ -721,12 +900,12 @@ pub struct ExtractByte {
 
 impl ExtractByte {
 	pub fn new(builder: &CircuitBuilder, word: Wire, j: u32) -> Self {
-		let b = builder.add_witness();
+		let z = builder.add_witness();
 		let mask_ff = builder.add_constant(Word::from_u64(0xFF));
 		let mask_high56 = builder.add_constant(Word::from_u64(0xFFFFFFFFFFFFFF00));
 		Self {
 			word,
-			b,
+			z,
 			j,
 			mask_ff,
 			mask_high56,
@@ -740,94 +919,130 @@ impl Gate for ExtractByte {
 
 		// Extract byte j from the word (shift right by 8*j bits and mask to get the byte)
 		let byte_val = (word_val.as_u64() >> (8 * self.j)) & 0xFF;
-		w[self.b] = Word::from_u64(byte_val);
+		w[self.z] = Word::from_u64(byte_val);
 	}
 
 	fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
 		let word = circuit.witness_index(self.word);
-		let b = circuit.witness_index(self.b);
+		let z = circuit.witness_index(self.z);
 		let mask_ff = circuit.witness_index(self.mask_ff);
 		let mask_high56 = circuit.witness_index(self.mask_high56);
 
-		// 1. AND((word srl (8*j)) ^ b, 0xFF, 0) - forces low 8 bits of b to equal the byte
+		// Constraint 1: Low byte extraction
+		//
+		// ((word >> (8*j)) ⊕ z) ∧ 0xFF = 0
 		cs.add_and_constraint(AndConstraint::abc(
 			[
 				ShiftedValueIndex::srl(word, (8 * self.j) as usize),
-				ShiftedValueIndex::plain(b),
+				ShiftedValueIndex::plain(z),
 			],
 			[ShiftedValueIndex::plain(mask_ff)],
 			[],
 		));
 
-		// 2. AND(b, 0xFFFFFFFFFFFFFF00, 0) - forces high 56 bits of b to zero
-		cs.add_and_constraint(AndConstraint::plain_abc([b], [mask_high56], []));
+		// Constraint 2: High bits zeroing
+		//
+		// z ∧ 0xFFFFFFFFFFFFFF00 = 0
+		cs.add_and_constraint(AndConstraint::plain_abc([z], [mask_high56], []));
 	}
 }
 
+/// Logical right shift.
+///
+/// Returns `z = x >> n`.
+///
+/// # Algorithm
+///
+/// Performs a logical right shift by `n` bits. The constraint system allows
+/// referencing shifted versions of values directly without additional gates.
+///
+/// # Constraints
+///
+/// The gate generates 1 AND constraint:
+/// - `(x >> n) ∧ all-1 = z`
 pub struct Shr {
-	pub a: Wire,
-	pub c: Wire,
+	pub x: Wire,
+	pub z: Wire,
 	pub n: u32,
 	all_1: Wire,
 }
 
 impl Shr {
 	pub fn new(builder: &CircuitBuilder, a: Wire, n: u32) -> Self {
-		let c = builder.add_witness();
+		let z = builder.add_witness();
 		let all_1 = builder.add_constant(Word::ALL_ONE);
-		Self { a, c, n, all_1 }
+		Self { x: a, z, n, all_1 }
 	}
 }
 
 impl Gate for Shr {
 	fn populate_wire_witness(&self, w: &mut WitnessFiller) {
-		let result = w[self.a] >> self.n;
-		w[self.c] = result;
+		let result = w[self.x] >> self.n;
+		w[self.z] = result;
 	}
 
 	fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
-		let a = circuit.witness_index(self.a);
-		let c = circuit.witness_index(self.c);
+		let x = circuit.witness_index(self.x);
+		let z = circuit.witness_index(self.z);
 		let all_1 = circuit.witness_index(self.all_1);
 
+		// Constraint: Logical right shift
+		//
+		// (x >> n) ∧ all-1 = z
 		cs.add_and_constraint(AndConstraint::abc(
-			[ShiftedValueIndex::srl(a, self.n as usize)],
+			[ShiftedValueIndex::srl(x, self.n as usize)],
 			[ShiftedValueIndex::plain(all_1)],
-			[ShiftedValueIndex::plain(c)],
+			[ShiftedValueIndex::plain(z)],
 		));
 	}
 }
 
+/// Logical left shift.
+///
+/// Returns `z = x << n`.
+///
+/// # Algorithm
+///
+/// Performs a logical left shift by `n` bits. The constraint system allows
+/// referencing shifted versions of values directly without additional gates.
+///
+/// # Constraints
+///
+/// The gate generates 1 AND constraint:
+/// - `(x << n) ∧ all-1 = z`
 pub struct Shl {
-	pub a: Wire,
-	pub c: Wire,
+	pub x: Wire,
+	pub z: Wire,
 	pub n: u32,
 	all_1: Wire,
 }
 
 impl Shl {
 	pub fn new(builder: &CircuitBuilder, a: Wire, n: u32) -> Self {
-		let c = builder.add_witness();
+		let z = builder.add_witness();
 		let all_1 = builder.add_constant(Word::ALL_ONE);
-		Self { a, c, n, all_1 }
+		Self { x: a, z, n, all_1 }
 	}
 }
 
 impl Gate for Shl {
 	fn populate_wire_witness(&self, w: &mut WitnessFiller) {
-		let result = w[self.a] << self.n;
-		w[self.c] = result;
+		let result = w[self.x] << self.n;
+		w[self.z] = result;
 	}
 
 	fn constrain(&self, circuit: &Circuit, cs: &mut ConstraintSystem) {
-		let a = circuit.witness_index(self.a);
-		let c = circuit.witness_index(self.c);
+		let x = circuit.witness_index(self.x);
+		let z = circuit.witness_index(self.z);
 		let all_1 = circuit.witness_index(self.all_1);
 
+		// Constraint: Logical left shift
+		//
+		// (x << n) ∧ all-1 = z
 		cs.add_and_constraint(AndConstraint::abc(
-			[ShiftedValueIndex::sll(a, self.n as usize)],
+			[ShiftedValueIndex::sll(x, self.n as usize)],
 			[ShiftedValueIndex::plain(all_1)],
-			[ShiftedValueIndex::plain(c)],
+			[ShiftedValueIndex::plain(z)],
 		));
 	}
 }
