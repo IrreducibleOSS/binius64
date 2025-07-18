@@ -1,5 +1,4 @@
-use quickcheck::TestResult;
-use quickcheck_macros::quickcheck;
+use proptest::prelude::*;
 use rand::{Rng, SeedableRng as _, rngs::StdRng};
 
 use super::*;
@@ -112,48 +111,6 @@ fn test_icmp_eq() {
 	}
 }
 
-#[quickcheck]
-fn prop_iadd_cin_cout_carry_chain(a1: u64, b1: u64, a2: u64, b2: u64) -> TestResult {
-	let builder = CircuitBuilder::new();
-
-	// First addition
-	let a1_wire = builder.add_constant_64(a1);
-	let b1_wire = builder.add_constant_64(b1);
-	let cin_wire = builder.add_constant(Word::ZERO);
-	let (sum1_wire, cout1_wire) = builder.iadd_cin_cout(a1_wire, b1_wire, cin_wire);
-
-	// Second addition with carry from first
-	let a2_wire = builder.add_constant_64(a2);
-	let b2_wire = builder.add_constant_64(b2);
-	let (sum2_wire, cout2_wire) = builder.iadd_cin_cout(a2_wire, b2_wire, cout1_wire);
-
-	let circuit = builder.build();
-	let mut w = circuit.new_witness_filler();
-	circuit.populate_wire_witness(&mut w).unwrap();
-
-	// Check first addition
-	let expected_sum1 = a1.wrapping_add(b1);
-	let expected_cout1 = (a1 & b1) | ((a1 ^ b1) & !expected_sum1);
-	if w[sum1_wire] != Word(expected_sum1) || w[cout1_wire] != Word(expected_cout1) {
-		return TestResult::failed();
-	}
-
-	// Check second addition with carry
-	// Extract MSB of cout1 as the carry-in bit
-	let cin2 = expected_cout1 >> 63;
-	let expected_sum2 = a2.wrapping_add(b2).wrapping_add(cin2);
-	let expected_cout2 = (a2 & b2) | ((a2 ^ b2) & !expected_sum2);
-	if w[sum2_wire] != Word(expected_sum2) || w[cout2_wire] != Word(expected_cout2) {
-		return TestResult::failed();
-	}
-
-	let cs = circuit.constraint_system();
-	match verify_constraints(&cs, &w.value_vec) {
-		Ok(_) => TestResult::passed(),
-		Err(e) => TestResult::error(e),
-	}
-}
-
 #[test]
 fn test_iadd_cin_cout_max_values() {
 	let builder = CircuitBuilder::new();
@@ -188,7 +145,7 @@ fn test_iadd_cin_cout_zero() {
 	assert_eq!(w[cout_wire], Word(0));
 }
 
-fn prop_check_icmp_ult(a: u64, b: u64, expected_result: Word) -> TestResult {
+fn prop_check_icmp_ult(a: u64, b: u64, expected_result: Word) {
 	let builder = CircuitBuilder::new();
 	let a_wire = builder.add_constant_64(a);
 	let b_wire = builder.add_constant_64(b);
@@ -201,63 +158,10 @@ fn prop_check_icmp_ult(a: u64, b: u64, expected_result: Word) -> TestResult {
 	assert_eq!(w[result_wire], expected_result);
 
 	let cs = circuit.constraint_system();
-	match verify_constraints(&cs, &w.value_vec) {
-		Ok(_) => TestResult::passed(),
-		Err(e) => TestResult::error(format!("Constraint verification failed: {e}")),
-	}
+	verify_constraints(&cs, &w.value_vec).unwrap();
 }
 
-#[quickcheck]
-fn prop_icmp_ult_gte(a: u64, b: u64) -> TestResult {
-	if a < b {
-		return TestResult::discard();
-	}
-	prop_check_icmp_ult(a, b, Word::ZERO)
-}
-
-#[quickcheck]
-fn prop_icmp_ult_lt(a: u64, b: u64) -> TestResult {
-	if a >= b {
-		return TestResult::discard();
-	}
-	prop_check_icmp_ult(a, b, Word::ALL_ONE)
-}
-
-#[quickcheck]
-fn prop_check_assert_eq(x: u64, y: u64) -> TestResult {
-	let builder = CircuitBuilder::new();
-	let is_equal = x == y;
-	let x_wire = builder.add_constant_64(x);
-	let y_wire = builder.add_constant_64(y);
-	builder.assert_eq("eq", x_wire, y_wire);
-
-	let circuit = builder.build();
-	let mut w = circuit.new_witness_filler();
-
-	let result = circuit.populate_wire_witness(&mut w);
-
-	if is_equal {
-		// When values are equal, witness population should succeed
-		if result.is_err() {
-			return TestResult::failed();
-		}
-		// And constraints should verify
-		let cs = circuit.constraint_system();
-		match verify_constraints(&cs, &w.value_vec) {
-			Ok(_) => TestResult::passed(),
-			Err(e) => TestResult::error(format!("Constraint verification failed: {e}")),
-		}
-	} else {
-		// When values are not equal, witness population should fail
-		if result.is_ok() {
-			return TestResult::failed();
-		}
-		// We don't verify constraints when assertion fails
-		TestResult::passed()
-	}
-}
-
-fn prop_check_icmp_eq(a: u64, b: u64, expected_result: Word) -> TestResult {
+fn prop_check_icmp_eq(a: u64, b: u64, expected_result: Word) {
 	let builder = CircuitBuilder::new();
 	let a_wire = builder.add_constant_64(a);
 	let b_wire = builder.add_constant_64(b);
@@ -270,21 +174,92 @@ fn prop_check_icmp_eq(a: u64, b: u64, expected_result: Word) -> TestResult {
 	assert_eq!(w[result_wire], expected_result);
 
 	let cs = circuit.constraint_system();
-	match verify_constraints(&cs, &w.value_vec) {
-		Ok(_) => TestResult::passed(),
-		Err(e) => TestResult::error(format!("Constraint verification failed: {e}")),
-	}
+	verify_constraints(&cs, &w.value_vec).unwrap();
 }
 
-#[quickcheck]
-fn prop_icmp_eq_equal(a: u64) -> TestResult {
-	prop_check_icmp_eq(a, a, Word::ALL_ONE)
-}
+proptest! {
+	#[test]
+	fn prop_iadd_cin_cout_carry_chain(a1 in any::<u64>(), b1 in any::<u64>(), a2 in any::<u64>(), b2 in any::<u64>()) {
+		let builder = CircuitBuilder::new();
 
-#[quickcheck]
-fn prop_icmp_eq_not_equal(a: u64, b: u64) -> TestResult {
-	if a == b {
-		return TestResult::discard();
+		// First addition
+		let a1_wire = builder.add_constant_64(a1);
+		let b1_wire = builder.add_constant_64(b1);
+		let cin_wire = builder.add_constant(Word::ZERO);
+		let (sum1_wire, cout1_wire) = builder.iadd_cin_cout(a1_wire, b1_wire, cin_wire);
+
+		// Second addition with carry from first
+		let a2_wire = builder.add_constant_64(a2);
+		let b2_wire = builder.add_constant_64(b2);
+		let (sum2_wire, cout2_wire) = builder.iadd_cin_cout(a2_wire, b2_wire, cout1_wire);
+
+		let circuit = builder.build();
+		let mut w = circuit.new_witness_filler();
+		circuit.populate_wire_witness(&mut w).unwrap();
+
+		// Check first addition
+		let expected_sum1 = a1.wrapping_add(b1);
+		let expected_cout1 = (a1 & b1) | ((a1 ^ b1) & !expected_sum1);
+		assert_eq!(w[sum1_wire], Word(expected_sum1));
+		assert_eq!(w[cout1_wire], Word(expected_cout1));
+
+		// Check second addition with carry
+		// Extract MSB of cout1 as the carry-in bit
+		let cin2 = expected_cout1 >> 63;
+		let expected_sum2 = a2.wrapping_add(b2).wrapping_add(cin2);
+		let expected_cout2 = (a2 & b2) | ((a2 ^ b2) & !expected_sum2);
+		assert_eq!(w[sum2_wire], Word(expected_sum2));
+		assert_eq!(w[cout2_wire], Word(expected_cout2));
+
+		let cs = circuit.constraint_system();
+		verify_constraints(&cs, &w.value_vec).unwrap();
 	}
-	prop_check_icmp_eq(a, b, Word::ZERO)
+
+	#[test]
+	fn prop_icmp_ult_gte(a in any::<u64>(), b in any::<u64>()) {
+		prop_assume!(a >= b);
+		prop_check_icmp_ult(a, b, Word::ZERO);
+	}
+
+	#[test]
+	fn prop_icmp_ult_lt(a in any::<u64>(), b in any::<u64>()) {
+		prop_assume!(a < b);
+		prop_check_icmp_ult(a, b, Word::ALL_ONE);
+	}
+
+	#[test]
+	fn prop_check_assert_eq(x in any::<u64>(), y in any::<u64>()) {
+		let builder = CircuitBuilder::new();
+		let is_equal = x == y;
+		let x_wire = builder.add_constant_64(x);
+		let y_wire = builder.add_constant_64(y);
+		builder.assert_eq("eq", x_wire, y_wire);
+
+		let circuit = builder.build();
+		let mut w = circuit.new_witness_filler();
+
+		let result = circuit.populate_wire_witness(&mut w);
+
+		if is_equal {
+			// When values are equal, witness population should succeed
+			assert!(result.is_ok());
+			// And constraints should verify
+			let cs = circuit.constraint_system();
+			verify_constraints(&cs, &w.value_vec).unwrap();
+		} else {
+			// When values are not equal, witness population should fail
+			assert!(result.is_err());
+		}
+	}
+
+	#[test]
+	fn prop_icmp_eq_equal(a in any::<u64>()) {
+		prop_check_icmp_eq(a, a, Word::ALL_ONE);
+	}
+
+	#[test]
+	fn prop_icmp_eq_not_equal(a in any::<u64>(), b in any::<u64>()) {
+		prop_assume!(a != b);
+		prop_check_icmp_eq(a, b, Word::ZERO);
+	}
 }

@@ -1,7 +1,6 @@
 use num_bigint::BigUint;
 use num_integer::Integer;
-use quickcheck::TestResult;
-use quickcheck_macros::quickcheck;
+use proptest::prelude::*;
 
 use super::*;
 use crate::{
@@ -33,65 +32,6 @@ fn from_u64_limbs(limbs: &[u64]) -> BigUint {
 pub fn bignum_to_biguint(w: &WitnessFiller, bignum: &BigNum) -> BigUint {
 	let limb_vals: Vec<_> = bignum.limbs.iter().map(|&l| w[l].as_u64()).collect();
 	from_u64_limbs(&limb_vals)
-}
-
-#[quickcheck]
-fn prop_add_multi_limb(vals: Vec<(u64, u64)>) -> TestResult {
-	// Test multi-limb addition with carry propagation
-	if vals.len() > 16 {
-		return TestResult::discard();
-	}
-
-	// Pre-compute to check for overflow
-	let mut carry = 0u64;
-	let mut expected = vec![0u64; vals.len()];
-	for (i, &(a_val, b_val)) in vals.iter().enumerate() {
-		let (sum1, overflow1) = a_val.overflowing_add(b_val);
-		let (sum2, overflow2) = sum1.overflowing_add(carry);
-		expected[i] = sum2;
-		carry = (overflow1 as u64) + (overflow2 as u64);
-	}
-
-	// Discard any test values that would overflow, as these are not
-	// supported by the circuit constraints.
-	if carry > 0 {
-		return TestResult::discard();
-	}
-
-	let builder = CircuitBuilder::new();
-	let num_limbs = vals.len();
-
-	let a = BigNum::new_witness(&builder, num_limbs);
-	let b = BigNum::new_witness(&builder, num_limbs);
-
-	let result = add(&builder, &a, &b);
-
-	let cs = builder.build();
-	let mut w = cs.new_witness_filler();
-
-	// Set input values
-	for (i, &(a_val, b_val)) in vals.iter().enumerate() {
-		w[a.limbs[i]] = Word(a_val);
-		w[b.limbs[i]] = Word(b_val);
-	}
-
-	cs.populate_wire_witness(&mut w).unwrap();
-
-	// Compare result with expected
-	for i in 0..num_limbs {
-		if w[result.limbs[i]] != Word(expected[i]) {
-			return TestResult::error(format!(
-				"Result Limb {} mismatch: got {}, expected {}",
-				i, w[result.limbs[i]].0, expected[i]
-			));
-		}
-	}
-
-	if let Err(e) = verify_constraints(&cs.constraint_system(), &w.into_value_vec()) {
-		return TestResult::error(format!("Constraint verification failed: {e:?}"));
-	}
-
-	TestResult::passed()
 }
 
 #[test]
@@ -168,307 +108,301 @@ fn test_mul_single_case() {
 	verify_constraints(&cs.constraint_system(), &w.into_value_vec()).unwrap();
 }
 
-#[quickcheck]
-fn test_mul_with_values(a_limbs: Vec<u64>, b_limbs: Vec<u64>) -> TestResult {
-	let builder = CircuitBuilder::new();
+proptest! {
+	#[test]
+	fn prop_add_multi_limb(vals in prop::collection::vec((any::<u64>(), any::<u64>()), 0..=16)) {
+		// Test multi-limb addition with carry propagation
 
-	let a = BigNum::new_inout(&builder, a_limbs.len());
-	let b = BigNum::new_inout(&builder, b_limbs.len());
+		// Pre-compute to check for overflow
+		let mut carry = 0u64;
+		let mut expected = vec![0u64; vals.len()];
+		for (i, &(a_val, b_val)) in vals.iter().enumerate() {
+			let (sum1, overflow1) = a_val.overflowing_add(b_val);
+			let (sum2, overflow2) = sum1.overflowing_add(carry);
+			expected[i] = sum2;
+			carry = (overflow1 as u64) + (overflow2 as u64);
+		}
 
-	let result = mul(&builder, &a, &b);
+		// Discard any test values that would overflow, as these are not
+		// supported by the circuit constraints.
+		prop_assume!(carry == 0);
 
-	let cs = builder.build();
-	let mut w = cs.new_witness_filler();
+		let builder = CircuitBuilder::new();
+		let num_limbs = vals.len();
 
-	for (i, &val) in a_limbs.iter().enumerate() {
-		w[a.limbs[i]] = Word(val);
+		let a = BigNum::new_witness(&builder, num_limbs);
+		let b = BigNum::new_witness(&builder, num_limbs);
+
+		let result = add(&builder, &a, &b);
+
+		let cs = builder.build();
+		let mut w = cs.new_witness_filler();
+
+		// Set input values
+		for (i, &(a_val, b_val)) in vals.iter().enumerate() {
+			w[a.limbs[i]] = Word(a_val);
+			w[b.limbs[i]] = Word(b_val);
+		}
+
+		cs.populate_wire_witness(&mut w).unwrap();
+
+		// Compare result with expected
+		for i in 0..num_limbs {
+			assert_eq!(
+				w[result.limbs[i]], Word(expected[i]),
+				"Result Limb {} mismatch: got {}, expected {}",
+				i, w[result.limbs[i]].0, expected[i]
+			);
+		}
+
+		verify_constraints(&cs.constraint_system(), &w.into_value_vec()).unwrap();
 	}
-	for (i, &val) in b_limbs.iter().enumerate() {
-		w[b.limbs[i]] = Word(val);
-	}
 
-	let a_big = from_u64_limbs(&a_limbs);
-	let b_big = from_u64_limbs(&b_limbs);
-	let expected = &a_big * &b_big;
+	#[test]
+	fn test_mul_with_values(
+		a_limbs in prop::collection::vec(any::<u64>(), 1..10),
+		b_limbs in prop::collection::vec(any::<u64>(), 1..10)
+	) {
+		let builder = CircuitBuilder::new();
 
-	cs.populate_wire_witness(&mut w).unwrap();
+		let a = BigNum::new_inout(&builder, a_limbs.len());
+		let b = BigNum::new_inout(&builder, b_limbs.len());
 
-	let result_big = bignum_to_biguint(&w, &result);
+		let result = mul(&builder, &a, &b);
 
-	if result_big != expected {
-		return TestResult::error(format!(
+		let cs = builder.build();
+		let mut w = cs.new_witness_filler();
+
+		for (i, &val) in a_limbs.iter().enumerate() {
+			w[a.limbs[i]] = Word(val);
+		}
+		for (i, &val) in b_limbs.iter().enumerate() {
+			w[b.limbs[i]] = Word(val);
+		}
+
+		let a_big = from_u64_limbs(&a_limbs);
+		let b_big = from_u64_limbs(&b_limbs);
+		let expected = &a_big * &b_big;
+
+		cs.populate_wire_witness(&mut w).unwrap();
+
+		let result_big = bignum_to_biguint(&w, &result);
+
+		assert_eq!(
+			result_big, expected,
 			"Multiplication failed: {a_big} * {b_big} = {result_big} (expected {expected})"
-		));
+		);
+
+		verify_constraints(&cs.constraint_system(), &w.into_value_vec()).unwrap();
 	}
 
-	if let Err(e) = verify_constraints(&cs.constraint_system(), &w.into_value_vec()) {
-		return TestResult::error(format!("Constraint verification failed: {e:?}"));
-	}
+	#[test]
+	fn test_square_with_values(a_limbs in prop::collection::vec(any::<u64>(), 1..10)) {
+		let builder = CircuitBuilder::new();
 
-	TestResult::passed()
-}
+		let a = BigNum::new_witness(&builder, a_limbs.len());
+		let result = square(&builder, &a);
 
-#[quickcheck]
-fn test_square_with_values(a_limbs: Vec<u64>) -> TestResult {
-	let builder = CircuitBuilder::new();
+		let cs = builder.build();
 
-	let a = BigNum::new_witness(&builder, a_limbs.len());
-	let result = square(&builder, &a);
+		let mut w = cs.new_witness_filler();
+		for (i, &val) in a_limbs.iter().enumerate() {
+			w[a.limbs[i]] = Word(val);
+		}
 
-	let cs = builder.build();
+		let a_big = from_u64_limbs(&a_limbs);
+		let expected = &a_big * &a_big;
 
-	let mut w = cs.new_witness_filler();
-	for (i, &val) in a_limbs.iter().enumerate() {
-		w[a.limbs[i]] = Word(val);
-	}
+		cs.populate_wire_witness(&mut w).unwrap();
 
-	let a_big = from_u64_limbs(&a_limbs);
-	let expected = &a_big * &a_big;
+		let result_big = bignum_to_biguint(&w, &result);
 
-	cs.populate_wire_witness(&mut w).unwrap();
-
-	let result_big = bignum_to_biguint(&w, &result);
-
-	if result_big != expected {
-		return TestResult::error(format!(
+		assert_eq!(
+			result_big, expected,
 			"Squaring failed: {a_big}^2 = {result_big} (expected {expected})"
-		));
+		);
+
+		verify_constraints(&cs.constraint_system(), &w.into_value_vec()).unwrap();
 	}
 
-	if let Err(e) = verify_constraints(&cs.constraint_system(), &w.into_value_vec()) {
-		return TestResult::error(format!("Constraint verification failed: {e:?}"));
+	#[test]
+	fn prop_square_vs_mul_equivalence(vals in prop::collection::vec(any::<u64>(), 1..=8)) {
+		let builder = CircuitBuilder::new();
+
+		let a = BigNum::new_witness(&builder, vals.len());
+
+		let square_result = square(&builder, &a);
+		let mul_result = mul(&builder, &a, &a);
+
+		let cs = builder.build();
+		let mut w = cs.new_witness_filler();
+
+		for (i, &val) in vals.iter().enumerate() {
+			w[a.limbs[i]] = Word(val);
+		}
+
+		cs.populate_wire_witness(&mut w).unwrap();
+
+		let square_big = bignum_to_biguint(&w, &square_result);
+		let mul_big = bignum_to_biguint(&w, &mul_result);
+
+		assert_eq!(square_big, mul_big, "square(a) != mul(a,a): {square_big} != {mul_big}");
+
+		verify_constraints(&cs.constraint_system(), &w.into_value_vec()).unwrap();
 	}
 
-	TestResult::passed()
-}
+	#[test]
+	fn prop_compare_equal(vals in prop::collection::vec(any::<u64>(), 0..=8)) {
+		let builder = CircuitBuilder::new();
+		let a = BigNum::new_witness(&builder, vals.len());
+		let b = BigNum::new_witness(&builder, vals.len());
 
-#[quickcheck]
-fn prop_square_vs_mul_equivalence(vals: Vec<u64>) -> TestResult {
-	if vals.is_empty() || vals.len() > 8 {
-		return TestResult::discard();
+		let result = compare(&builder, &a, &b);
+
+		let cs = builder.build();
+		let mut w = cs.new_witness_filler();
+
+		// Set same values for both inputs
+		for (i, &val) in vals.iter().enumerate() {
+			w[a.limbs[i]] = Word(val);
+			w[b.limbs[i]] = Word(val);
+		}
+
+		cs.populate_wire_witness(&mut w).unwrap();
+
+		// Should be equal (all 1s)
+		assert_eq!(w[result], Word(u64::MAX), "Result is not all 1s");
+
+		verify_constraints(&cs.constraint_system(), &w.into_value_vec()).unwrap();
 	}
 
-	let builder = CircuitBuilder::new();
+	#[test]
+	fn prop_compare_different(vals in prop::collection::vec((any::<u64>(), any::<u64>()), 1..=8)) {
+		let a_vals: Vec<u64> = vals.iter().map(|(a, _)| *a).collect();
+		let b_vals: Vec<u64> = vals.iter().map(|(_, b)| *b).collect();
+		// Skip if they're actually equal
+		prop_assume!(a_vals != b_vals);
 
-	let a = BigNum::new_witness(&builder, vals.len());
+		let builder = CircuitBuilder::new();
+		let a = BigNum::new_witness(&builder, a_vals.len());
+		let b = BigNum::new_witness(&builder, b_vals.len());
 
-	let square_result = square(&builder, &a);
-	let mul_result = mul(&builder, &a, &a);
+		let result = compare(&builder, &a, &b);
 
-	let cs = builder.build();
-	let mut w = cs.new_witness_filler();
+		let cs = builder.build();
+		let mut w = cs.new_witness_filler();
 
-	for (i, &val) in vals.iter().enumerate() {
-		w[a.limbs[i]] = Word(val);
+		for (i, &val) in a_vals.iter().enumerate() {
+			w[a.limbs[i]] = Word(val);
+		}
+		for (i, &val) in b_vals.iter().enumerate() {
+			w[b.limbs[i]] = Word(val);
+		}
+
+		// Run the circuit - this might fail for some cases
+		cs.populate_wire_witness(&mut w).unwrap();
+
+		// Should be not equal (all 0s)
+		assert_eq!(w[result], Word(0), "Different values detected as equal");
+
+		verify_constraints(&cs.constraint_system(), &w.into_value_vec()).unwrap();
 	}
 
-	cs.populate_wire_witness(&mut w).unwrap();
+	#[test]
+	fn prop_mod_reduce(
+		a_vals in prop::collection::vec(any::<u64>(), 1..=10),
+		mod_vals in prop::collection::vec(any::<u64>(), 1..=10)
+	) {
+		prop_assume!(mod_vals.len() <= a_vals.len());
+		prop_assume!(!mod_vals.iter().all(|&v| v == 0));
 
-	let square_big = bignum_to_biguint(&w, &square_result);
-	let mul_big = bignum_to_biguint(&w, &mul_result);
+		let builder = CircuitBuilder::new();
+		let a = BigNum::new_witness(&builder, a_vals.len());
+		let modulus = BigNum::new_witness(&builder, mod_vals.len());
 
-	if square_big != mul_big {
-		return TestResult::error(format!("square(a) != mul(a,a): {square_big} != {mul_big}"));
-	}
+		let quotient = BigNum::new_witness(&builder, a.limbs.len());
+		let remainder = BigNum::new_witness(&builder, modulus.limbs.len());
 
-	if let Err(e) = verify_constraints(&cs.constraint_system(), &w.into_value_vec()) {
-		return TestResult::error(format!("Constraint verification failed: {e:?}"));
-	}
+		let circuit = ModReduce::new(&builder, a, modulus, quotient, remainder);
 
-	TestResult::passed()
-}
+		let cs = builder.build();
+		let mut w = cs.new_witness_filler();
 
-#[quickcheck]
-fn prop_compare_equal(vals: Vec<u64>) -> TestResult {
-	if vals.len() > 8 {
-		return TestResult::discard();
-	}
+		circuit.a.populate_limbs(&mut w, &a_vals);
+		circuit.modulus.populate_limbs(&mut w, &mod_vals);
 
-	let builder = CircuitBuilder::new();
-	let a = BigNum::new_witness(&builder, vals.len());
-	let b = BigNum::new_witness(&builder, vals.len());
+		let a_big = from_u64_limbs(&a_vals);
+		let modulus_big = from_u64_limbs(&mod_vals);
+		let (q_big, r_big) = a_big.div_rem(&modulus_big);
 
-	let result = compare(&builder, &a, &b);
+		let mut q_limbs = q_big.to_u64_digits();
+		q_limbs.resize(circuit.quotient.limbs.len(), 0u64);
+		circuit.quotient.populate_limbs(&mut w, &q_limbs);
 
-	let cs = builder.build();
-	let mut w = cs.new_witness_filler();
+		let mut r_limbs = r_big.to_u64_digits();
+		r_limbs.resize(circuit.remainder.limbs.len(), 0u64);
 
-	// Set same values for both inputs
-	for (i, &val) in vals.iter().enumerate() {
-		w[a.limbs[i]] = Word(val);
-		w[b.limbs[i]] = Word(val);
-	}
+		circuit.remainder.populate_limbs(&mut w, &r_limbs);
 
-	cs.populate_wire_witness(&mut w).unwrap();
+		cs.populate_wire_witness(&mut w).unwrap();
 
-	// Should be equal (all 1s)
-	if w[result] != Word(u64::MAX) {
-		return TestResult::error("Result is not all 1s");
-	}
+		let a_big = bignum_to_biguint(&w, &circuit.a);
+		let modulus_big = bignum_to_biguint(&w, &circuit.modulus);
+		let quotient_big = bignum_to_biguint(&w, &circuit.quotient);
+		let remainder_big = bignum_to_biguint(&w, &circuit.remainder);
 
-	if let Err(e) = verify_constraints(&cs.constraint_system(), &w.into_value_vec()) {
-		return TestResult::error(format!("Constraint verification failed: {e:?}"));
-	}
-
-	TestResult::passed()
-}
-
-#[quickcheck]
-fn prop_compare_different(a_vals: Vec<u64>, b_vals: Vec<u64>) -> TestResult {
-	if a_vals.len() != b_vals.len() || a_vals.len() > 8 {
-		return TestResult::discard();
-	}
-
-	// Skip if they're actually equal
-	if a_vals == b_vals {
-		return TestResult::discard();
-	}
-
-	let builder = CircuitBuilder::new();
-	let a = BigNum::new_witness(&builder, a_vals.len());
-	let b = BigNum::new_witness(&builder, b_vals.len());
-
-	let result = compare(&builder, &a, &b);
-
-	let cs = builder.build();
-	let mut w = cs.new_witness_filler();
-
-	for (i, &val) in a_vals.iter().enumerate() {
-		w[a.limbs[i]] = Word(val);
-	}
-	for (i, &val) in b_vals.iter().enumerate() {
-		w[b.limbs[i]] = Word(val);
-	}
-
-	// Run the circuit - this might fail for some cases
-	if let Err(e) = cs.populate_wire_witness(&mut w) {
-		return TestResult::error(format!("Circuit execution failed: {e:?}"));
-	}
-
-	// Should be not equal (all 0s)
-	if w[result] != Word(0) {
-		return TestResult::error("Different values detected as equal".to_string());
-	}
-
-	if let Err(e) = verify_constraints(&cs.constraint_system(), &w.into_value_vec()) {
-		return TestResult::error(format!("Constraint verification failed: {e:?}"));
-	}
-
-	TestResult::passed()
-}
-
-#[quickcheck]
-fn prop_mod_reduce(a_vals: Vec<u64>, mod_vals: Vec<u64>) -> TestResult {
-	if mod_vals.len() > a_vals.len() {
-		return TestResult::discard();
-	}
-
-	if mod_vals.iter().all(|&v| v == 0) {
-		return TestResult::discard();
-	}
-
-	let builder = CircuitBuilder::new();
-	let a = BigNum::new_witness(&builder, a_vals.len());
-	let modulus = BigNum::new_witness(&builder, mod_vals.len());
-
-	let quotient = BigNum::new_witness(&builder, a.limbs.len());
-	let remainder = BigNum::new_witness(&builder, modulus.limbs.len());
-
-	let circuit = ModReduce::new(&builder, a, modulus, quotient, remainder);
-
-	let cs = builder.build();
-	let mut w = cs.new_witness_filler();
-
-	circuit.a.populate_limbs(&mut w, &a_vals);
-	circuit.modulus.populate_limbs(&mut w, &mod_vals);
-
-	let a_big = from_u64_limbs(&a_vals);
-	let modulus_big = from_u64_limbs(&mod_vals);
-	let (q_big, r_big) = a_big.div_rem(&modulus_big);
-
-	let mut q_limbs = q_big.to_u64_digits();
-	q_limbs.resize(circuit.quotient.limbs.len(), 0u64);
-	circuit.quotient.populate_limbs(&mut w, &q_limbs);
-
-	let mut r_limbs = r_big.to_u64_digits();
-	r_limbs.resize(circuit.remainder.limbs.len(), 0u64);
-
-	circuit.remainder.populate_limbs(&mut w, &r_limbs);
-
-	if let Err(e) = cs.populate_wire_witness(&mut w) {
-		return TestResult::error(format!("Circuit execution failed: {e:?}"));
-	}
-
-	let a_big = bignum_to_biguint(&w, &circuit.a);
-	let modulus_big = bignum_to_biguint(&w, &circuit.modulus);
-	let quotient_big = bignum_to_biguint(&w, &circuit.quotient);
-	let remainder_big = bignum_to_biguint(&w, &circuit.remainder);
-
-	let reconstructed = &quotient_big * &modulus_big + &remainder_big;
-	if reconstructed != a_big {
-		return TestResult::error(format!(
+		let reconstructed = &quotient_big * &modulus_big + &remainder_big;
+		assert_eq!(
+			reconstructed, a_big,
 			"ModReduce failed: {a_big} != {quotient_big} * {modulus_big} + {remainder_big}"
-		));
+		);
+
+		verify_constraints(&cs.constraint_system(), &w.into_value_vec()).unwrap();
 	}
 
-	if let Err(e) = verify_constraints(&cs.constraint_system(), &w.into_value_vec()) {
-		return TestResult::error(format!("Constraint verification failed: {e:?}"));
-	}
+	#[test]
+	fn prop_mod_reduce_invalid_inputs(
+		a_vals in prop::collection::vec(any::<u64>(), 1..=10),
+		mod_vals in prop::collection::vec(any::<u64>(), 1..=10),
+		mut quotient_vals in prop::collection::vec(any::<u64>(), 0..=10),
+		mut remainder_vals in prop::collection::vec(any::<u64>(), 0..=10)
+	) {
+		prop_assume!(mod_vals.len() <= a_vals.len());
+		prop_assume!(!mod_vals.iter().all(|&v| v == 0));
 
-	TestResult::passed()
-}
+		quotient_vals.resize(a_vals.len(), 0);
+		remainder_vals.resize(mod_vals.len(), 0);
 
-#[quickcheck]
-fn prop_mod_reduce_invalid_inputs(
-	a_vals: Vec<u64>,
-	mod_vals: Vec<u64>,
-	mut quotient_vals: Vec<u64>,
-	mut remainder_vals: Vec<u64>,
-) -> TestResult {
-	if mod_vals.len() > a_vals.len() {
-		return TestResult::discard();
-	}
+		let a_big = from_u64_limbs(&a_vals);
+		let modulus_big = from_u64_limbs(&mod_vals);
+		let (correct_q, correct_r) = a_big.div_rem(&modulus_big);
+		let provided_q = from_u64_limbs(&quotient_vals);
+		let provided_r = from_u64_limbs(&remainder_vals);
 
-	if mod_vals.iter().all(|&v| v == 0) {
-		return TestResult::discard();
-	}
+		// If the provided values are actually correct, skip this test case
+		prop_assume!(provided_q != correct_q || provided_r != correct_r);
 
-	quotient_vals.resize(a_vals.len(), 0);
-	remainder_vals.resize(mod_vals.len(), 0);
+		let builder = CircuitBuilder::new();
 
-	let a_big = from_u64_limbs(&a_vals);
-	let modulus_big = from_u64_limbs(&mod_vals);
-	let (correct_q, correct_r) = a_big.div_rem(&modulus_big);
-	let provided_q = from_u64_limbs(&quotient_vals);
-	let provided_r = from_u64_limbs(&remainder_vals);
+		let a = BigNum::new_witness(&builder, a_vals.len());
+		let modulus = BigNum::new_witness(&builder, mod_vals.len());
+		let quotient = BigNum::new_witness(&builder, a_vals.len());
+		let remainder = BigNum::new_witness(&builder, mod_vals.len());
 
-	// If the provided values are actually correct, skip this test case
-	if provided_q == correct_q && provided_r == correct_r {
-		return TestResult::discard();
-	}
+		let circuit = ModReduce::new(&builder, a, modulus, quotient, remainder);
 
-	let builder = CircuitBuilder::new();
+		let cs = builder.build();
+		let mut w = cs.new_witness_filler();
 
-	let a = BigNum::new_witness(&builder, a_vals.len());
-	let modulus = BigNum::new_witness(&builder, mod_vals.len());
-	let quotient = BigNum::new_witness(&builder, a_vals.len());
-	let remainder = BigNum::new_witness(&builder, mod_vals.len());
+		circuit.a.populate_limbs(&mut w, &a_vals);
+		circuit.modulus.populate_limbs(&mut w, &mod_vals);
+		circuit.quotient.populate_limbs(&mut w, &quotient_vals);
+		circuit.remainder.populate_limbs(&mut w, &remainder_vals);
 
-	let circuit = ModReduce::new(&builder, a, modulus, quotient, remainder);
-
-	let cs = builder.build();
-	let mut w = cs.new_witness_filler();
-
-	circuit.a.populate_limbs(&mut w, &a_vals);
-	circuit.modulus.populate_limbs(&mut w, &mod_vals);
-	circuit.quotient.populate_limbs(&mut w, &quotient_vals);
-	circuit.remainder.populate_limbs(&mut w, &remainder_vals);
-
-	// The circuit should fail to populate witnesses with incorrect values
-	match cs.populate_wire_witness(&mut w) {
-		Ok(_) => TestResult::error(format!(
+		// The circuit should fail to populate witnesses with incorrect values
+		assert!(
+			cs.populate_wire_witness(&mut w).is_err(),
 			"Circuit incorrectly accepted invalid quotient/remainder: a={a_big}, mod={modulus_big}, q={provided_q} (correct={correct_q}), r={provided_r} (correct={correct_r})"
-		)),
-		Err(_) => TestResult::passed(),
+		);
 	}
 }
