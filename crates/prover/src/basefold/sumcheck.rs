@@ -5,9 +5,9 @@ use binius_utils::rayon::{
 	prelude::{IndexedParallelIterator, IntoParallelRefMutIterator},
 	slice::ParallelSlice,
 };
-use binius_verifier::protocols::sumcheck::RoundCoeffs;
-use binius_verifier::basefold::utils::evaluate_round_polynomial_at;
-
+use binius_verifier::{
+	basefold::utils::evaluate_round_polynomial_at, protocols::sumcheck::RoundCoeffs,
+};
 use crate::protocols::sumcheck::{common::SumcheckProver, error::Error};
 
 /// Exposes a round-by-round interface to prove the sum of A(X) * B(X) for
@@ -129,7 +129,6 @@ pub mod test {
 
 	use super::*;
 	use binius_verifier::basefold::utils::verify_sumcheck_round;
-
 
 	type F = BinaryField128b;
 
