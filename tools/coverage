@@ -1,0 +1,5 @@
+#!/bin/bash
+# Wrapper for coverage.py with automatic venv management
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "$SCRIPT_DIR/run_tool.sh" "$SCRIPT_DIR/coverage.py" "$SCRIPT_DIR/requirements/coverage_reqs.txt" "$@"

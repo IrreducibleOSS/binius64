@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+.venv_*/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Coverage reports
+.coverage
+htmlcov/
+*.lcov
+coverage.xml
+coverage.json
+coverage-summary.json
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+.DS_Store
+
+# Tool-specific outputs
+output/
+results/
+reports/
