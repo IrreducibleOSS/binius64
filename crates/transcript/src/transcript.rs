@@ -3,7 +3,7 @@
 use std::{fs::File, io::Write, iter::repeat_with, slice};
 
 use binius_field::Field;
-use binius_utils::{DeserializeBytes, SerializationMode, SerializeBytes};
+use binius_utils::{DeserializeBytes, SerializeBytes};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
 use super::{
@@ -17,15 +17,12 @@ use crate::fiat_shamir::{CanSample, CanSampleBits, sample_bits_reader};
 pub struct Options {
 	/// Whether to enable debug assertions
 	pub debug_assertions: bool,
-	/// The serialization mode to use
-	pub serialization_mode: SerializationMode,
 }
 
 impl Default for Options {
 	fn default() -> Self {
 		Self {
 			debug_assertions: cfg!(debug_assertions),
-			serialization_mode: SerializationMode::Native,
 		}
 	}
 }
@@ -54,18 +51,6 @@ impl<Challenger_: Challenger> VerifierTranscript<Challenger_> {
 			},
 			options,
 		}
-	}
-
-	// Deprecated: use with_opts instead
-	pub fn with_mode(challenger: Challenger_, vec: Vec<u8>, mode: SerializationMode) -> Self {
-		Self::with_opts(
-			challenger,
-			vec,
-			Options {
-				serialization_mode: mode,
-				..Default::default()
-			},
-		)
 	}
 }
 
@@ -137,11 +122,8 @@ where
 	Challenger_: Challenger,
 {
 	fn sample(&mut self) -> F {
-		DeserializeBytes::deserialize(
-			self.combined.challenger.sampler(),
-			self.options.serialization_mode,
-		)
-		.expect("challenger has infinite buffer")
+		DeserializeBytes::deserialize(self.combined.challenger.sampler())
+			.expect("challenger has infinite buffer")
 	}
 }
 
@@ -165,14 +147,12 @@ impl<B: Buf> TranscriptReader<'_, B> {
 	}
 
 	pub fn read<T: DeserializeBytes>(&mut self) -> Result<T, Error> {
-		let mode = self.options.serialization_mode;
-		T::deserialize(self.buffer(), mode).map_err(Into::into)
+		T::deserialize(self.buffer()).map_err(Into::into)
 	}
 
 	pub fn read_vec<T: DeserializeBytes>(&mut self, n: usize) -> Result<Vec<T>, Error> {
-		let mode = self.options.serialization_mode;
 		let mut buffer = self.buffer();
-		repeat_with(move || T::deserialize(&mut buffer, mode).map_err(Into::into))
+		repeat_with(move || T::deserialize(&mut buffer).map_err(Into::into))
 			.take(n)
 			.collect()
 	}
@@ -193,10 +173,9 @@ impl<B: Buf> TranscriptReader<'_, B> {
 	}
 
 	pub fn read_scalar_slice_into<F: Field>(&mut self, buf: &mut [F]) -> Result<(), Error> {
-		let mode = self.options.serialization_mode;
 		let mut buffer = self.buffer();
 		for elem in buf {
-			*elem = DeserializeBytes::deserialize(&mut buffer, mode)?;
+			*elem = DeserializeBytes::deserialize(&mut buffer)?;
 		}
 		Ok(())
 	}
@@ -349,20 +328,16 @@ impl<B: BufMut> TranscriptWriter<'_, B> {
 	}
 
 	pub fn write<T: SerializeBytes>(&mut self, value: &T) {
-		let mode = self.options.serialization_mode;
 		self.proof_size_event_wrapper(move |buffer| {
-			value
-				.serialize(buffer, mode)
-				.expect("TODO: propagate error");
+			value.serialize(buffer).expect("TODO: propagate error");
 		});
 	}
 
 	pub fn write_slice<T: SerializeBytes>(&mut self, values: &[T]) {
-		let mode = self.options.serialization_mode;
 		self.proof_size_event_wrapper(move |buffer| {
 			for value in values {
 				value
-					.serialize(&mut *buffer, mode)
+					.serialize(&mut *buffer)
 					.expect("TODO: propagate error");
 			}
 		});
@@ -379,11 +354,9 @@ impl<B: BufMut> TranscriptWriter<'_, B> {
 	}
 
 	pub fn write_scalar_iter<F: Field>(&mut self, it: impl IntoIterator<Item = F>) {
-		let mode = self.options.serialization_mode;
 		self.proof_size_event_wrapper(move |buffer| {
 			for elem in it {
-				SerializeBytes::serialize(&elem, &mut *buffer, mode)
-					.expect("TODO: propagate error");
+				SerializeBytes::serialize(&elem, &mut *buffer).expect("TODO: propagate error");
 			}
 		});
 	}
@@ -413,11 +386,8 @@ where
 	Challenger_: Challenger,
 {
 	fn sample(&mut self) -> F {
-		DeserializeBytes::deserialize(
-			self.combined.challenger.sampler(),
-			self.options.serialization_mode,
-		)
-		.expect("challenger has infinite buffer")
+		DeserializeBytes::deserialize(self.combined.challenger.sampler())
+			.expect("challenger has infinite buffer")
 	}
 }
 
@@ -452,7 +422,6 @@ mod tests {
 		let mut prover_transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::with_opts(
 			HasherChallenger::<Blake2b256>::default(),
 			Options {
-				serialization_mode: SerializationMode::CanonicalTower,
 				..Default::default()
 			},
 		);
@@ -521,7 +490,6 @@ mod tests {
 		let mut prover_transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::with_opts(
 			HasherChallenger::<Blake2b256>::default(),
 			Options {
-				serialization_mode: SerializationMode::CanonicalTower,
 				..Default::default()
 			},
 		);
@@ -659,7 +627,6 @@ mod tests {
 		let mut prover_canonical = ProverTranscript::<HasherChallenger<Blake2b256>>::with_opts(
 			HasherChallenger::<Blake2b256>::default(),
 			Options {
-				serialization_mode: SerializationMode::CanonicalTower,
 				..Default::default()
 			},
 		);

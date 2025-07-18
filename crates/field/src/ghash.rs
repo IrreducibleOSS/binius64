@@ -11,7 +11,7 @@ use std::{
 };
 
 use binius_utils::{
-	DeserializeBytes, SerializationError, SerializationMode, SerializeBytes,
+	DeserializeBytes, SerializationError, SerializeBytes,
 	bytes::{Buf, BufMut},
 	iter::IterExtensions,
 };
@@ -454,31 +454,17 @@ impl ExtensionField<BinaryField1b> for BinaryField128bGhash {
 }
 
 impl SerializeBytes for BinaryField128bGhash {
-	fn serialize(
-		&self,
-		write_buf: impl BufMut,
-		mode: SerializationMode,
-	) -> Result<(), SerializationError> {
-		match mode {
-			SerializationMode::Native => self.0.serialize(write_buf, mode),
-			SerializationMode::CanonicalTower => {
-				todo!("Implement canonical tower serialization for GHASH")
-			}
-		}
+	fn serialize(&self, write_buf: impl BufMut) -> Result<(), SerializationError> {
+		self.0.serialize(write_buf)
 	}
 }
 
 impl DeserializeBytes for BinaryField128bGhash {
-	fn deserialize(read_buf: impl Buf, mode: SerializationMode) -> Result<Self, SerializationError>
+	fn deserialize(read_buf: impl Buf) -> Result<Self, SerializationError>
 	where
 		Self: Sized,
 	{
-		match mode {
-			SerializationMode::Native => Ok(Self(DeserializeBytes::deserialize(read_buf, mode)?)),
-			SerializationMode::CanonicalTower => {
-				todo!("Implement canonical tower deserialization for GHASH")
-			}
-		}
+		Ok(Self(DeserializeBytes::deserialize(read_buf)?))
 	}
 }
 

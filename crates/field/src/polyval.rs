@@ -10,7 +10,7 @@ use std::{
 };
 
 use binius_utils::{
-	DeserializeBytes, SerializationError, SerializationMode, SerializeBytes,
+	DeserializeBytes, SerializationError, SerializeBytes,
 	bytes::{Buf, BufMut},
 	iter::IterExtensions,
 };
@@ -469,31 +469,17 @@ impl ExtensionField<BinaryField1b> for BinaryField128bPolyval {
 }
 
 impl SerializeBytes for BinaryField128bPolyval {
-	fn serialize(
-		&self,
-		write_buf: impl BufMut,
-		mode: SerializationMode,
-	) -> Result<(), SerializationError> {
-		match mode {
-			SerializationMode::Native => self.0.serialize(write_buf, mode),
-			SerializationMode::CanonicalTower => {
-				BinaryField128b::from(*self).serialize(write_buf, mode)
-			}
-		}
+	fn serialize(&self, write_buf: impl BufMut) -> Result<(), SerializationError> {
+		self.0.serialize(write_buf)
 	}
 }
 
 impl DeserializeBytes for BinaryField128bPolyval {
-	fn deserialize(read_buf: impl Buf, mode: SerializationMode) -> Result<Self, SerializationError>
+	fn deserialize(read_buf: impl Buf) -> Result<Self, SerializationError>
 	where
 		Self: Sized,
 	{
-		match mode {
-			SerializationMode::Native => Ok(Self(DeserializeBytes::deserialize(read_buf, mode)?)),
-			SerializationMode::CanonicalTower => {
-				Ok(Self::from(BinaryField128b::deserialize(read_buf, mode)?))
-			}
-		}
+		Ok(Self(DeserializeBytes::deserialize(read_buf)?))
 	}
 }
 
@@ -1078,7 +1064,7 @@ pub fn is_polyval_tower<F: TowerField>() -> bool {
 
 #[cfg(test)]
 mod tests {
-	use binius_utils::{SerializationMode, SerializeBytes, bytes::BytesMut};
+	use binius_utils::{SerializeBytes, bytes::BytesMut};
 	use proptest::prelude::*;
 	use rand::prelude::*;
 
@@ -1243,27 +1229,19 @@ mod tests {
 	}
 
 	#[test]
-	fn test_canonical_serialization() {
-		let mode = SerializationMode::CanonicalTower;
+	fn test_serialization() {
 		let mut buffer = BytesMut::new();
 		let mut rng = StdRng::seed_from_u64(0);
 
 		let b128_poly1 = BinaryField128bPolyval::random(&mut rng);
 		let b128_poly2 = BinaryField128bPolyval::random(&mut rng);
 
-		SerializeBytes::serialize(&b128_poly1, &mut buffer, mode).unwrap();
-		SerializeBytes::serialize(&b128_poly2, &mut buffer, mode).unwrap();
+		SerializeBytes::serialize(&b128_poly1, &mut buffer).unwrap();
+		SerializeBytes::serialize(&b128_poly2, &mut buffer).unwrap();
 
-		let mode = SerializationMode::CanonicalTower;
 		let mut read_buffer = buffer.freeze();
 
-		assert_eq!(
-			BinaryField128bPolyval::deserialize(&mut read_buffer, mode).unwrap(),
-			b128_poly1
-		);
-		assert_eq!(
-			BinaryField128bPolyval::deserialize(&mut read_buffer, mode).unwrap(),
-			b128_poly2
-		);
+		assert_eq!(BinaryField128bPolyval::deserialize(&mut read_buffer).unwrap(), b128_poly1);
+		assert_eq!(BinaryField128bPolyval::deserialize(&mut read_buffer).unwrap(), b128_poly2);
 	}
 }

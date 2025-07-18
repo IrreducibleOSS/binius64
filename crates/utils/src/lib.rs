@@ -16,4 +16,4 @@ pub mod sparse_index;
 pub mod strided_array;
 
 pub use bytes;
-pub use serialization::{DeserializeBytes, SerializationError, SerializationMode, SerializeBytes};
+pub use serialization::{DeserializeBytes, SerializationError, SerializeBytes};

@@ -3,7 +3,7 @@
 use std::{borrow::Borrow, cmp::min};
 
 use binius_transcript::BufMut;
-use binius_utils::{SerializationError, SerializationMode, SerializeBytes};
+use binius_utils::{SerializationError, SerializeBytes};
 use bytes::buf::UninitSlice;
 use digest::{
 	Digest, Output,
@@ -77,8 +77,7 @@ where
 	{
 		let mut buffer = HashBuffer::new(&mut hasher);
 		for item in items {
-			item.borrow()
-				.serialize(&mut buffer, SerializationMode::Native)?;
+			item.borrow().serialize(&mut buffer)?;
 		}
 	}
 	Ok(hasher.finalize())

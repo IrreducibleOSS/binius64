@@ -164,21 +164,19 @@ macro_rules! impl_serialize_deserialize_for_packed_binary_field {
 			fn serialize(
 				&self,
 				write_buf: impl binius_utils::bytes::BufMut,
-				mode: binius_utils::SerializationMode,
 			) -> Result<(), binius_utils::SerializationError> {
 				assert_scalar_matches_canonical!($bin_type);
-				self.0.serialize(write_buf, mode)
+				self.0.serialize(write_buf)
 			}
 		}
 
 		impl binius_utils::DeserializeBytes for $bin_type {
 			fn deserialize(
 				read_buf: impl binius_utils::bytes::Buf,
-				mode: binius_utils::SerializationMode,
 			) -> Result<Self, binius_utils::SerializationError> {
 				assert_scalar_matches_canonical!($bin_type);
 				Ok(Self(
-					binius_utils::DeserializeBytes::deserialize(read_buf, mode)?,
+					binius_utils::DeserializeBytes::deserialize(read_buf)?,
 					std::marker::PhantomData,
 				))
 			}

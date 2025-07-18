@@ -7,7 +7,7 @@ use binius_maybe_rayon::{
 	slice::ParallelSliceMut,
 };
 use binius_transcript::BufMut;
-use binius_utils::{SerializationMode, SerializeBytes};
+use binius_utils::SerializeBytes;
 use binius_verifier::hash::HashBuffer;
 use bytes::BytesMut;
 use digest::{Digest, Output, core_api::BlockSizeUser};
@@ -123,7 +123,7 @@ impl<D: MultiDigest<N, Digest: Send> + Send + Sync, const N: usize> ParallelDige
 				for (mut buf, chunk) in buffers.iter_mut().zip(data.into_iter()) {
 					buf.clear();
 					for item in chunk {
-						item.serialize(&mut buf, SerializationMode::Native)
+						item.serialize(&mut buf)
 							.expect("pre-condition: items must serialize without error")
 					}
 				}
@@ -166,7 +166,7 @@ impl<D: Digest + BlockSizeUser + Send + Sync + Clone> ParallelDigest for D {
 			{
 				let mut buffer = HashBuffer::new(&mut hasher);
 				for item in items {
-					item.serialize(&mut buffer, SerializationMode::Native)
+					item.serialize(&mut buffer)
 						.expect("pre-condition: items must serialize without error")
 				}
 			}

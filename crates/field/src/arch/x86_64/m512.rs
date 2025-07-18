@@ -7,7 +7,7 @@ use std::{
 };
 
 use binius_utils::{
-	DeserializeBytes, SerializationError, SerializationMode, SerializeBytes,
+	DeserializeBytes, SerializationError, SerializeBytes,
 	bytes::{Buf, BufMut},
 	serialization::{assert_enough_data_for, assert_enough_space_for},
 };
@@ -137,11 +137,7 @@ impl<U: NumCast<u128>> NumCast<M512> for U {
 }
 
 impl SerializeBytes for M512 {
-	fn serialize(
-		&self,
-		mut write_buf: impl BufMut,
-		_mode: SerializationMode,
-	) -> Result<(), SerializationError> {
+	fn serialize(&self, mut write_buf: impl BufMut) -> Result<(), SerializationError> {
 		assert_enough_space_for(&write_buf, std::mem::size_of::<Self>())?;
 
 		let raw_values: [u128; 4] = (*self).into();
@@ -155,10 +151,7 @@ impl SerializeBytes for M512 {
 }
 
 impl DeserializeBytes for M512 {
-	fn deserialize(
-		mut read_buf: impl Buf,
-		_mode: SerializationMode,
-	) -> Result<Self, SerializationError>
+	fn deserialize(mut read_buf: impl Buf) -> Result<Self, SerializationError>
 	where
 		Self: Sized,
 	{
@@ -1747,16 +1740,14 @@ mod tests {
 
 	#[test]
 	fn test_serialize_and_deserialize_m512() {
-		let mode = SerializationMode::Native;
-
 		let mut rng = StdRng::from_seed([0; 32]);
 
 		let original_value = M512::from(core::array::from_fn(|_| rng.random::<u128>()));
 
 		let mut buf = BytesMut::new();
-		original_value.serialize(&mut buf, mode).unwrap();
+		original_value.serialize(&mut buf).unwrap();
 
-		let deserialized_value = M512::deserialize(buf.freeze(), mode).unwrap();
+		let deserialized_value = M512::deserialize(buf.freeze()).unwrap();
 
 		assert_eq!(original_value, deserialized_value);
 	}

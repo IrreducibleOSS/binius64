@@ -7,7 +7,7 @@ use std::{
 };
 
 use binius_utils::{
-	SerializationError, SerializationMode, SerializeBytes,
+	SerializationError, SerializeBytes,
 	bytes::{Buf, BufMut},
 	checked_arithmetics::checked_log_2,
 	serialization::DeserializeBytes,
@@ -247,21 +247,17 @@ impl From<U1> for bool {
 }
 
 impl<const N: usize> SerializeBytes for SmallU<N> {
-	fn serialize(
-		&self,
-		write_buf: impl BufMut,
-		mode: SerializationMode,
-	) -> Result<(), SerializationError> {
-		self.val().serialize(write_buf, mode)
+	fn serialize(&self, write_buf: impl BufMut) -> Result<(), SerializationError> {
+		self.val().serialize(write_buf)
 	}
 }
 
 impl<const N: usize> DeserializeBytes for SmallU<N> {
-	fn deserialize(read_buf: impl Buf, mode: SerializationMode) -> Result<Self, SerializationError>
+	fn deserialize(read_buf: impl Buf) -> Result<Self, SerializationError>
 	where
 		Self: Sized,
 	{
-		Ok(Self::new(DeserializeBytes::deserialize(read_buf, mode)?))
+		Ok(Self::new(DeserializeBytes::deserialize(read_buf)?))
 	}
 }
 

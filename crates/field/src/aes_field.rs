@@ -9,7 +9,7 @@ use std::{
 };
 
 use binius_utils::{
-	DeserializeBytes, SerializationError, SerializationMode, SerializeBytes,
+	DeserializeBytes, SerializationError, SerializeBytes,
 	bytes::{Buf, BufMut},
 };
 use bytemuck::{Pod, Zeroable};
@@ -306,36 +306,17 @@ impl_tower_field_conversion!(AESTowerField128b, BinaryField128b);
 macro_rules! serialize_deserialize_non_canonical {
 	($field:ident, canonical=$canonical:ident) => {
 		impl SerializeBytes for $field {
-			fn serialize(
-				&self,
-				write_buf: impl BufMut,
-				mode: SerializationMode,
-			) -> Result<(), SerializationError> {
-				match mode {
-					SerializationMode::Native => self.0.serialize(write_buf, mode),
-					SerializationMode::CanonicalTower => {
-						$canonical::from(*self).serialize(write_buf, mode)
-					}
-				}
+			fn serialize(&self, write_buf: impl BufMut) -> Result<(), SerializationError> {
+				self.0.serialize(write_buf)
 			}
 		}
 
 		impl DeserializeBytes for $field {
-			fn deserialize(
-				read_buf: impl Buf,
-				mode: SerializationMode,
-			) -> Result<Self, SerializationError>
+			fn deserialize(read_buf: impl Buf) -> Result<Self, SerializationError>
 			where
 				Self: Sized,
 			{
-				match mode {
-					SerializationMode::Native => {
-						Ok(Self(DeserializeBytes::deserialize(read_buf, mode)?))
-					}
-					SerializationMode::CanonicalTower => {
-						Ok(Self::from($canonical::deserialize(read_buf, mode)?))
-					}
-				}
+				Ok(Self(DeserializeBytes::deserialize(read_buf)?))
 			}
 		}
 	};
@@ -349,7 +330,7 @@ serialize_deserialize_non_canonical!(AESTowerField128b, canonical = BinaryField1
 
 #[cfg(test)]
 mod tests {
-	use binius_utils::{SerializationMode, SerializeBytes, bytes::BytesMut};
+	use binius_utils::{SerializeBytes, bytes::BytesMut};
 	use proptest::{arbitrary::any, proptest};
 	use rand::prelude::*;
 
@@ -647,7 +628,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_canonical_serialization() {
+	fn test_serialization() {
 		let mut buffer = BytesMut::new();
 		let mut rng = StdRng::seed_from_u64(0);
 		let aes8 = AESTowerField8b::random(&mut rng);
@@ -656,24 +637,18 @@ mod tests {
 		let aes64 = AESTowerField64b::random(&mut rng);
 		let aes128 = AESTowerField128b::random(&mut rng);
 
-		let mode = SerializationMode::CanonicalTower;
-
-		SerializeBytes::serialize(&aes8, &mut buffer, mode).unwrap();
-		SerializeBytes::serialize(&aes16, &mut buffer, mode).unwrap();
-		SerializeBytes::serialize(&aes32, &mut buffer, mode).unwrap();
-		SerializeBytes::serialize(&aes64, &mut buffer, mode).unwrap();
-		SerializeBytes::serialize(&aes128, &mut buffer, mode).unwrap();
-
-		SerializeBytes::serialize(&aes128, &mut buffer, mode).unwrap();
+		SerializeBytes::serialize(&aes8, &mut buffer).unwrap();
+		SerializeBytes::serialize(&aes16, &mut buffer).unwrap();
+		SerializeBytes::serialize(&aes32, &mut buffer).unwrap();
+		SerializeBytes::serialize(&aes64, &mut buffer).unwrap();
+		SerializeBytes::serialize(&aes128, &mut buffer).unwrap();
 
 		let mut read_buffer = buffer.freeze();
 
-		assert_eq!(AESTowerField8b::deserialize(&mut read_buffer, mode).unwrap(), aes8);
-		assert_eq!(AESTowerField16b::deserialize(&mut read_buffer, mode).unwrap(), aes16);
-		assert_eq!(AESTowerField32b::deserialize(&mut read_buffer, mode).unwrap(), aes32);
-		assert_eq!(AESTowerField64b::deserialize(&mut read_buffer, mode).unwrap(), aes64);
-		assert_eq!(AESTowerField128b::deserialize(&mut read_buffer, mode).unwrap(), aes128);
-
-		assert_eq!(BinaryField128b::deserialize(&mut read_buffer, mode).unwrap(), aes128.into())
+		assert_eq!(AESTowerField8b::deserialize(&mut read_buffer).unwrap(), aes8);
+		assert_eq!(AESTowerField16b::deserialize(&mut read_buffer).unwrap(), aes16);
+		assert_eq!(AESTowerField32b::deserialize(&mut read_buffer).unwrap(), aes32);
+		assert_eq!(AESTowerField64b::deserialize(&mut read_buffer).unwrap(), aes64);
+		assert_eq!(AESTowerField128b::deserialize(&mut read_buffer).unwrap(), aes128);
 	}
 }

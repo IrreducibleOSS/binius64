@@ -7,7 +7,7 @@ use std::{
 };
 
 use binius_utils::{
-	DeserializeBytes, SerializationError, SerializationMode, SerializeBytes,
+	DeserializeBytes, SerializationError, SerializeBytes,
 	bytes::{Buf, BufMut},
 	checked_arithmetics::checked_log_2,
 };
@@ -88,13 +88,9 @@ impl<PT, const N: usize> SerializeBytes for ScaledPackedField<PT, N>
 where
 	PT: SerializeBytes,
 {
-	fn serialize(
-		&self,
-		mut write_buf: impl BufMut,
-		mode: SerializationMode,
-	) -> Result<(), SerializationError> {
+	fn serialize(&self, mut write_buf: impl BufMut) -> Result<(), SerializationError> {
 		for elem in &self.0 {
-			elem.serialize(&mut write_buf, mode)?;
+			elem.serialize(&mut write_buf)?;
 		}
 		Ok(())
 	}
@@ -104,13 +100,10 @@ impl<PT, const N: usize> DeserializeBytes for ScaledPackedField<PT, N>
 where
 	PT: DeserializeBytes,
 {
-	fn deserialize(
-		mut read_buf: impl Buf,
-		mode: SerializationMode,
-	) -> Result<Self, SerializationError> {
+	fn deserialize(mut read_buf: impl Buf) -> Result<Self, SerializationError> {
 		let mut result = Vec::with_capacity(N);
 		for _ in 0..N {
-			result.push(PT::deserialize(&mut read_buf, mode)?);
+			result.push(PT::deserialize(&mut read_buf)?);
 		}
 
 		match result.try_into() {
@@ -601,7 +594,7 @@ where
 
 #[cfg(test)]
 mod tests {
-	use binius_utils::{SerializationMode, SerializeBytes, bytes::BytesMut};
+	use binius_utils::{SerializeBytes, bytes::BytesMut};
 	use rand::{Rng, SeedableRng, rngs::StdRng};
 
 	use super::ScaledPackedField;
@@ -609,8 +602,6 @@ mod tests {
 
 	#[test]
 	fn test_equivalent_serialization_between_packed_representations() {
-		let mode = SerializationMode::Native;
-
 		let mut rng = StdRng::seed_from_u64(0);
 
 		let byte_low: u8 = rng.random();
@@ -625,10 +616,8 @@ mod tests {
 		let mut buffer_packed = BytesMut::new();
 		let mut buffer_equivalent = BytesMut::new();
 
-		packed.serialize(&mut buffer_packed, mode).unwrap();
-		packed_equivalent
-			.serialize(&mut buffer_equivalent, mode)
-			.unwrap();
+		packed.serialize(&mut buffer_packed).unwrap();
+		packed_equivalent.serialize(&mut buffer_equivalent).unwrap();
 
 		assert_eq!(buffer_packed, buffer_equivalent);
 	}
