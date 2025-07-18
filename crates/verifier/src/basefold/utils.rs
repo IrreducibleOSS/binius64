@@ -10,8 +10,14 @@ pub fn evaluate_round_polynomial_at<F: Field>(x: F, round_msg: Vec<F>) -> F {
 	let y_leading_coeff = round_msg[2];
 
 	// lagrange basis polynomials
-	let l_0 = (x - x_1) * (x_0 - x_1).invert().unwrap();
-	let l_1 = (x - x_0) * (x_1 - x_0).invert().unwrap();
+	let l_0 = (x - x_1)
+		* (x_0 - x_1)
+			.invert()
+			.expect("x_0 - x_1 should be non-zero (x_0=0, x_1=1)");
+	let l_1 = (x - x_0)
+		* (x_1 - x_0)
+			.invert()
+			.expect("x_1 - x_0 should be non-zero (x_0=0, x_1=1)");
 	let poly_with_leading_coeff = (x - x_0) * (x - x_1);
 
 	l_0 * y_0 + l_1 * y_1 + poly_with_leading_coeff * y_leading_coeff

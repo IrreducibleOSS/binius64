@@ -8,6 +8,7 @@ use binius_utils::rayon::{
 use binius_verifier::{
 	basefold::utils::evaluate_round_polynomial_at, protocols::sumcheck::RoundCoeffs,
 };
+
 use crate::protocols::sumcheck::{common::SumcheckProver, error::Error};
 
 /// Exposes a round-by-round interface to prove the sum of A(X) * B(X) for
