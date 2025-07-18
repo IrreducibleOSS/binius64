@@ -32,11 +32,13 @@ defaults:
 
 # Add binary-specific configurations below
 binaries:
-# Example:
-# "bench.my_benchmark":
-#   runs:
-#     - name: "multi-threaded"
-#       args: ["--bench"]
-#       env:
-#         RAYON_NUM_THREADS: "8"
-#       timeout_seconds: 600
+  "example.sha256":
+    runs:
+      - name: "sha256_8KB"
+        args: ["--max-len", "8192"]
+      - name: "sha256_16KB"
+        args: ["--max-len", "16384"]
+      - name: "sha256_32KB"
+        args: ["--max-len", "32768"]
+    #   - name: "default"
+    #     args: ["--max-len", "65536"]

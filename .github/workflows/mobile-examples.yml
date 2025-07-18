@@ -1,10 +1,10 @@
 ---
-name: Mobile Tests
+name: Mobile Examples
 
 "on":
   schedule:
-    # Run every day at 4 AM UTC (off-peak for AWS Device Farm)
-    - cron: '0 4 * * *'
+    # Run daily at 6 AM UTC (off-peak for AWS Device Farm)
+    - cron: '0 6 * * *'
   workflow_dispatch:
     inputs:
       device_pools:
@@ -95,18 +95,12 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          key: mobile-test-android
+          key: mobile-examples-android
           cache-on-failure: true
 
-      - name: Build tests
+      - name: Build examples
         run: |
-          mobilebench build rust --build-type test --target aarch64-linux-android
-          ls -la mobile/android_binaries/*/
-
-      - name: Remove subprocess-dependent tests
-        run: |
-          # Remove ceck testsuite tests that require subprocess execution
-          rm -f mobile/android_binaries/*/test.testsuite-*
+          mobilebench build rust --build-type example --target aarch64-linux-android
           ls -la mobile/android_binaries/*/
 
       - name: Cache Gradle dependencies
@@ -128,11 +122,11 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: mobile-test-apk
+          name: mobile-examples-apk
           path: mobile/android_apk/
           retention-days: 1
 
-  run-tests:
+  run-examples:
     needs: [prepare-matrix, build-apk]
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -156,7 +150,7 @@ jobs:
       - name: Download APK artifact
         uses: actions/download-artifact@v4
         with:
-          name: mobile-test-apk
+          name: mobile-examples-apk
           path: mobile/android_apk/
 
       - name: Setup Python
@@ -177,7 +171,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::788825212508:role/GitHubMonbijouRole
-          role-session-name: github-actions-mobile-test-${{ matrix.device-pool }}
+          role-session-name: github-actions-mobile-examples-${{ matrix.device-pool }}
           aws-region: us-west-2
 
       - name: Verify mobilebench
@@ -198,14 +192,14 @@ jobs:
           set +e  # Disable automatic exit on error to properly capture exit codes
 
           if [ -n "$RESULT_DIR" ] && [ -d "$RESULT_DIR" ]; then
-            mobilebench results parse "$RESULT_DIR" --format console --fail-on-error > "$RESULT_DIR/test_results_summary.txt"
+            mobilebench results parse "$RESULT_DIR" --format console --fail-on-error > "$RESULT_DIR/example_results_summary.txt"
             PARSE_EXIT_CODE=$?
 
-            mobilebench results parse "$RESULT_DIR" --format json > "$RESULT_DIR/test_results.json"
-            mobilebench results parse "$RESULT_DIR" --format github > "$RESULT_DIR/test_results_github.md"
+            mobilebench results parse "$RESULT_DIR" --format json > "$RESULT_DIR/example_results.json"
+            mobilebench results parse "$RESULT_DIR" --format github > "$RESULT_DIR/example_results_github.md"
 
             if [ $PARSE_EXIT_CODE -ne 0 ]; then
-              echo "::error::Some tests failed on ${{ matrix.device-pool }}"
+              echo "::error::Some examples failed on ${{ matrix.device-pool }}"
               exit 1
             fi
           else
@@ -238,9 +232,9 @@ jobs:
           COMMIT_SHORT="${{ github.sha }}" && COMMIT_SHORT="${COMMIT_SHORT:0:8}"
 
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            S3_PATH="s3://mobilebench-7f4a9d2c/${REPO_NAME}-tests/pr/${{ github.event.pull_request.number }}/${DATETIME}-${COMMIT_SHORT}/${{ matrix.device-pool }}"
+            S3_PATH="s3://mobilebench-7f4a9d2c/${REPO_NAME}-examples/pr/${{ github.event.pull_request.number }}/${DATETIME}-${COMMIT_SHORT}/${{ matrix.device-pool }}"
           else
-            S3_PATH="s3://mobilebench-7f4a9d2c/${REPO_NAME}-tests/${{ github.ref_name }}/${DATETIME}-${COMMIT_SHORT}/${{ matrix.device-pool }}"
+            S3_PATH="s3://mobilebench-7f4a9d2c/${REPO_NAME}-examples/${{ github.ref_name }}/${DATETIME}-${COMMIT_SHORT}/${{ matrix.device-pool }}"
           fi
 
           aws s3 sync "$RESULT_DIR" "${S3_PATH}/" --no-progress
@@ -250,21 +244,21 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always() && env.RESULT_DIR != ''
         with:
-          name: test-results-${{ matrix.device-pool }}-${{ github.run_id }}
+          name: example-results-${{ matrix.device-pool }}-${{ github.run_id }}
           path: mobile/results/
           retention-days: 90
 
       - name: Summary - ${{ matrix.device-pool }}
         if: always()
         run: |
-          echo "## 📱 Mobile Test Results - ${{ matrix.device-pool }}" >> $GITHUB_STEP_SUMMARY
+          echo "## 🚀 Mobile Example Results - ${{ matrix.device-pool }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [ -f "$RESULT_DIR/test_results_github.md" ]; then
-            cat "$RESULT_DIR/test_results_github.md" >> $GITHUB_STEP_SUMMARY
-          elif [ -f "$RESULT_DIR/test_results_summary.txt" ]; then
+          if [ -f "$RESULT_DIR/example_results_github.md" ]; then
+            cat "$RESULT_DIR/example_results_github.md" >> $GITHUB_STEP_SUMMARY
+          elif [ -f "$RESULT_DIR/example_results_summary.txt" ]; then
             echo '```' >> $GITHUB_STEP_SUMMARY
-            head -n 50 "$RESULT_DIR/test_results_summary.txt" >> $GITHUB_STEP_SUMMARY
+            head -n 50 "$RESULT_DIR/example_results_summary.txt" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
           else
             echo "⚠️ No results found" >> $GITHUB_STEP_SUMMARY
