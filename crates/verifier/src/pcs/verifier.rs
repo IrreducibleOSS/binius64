@@ -1,34 +1,33 @@
 use binius_field::{BinaryField, ExtensionField, Field, PackedExtension, TowerField};
+use binius_math::ring_switch::{construct_s_hat_u, eval_rs_eq};
 use binius_transcript::{
 	VerifierTranscript,
 	fiat_shamir::{CanSample, Challenger},
 };
 use binius_utils::DeserializeBytes;
-use crate::{fields::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme};
 use itertools::Itertools;
+
 use crate::{
-	basefold::verifier::BaseFoldVerifier,
-    basefold::utils::{
-        // compute_mle_eq_sum,
-        eq_ind_mle,
-        // construct_s_hat_u,
-        // compute_expected_sumcheck_claim,
-    },
+	basefold::utils::{
+		// compute_mle_eq_sum,
+		eq_ind_mle,
+		// construct_s_hat_u,
+		// compute_expected_sumcheck_claim,
+	},
 	// ring_switch::eq_ind_eval::eval_rs_eq,
 	// utils::{
 	// 	constants::KAPPA,
 	// 	eq_ind::eq_ind_mle,
 	// 	utils::{compute_expected_sumcheck_claim, compute_mle_eq_sum, construct_s_hat_u},
 	// },
+	basefold::verifier::BaseFoldVerifier,
 };
-
-use binius_math::ring_switch::{construct_s_hat_u, eval_rs_eq};
+use crate::{fields::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme};
 
 // use binius_field::{ExtensionField, Field, PackedExtension};
 // use binius_verifier::fields::B1;
 
 // use super::tensor_algebra::TensorAlgebra;
-
 
 pub fn compute_mle_eq_sum<BigField: Field>(
 	mle_values: &[BigField],
@@ -46,7 +45,6 @@ pub fn compute_expected_sumcheck_claim<
 ) -> BigField {
 	compute_mle_eq_sum(s_hat_u, eq_r_double_prime)
 }
-
 
 const KAPPA: usize = 7;
 

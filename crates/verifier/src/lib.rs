@@ -5,8 +5,8 @@ pub mod fields;
 pub mod fri;
 pub mod hash;
 pub mod merkle_tree;
-pub mod protocols;
 pub mod pcs;
+pub mod protocols;
 mod verify;
 
 pub use error::*;

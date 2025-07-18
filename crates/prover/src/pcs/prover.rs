@@ -2,7 +2,11 @@ use binius_field::{
 	BinaryField, ExtensionField, Field, PackedExtension, PackedField, TowerField,
 	as_packed_field::PackScalar, underlier::WithUnderlier,
 };
-use binius_math::{FieldBuffer, ntt::AdditiveNTT};
+use binius_math::{
+	FieldBuffer,
+	ntt::AdditiveNTT,
+	ring_switch::{construct_s_hat_u, eq_ind_mle, rs_eq_ind},
+};
 // use binius_prover::merkle_tree::MerkleTreeProver;
 use binius_transcript::{
 	ProverTranscript,
@@ -11,17 +15,6 @@ use binius_transcript::{
 use binius_utils::SerializeBytes;
 use binius_verifier::{fields::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme};
 use itertools::Itertools;
-
-
-use crate::{
-    fri,
-    fri::{FRIFolder, FoldRoundOutput},
-    merkle_tree::MerkleTreeProver,
-    protocols::sumcheck::common::SumcheckProver,
-    basefold::sumcheck::{FoldDirection, MultilinearSumcheckProver},
-    basefold::utils::verify_sumcheck_round,
-};
-
 
 use crate::{
 	basefold::prover::BaseFoldProver,
@@ -33,8 +26,16 @@ use crate::{
 	// 	utils::{compute_expected_sumcheck_claim, construct_s_hat_u},
 	// },
 };
-
-use binius_math::ring_switch::{eq_ind_mle, rs_eq_ind, construct_s_hat_u};
+use crate::{
+	basefold::{
+		sumcheck::{FoldDirection, MultilinearSumcheckProver},
+		utils::verify_sumcheck_round,
+	},
+	fri,
+	fri::{FRIFolder, FoldRoundOutput},
+	merkle_tree::MerkleTreeProver,
+	protocols::sumcheck::common::SumcheckProver,
+};
 
 pub fn compute_mle_eq_sum<BigField: Field>(
 	mle_values: &[BigField],
@@ -223,15 +224,11 @@ pub fn prover_samples_batching_scalars<F: Field + TowerField, TranscriptChalleng
 	(0..KAPPA).map(|_| transcript.sample()).collect_vec()
 }
 
-
 #[cfg(test)]
 mod test {
-	use super::{OneBitPCSProver, KAPPA, compute_mle_eq_sum};
-	use binius_field::{Random, ExtensionField, Field};
-	use binius_math::{FieldBuffer, ReedSolomonCode, ntt::SingleThreadedNTT};
-	use crate::{
-		fri::{self, CommitOutput},
-		merkle_tree::prover::BinaryMerkleTreeProver,
+	use binius_field::{ExtensionField, Field, Random};
+	use binius_math::{
+		FieldBuffer, ReedSolomonCode, ntt::SingleThreadedNTT, ring_switch::eq_ind_mle,
 	};
 	use binius_transcript::ProverTranscript;
 	use binius_verifier::{
@@ -239,12 +236,17 @@ mod test {
 		fields::{B1, B128},
 		fri::FRIParams,
 		hash::{StdCompression, StdDigest},
+		pcs::verifier::OneBitPCSVerifier,
 	};
 	use itertools::Itertools;
 	use rand::{SeedableRng, rngs::StdRng};
-	use binius_verifier::pcs::verifier::OneBitPCSVerifier;
-	use binius_math::ring_switch::{eq_ind_mle};
-	
+
+	use super::{KAPPA, OneBitPCSProver, compute_mle_eq_sum};
+	use crate::{
+		fri::{self, CommitOutput},
+		merkle_tree::prover::BinaryMerkleTreeProver,
+	};
+
 	const LOG_INV_RATE: usize = 1;
 	const NUM_TEST_QUERIES: usize = 3;
 
@@ -273,7 +275,6 @@ mod test {
 			.map(|&elm| BigField::from(elm))
 			.collect()
 	}
-
 
 	#[test]
 	#[allow(non_snake_case)]
@@ -316,13 +317,7 @@ mod test {
 			commitment: codeword_commitment,
 			committed: codeword_committed,
 			codeword,
-		} = fri::commit_interleaved(
-			&fri_params,
-			&ntt,
-			&merkle_prover,
-			packed_mle.to_ref(),
-		)
-		.unwrap();
+		} = fri::commit_interleaved(&fri_params, &ntt, &merkle_prover, packed_mle.to_ref()).unwrap();
 
 		// commit codeword in prover transcript
 		let mut prover_challenger = ProverTranscript::new(StdChallenger::default());

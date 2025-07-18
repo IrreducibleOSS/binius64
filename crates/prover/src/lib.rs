@@ -4,8 +4,8 @@ mod formatting;
 pub mod fri;
 pub mod hash;
 pub mod merkle_tree;
-pub mod protocols;
 pub mod pcs;
+pub mod protocols;
 mod prove;
 
 pub use error::*;
