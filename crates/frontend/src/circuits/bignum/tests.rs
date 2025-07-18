@@ -24,12 +24,12 @@ fn from_u64_limbs(limbs: &[u64]) -> BigUint {
 /// numeric value from a bignum represented as wires in the circuit.
 ///
 /// # Arguments
-/// * `bignum` - The `BigNum` to covert
 /// * `w` - Witness filler containing the actual values
+/// * `bignum` - The `BigNum` to covert
 ///
 /// # Returns
 /// The bignum value as a `BigUint`
-pub fn bignum_to_biguint(bignum: &BigNum, w: &WitnessFiller) -> BigUint {
+pub fn bignum_to_biguint(w: &WitnessFiller, bignum: &BigNum) -> BigUint {
 	let limb_vals: Vec<_> = bignum.limbs.iter().map(|&l| w[l].as_u64()).collect();
 	from_u64_limbs(&limb_vals)
 }
@@ -192,7 +192,7 @@ fn test_mul_with_values(a_limbs: Vec<u64>, b_limbs: Vec<u64>) -> TestResult {
 
 	cs.populate_wire_witness(&mut w).unwrap();
 
-	let result_big = bignum_to_biguint(&result, &w);
+	let result_big = bignum_to_biguint(&w, &result);
 
 	if result_big != expected {
 		return TestResult::error(format!(
@@ -226,7 +226,7 @@ fn test_square_with_values(a_limbs: Vec<u64>) -> TestResult {
 
 	cs.populate_wire_witness(&mut w).unwrap();
 
-	let result_big = bignum_to_biguint(&result, &w);
+	let result_big = bignum_to_biguint(&w, &result);
 
 	if result_big != expected {
 		return TestResult::error(format!(
@@ -263,8 +263,8 @@ fn prop_square_vs_mul_equivalence(vals: Vec<u64>) -> TestResult {
 
 	cs.populate_wire_witness(&mut w).unwrap();
 
-	let square_big = bignum_to_biguint(&square_result, &w);
-	let mul_big = bignum_to_biguint(&mul_result, &w);
+	let square_big = bignum_to_biguint(&w, &square_result);
+	let mul_big = bignum_to_biguint(&w, &mul_result);
 
 	if square_big != mul_big {
 		return TestResult::error(format!("square(a) != mul(a,a): {square_big} != {mul_big}"));
