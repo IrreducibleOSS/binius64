@@ -174,7 +174,6 @@ mod test {
 
 	pub const LOG_INV_RATE: usize = 1;
 	pub const NUM_TEST_QUERIES: usize = 3;
-
 	pub type FA = B128;
 
 	#[test]
