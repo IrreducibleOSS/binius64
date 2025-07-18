@@ -6,6 +6,7 @@ use binius_utils::rayon::{
 	slice::ParallelSlice,
 };
 use binius_verifier::protocols::sumcheck::RoundCoeffs;
+
 use binius_verifier::basefold::utils::evaluate_round_polynomial_at;
 use crate::protocols::sumcheck::{common::SumcheckProver, error::Error};
 
@@ -120,16 +121,13 @@ impl<F: Field> SumcheckProver<F> for MultilinearSumcheckProver<F> {
 	}
 }
 
-
-
 #[cfg(test)]
 pub mod test {
-	use super::*;
-
-    use binius_field::{BinaryField128b, Random};
-    use binius_math::{multilinear::eq::eq_ind_partial_eval, test_utils::random_field_buffer};
+	use binius_field::{BinaryField128b, Random};
+	use binius_math::{multilinear::eq::eq_ind_partial_eval, test_utils::random_field_buffer};
 	use rand::{SeedableRng, rngs::StdRng};
 	use binius_verifier::basefold::utils::verify_sumcheck_round;
+	use super::*;
 
 	type F = BinaryField128b;
 
