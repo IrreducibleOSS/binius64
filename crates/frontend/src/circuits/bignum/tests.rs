@@ -9,20 +9,13 @@ use crate::{
 	word::Word,
 };
 
-/// Convert a slice of u64 limbs (little-endian ordering) to a BigUint.
-///
-/// # Arguments
-/// * `slice` - Limbs in little-endian order (slice\[0\] is least significant)
-///
-/// # Returns
-/// The value as a `BigUint` for arbitrary precision arithmetic
-pub fn biguint_from_u64_slice(slice: &[u64]) -> BigUint {
-	BigUint::from_bytes_le(
-		&slice
-			.iter()
-			.flat_map(|&v| v.to_le_bytes())
-			.collect::<Vec<u8>>(),
-	)
+/// Returns a BigUint from u64 limbs with little-endian ordering
+fn from_u64_limbs(limbs: &[u64]) -> BigUint {
+	let mut bytes = Vec::with_capacity(limbs.len() * 8);
+	for &word in limbs {
+		bytes.extend_from_slice(&word.to_le_bytes());
+	}
+	BigUint::from_bytes_le(&bytes)
 }
 
 /// Convert witness BigNum to BigUint for computation.
@@ -38,7 +31,7 @@ pub fn biguint_from_u64_slice(slice: &[u64]) -> BigUint {
 /// The bignum value as a `BigUint`
 pub fn bignum_to_biguint(bignum: &BigNum, w: &WitnessFiller) -> BigUint {
 	let limb_vals: Vec<_> = bignum.limbs.iter().map(|&l| w[l].as_u64()).collect();
-	biguint_from_u64_slice(&limb_vals)
+	from_u64_limbs(&limb_vals)
 }
 
 #[quickcheck]
@@ -193,8 +186,8 @@ fn test_mul_with_values(a_limbs: Vec<u64>, b_limbs: Vec<u64>) -> TestResult {
 		w[b.limbs[i]] = Word(val);
 	}
 
-	let a_big = biguint_from_u64_slice(&a_limbs);
-	let b_big = biguint_from_u64_slice(&b_limbs);
+	let a_big = from_u64_limbs(&a_limbs);
+	let b_big = from_u64_limbs(&b_limbs);
 	let expected = &a_big * &b_big;
 
 	cs.populate_wire_witness(&mut w).unwrap();
@@ -228,7 +221,7 @@ fn test_square_with_values(a_limbs: Vec<u64>) -> TestResult {
 		w[a.limbs[i]] = Word(val);
 	}
 
-	let a_big = biguint_from_u64_slice(&a_limbs);
+	let a_big = from_u64_limbs(&a_limbs);
 	let expected = &a_big * &a_big;
 
 	cs.populate_wire_witness(&mut w).unwrap();
