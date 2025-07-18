@@ -3,14 +3,13 @@ use rand::{SeedableRng, rngs::StdRng};
 use std::vec;
 use binius_maybe_rayon::prelude::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator, IntoParallelRefIterator, ParallelSliceMut, IntoParallelIterator};
 use binius_verifier::protocols::sumcheck::RoundCoeffs;
+use crate::protocols::sumcheck::{
+    common::SumcheckProver,
+    error::Error,
+    and_reduction::mle::BigFieldMultilinear,
+};
 
-use crate::protocols::sumcheck::common::SumcheckProver;
-
-use crate::protocols::sumcheck::error::Error;
-
-
-use crate::protocols::sumcheck::and_reduction::mle::BigFieldMultilinear;
-
+use binius_math::FieldBuffer;
 
 pub fn eq_ind<F: Field>(zerocheck_challenges: &[F]) -> BigFieldMultilinear<F> {
     let mut mle = bytemuck::zeroed_vec(1 << zerocheck_challenges.len());
@@ -116,7 +115,6 @@ impl<F: Field> MultilinearSumcheckProver<F> {
         }
     }
 
-    // parallel round message computation
     fn round_msg_par(&self) -> Vec<F> {
         let _span = tracing::debug_span!("round message parallel").entered();
 
@@ -181,10 +179,16 @@ impl<F: Field> MultilinearSumcheckProver<F> {
         round_msg.extend([g_of_zero, g_of_one, g_leading_coeff]);
         round_msg
     }
+}
 
-    // parallel fold
-    fn fold_par(&mut self, challenge: F) {
-        let _span = tracing::debug_span!("fold inplace parallel").entered();
+impl<F: Field> SumcheckProver<F> for MultilinearSumcheckProver<F> {
+
+    fn n_vars(&self) -> usize {
+        self.multilinears[0].n_vars
+    }
+
+    // folds challenge into multilinears
+    fn fold(&mut self, sumcheck_challenge: F) -> Result<(), Error> {
 
         let n = 1 << self.multilinears[0].n_vars;
         let n_half = n >> 1;
@@ -196,14 +200,13 @@ impl<F: Field> MultilinearSumcheckProver<F> {
                     .par_iter_mut()
                     .enumerate()
                     .for_each(|(i, multilinear)| {
-                        // let _span = tracing::debug_span!("low to high fold inplace parallel").entered();
 
                         if i < 3 {
                             for j in 0..n_half {
                                 let (low_idx, high_idx) = (2 * j, 2 * j + 1);
                                 let even = multilinear.packed_evals[low_idx];
                                 let odd = multilinear.packed_evals[high_idx];
-                                multilinear.packed_evals[j] = even + challenge * (odd - even);
+                                multilinear.packed_evals[j] = even + sumcheck_challenge * (odd - even);
                             }
                         } else {
                             for j in 0..n_half {
@@ -220,7 +223,7 @@ impl<F: Field> MultilinearSumcheckProver<F> {
                     });
 
                 // optimzation, handle eq differently w/ cheeky factorization
-                self.eq_factor *=  self.zerocheck_challenges[self.round_index] + challenge + F::ONE;
+                self.eq_factor *=  self.zerocheck_challenges[self.round_index] + sumcheck_challenge + F::ONE;
             }
             // Parallel fold safe better for high-to-low
             FoldDirection::HighToLow => {
@@ -241,7 +244,7 @@ impl<F: Field> MultilinearSumcheckProver<F> {
                     low.par_chunks_mut(1024).for_each(|chunk| {
                         // let _span = tracing::debug_span!("high to low fold inplace parallel").entered();
                         for (elm, high_elm) in chunk.iter_mut().zip(high.iter()) {
-                            *elm += challenge * (*high_elm - *elm);
+                            *elm += sumcheck_challenge * (*high_elm - *elm);
                         }
                     });
                 }
@@ -252,18 +255,9 @@ impl<F: Field> MultilinearSumcheckProver<F> {
                 }
             }
         }
-    }
-}
 
-impl<F: Field> SumcheckProver<F> for MultilinearSumcheckProver<F> {
 
-    fn n_vars(&self) -> usize {
-        self.multilinears[0].n_vars
-    }
 
-    // folds challenge into multilinears
-    fn fold(&mut self, sumcheck_challenge: F) -> Result<(), Error> {
-        self.fold_par(sumcheck_challenge);
 
         let zerocheck_challenge = self.zerocheck_challenges[self.zerocheck_challenge_idx()];
 
@@ -287,13 +281,69 @@ impl<F: Field> SumcheckProver<F> for MultilinearSumcheckProver<F> {
     fn execute(&mut self) -> Result<Vec<RoundCoeffs<F>>, Error> {
         let round_msg = self.round_msg_par();
 
-        let round_coeffs = vec![RoundCoeffs {
-            0: vec![round_msg[0], round_msg[1], round_msg[2]],  
-        }];
 
-        self.round_message = Some(round_coeffs[0].clone());
+        let log_n = self.multilinears[0].n_vars;
+        let n = 1 << log_n;
+        let n_half = n >> 1;
 
-        Ok(round_coeffs)
+        let a = &self.multilinears[0].packed_evals;
+        let b = &self.multilinears[1].packed_evals;
+        let c = &self.multilinears[2].packed_evals;
+        let d = &self.multilinears[3].packed_evals;
+
+        // compute indices for either high to low or low to high
+        let compute_idx: fn((usize, usize)) -> (usize, usize) = match self.fold_direction {
+            FoldDirection::LowToHigh => |(j, _)| (2 * j, 2 * j + 1),
+            FoldDirection::HighToLow => |(j, n)| (j, n + j),
+        };
+
+        // chunk indices into 1024 chunks
+        let (mut g_of_zero, mut g_leading_coeff) = (0..n_half)
+            .into_par_iter()
+            .chunks(1024)
+            .map(|chunk| {
+                // let _span = tracing::debug_span!("high to low fold inplace parallel").entered();
+
+                let mut acc_g_of_zero = F::ZERO;
+                let mut acc_g_leading_coeff = F::ZERO;
+
+                for j in chunk {
+                    let (low_idx, high_idx) = compute_idx((j, n_half));
+
+                    let a_lower = a[low_idx];
+                    let b_lower = b[low_idx];
+                    let c_lower = c[low_idx];
+                    let d_lower = d[low_idx];
+
+                    let a_upper = a[high_idx];
+                    let b_upper = b[high_idx];
+                    let d_upper = d[high_idx];
+
+                    acc_g_of_zero += (a_lower * b_lower - c_lower) * d_lower;
+                    acc_g_leading_coeff +=
+                        (a_lower + a_upper) * (b_lower + b_upper) * (d_lower + d_upper);
+                }
+
+                (acc_g_of_zero, acc_g_leading_coeff)
+            })
+            .reduce(
+                || (F::ZERO, F::ZERO),
+                |(sum0, sum1), (x0, x1)| (sum0 + x0, sum1 + x1),
+            );
+
+        // multiply by eq_factor
+        g_of_zero *= self.eq_factor;
+        g_leading_coeff *= self.eq_factor;
+
+        // g(1) = current_round_claim - g(0)
+        let g_of_one = self.current_round_claim - g_of_zero;
+
+        // save round message for optimization
+        self.round_message = Some(
+            RoundCoeffs {0: vec![g_of_zero, g_of_one, g_leading_coeff]}
+        );
+
+        Ok(vec![self.round_message.clone().unwrap()])
     }
 
     fn finish(self) -> Result<Vec<F>, Error> {
