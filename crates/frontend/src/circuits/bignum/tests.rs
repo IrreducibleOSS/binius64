@@ -1,4 +1,5 @@
 use num_bigint::BigUint;
+use num_integer::Integer;
 use quickcheck::TestResult;
 use quickcheck_macros::quickcheck;
 
@@ -354,4 +355,120 @@ fn prop_compare_different(a_vals: Vec<u64>, b_vals: Vec<u64>) -> TestResult {
 	}
 
 	TestResult::passed()
+}
+
+#[quickcheck]
+fn prop_mod_reduce(a_vals: Vec<u64>, mod_vals: Vec<u64>) -> TestResult {
+	if mod_vals.len() > a_vals.len() {
+		return TestResult::discard();
+	}
+
+	if mod_vals.iter().all(|&v| v == 0) {
+		return TestResult::discard();
+	}
+
+	let builder = CircuitBuilder::new();
+	let a = BigNum::new_witness(&builder, a_vals.len());
+	let modulus = BigNum::new_witness(&builder, mod_vals.len());
+
+	let quotient = BigNum::new_witness(&builder, a.limbs.len());
+	let remainder = BigNum::new_witness(&builder, modulus.limbs.len());
+
+	let circuit = ModReduce::new(&builder, a, modulus, quotient, remainder);
+
+	let cs = builder.build();
+	let mut w = cs.new_witness_filler();
+
+	circuit.a.populate_limbs(&mut w, &a_vals);
+	circuit.modulus.populate_limbs(&mut w, &mod_vals);
+
+	let a_big = from_u64_limbs(&a_vals);
+	let modulus_big = from_u64_limbs(&mod_vals);
+	let (q_big, r_big) = a_big.div_rem(&modulus_big);
+
+	let mut q_limbs = q_big.to_u64_digits();
+	q_limbs.resize(circuit.quotient.limbs.len(), 0u64);
+	circuit.quotient.populate_limbs(&mut w, &q_limbs);
+
+	let mut r_limbs = r_big.to_u64_digits();
+	r_limbs.resize(circuit.remainder.limbs.len(), 0u64);
+
+	circuit.remainder.populate_limbs(&mut w, &r_limbs);
+
+	if let Err(e) = cs.populate_wire_witness(&mut w) {
+		return TestResult::error(format!("Circuit execution failed: {e:?}"));
+	}
+
+	let a_big = bignum_to_biguint(&w, &circuit.a);
+	let modulus_big = bignum_to_biguint(&w, &circuit.modulus);
+	let quotient_big = bignum_to_biguint(&w, &circuit.quotient);
+	let remainder_big = bignum_to_biguint(&w, &circuit.remainder);
+
+	let reconstructed = &quotient_big * &modulus_big + &remainder_big;
+	if reconstructed != a_big {
+		return TestResult::error(format!(
+			"ModReduce failed: {a_big} != {quotient_big} * {modulus_big} + {remainder_big}"
+		));
+	}
+
+	if let Err(e) = verify_constraints(&cs.constraint_system(), &w.into_value_vec()) {
+		return TestResult::error(format!("Constraint verification failed: {e:?}"));
+	}
+
+	TestResult::passed()
+}
+
+#[quickcheck]
+fn prop_mod_reduce_invalid_inputs(
+	a_vals: Vec<u64>,
+	mod_vals: Vec<u64>,
+	mut quotient_vals: Vec<u64>,
+	mut remainder_vals: Vec<u64>,
+) -> TestResult {
+	if mod_vals.len() > a_vals.len() {
+		return TestResult::discard();
+	}
+
+	if mod_vals.iter().all(|&v| v == 0) {
+		return TestResult::discard();
+	}
+
+	quotient_vals.resize(a_vals.len(), 0);
+	remainder_vals.resize(mod_vals.len(), 0);
+
+	let a_big = from_u64_limbs(&a_vals);
+	let modulus_big = from_u64_limbs(&mod_vals);
+	let (correct_q, correct_r) = a_big.div_rem(&modulus_big);
+	let provided_q = from_u64_limbs(&quotient_vals);
+	let provided_r = from_u64_limbs(&remainder_vals);
+
+	// If the provided values are actually correct, skip this test case
+	if provided_q == correct_q && provided_r == correct_r {
+		return TestResult::discard();
+	}
+
+	let builder = CircuitBuilder::new();
+
+	let a = BigNum::new_witness(&builder, a_vals.len());
+	let modulus = BigNum::new_witness(&builder, mod_vals.len());
+	let quotient = BigNum::new_witness(&builder, a_vals.len());
+	let remainder = BigNum::new_witness(&builder, mod_vals.len());
+
+	let circuit = ModReduce::new(&builder, a, modulus, quotient, remainder);
+
+	let cs = builder.build();
+	let mut w = cs.new_witness_filler();
+
+	circuit.a.populate_limbs(&mut w, &a_vals);
+	circuit.modulus.populate_limbs(&mut w, &mod_vals);
+	circuit.quotient.populate_limbs(&mut w, &quotient_vals);
+	circuit.remainder.populate_limbs(&mut w, &remainder_vals);
+
+	// The circuit should fail to populate witnesses with incorrect values
+	match cs.populate_wire_witness(&mut w) {
+		Ok(_) => TestResult::error(format!(
+			"Circuit incorrectly accepted invalid quotient/remainder: a={a_big}, mod={modulus_big}, q={provided_q} (correct={correct_q}), r={provided_r} (correct={correct_r})"
+		)),
+		Err(_) => TestResult::passed(),
+	}
 }

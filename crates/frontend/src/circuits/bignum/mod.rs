@@ -8,7 +8,7 @@
 mod tests;
 
 use crate::{
-	compiler::{CircuitBuilder, Wire},
+	compiler::{CircuitBuilder, Wire, WitnessFiller},
 	word::Word,
 };
 
@@ -32,6 +32,16 @@ impl BigNum {
 	pub fn new_witness(b: &CircuitBuilder, num_limbs: usize) -> Self {
 		let limbs = (0..num_limbs).map(|_| b.add_witness()).collect();
 		BigNum { limbs }
+	}
+
+	/// Populate the BigNum with the expected limb_values
+	///
+	/// Panics if limb_values.len() != self.limbs.len()
+	pub fn populate_limbs(&self, w: &mut WitnessFiller, limb_values: &[u64]) {
+		assert!(limb_values.len() == self.limbs.len());
+		for (&wire, &v) in self.limbs.iter().zip(limb_values.iter()) {
+			w[wire] = Word::from_u64(v);
+		}
 	}
 }
 
@@ -246,4 +256,64 @@ fn compute_stack_adds(builder: &CircuitBuilder, limb_stacks: &[Vec<Wire>]) -> Bi
 	}
 
 	BigNum { limbs: sums }
+}
+
+/// Modular reduction verification for BigNum.
+///
+/// This circuit verifies that:
+///
+/// a = quotient * modulus + remainder
+pub struct ModReduce {
+	pub a: BigNum,
+	pub modulus: BigNum,
+	pub quotient: BigNum,
+	pub remainder: BigNum,
+}
+
+impl ModReduce {
+	/// Creates a new modular reduction verifier circuit.
+	///
+	/// # Arguments
+	/// * `builder` - Circuit builder for constraint generation
+	/// * `a` - The dividend
+	/// * `modulus` - The divisor
+	/// * `quotient` - The quotient
+	/// * `remainder` - The remainder
+	///
+	/// # Constraints
+	/// The circuit enforces that `a = quotient * modulus + remainder`
+	pub fn new(
+		builder: &CircuitBuilder,
+		a: BigNum,
+		modulus: BigNum,
+		quotient: BigNum,
+		remainder: BigNum,
+	) -> Self {
+		let zero = builder.add_constant(Word::ZERO);
+
+		let product = mul(builder, &quotient, &modulus);
+
+		let mut remainder_padded = remainder.limbs.clone();
+		remainder_padded.resize(product.limbs.len(), zero);
+		let remainder_padded = BigNum {
+			limbs: remainder_padded,
+		};
+
+		let reconstructed = add(builder, &product, &remainder_padded);
+
+		let mut a_padded = a.limbs.clone();
+		a_padded.resize(reconstructed.limbs.len(), zero);
+		let a_padded = BigNum { limbs: a_padded };
+
+		let eq = compare(builder, &reconstructed, &a_padded);
+		let all_ones = builder.add_constant(Word::ALL_ONE);
+		builder.assert_eq("mod_reduce_reconstruction", eq, all_ones);
+
+		ModReduce {
+			a,
+			modulus,
+			quotient,
+			remainder,
+		}
+	}
 }

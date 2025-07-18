@@ -13,6 +13,7 @@ hex-literal = "1.0.0"
 base64 = "0.21"
 hex = "0.4.3"
 num-bigint = "0.4"
+num-integer = "0.1.46"
 quickcheck = "1.0"
 quickcheck_macros = "1.0"
 proptest = { workspace = true }
