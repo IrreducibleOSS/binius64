@@ -129,8 +129,9 @@ pub mod test {
 	use rand::{SeedableRng, rngs::StdRng};
 
 	use super::*;
-	use binius_verifier::basefold::utils::verify_sumcheck_round;
-
+	use binius_verifier::{
+		basefold::utils::verify_sumcheck_round, protocols::sumcheck::RoundCoeffs,
+	};
 	type F = BinaryField128b;
 
 	fn random_challenge() -> F {
