@@ -14,6 +14,7 @@ import sys
 import tempfile
 import time
 import threading
+from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 
@@ -28,6 +29,7 @@ class CoverageRunner:
     def __init__(self):
         self.workspace_root = self._get_workspace_root()
         self.workspace_name = os.path.basename(self.workspace_root)
+        self._regression_detected = False
         # ANSI color codes
         self.colors = {
             'green': '\033[92m',
@@ -366,17 +368,52 @@ class CoverageRunner:
 
         print("\nRust Code Coverage Analysis")
 
+        # Determine what packages to run
         if args.all_packages:
-            # Get all packages and run coverage for each
             packages = self._get_all_packages()
             print(f"Found packages: {', '.join(packages)}")
-            self._run_multiple_packages_with_aggregate(packages, args)
-        elif len(args.packages) > 1:
-            # Multiple packages specified explicitly
-            self._run_multiple_packages_with_aggregate(args.packages, args)
+        elif args.packages:
+            packages = args.packages
         else:
-            # Single package or workspace
+            packages = []
+
+        # Run coverage and collect stats
+        stats = None
+        if len(packages) > 1:
+            # Multiple packages - run with aggregate
+            stats = self._run_multiple_packages_with_aggregate_stats(packages, args)
+        elif len(packages) == 1:
+            # Single package
+            args_copy = argparse.Namespace(**vars(args))
+            args_copy.packages = packages
+            stats = self._run_normal(args_copy, return_stats=True)
+            # Need to wrap single package stats for consistency
+            if stats:
+                stats['package_stats'] = [{
+                    'name': packages[0],
+                    'line_pct': (stats['covered_lines'] / stats['total_lines'] * 100) if stats['total_lines'] > 0 else 0,
+                    'function_pct': (stats['covered_functions'] / stats['total_functions'] * 100) if stats['total_functions'] > 0 else 0,
+                    'covered_lines': stats['covered_lines'],
+                    'total_lines': stats['total_lines'],
+                    'covered_functions': stats['covered_functions'],
+                    'total_functions': stats['total_functions']
+                }]
+                # Also set all_coverage_data for file details
+                stats['all_coverage_data'] = stats.get('coverage_data', [])
+        else:
+            # No specific packages - run workspace
             self._run_normal(args)
+            
+        # Handle baseline operations
+        if args.save_baseline and stats:
+            self._save_baseline(args.save_baseline, stats)
+            
+        if args.compare_baseline and stats:
+            baseline = self._load_baseline(args.compare_baseline)
+            passed = self._compare_with_baseline(baseline, stats)
+            
+            if args.fail_on_regression and not passed:
+                sys.exit(1)
 
     def _run_normal(self, args, return_stats=False):
         """Run coverage in normal mode."""
@@ -686,8 +723,8 @@ class CoverageRunner:
 
         print("")
 
-    def _run_multiple_packages_with_aggregate(self, packages, args):
-        """Run coverage for multiple packages and show aggregate stats."""
+    def _run_multiple_packages_with_aggregate_stats(self, packages, args):
+        """Run coverage for multiple packages and return aggregate stats."""
         # Track aggregate statistics
         aggregate_stats = {
             'total_lines': 0,
@@ -718,7 +755,7 @@ class CoverageRunner:
                 aggregate_stats['covered_lines'] += pkg_stats['covered_lines']
                 aggregate_stats['total_functions'] += pkg_stats['total_functions']
                 aggregate_stats['covered_functions'] += pkg_stats['covered_functions']
-
+                
                 # Store per-package summary
                 pkg_line_pct = (pkg_stats['covered_lines'] / pkg_stats['total_lines'] * 100) if pkg_stats['total_lines'] > 0 else 0
                 pkg_func_pct = (pkg_stats['covered_functions'] / pkg_stats['total_functions'] * 100) if pkg_stats['total_functions'] > 0 else 0
@@ -731,7 +768,7 @@ class CoverageRunner:
                     'covered_functions': pkg_stats['covered_functions'],
                     'total_functions': pkg_stats['total_functions']
                 })
-
+                
                 # Prefix filenames with package name for aggregate report
                 for item in pkg_stats['coverage_data']:
                     item['filename'] = f"{pkg}::{item['filename']}"
@@ -741,6 +778,312 @@ class CoverageRunner:
         # Print aggregate summary if we processed multiple packages
         if len(packages) > 1:
             self._print_aggregate_summary(aggregate_stats)
+            
+        return aggregate_stats
+
+    def _run_multiple_packages_with_aggregate(self, packages, args):
+        """Run coverage for multiple packages and show aggregate stats."""
+        # Just call the stats version - it already handles printing
+        return self._run_multiple_packages_with_aggregate_stats(packages, args)
+
+    def _save_baseline(self, filename: str, stats: Dict):
+        """Save coverage statistics to a baseline file."""
+        # Get current git commit if available
+        try:
+            commit = subprocess.run(['git', 'rev-parse', 'HEAD'], 
+                                  capture_output=True, text=True).stdout.strip()
+            branch = subprocess.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], 
+                                  capture_output=True, text=True).stdout.strip()
+        except:
+            commit = "unknown"
+            branch = "unknown"
+        
+        baseline_data = {
+            'timestamp': datetime.now().isoformat(),
+            'commit': commit,
+            'branch': branch,
+            'packages': {},
+            'overall': {
+                'line_coverage': 0.0,
+                'function_coverage': 0.0,
+                'total_lines': stats.get('total_lines', 0),
+                'covered_lines': stats.get('covered_lines', 0),
+                'total_functions': stats.get('total_functions', 0),
+                'covered_functions': stats.get('covered_functions', 0)
+            },
+            'files': {}  # Add file-level coverage details
+        }
+        
+        # Save file-level coverage data
+        if 'all_coverage_data' in stats:
+            for file_data in stats['all_coverage_data']:
+                baseline_data['files'][file_data['filename']] = {
+                    'lines': {
+                        'total': file_data['lines']['total'],
+                        'covered': file_data['lines']['total'] - file_data['lines']['missed'],
+                        'percent': float(file_data['lines']['percent'].rstrip('%'))
+                    },
+                    'functions': {
+                        'total': file_data['functions']['total'],
+                        'covered': file_data['functions']['total'] - file_data['functions']['missed'],
+                        'percent': float(file_data['functions']['percent'].rstrip('%'))
+                    }
+                }
+        
+        # If we have package stats, use them
+        if 'package_stats' in stats:
+            for pkg_stat in stats['package_stats']:
+                baseline_data['packages'][pkg_stat['name']] = {
+                    'line_coverage': pkg_stat['line_pct'],
+                    'function_coverage': pkg_stat['function_pct'],
+                    'total_lines': pkg_stat['total_lines'],
+                    'covered_lines': pkg_stat['covered_lines'],
+                    'total_functions': pkg_stat['total_functions'],
+                    'covered_functions': pkg_stat['covered_functions']
+                }
+        
+        # Calculate overall stats
+        if stats.get('total_lines', 0) > 0:
+            baseline_data['overall']['line_coverage'] = (
+                stats['covered_lines'] / stats['total_lines'] * 100
+            )
+        if stats.get('total_functions', 0) > 0:
+            baseline_data['overall']['function_coverage'] = (
+                stats['covered_functions'] / stats['total_functions'] * 100
+            )
+        
+        # Write to file
+        with open(filename, 'w') as f:
+            json.dump(baseline_data, f, indent=2)
+        
+        print(f"\nBaseline saved to: {filename}")
+        print(f"  Branch: {branch}")
+        print(f"  Commit: {commit[:8]}")
+        print(f"  Overall line coverage: {baseline_data['overall']['line_coverage']:.2f}%")
+        print(f"  Overall function coverage: {baseline_data['overall']['function_coverage']:.2f}%")
+        print(f"  Files tracked: {len(baseline_data['files'])}")
+    
+    def _load_baseline(self, filename: str) -> Dict:
+        """Load baseline data from file."""
+        try:
+            with open(filename, 'r') as f:
+                return json.load(f)
+        except FileNotFoundError:
+            print(f"ERROR: Baseline file not found: {filename}")
+            sys.exit(1)
+        except json.JSONDecodeError:
+            print(f"ERROR: Invalid baseline file format: {filename}")
+            sys.exit(1)
+    
+    def _compare_with_baseline(self, baseline: Dict, current_stats: Dict) -> bool:
+        """Compare current coverage with baseline. Returns True if no regression."""
+        print("\n" + "="*60)
+        print("COVERAGE COMPARISON")
+        print("="*60)
+        
+        # Show baseline info
+        print(f"\nBaseline from: {baseline['branch']} ({baseline['commit'][:8]})")
+        print(f"Created: {baseline['timestamp']}")
+        
+        # Calculate current overall coverage
+        current_line_coverage = 0.0
+        current_func_coverage = 0.0
+        if current_stats.get('total_lines', 0) > 0:
+            current_line_coverage = current_stats['covered_lines'] / current_stats['total_lines'] * 100
+        if current_stats.get('total_functions', 0) > 0:
+            current_func_coverage = current_stats['covered_functions'] / current_stats['total_functions'] * 100
+        
+        # Compare overall
+        baseline_line = baseline['overall']['line_coverage']
+        baseline_func = baseline['overall']['function_coverage']
+        overall_line_delta = current_line_coverage - baseline_line
+        overall_func_delta = current_func_coverage - baseline_func
+        
+        print(f"\nOverall Coverage Comparison:")
+        print(f"  Line Coverage:     {baseline_line:.2f}% → {current_line_coverage:.2f}% ({self._format_delta(overall_line_delta)})")
+        print(f"  Function Coverage: {baseline_func:.2f}% → {current_func_coverage:.2f}% ({self._format_delta(overall_func_delta)})")
+        
+        # Track regressions at different levels
+        package_regressions = []
+        file_regressions = []
+        
+        # Package-level comparison if available
+        if 'package_stats' in current_stats and current_stats['package_stats']:
+            print("\nPer-Package Comparison:")
+            headers = ['Package', 'Lines (Base)', 'Lines (Current)', 'Delta', 'Functions (Base)', 'Functions (Current)', 'Delta']
+            rows = []
+            
+            for pkg_stat in current_stats['package_stats']:
+                pkg_name = pkg_stat['name']
+                baseline_pkg = baseline['packages'].get(pkg_name, {})
+                
+                # Get baseline values (0 if new package)
+                base_line = baseline_pkg.get('line_coverage', 0.0)
+                base_func = baseline_pkg.get('function_coverage', 0.0)
+                
+                # Calculate deltas
+                line_delta = pkg_stat['line_pct'] - base_line
+                func_delta = pkg_stat['function_pct'] - base_func
+                
+                # Track package-level regressions
+                if line_delta < 0 or func_delta < 0:
+                    package_regressions.append(pkg_name)
+                
+                row = [
+                    pkg_name,
+                    f"{base_line:.2f}%",
+                    f"{pkg_stat['line_pct']:.2f}%",
+                    self._format_delta(line_delta),
+                    f"{base_func:.2f}%",
+                    f"{pkg_stat['function_pct']:.2f}%",
+                    self._format_delta(func_delta)
+                ]
+                rows.append(row)
+            
+            if HAS_TABULATE:
+                print(tabulate(rows, headers=headers, tablefmt='simple'))
+        
+        # File-level comparison if available
+        if 'files' in baseline and 'all_coverage_data' in current_stats:
+            print("\nFile-Level Changes:")
+            file_changes = []
+            
+            # Create a map of current files
+            current_files = {}
+            for file_data in current_stats['all_coverage_data']:
+                current_files[file_data['filename']] = {
+                    'lines': {
+                        'total': file_data['lines']['total'],
+                        'covered': file_data['lines']['total'] - file_data['lines']['missed'],
+                        'percent': float(file_data['lines']['percent'].rstrip('%'))
+                    },
+                    'functions': {
+                        'total': file_data['functions']['total'],
+                        'covered': file_data['functions']['total'] - file_data['functions']['missed'],
+                        'percent': float(file_data['functions']['percent'].rstrip('%'))
+                    }
+                }
+            
+            # Compare files that exist in both baseline and current
+            for filename, baseline_file in baseline['files'].items():
+                if filename in current_files:
+                    current_file = current_files[filename]
+                    line_delta = current_file['lines']['percent'] - baseline_file['lines']['percent']
+                    func_delta = current_file['functions']['percent'] - baseline_file['functions']['percent']
+                    
+                    # Only show files with significant changes
+                    if abs(line_delta) > 0.1 or abs(func_delta) > 0.1:
+                        file_changes.append({
+                            'filename': filename,
+                            'line_delta': line_delta,
+                            'func_delta': func_delta,
+                            'base_line': baseline_file['lines']['percent'],
+                            'curr_line': current_file['lines']['percent'],
+                            'base_func': baseline_file['functions']['percent'],
+                            'curr_func': current_file['functions']['percent']
+                        })
+                        
+                        # Track file-level regressions
+                        if line_delta < 0 or func_delta < 0:
+                            file_regressions.append(filename)
+            
+            # Sort by largest regression first
+            file_changes.sort(key=lambda x: min(x['line_delta'], x['func_delta']))
+            
+            if file_changes:
+                headers = ['File', 'Lines (Base)', 'Lines (Current)', 'Delta', 'Functions (Base)', 'Functions (Current)', 'Delta']
+                rows = []
+                
+                # Show top 10 files with changes
+                for change in file_changes[:10]:
+                    row = [
+                        change['filename'][:60] + '...' if len(change['filename']) > 60 else change['filename'],
+                        f"{change['base_line']:.1f}%",
+                        f"{change['curr_line']:.1f}%",
+                        self._format_delta(change['line_delta']),
+                        f"{change['base_func']:.1f}%",
+                        f"{change['curr_func']:.1f}%",
+                        self._format_delta(change['func_delta'])
+                    ]
+                    rows.append(row)
+                
+                if HAS_TABULATE:
+                    print(tabulate(rows, headers=headers, tablefmt='simple'))
+                
+                if len(file_changes) > 10:
+                    print(f"\n  ... and {len(file_changes) - 10} more files with changes")
+        
+        # Summary of regressions
+        if package_regressions or file_regressions:
+            print("\nRegression Summary:")
+            if package_regressions:
+                print(f"  Packages with regression: {', '.join(package_regressions)}")
+            if file_regressions:
+                print(f"  Files with regression: {len(file_regressions)}")
+        
+        # Check for regression at any level - overall, package, or file
+        has_regression = overall_line_delta < 0 or overall_func_delta < 0 or bool(package_regressions) or bool(file_regressions)
+        
+        print("\n" + "="*60)
+        if has_regression:
+            print(f"{self.colors['red']}COVERAGE REGRESSION DETECTED{self.colors['reset']}")
+        else:
+            print(f"{self.colors['green']}COVERAGE CHECK PASSED{self.colors['reset']}")
+        print("="*60)
+        
+        # Store regression state for programmatic access
+        self._regression_detected = has_regression
+        
+        return not has_regression
+    
+    def _format_delta(self, delta: float) -> str:
+        """Format coverage delta with color and sign."""
+        if delta > 0:
+            return f"{self.colors['green']}+{delta:.2f}%{self.colors['reset']}"
+        elif delta < 0:
+            return f"{self.colors['red']}{delta:.2f}%{self.colors['reset']}"
+        else:
+            return f"{delta:.2f}%"
+
+
+def run_coverage(packages=None, all_packages=False, save_baseline=None, compare_baseline=None, 
+                 fail_on_regression=False, format='summary', debug=False, **kwargs):
+    """Run coverage programmatically with specified options.
+    
+    Returns:
+        int: Exit code (0 for success, 1 for failure/regression)
+    """
+    # Build args namespace
+    args = argparse.Namespace(
+        packages=packages or [],
+        all_packages=all_packages,
+        save_baseline=save_baseline,
+        compare_baseline=compare_baseline,
+        fail_on_regression=fail_on_regression,
+        format=format,
+        debug=debug,
+        exclude=kwargs.get('exclude', []),
+        lib=kwargs.get('lib', False),
+        test=kwargs.get('test', []),
+        open=kwargs.get('open', False),
+        no_cfg_coverage_nightly=kwargs.get('no_cfg_coverage_nightly', False),
+        workspace=False
+    )
+    
+    # Check if no package selection made
+    if not args.packages and not args.all_packages:
+        raise ValueError("Must specify packages or use all_packages=True")
+    
+    # Set workspace flag
+    args.workspace = not args.packages and not args.all_packages
+    
+    runner = CoverageRunner()
+    runner.run(args)
+    
+    # Return exit code based on regression check
+    if args.fail_on_regression and runner._regression_detected:
+        return 1
+    return 0
 
 
 def main():
@@ -772,6 +1115,14 @@ def main():
                        help='Build and test in debug mode (default: release)')
     parser.add_argument('--no-cfg-coverage-nightly', action='store_true',
                        help='Disable cfg(coverage_nightly) flag')
+    
+    # Baseline comparison options
+    parser.add_argument('--save-baseline', metavar='FILE',
+                       help='Save coverage results to baseline file')
+    parser.add_argument('--compare-baseline', metavar='FILE',
+                       help='Compare coverage against baseline file')
+    parser.add_argument('--fail-on-regression', action='store_true',
+                       help='Exit with error code if coverage decreases')
 
     args = parser.parse_args()
 
