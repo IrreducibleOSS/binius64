@@ -6,15 +6,14 @@ use binius_transcript::{
 };
 use binius_utils::DeserializeBytes;
 use itertools::Itertools;
+
+use super::utils::{KAPPA, compute_expected_sumcheck_claim, compute_mle_eq_sum};
 use crate::{
-	basefold::utils::eq_ind_mle,
-	basefold::verifier::BaseFoldVerifier,
+	basefold::{utils::eq_ind_mle, verifier::BaseFoldVerifier},
 	fields::B1,
 	fri::FRIParams,
 	merkle_tree::MerkleTreeScheme,
 };
-
-use super::utils::{KAPPA, compute_mle_eq_sum, compute_expected_sumcheck_claim};
 
 pub struct OneBitPCSVerifier {}
 
@@ -72,7 +71,7 @@ impl OneBitPCSVerifier {
 				n_vars - KAPPA,
 			)
 			.expect("failed to verify basefold transcript");
-		
+
 		// Final Basefold Verification
 		let (_, eval_point_high) = eval_point.split_at(KAPPA);
 		let rs_eq_at_basefold_challenges_verifier = eval_rs_eq(

@@ -14,17 +14,14 @@ use binius_transcript::{
 };
 use binius_utils::SerializeBytes;
 use binius_verifier::{
-	fields::B1, 
-	fri::FRIParams, 
+	fields::B1,
+	fri::FRIParams,
 	merkle_tree::MerkleTreeScheme,
 	pcs::utils::{KAPPA, compute_expected_sumcheck_claim},
 };
 use itertools::Itertools;
 
-use crate::{
-	basefold::prover::BaseFoldProver,
-	merkle_tree::MerkleTreeProver,
-};
+use crate::{basefold::prover::BaseFoldProver, merkle_tree::MerkleTreeProver};
 
 pub fn compute_mle_eq_sum<BigField: Field>(
 	mle_values: &[BigField],
@@ -121,12 +118,9 @@ where
 			prover_computed_sumcheck_claim,
 		);
 
-		big_field_basefold_prover.prove_with_transcript(
-			prover_computed_sumcheck_claim,
-			big_field_n_vars,
-			transcript,
-		)
-		.expect("failed to prove with transcript");
+		big_field_basefold_prover
+			.prove_with_transcript(prover_computed_sumcheck_claim, big_field_n_vars, transcript)
+			.expect("failed to prove with transcript");
 	}
 
 	// send s_hat_v to the verifier
@@ -273,15 +267,16 @@ mod test {
 		let lifted_small_field_mle =
 			lift_small_to_large_field(&large_field_mle_to_small_field_mle::<B1, B128>(&packed_mle));
 
-		let packed_mle = FieldBuffer::from_values(&packed_mle).expect("failed to create field buffer from packed MLE");
+		let packed_mle = FieldBuffer::from_values(&packed_mle)
+			.expect("failed to create field buffer from packed MLE");
 
 		// parameters...
 
 		let merkle_prover =
 			BinaryMerkleTreeProver::<B128, StdDigest, _>::new(StdCompression::default());
 
-		let committed_rs_code =
-			ReedSolomonCode::<FA>::new(packed_mle.log_len(), LOG_INV_RATE).expect("failed to create Reed-Solomon code");
+		let committed_rs_code = ReedSolomonCode::<FA>::new(packed_mle.log_len(), LOG_INV_RATE)
+			.expect("failed to create Reed-Solomon code");
 
 		let fri_log_batch_size = 0;
 		let fri_arities = vec![1; packed_mle.log_len() - 1];
@@ -290,12 +285,14 @@ mod test {
 				.expect("failed to create FRI parameters");
 
 		// Commit packed mle codeword to transcript
-		let ntt = SingleThreadedNTT::new(fri_params.rs_code().log_len()).expect("failed to create single-threaded NTT");
+		let ntt = SingleThreadedNTT::new(fri_params.rs_code().log_len())
+			.expect("failed to create single-threaded NTT");
 		let CommitOutput {
 			commitment: codeword_commitment,
 			committed: codeword_committed,
 			codeword,
-		} = fri::commit_interleaved(&fri_params, &ntt, &merkle_prover, packed_mle.to_ref()).expect("failed to commit codeword");
+		} = fri::commit_interleaved(&fri_params, &ntt, &merkle_prover, packed_mle.to_ref())
+			.expect("failed to commit codeword");
 
 		// commit codeword in prover transcript
 		let mut prover_challenger = ProverTranscript::new(StdChallenger::default());
@@ -311,7 +308,8 @@ mod test {
 
 		// Instantiate ring switch pcs
 		let ring_switch_pcs_prover =
-			OneBitPCSProver::new(packed_mle, evaluation_claim, evaluation_point.clone()).expect("failed to create OneBitPCS prover");
+			OneBitPCSProver::new(packed_mle, evaluation_claim, evaluation_point.clone())
+				.expect("failed to create OneBitPCS prover");
 
 		// prove non-interactively
 		ring_switch_pcs_prover.prove_with_transcript(
@@ -326,7 +324,10 @@ mod test {
 		// convert the finalized prover transcript into a verifier transcript
 		let mut verifier_challenger = prover_challenger.into_verifier();
 		// retrieve the initial commitment from the transcript
-		let codeword_commitment = verifier_challenger.message().read().expect("failed to read codeword commitment from transcript");
+		let codeword_commitment = verifier_challenger
+			.message()
+			.read()
+			.expect("failed to read codeword commitment from transcript");
 
 		// REST OF THE PROTOCOL IS VERIFIED HERE
 
