@@ -13,28 +13,17 @@ use binius_transcript::{
 	fiat_shamir::{CanSample, Challenger},
 };
 use binius_utils::SerializeBytes;
-use binius_verifier::{fields::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme};
+use binius_verifier::{
+	fields::B1, 
+	fri::FRIParams, 
+	merkle_tree::MerkleTreeScheme,
+	pcs::utils::{KAPPA, compute_expected_sumcheck_claim},
+};
 use itertools::Itertools;
 
 use crate::{
 	basefold::prover::BaseFoldProver,
-	// basefold::utils::compute_expected_sumcheck_claim,
-	// ring_switch::eq_ind::rs_eq_ind,
-	// utils::{
-	// 	constants::KAPPA,
-	// 	eq_ind::eq_ind_mle,
-	// 	utils::{compute_expected_sumcheck_claim, construct_s_hat_u},
-	// },
-};
-use crate::{
-	basefold::{
-		sumcheck::{FoldDirection, MultilinearSumcheckProver},
-		utils::verify_sumcheck_round,
-	},
-	fri,
-	fri::{FRIFolder, FoldRoundOutput},
 	merkle_tree::MerkleTreeProver,
-	protocols::sumcheck::common::SumcheckProver,
 };
 
 pub fn compute_mle_eq_sum<BigField: Field>(
@@ -43,18 +32,6 @@ pub fn compute_mle_eq_sum<BigField: Field>(
 ) -> BigField {
 	mle_values.iter().zip(eq_values).map(|(m, e)| *m * *e).sum()
 }
-
-pub fn compute_expected_sumcheck_claim<
-	SmallField: Field,
-	BigField: Field + ExtensionField<SmallField> + PackedExtension<SmallField>,
->(
-	s_hat_u: &[BigField],
-	eq_r_double_prime: &[BigField],
-) -> BigField {
-	compute_mle_eq_sum(s_hat_u, eq_r_double_prime)
-}
-
-pub const KAPPA: usize = 7;
 
 pub struct OneBitPCSProver<BigField>
 where
@@ -148,7 +125,8 @@ where
 			prover_computed_sumcheck_claim,
 			big_field_n_vars,
 			transcript,
-		);
+		)
+		.expect("failed to prove with transcript");
 	}
 
 	// send s_hat_v to the verifier
@@ -214,7 +192,7 @@ where
 			rs_eq_ind,
 			basefold_sumcheck_claim,
 		)
-		.unwrap()
+		.expect("failed to create BaseFold prover")
 	}
 }
 
@@ -295,7 +273,7 @@ mod test {
 		let lifted_small_field_mle =
 			lift_small_to_large_field(&large_field_mle_to_small_field_mle::<B1, B128>(&packed_mle));
 
-		let packed_mle = FieldBuffer::from_values(&packed_mle).unwrap();
+		let packed_mle = FieldBuffer::from_values(&packed_mle).expect("failed to create field buffer from packed MLE");
 
 		// parameters...
 
@@ -303,21 +281,21 @@ mod test {
 			BinaryMerkleTreeProver::<B128, StdDigest, _>::new(StdCompression::default());
 
 		let committed_rs_code =
-			ReedSolomonCode::<FA>::new(packed_mle.log_len(), LOG_INV_RATE).unwrap();
+			ReedSolomonCode::<FA>::new(packed_mle.log_len(), LOG_INV_RATE).expect("failed to create Reed-Solomon code");
 
 		let fri_log_batch_size = 0;
 		let fri_arities = vec![1; packed_mle.log_len() - 1];
 		let fri_params =
 			FRIParams::new(committed_rs_code, fri_log_batch_size, fri_arities, NUM_TEST_QUERIES)
-				.unwrap();
+				.expect("failed to create FRI parameters");
 
 		// Commit packed mle codeword to transcript
-		let ntt = SingleThreadedNTT::new(fri_params.rs_code().log_len()).unwrap();
+		let ntt = SingleThreadedNTT::new(fri_params.rs_code().log_len()).expect("failed to create single-threaded NTT");
 		let CommitOutput {
 			commitment: codeword_commitment,
 			committed: codeword_committed,
 			codeword,
-		} = fri::commit_interleaved(&fri_params, &ntt, &merkle_prover, packed_mle.to_ref()).unwrap();
+		} = fri::commit_interleaved(&fri_params, &ntt, &merkle_prover, packed_mle.to_ref()).expect("failed to commit codeword");
 
 		// commit codeword in prover transcript
 		let mut prover_challenger = ProverTranscript::new(StdChallenger::default());
@@ -333,7 +311,7 @@ mod test {
 
 		// Instantiate ring switch pcs
 		let ring_switch_pcs_prover =
-			OneBitPCSProver::new(packed_mle, evaluation_claim, evaluation_point.clone()).unwrap();
+			OneBitPCSProver::new(packed_mle, evaluation_claim, evaluation_point.clone()).expect("failed to create OneBitPCS prover");
 
 		// prove non-interactively
 		ring_switch_pcs_prover.prove_with_transcript(
@@ -348,7 +326,7 @@ mod test {
 		// convert the finalized prover transcript into a verifier transcript
 		let mut verifier_challenger = prover_challenger.into_verifier();
 		// retrieve the initial commitment from the transcript
-		let codeword_commitment = verifier_challenger.message().read().unwrap();
+		let codeword_commitment = verifier_challenger.message().read().expect("failed to read codeword commitment from transcript");
 
 		// REST OF THE PROTOCOL IS VERIFIED HERE
 
@@ -362,6 +340,6 @@ mod test {
 			merkle_prover.scheme(),
 			n_vars,
 		)
-		.unwrap();
+		.expect("failed to verify one-bit PCS transcript");
 	}
 }

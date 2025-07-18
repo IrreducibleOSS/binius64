@@ -6,47 +6,15 @@ use binius_transcript::{
 };
 use binius_utils::DeserializeBytes;
 use itertools::Itertools;
-
 use crate::{
-	basefold::utils::{
-		// compute_mle_eq_sum,
-		eq_ind_mle,
-		// construct_s_hat_u,
-		// compute_expected_sumcheck_claim,
-	},
-	// ring_switch::eq_ind_eval::eval_rs_eq,
-	// utils::{
-	// 	constants::KAPPA,
-	// 	eq_ind::eq_ind_mle,
-	// 	utils::{compute_expected_sumcheck_claim, compute_mle_eq_sum, construct_s_hat_u},
-	// },
+	basefold::utils::eq_ind_mle,
 	basefold::verifier::BaseFoldVerifier,
+	fields::B1,
+	fri::FRIParams,
+	merkle_tree::MerkleTreeScheme,
 };
-use crate::{fields::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme};
 
-// use binius_field::{ExtensionField, Field, PackedExtension};
-// use binius_verifier::fields::B1;
-
-// use super::tensor_algebra::TensorAlgebra;
-
-pub fn compute_mle_eq_sum<BigField: Field>(
-	mle_values: &[BigField],
-	eq_values: &[BigField],
-) -> BigField {
-	mle_values.iter().zip(eq_values).map(|(m, e)| *m * *e).sum()
-}
-
-pub fn compute_expected_sumcheck_claim<
-	SmallField: Field,
-	BigField: Field + ExtensionField<SmallField> + PackedExtension<SmallField>,
->(
-	s_hat_u: &[BigField],
-	eq_r_double_prime: &[BigField],
-) -> BigField {
-	compute_mle_eq_sum(s_hat_u, eq_r_double_prime)
-}
-
-const KAPPA: usize = 7;
+use super::utils::{KAPPA, compute_mle_eq_sum, compute_expected_sumcheck_claim};
 
 pub struct OneBitPCSVerifier {}
 
@@ -70,7 +38,7 @@ impl OneBitPCSVerifier {
 		let s_hat_v = transcript
 			.message()
 			.read_scalar_slice::<BigField>(1 << KAPPA)
-			.unwrap();
+			.expect("failed to read s_hat_v");
 
 		// verifier checks initial message
 		let (eval_point_low, _) = eval_point.split_at(KAPPA);
@@ -103,7 +71,8 @@ impl OneBitPCSVerifier {
 				vcs,
 				n_vars - KAPPA,
 			)
-			.unwrap();
+			.expect("failed to verify basefold transcript");
+		
 		// Final Basefold Verification
 		let (_, eval_point_high) = eval_point.split_at(KAPPA);
 		let rs_eq_at_basefold_challenges_verifier = eval_rs_eq(
