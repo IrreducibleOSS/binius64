@@ -13,6 +13,7 @@ use std::{
 /// # Safety
 /// Implementors must ensure that `&Self` can be safely bit-cast to `&[U; Self::WIDTH]` and
 /// `&mut Self` can be safely bit-cast to `&mut [U; Self::WIDTH]`.
+#[allow(dead_code)]
 pub unsafe trait Divisible<U: UnderlierType>: UnderlierType {
 	const WIDTH: usize = {
 		assert!(size_of::<Self>().is_multiple_of(size_of::<U>()));

@@ -1,6 +1,6 @@
 // Copyright 2024-2025 Irreducible Inc.
 
-use std::ops::Range;
+use std::{iter::repeat_with, ops::Range};
 
 use binius_field::{
 	AESTowerField8b, BinaryField, BinaryField8b, ByteSlicedAES8x16x16b, ByteSlicedAES16x32x8b,
@@ -12,7 +12,6 @@ use binius_field::{
 		packed_32::PackedBinaryField2x16b,
 		packed_64::{PackedBinaryField2x32b, PackedBinaryField4x16b},
 	},
-	underlier::{NumCast, WithUnderlier},
 };
 use rand::prelude::*;
 
@@ -264,7 +263,7 @@ fn check_packed_extension_roundtrip_all_ntts<P, PE>(
 	max_log_coset: usize,
 ) where
 	P: PackedField<Scalar: BinaryField>,
-	PE: RepackedExtension<P> + WithUnderlier<Underlier: NumCast<u128>>,
+	PE: RepackedExtension<P>,
 {
 	let simple_ntt = SingleThreadedNTT::<P::Scalar>::new(log_domain_size)
 		.unwrap()
@@ -281,8 +280,9 @@ fn check_packed_extension_roundtrip_all_ntts<P, PE>(
 		.precompute_twiddles()
 		.multithreaded();
 
-	let mut data = (0..1u128 << log_data_size)
-		.map(|i| PE::from_underlier(NumCast::num_cast_from(i)))
+	let mut rng = StdRng::seed_from_u64(0);
+	let mut data = repeat_with(|| PE::random(&mut rng))
+		.take(1 << log_data_size)
 		.collect::<Vec<_>>();
 
 	let cosets = 0..1 << max_log_coset;

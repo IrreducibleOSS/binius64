@@ -36,7 +36,7 @@ mod tests;
 pub mod tower_levels;
 mod tracing;
 pub mod transpose;
-pub mod underlier;
+mod underlier;
 pub mod util;
 
 pub use aes_field::*;

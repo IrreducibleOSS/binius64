@@ -3,12 +3,11 @@
 use std::{array, time::Duration};
 
 use binius_field::{
-	BinaryField1b, BinaryField4b, BinaryField8b, BinaryField32b, BinaryField64b, Field,
+	BinaryField, BinaryField1b, BinaryField4b, BinaryField8b, BinaryField32b, BinaryField64b,
 	PackedBinaryField1x128b, PackedBinaryField2x128b, PackedBinaryField4x32b,
 	PackedBinaryField4x128b, PackedBinaryField8x32b, PackedBinaryField8x64b,
 	PackedBinaryField16x8b, PackedBinaryField32x8b, PackedBinaryField64x8b, PackedExtension,
 	packed::mul_by_subfield_scalar,
-	underlier::{UnderlierType, WithUnderlier},
 };
 use criterion::{
 	BenchmarkGroup, Throughput, criterion_group, criterion_main, measurement::WallTime,
@@ -16,7 +15,9 @@ use criterion::{
 
 const BATCH_SIZE: usize = 32;
 
-fn bench_mul_subfield<PE: PackedExtension<F>, F: Field>(group: &mut BenchmarkGroup<'_, WallTime>) {
+fn bench_mul_subfield<PE: PackedExtension<F, Scalar: BinaryField>, F: BinaryField>(
+	group: &mut BenchmarkGroup<'_, WallTime>,
+) {
 	let mut rng = rand::rng();
 	let packed: [PE; BATCH_SIZE] = array::from_fn(|_| PE::random(&mut rng));
 	let scalars: [F; BATCH_SIZE] = array::from_fn(|_| F::random(&mut rng));
@@ -24,11 +25,7 @@ fn bench_mul_subfield<PE: PackedExtension<F>, F: Field>(group: &mut BenchmarkGro
 	group.warm_up_time(Duration::from_secs(1));
 	group.measurement_time(Duration::from_secs(3));
 	group.throughput(Throughput::Elements((BATCH_SIZE * PE::WIDTH) as _));
-	let id = format!(
-		"mul/{}b_by_{}b",
-		<PE::Scalar as WithUnderlier>::Underlier::BITS,
-		F::Underlier::BITS
-	);
+	let id = format!("mul/{}b_by_{}b", PE::Scalar::N_BITS, F::N_BITS);
 	group.bench_function(id, |b| {
 		b.iter(|| {
 			array::from_fn::<_, BATCH_SIZE, _>(|i| mul_by_subfield_scalar(packed[i], scalars[i]))
