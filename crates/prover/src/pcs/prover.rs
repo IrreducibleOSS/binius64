@@ -1,7 +1,4 @@
-use binius_field::{
-	BinaryField, ExtensionField, Field, PackedExtension, PackedField, TowerField,
-	as_packed_field::PackScalar, underlier::WithUnderlier,
-};
+use binius_field::{BinaryField, ExtensionField, Field, PackedExtension, PackedField, TowerField};
 use binius_math::{
 	FieldBuffer,
 	ntt::AdditiveNTT,
@@ -79,7 +76,6 @@ where
 		NTT: AdditiveNTT<FA> + Sync,
 		MerkleProver: MerkleTreeProver<BigField, Scheme = VCS>,
 		VCS: MerkleTreeScheme<BigField, Digest: SerializeBytes>,
-		<BigField as WithUnderlier>::Underlier: PackScalar<FA>,
 	{
 		// Prover Initializes the Proof By Sending the first message
 		let prover_s_hat_v = self.s_hat_v.clone();
@@ -170,7 +166,6 @@ where
 		NTT: AdditiveNTT<FA> + Sync,
 		MerkleProver: MerkleTreeProver<BigField, Scheme = VCS>,
 		VCS: MerkleTreeScheme<BigField, Digest: SerializeBytes>,
-		<BigField as WithUnderlier>::Underlier: PackScalar<FA>,
 	{
 		let (_, eval_point_high) = self.evaluation_point.split_at(KAPPA);
 
