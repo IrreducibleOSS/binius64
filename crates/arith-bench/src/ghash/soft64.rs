@@ -27,16 +27,56 @@
 use core::num::Wrapping;
 
 /// Multiply two GHASH field elements using software implementation.
+///
+/// Method described at:
+/// * <https://www.bearssl.org/constanttime.html#ghash-for-gcm>
+/// * <https://crypto.stackexchange.com/questions/66448/how-does-bearssls-gcm-modular-reduction-work/66462#66462>
+///
+/// This code does not conform to the bit-endianness requirements of the GCM specification, but is
+/// a valid GHASH field multiplication with the modified representation.
 pub fn mul(x: u128, y: u128) -> u128 {
 	// Convert to U64x2 representation
-	let x_u64x2 = U64x2::from(x);
-	let y_u64x2 = U64x2::from(y);
+	let U64x2(x0, x1) = U64x2::from(x);
+	let U64x2(y0, y1) = U64x2::from(y);
 
 	// Perform multiplication
-	let result = x_u64x2 * y_u64x2;
+	let x0r = rev64(x0);
+	let x1r = rev64(x1);
+	let x2 = x0 ^ x1;
+	let x2r = x0r ^ x1r;
+
+	let y0r = rev64(y0);
+	let y1r = rev64(y1);
+	let y2 = y0 ^ y1;
+	let y2r = y0r ^ y1r;
+
+	let z0 = bmul64(y0, x0);
+	let z1 = bmul64(y1, x1);
+	let mut z2 = bmul64(y2, x2);
+
+	let mut z0h = bmul64(y0r, x0r);
+	let mut z1h = bmul64(y1r, x1r);
+	let mut z2h = bmul64(y2r, x2r);
+
+	z2 ^= z0 ^ z1;
+	z2h ^= z0h ^ z1h;
+	z0h = rev64(z0h) >> 1;
+	z1h = rev64(z1h) >> 1;
+	z2h = rev64(z2h) >> 1;
+
+	let mut v0 = z0;
+	let mut v1 = z0h ^ z2;
+	let mut v2 = z1 ^ z2h;
+	let v3 = z1h;
+
+	// Reduce modulo X^128 + X^7 + X^2 + X + 1.
+	v1 ^= v3 ^ (v3 << 1) ^ (v3 << 2) ^ (v3 << 7);
+	v2 ^= (v3 >> 63) ^ (v3 >> 62) ^ (v3 >> 57);
+	v0 ^= v2 ^ (v2 << 1) ^ (v2 << 2) ^ (v2 << 7);
+	v1 ^= (v2 >> 63) ^ (v2 >> 62) ^ (v2 >> 57);
 
 	// Convert back to u128
-	result.into()
+	U64x2(v0, v1).into()
 }
 
 /// 2 x `u64` values
@@ -54,78 +94,6 @@ impl From<U64x2> for u128 {
 	fn from(x: U64x2) -> Self {
 		// Little-endian: x.0 is low 64 bits, x.1 is high 64 bits
 		(x.0 as u128) | ((x.1 as u128) << 64)
-	}
-}
-
-impl core::ops::Add for U64x2 {
-	type Output = Self;
-
-	/// Adds two GHASH field elements.
-	fn add(self, rhs: Self) -> Self::Output {
-		U64x2(self.0 ^ rhs.0, self.1 ^ rhs.1)
-	}
-}
-
-impl core::ops::Mul for U64x2 {
-	type Output = Self;
-
-	/// Computes carryless GHASH multiplication over GF(2^128) in constant time.
-	///
-	/// Method described at:
-	/// <https://www.bearssl.org/constanttime.html#ghash-for-gcm>
-	///
-	/// POLYVAL multiplication is effectively the little endian equivalent of
-	/// GHASH multiplication, aside from one small detail described here:
-	///
-	/// <https://crypto.stackexchange.com/questions/66448/how-does-bearssls-gcm-modular-reduction-work/66462#66462>
-	///
-	/// > The product of two bit-reversed 128-bit polynomials yields the
-	/// > bit-reversed result over 255 bits, not 256. The BearSSL code ends up
-	/// > with a 256-bit result in zw[], and that value is shifted by one bit,
-	/// > because of that reversed convention issue. Thus, the code must
-	/// > include a shifting step to put it back where it should
-	///
-	/// This shift is unnecessary for POLYVAL and has been removed.
-	fn mul(self, rhs: Self) -> Self {
-		let h0 = self.0;
-		let h1 = self.1;
-		let h0r = rev64(h0);
-		let h1r = rev64(h1);
-		let h2 = h0 ^ h1;
-		let h2r = h0r ^ h1r;
-
-		let y0 = rhs.0;
-		let y1 = rhs.1;
-		let y0r = rev64(y0);
-		let y1r = rev64(y1);
-		let y2 = y0 ^ y1;
-		let y2r = y0r ^ y1r;
-
-		let z0 = bmul64(y0, h0);
-		let z1 = bmul64(y1, h1);
-		let mut z2 = bmul64(y2, h2);
-
-		let mut z0h = bmul64(y0r, h0r);
-		let mut z1h = bmul64(y1r, h1r);
-		let mut z2h = bmul64(y2r, h2r);
-
-		z2 ^= z0 ^ z1;
-		z2h ^= z0h ^ z1h;
-		z0h = rev64(z0h) >> 1;
-		z1h = rev64(z1h) >> 1;
-		z2h = rev64(z2h) >> 1;
-
-		let mut v0 = z0;
-		let mut v1 = z0h ^ z2;
-		let mut v2 = z1 ^ z2h;
-		let v3 = z1h;
-
-		v1 ^= v3 ^ (v3 << 1) ^ (v3 << 2) ^ (v3 << 7);
-		v2 ^= (v3 >> 63) ^ (v3 >> 62) ^ (v3 >> 57);
-		v0 ^= v2 ^ (v2 << 1) ^ (v2 << 2) ^ (v2 << 7);
-		v1 ^= (v2 >> 63) ^ (v2 >> 62) ^ (v2 >> 57);
-
-		U64x2(v0, v1)
 	}
 }
 
