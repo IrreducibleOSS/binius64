@@ -481,7 +481,7 @@ mod tests {
 			target_feature = "sse2"
 		)
 	))]
-	use crate::ghash::{GHASH_ONE, mul_clmul as ghash_mul};
+	use crate::ghash::{ONE, mul_clmul as ghash_mul};
 	#[cfg(any(
 		all(target_feature = "pclmulqdq", target_feature = "sse2"),
 		all(

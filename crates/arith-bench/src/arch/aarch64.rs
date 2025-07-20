@@ -224,7 +224,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		ghash::{GHASH_ONE, mul_clmul as ghash_mul},
+		ghash::{ONE, mul_clmul as ghash_mul},
 		monbijou::{
 			MONBIJOU_128B_ONE, MONBIJOU_ONE, mul_128b_clmul as monbijou_128b_mul,
 			mul_clmul as monbijou_mul,
