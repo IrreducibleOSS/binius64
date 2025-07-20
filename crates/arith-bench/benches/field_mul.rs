@@ -7,8 +7,9 @@ use std::arch::aarch64::uint64x2_t;
 use std::arch::x86_64::{__m128i, __m256i};
 use std::{array, hint::black_box};
 
-use binius_arith_bench::Underlier;
+use binius_arith_bench::{Underlier, polyval};
 use criterion::{BenchmarkGroup, Criterion, Throughput, criterion_group, criterion_main};
+use proptest::num::u128;
 use rand::{
 	Rng,
 	distr::{Distribution, StandardUniform},
@@ -149,6 +150,16 @@ fn bench_polyval(c: &mut Criterion) {
 	let mut rng = rand::rng();
 
 	let mut group = c.benchmark_group("polyval");
+
+	// Benchmark u128
+	run_mul_benchmark(
+		&mut group,
+		"soft64::mul",
+		polyval::soft64::mul,
+		&mut rng,
+		128,
+		u128::BITS as usize,
+	);
 
 	// Benchmark __m128i
 	#[cfg(all(target_feature = "pclmulqdq", target_feature = "sse2"))]
