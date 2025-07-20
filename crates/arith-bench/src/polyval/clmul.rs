@@ -1,28 +1,32 @@
-//! SIMD binary field operations for the POLYVAL field.
+// Copyright (c) 2019-2025 The RustCrypto Project Developers
+//
+// Permission is hereby granted, free of charge, to any
+// person obtaining a copy of this software and associated
+// documentation files (the "Software"), to deal in the
+// Software without restriction, including without
+// limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of
+// the Software, and to permit persons to whom the Software
+// is furnished to do so, subject to the following
+// conditions:
+//
+// The above copyright notice and this permission notice
+// shall be included in all copies or substantial portions
+// of the Software.
+
+//! Hardware-accelerated POLYVAL multiplication using CLMUL instructions.
 //!
-//! This module implements multiplication in the GF(2^128) binary field used by the POLYVAL
-//! universal hash function, which is part of the AES-GCM-SIV authenticated encryption mode
-//! defined in RFC 8452.
-//!
-//! The POLYVAL field uses the reduction polynomial x^128 + x^127 + x^126 + x^121 + 1,
-//! which is the bit-reversal of the polynomial used in GHASH/GCM. This choice makes
-//! POLYVAL more efficient on little-endian architectures.
-//!
-//! The implementation uses carry-less multiplication (CLMUL) CPU instructions available on
-//! modern x86_64 processors with the PCLMULQDQ extension. The multiplication algorithm
-//! employs Karatsuba decomposition followed by Montgomery reduction for optimal performance.
+//! This implementation is adapted from the RustCrypto/universal-hashes repository:
+//! <https://github.com/RustCrypto/universal-hashes>.
 
 use crate::underlier::{OpsClmul, PackedUnderlier, Underlier};
 
-/// The multiplicative identity in polynomial Montgomery form
-pub const MONTGOMERY_ONE: u128 = 0xc2000000000000000000000000000001u128;
-
+/// Multiply two field elements using CLMUL instructions.
 #[inline]
-#[allow(dead_code)]
-pub fn mul_clmul<U: Underlier + OpsClmul + PackedUnderlier<u128>>(x: U, y: U) -> U {
+pub fn mul<U: Underlier + OpsClmul + PackedUnderlier<u128>>(x: U, y: U) -> U {
 	let (h, m, l) = karatsuba1(x, y);
 	let (h, l) = karatsuba2(h, m, l);
-	mont_reduce(h, l) // d
+	mont_reduce(h, l)
 }
 
 /// Karatsuba decomposition for `x*y`.
