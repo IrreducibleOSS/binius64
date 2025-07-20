@@ -6,12 +6,11 @@ use binius_verifier::protocols::sumcheck::RoundCoeffs;
 use crate::protocols::sumcheck::{
     common::SumcheckProver,
     error::Error,
-    and_reduction::mle::BigFieldMultilinear,
 };
 
-use binius_math::FieldBuffer;
+use binius_math::{FieldBuffer, multilinear::eq::tensor_prod_eq_ind};
 
-pub fn eq_ind<F: Field>(zerocheck_challenges: &[F]) -> BigFieldMultilinear<F> {
+pub fn eq_ind<F: Field>(zerocheck_challenges: &[F]) -> FieldBuffer<F> {
     let mut mle = bytemuck::zeroed_vec(1 << zerocheck_challenges.len());
 
     let _span = tracing::debug_span!("eq ind").entered();
@@ -32,10 +31,7 @@ pub fn eq_ind<F: Field>(zerocheck_challenges: &[F]) -> BigFieldMultilinear<F> {
             });
     }
 
-    BigFieldMultilinear {
-        n_vars: zerocheck_challenges.len(),
-        packed_evals: mle,
-    }
+    FieldBuffer::from_values(&mle).unwrap()
 }
 
 
@@ -44,7 +40,7 @@ pub enum FoldDirection {
     HighToLow,
 }
 pub struct MultilinearSumcheckProver<F: Field> {
-    multilinears: Vec<BigFieldMultilinear<F>>,
+    multilinears: Vec<FieldBuffer<F>>,
     overall_claim: F,
     log_n: usize,
     zerocheck_challenges: Vec<F>,
@@ -57,7 +53,7 @@ pub struct MultilinearSumcheckProver<F: Field> {
 
 impl<F: Field> MultilinearSumcheckProver<F> {
     pub fn new(
-        multilinears: Vec<BigFieldMultilinear<F>>,
+        multilinears: Vec<FieldBuffer<F>>,
         zerocheck_challenges: Vec<F>,
         overall_claim: F,
         log_n: usize,
@@ -66,7 +62,7 @@ impl<F: Field> MultilinearSumcheckProver<F> {
         debug_assert_eq!(multilinears.len(), 3);
 
         // compute eq indicator from zerocheck challenges, add to multilinears for folding
-        let eq_r: BigFieldMultilinear<F> = eq_ind(&zerocheck_challenges);
+        let eq_r: FieldBuffer<F> = eq_ind(&zerocheck_challenges); //tensor_prod_eq_ind(&zerocheck_challenges);
         let mut multilinears = multilinears;
         multilinears.push(eq_r);
 
@@ -86,27 +82,25 @@ impl<F: Field> MultilinearSumcheckProver<F> {
     }
 
     // sums the composition of 4 multilinears (A * B - C) * D
-    pub fn sum_composition(
-        a: &BigFieldMultilinear<F>,
-        b: &BigFieldMultilinear<F>,
-        c: &BigFieldMultilinear<F>,
-        d: &BigFieldMultilinear<F>,
-    ) -> F {
-        let _span = tracing::debug_span!("sum composition (A * B - C) * eq_r").entered();
+	pub fn sum_composition(
+        a: &FieldBuffer<F>, 
+        b: &FieldBuffer<F>, 
+        c: &FieldBuffer<F>, 
+        d: &FieldBuffer<F>
+    ) -> Result<F, Error> {
 
-        let n = 1 << a.n_vars;
-        let mut sum = F::ZERO;
-        for i in 0..n {
-            let a_i = a.packed_evals[i];
-            let b_i = b.packed_evals[i];
-            let c_i = c.packed_evals[i];
-            let d_i = d.packed_evals[i];
+		let mut sum = F::ZERO;
+		for i in 0..a.len() {
+			let a_i = a.get(i)?;
+			let b_i = b.get(i)?;
+            let c_i = c.get(i)?;
+            let d_i = d.get(i)?;
 
-            sum += (a_i * b_i - c_i) * d_i;
-        }
+			sum += (a_i * b_i - c_i) * d_i;
+		}
 
-        sum
-    }
+		Ok(sum)
+	}
 
     fn zerocheck_challenge_idx(&self) -> usize {
         match self.fold_direction {
@@ -118,14 +112,14 @@ impl<F: Field> MultilinearSumcheckProver<F> {
     fn round_msg_par(&self) -> Vec<F> {
         let _span = tracing::debug_span!("round message parallel").entered();
 
-        let log_n = self.multilinears[0].n_vars;
+        let log_n = self.multilinears[0].log_len();
         let n = 1 << log_n;
         let n_half = n >> 1;
 
-        let a = &self.multilinears[0].packed_evals;
-        let b = &self.multilinears[1].packed_evals;
-        let c = &self.multilinears[2].packed_evals;
-        let d = &self.multilinears[3].packed_evals;
+        let a = &self.multilinears[0];
+        let b = &self.multilinears[1];
+        let c = &self.multilinears[2];
+        let d = &self.multilinears[3];
 
         // compute indices for either high to low or low to high
         let compute_idx: fn((usize, usize)) -> (usize, usize) = match self.fold_direction {
@@ -146,14 +140,14 @@ impl<F: Field> MultilinearSumcheckProver<F> {
                 for j in chunk {
                     let (low_idx, high_idx) = compute_idx((j, n_half));
 
-                    let a_lower = a[low_idx];
-                    let b_lower = b[low_idx];
-                    let c_lower = c[low_idx];
-                    let d_lower = d[low_idx];
+                    let a_lower = a.get(low_idx).unwrap();
+                    let b_lower = b.get(low_idx).unwrap();
+                    let c_lower = c.get(low_idx).unwrap();
+                    let d_lower = d.get(low_idx).unwrap();
 
-                    let a_upper = a[high_idx];
-                    let b_upper = b[high_idx];
-                    let d_upper = d[high_idx];
+                    let a_upper = a.get(high_idx).unwrap();
+                    let b_upper = b.get(high_idx).unwrap(); 
+                    let d_upper = d.get(high_idx).unwrap();
 
                     acc_g_of_zero += (a_lower * b_lower - c_lower) * d_lower;
                     acc_g_leading_coeff +=
@@ -184,13 +178,13 @@ impl<F: Field> MultilinearSumcheckProver<F> {
 impl<F: Field> SumcheckProver<F> for MultilinearSumcheckProver<F> {
 
     fn n_vars(&self) -> usize {
-        self.multilinears[0].n_vars
+        self.multilinears[0].log_len()
     }
 
     // folds challenge into multilinears
     fn fold(&mut self, sumcheck_challenge: F) -> Result<(), Error> {
 
-        let n = 1 << self.multilinears[0].n_vars;
+        let n = 1 << self.multilinears[0].log_len();
         let n_half = n >> 1;
 
         match self.fold_direction {
@@ -201,25 +195,26 @@ impl<F: Field> SumcheckProver<F> for MultilinearSumcheckProver<F> {
                     .enumerate()
                     .for_each(|(i, multilinear)| {
 
+                        let new_mle = bytemuck::zeroed_vec(n_half);
+                        let out_buf = FieldBuffer::from_values(&new_mle).unwrap();
+
                         if i < 3 {
                             for j in 0..n_half {
                                 let (low_idx, high_idx) = (2 * j, 2 * j + 1);
-                                let even = multilinear.packed_evals[low_idx];
-                                let odd = multilinear.packed_evals[high_idx];
-                                multilinear.packed_evals[j] = even + sumcheck_challenge * (odd - even);
+                                let even = multilinear.get(low_idx).unwrap();
+                                let odd = multilinear.get(high_idx).unwrap();
+                                out_buf.set(j, even + sumcheck_challenge * (odd - even));
                             }
                         } else {
                             for j in 0..n_half {
                                 let (low_idx, high_idx) = (2 * j, 2 * j + 1);
-                                let even = multilinear.packed_evals[low_idx];
-                                let odd = multilinear.packed_evals[high_idx];
-                                multilinear.packed_evals[j] = even + odd;
+                                let even = multilinear.get(low_idx).unwrap();
+                                let odd = multilinear.get(high_idx).unwrap();
+                                out_buf.set(j, even + odd);
                             }
                         }
 
-                        // remove last 1 << n-1 elements from each multilinear
-                        multilinear.packed_evals.truncate(n_half);
-                        multilinear.n_vars -= 1;
+                        *multilinear = out_buf;
                     });
 
                 // optimzation, handle eq differently w/ cheeky factorization
@@ -230,10 +225,14 @@ impl<F: Field> SumcheckProver<F> for MultilinearSumcheckProver<F> {
                 let [a, b, c, d] = &mut self.multilinears[..] else {
                     panic!("expected 4 multilinears")
                 };
-                let (a_low, a_high) = a.packed_evals.split_at_mut(n_half);
-                let (b_low, b_high) = b.packed_evals.split_at_mut(n_half);
-                let (c_low, c_high) = c.packed_evals.split_at_mut(n_half);
-                let (d_low, d_high) = d.packed_evals.split_at_mut(n_half);
+
+                let out_buf = bytemuck::zeroed_vec(n_half);
+                let out_buf = FieldBuffer::from_values(&out_buf).unwrap();
+
+                let (a_low, a_high) = a.split_at_mut(n_half);
+                let (b_low, b_high) = b.split_at_mut(n_half);
+                let (c_low, c_high) = c.split_at_mut(n_half);
+                let (d_low, d_high) = d.split_at_mut(n_half);
 
                 for (low, high) in [
                     (a_low, a_high),
@@ -251,7 +250,7 @@ impl<F: Field> SumcheckProver<F> for MultilinearSumcheckProver<F> {
 
                 for i in 0..self.multilinears.len() {
                     self.multilinears[i].packed_evals.truncate(n_half);
-                    self.multilinears[i].n_vars -= 1;
+                    self.multilinears[i].log_len -= 1;
                 }
             }
         }
@@ -282,7 +281,7 @@ impl<F: Field> SumcheckProver<F> for MultilinearSumcheckProver<F> {
         let round_msg = self.round_msg_par();
 
 
-        let log_n = self.multilinears[0].n_vars;
+        let log_n = self.multilinears[0].log_len();
         let n = 1 << log_n;
         let n_half = n >> 1;
 
@@ -347,18 +346,11 @@ impl<F: Field> SumcheckProver<F> for MultilinearSumcheckProver<F> {
     }
 
     fn finish(self) -> Result<Vec<F>, Error> {
-        debug_assert_eq!(self.multilinears[0].packed_evals.len(), 1);
-        debug_assert_eq!(self.multilinears[1].packed_evals.len(), 1);
-        debug_assert_eq!(self.multilinears[2].packed_evals.len(), 1);
-        debug_assert_eq!(self.multilinears[3].packed_evals.len(), 1);
-
-        println!("eq_factor: {:?}", self.eq_factor);
-        
         Ok(vec![
-            self.multilinears[0].packed_evals[0],
-            self.multilinears[1].packed_evals[0],
-            self.multilinears[2].packed_evals[0],
-            self.multilinears[3].packed_evals[0] * self.eq_factor, 
+            self.multilinears[0].get(0)?,
+            self.multilinears[1].get(0)?,
+            self.multilinears[2].get(0)?,
+            self.multilinears[3].get(0)? * self.eq_factor, 
         ])
     }
 }
@@ -476,18 +468,15 @@ pub mod test {
     pub fn random_multilinears(
         num_multilinears: usize,
         log_n: usize,
-    ) -> Vec<BigFieldMultilinear<BF>> {
+    ) -> Vec<FieldBuffer<BF>> {
         let mut rng = StdRng::from_seed([0; 32]);
 
         let n = 1 << log_n;
         let mut multilinears = Vec::with_capacity(num_multilinears);
         for _ in 0..num_multilinears {
-            let multilinear = BigFieldMultilinear {
-                n_vars: log_n,
-                packed_evals: (0..n)
-                    .map(|_| BF::from(AESTowerField128b::random(&mut rng)))
-                    .collect::<Vec<BF>>(),
-            };
+            let multilinear = FieldBuffer::from_values(
+                (0..n).map(|_| BF::random(&mut rng)).collect::<Vec<BF>>(),
+            );
 
             multilinears.push(multilinear);
         }
@@ -508,11 +497,11 @@ pub mod test {
             .map(|_| BinaryField128bPolyval::from(AESTowerField128b::random(&mut rng)))
             .collect::<Vec<BF>>();
 
-            let multilinears: Vec<BigFieldMultilinear<BF>> =
+            let multilinears: Vec<FieldBuffer<BF>> =
                 random_multilinears(num_multilinears, log_n);
 
             // eq_r is the multilinear equality indicator for some vector of log_n zerocheck challenges
-            let eq_r: BigFieldMultilinear<BF> = eq_ind(&zerocheck_challenges.clone());
+            let eq_r: FieldBuffer<BF> = eq_ind(&zerocheck_challenges.clone());
 
             // compute overall sum claim for (A * B - C) * eq_r
             let overall_claim = MultilinearSumcheckProver::<BF>::sum_composition(
@@ -552,7 +541,7 @@ pub mod test {
 
         let num_multilinears = 4;
 
-        let multilinears: Vec<BigFieldMultilinear<BF>> =
+        let multilinears: Vec<FieldBuffer<BF>> =
             random_multilinears(num_multilinears, log_n);
         let overall_sum = MultilinearSumcheckProver::sum_composition(
             &multilinears[0],
