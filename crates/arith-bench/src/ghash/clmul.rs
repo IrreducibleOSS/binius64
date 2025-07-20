@@ -1,15 +1,27 @@
-//! Arithmetic for the GHASH field, GF(2)\[X\] / (X^128 + X^7 + X^2 + X + 1).
+// Copyright 2025 Google LLC.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! Hardware-accelerated GHASH multiplication using CLMUL instructions.
+//!
+//! This implementation is derived from:
+//! <https://github.com/google/longfellow-zk/blob/main/lib/gf2k/sysdep.h>
 
 use crate::{PackedUnderlier, Underlier, underlier::OpsClmul};
 
-/// The multiplicative identity in GHASH
-///
-/// In GHASH, the standard representation of 1 is simply 0x01
-pub const GHASH_ONE: u128 = 0x01;
-
+/// Multiply two GHASH field elements using CLMUL instructions.
 #[inline]
-#[allow(dead_code)]
-pub fn mul_clmul<U: Underlier + OpsClmul + PackedUnderlier<u128>>(x: U, y: U) -> U {
+pub fn mul<U: Underlier + OpsClmul + PackedUnderlier<u128>>(x: U, y: U) -> U {
 	// Based on the C++ reference implementation
 	// The algorithm performs polynomial multiplication followed by reduction
 
