@@ -1,13 +1,10 @@
 use binius_field::{
-	AESTowerField8b, BinaryField1b, BinaryField128bPolyval, ExtensionField, Field,
+	AESTowerField8b, BinaryField1b, BinaryField128bPolyval, Field,
 	PackedAESBinaryField16x8b, PackedBinaryField128x1b, PackedExtension, PackedField,
 	packed::get_packed_slice,
 };
 use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval};
-use binius_maybe_rayon::{
-	iter::IndexedParallelIterator,
-	prelude::{IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
-};
+use binius_maybe_rayon::{prelude::{IntoParallelIterator, ParallelIterator},};
 use itertools::izip;
 
 use crate::protocols::sumcheck::and_reduction::{
@@ -72,8 +69,6 @@ where
 			.collect();
 
 	// Execute the NTTs at each hypercube vertex
-	let _span = tracing::debug_span!("execute NTTs at each hypercube vertex").entered();
-
 	let pre_delta_prover_message_extension_domain = (0..1 << (num_vars_on_hypercube - 3))
 		.into_par_iter()
 		.map(|subcube_idx| {
@@ -195,8 +190,6 @@ pub fn sum_claim<BF: Field + From<BinaryField128bPolyval>>(
 	third_col: &FieldBuffer<BF>,
 	eq_ind: &FieldBuffer<BF>,
 ) -> BF {
-	let _span = tracing::debug_span!("sum_claim").entered();
-
 	let mut sum = BF::ZERO;
 	for (row_from_first, row_from_second, row_from_third, row_from_eq) in
 		izip!(first_col.as_ref(), second_col.as_ref(), third_col.as_ref(), eq_ind.as_ref(),)
@@ -229,13 +222,32 @@ mod test {
 		},
 	};
 
+	use binius_field::{
+		BinaryField1b, ExtensionField,
+		PackedAESBinaryField16x8b, PackedExtension, PackedField,
+		packed::get_packed_slice,
+	};
+	use binius_math::{multilinear::eq::eq_ind_partial_eval};
+	use binius_maybe_rayon::{
+		iter::IndexedParallelIterator,
+		prelude::{IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
+	};
+	use itertools::izip;
+	
+	use crate::protocols::sumcheck::and_reduction::{
+		univariate::{
+			ntt_lookup::{NTTLookup},
+			univariate_poly::{GenericPo2UnivariatePoly},
+		},
+	};
+
 	pub fn eq_ind_mle<F: Field>(zerocheck_challenges: &[F]) -> FieldBuffer<F> {
-		let mut mle = FieldBuffer::<F>::zeros(zerocheck_challenges.len());
+		let mut mle = FieldBuffer::<F>::zeros_truncated(0, zerocheck_challenges.len()).expect("log_size >= 0");
 		let _ = mle.set(0, F::ONE);
-		let _ = tensor_prod_eq_ind(0, &mut mle, zerocheck_challenges);
+		let _ = tensor_prod_eq_ind(&mut mle, zerocheck_challenges);
 		mle
 	}
-
+	
 	#[test]
 	fn test_first_round_message_matches_next_round_sum_claim() {
 		let log_num_rows = 10;
