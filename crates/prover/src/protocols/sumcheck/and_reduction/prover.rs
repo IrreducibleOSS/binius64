@@ -1,12 +1,10 @@
 use std::vec;
-
 use binius_field::Field;
 use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval};
 use binius_utils::rayon::prelude::{
 	IndexedParallelIterator, IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator,
 };
 use binius_verifier::protocols::sumcheck::RoundCoeffs;
-
 use crate::protocols::sumcheck::{common::SumcheckProver, error::Error};
 
 #[allow(unused)]

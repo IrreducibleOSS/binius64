@@ -1,6 +1,6 @@
 use binius_field::{
 	AESTowerField8b, BinaryField1b, BinaryField128bPolyval, Field,
-	PackedAESBinaryField16x8b, PackedBinaryField128x1b, PackedExtension, PackedField,
+	PackedAESBinaryField16x8b, PackedExtension, PackedField,
 	packed::get_packed_slice,
 };
 use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval};
@@ -39,105 +39,61 @@ where
 	FChallenge: Field,
 {
 	let log_num_rows = first_col.log_num_rows;
-	let num_rows = 1 << log_num_rows;
-
 	let num_vars_on_hypercube = log_num_rows - SKIPPED_VARS;
 
 	let mut pre_delta_prover_message = vec![FChallenge::ZERO; HOT_LOOP_NTT_POINTS];
-
-	let mut composition_col = bytemuck::zeroed_vec(num_rows / PackedBinaryField128x1b::WIDTH);
-
-	for (i, composition_row_val) in composition_col.iter_mut().enumerate() {
-		*composition_row_val =
-			first_col.packed_evals[i] * second_col.packed_evals[i] - third_col.packed_evals[i];
-	}
 	
 	let col_1_bytes = <PackedAESBinaryField16x8b as PackedExtension<Bit>>::cast_exts(&first_col.packed_evals);
 	let col_2_bytes = <PackedAESBinaryField16x8b as PackedExtension<Bit>>::cast_exts(&second_col.packed_evals);
 	let col_3_bytes = <PackedAESBinaryField16x8b as PackedExtension<Bit>>::cast_exts(&third_col.packed_evals);
 
-	let small_field_zerocheck_challenges_tensor_expansion: Vec<PackedAESBinaryField16x8b> =
+	let eq_ind_small: Vec<PackedAESBinaryField16x8b> =
 		eq_ind_partial_eval(small_field_zerocheck_challenges)
 			.as_ref()
-			.into_iter()
-			.map(|item: &AESTowerField8b| PackedAESBinaryField16x8b::broadcast(*item))
+			.iter()
+			.map(|&item| PackedAESBinaryField16x8b::broadcast(item))
 			.collect();
-
 
 	// Execute the NTTs at each hypercube vertex
 	let pre_delta_prover_message_extension_domain = (0..1 << (num_vars_on_hypercube - 3))
 		.into_par_iter()
 		.map(|subcube_idx| {
 			
-			let mut small_field_query_summed_ntt_packed = [PackedAESBinaryField16x8b::zero(); NTT_DOMAIN_SIZE];
+			let mut summed_ntt = [PackedAESBinaryField16x8b::zero(); NTT_DOMAIN_SIZE];
 
 			for point_idx_within_subcube in 0..1 << 3 {
 
 				let hypercube_point_idx = subcube_idx << 3 | point_idx_within_subcube;
 				let byte_offset = hypercube_point_idx * BYTES_PER_HYPERCUBE_VERTEX;
 
-				// NTT these size-ROWS_PER_HYPERCUBE_VERTEX chunks of the columns using lookup table
-				// These are the values of the polys on domain
-				let mut first_column_ntted = [PackedAESBinaryField16x8b::zero(); NTT_DOMAIN_SIZE];
-				let mut second_column_ntted = [PackedAESBinaryField16x8b::zero(); NTT_DOMAIN_SIZE];
-				let mut third_column_ntted = [PackedAESBinaryField16x8b::zero(); NTT_DOMAIN_SIZE];
+				let mut col_ntt = [[PackedAESBinaryField16x8b::zero(); NTT_DOMAIN_SIZE]; 3];
 
 				for i in 0..ntt_lookup.len() {
+					let idx1 = u8::from(get_packed_slice(col_1_bytes, byte_offset + i)) as usize;
+					let idx2 = u8::from(get_packed_slice(col_2_bytes, byte_offset + i)) as usize;
+					let idx3 = u8::from(get_packed_slice(col_3_bytes, byte_offset + i)) as usize;
 
-					let column_1_ntted = &ntt_lookup[i][Into::<u8>::into(get_packed_slice(
-						col_1_bytes,
-						byte_offset + i,
-					)) as usize];
-
-					let column_2_ntted = &ntt_lookup[i][Into::<u8>::into(get_packed_slice(
-						col_2_bytes,
-						byte_offset + i,
-					)) as usize];
-
-					let column_3_ntted = &ntt_lookup[i][Into::<u8>::into(get_packed_slice(
-						col_3_bytes,
-						byte_offset + i,
-					)) as usize];
-
-
-					for j in 0..(NTT_DOMAIN_SIZE) {
-						first_column_ntted[j] += column_1_ntted[j];
-						second_column_ntted[j] += column_2_ntted[j];
-						third_column_ntted[j] += column_3_ntted[j];
+					for j in 0..NTT_DOMAIN_SIZE {
+						col_ntt[0][j] += ntt_lookup[i][idx1][j];
+						col_ntt[1][j] += ntt_lookup[i][idx2][j];
+						col_ntt[2][j] += ntt_lookup[i][idx3][j];
 					}
 				}
 
-				let composition_ntted_packed: Vec<_> =
-					izip!(first_column_ntted, second_column_ntted, third_column_ntted)
-					.map(|(first, second, third)| first * second - third)
-					.collect();
-
-				for i in 0..(NTT_DOMAIN_SIZE) {
-					small_field_query_summed_ntt_packed[i] += composition_ntted_packed[i]
-						* small_field_zerocheck_challenges_tensor_expansion
-							[point_idx_within_subcube];
+				let weight = eq_ind_small[point_idx_within_subcube];
+				for i in 0..NTT_DOMAIN_SIZE {
+					summed_ntt[i] += (col_ntt[0][i] * col_ntt[1][i] - col_ntt[2][i]) * weight;
 				}
 			}
 
-			let eq_ind_this_subcube_value = eq_ind_big_field_challenges.as_ref()[subcube_idx];
+			let eq_weight = eq_ind_big_field_challenges.as_ref()[subcube_idx];
+			let mut result = [FChallenge::ZERO; ROWS_PER_HYPERCUBE_VERTEX];
 
-			let mut pre_delta_prover_message_ext_domain_this_thread =
-				[FChallenge::ZERO; ROWS_PER_HYPERCUBE_VERTEX];
-
-			for (b, this_coefficient_of_pre_delta_prover_message_ext_domain_this_thread) in
-				pre_delta_prover_message_ext_domain_this_thread
-					.iter_mut()
-					.enumerate()
-			{
-				*this_coefficient_of_pre_delta_prover_message_ext_domain_this_thread =
-					eq_ind_this_subcube_value
-						* subfield_iso_lookup.lookup_8b_value(get_packed_slice(
-							&small_field_query_summed_ntt_packed,
-							b,
-						));
+			for (i, val) in result.iter_mut().enumerate() {
+				*val = eq_weight * subfield_iso_lookup.lookup_8b_value(get_packed_slice(&summed_ntt, i));
 			}
 
-			pre_delta_prover_message_ext_domain_this_thread
+			result
 		})
 		.reduce(
 			|| [FChallenge::ZERO; ROWS_PER_HYPERCUBE_VERTEX],
@@ -149,24 +105,21 @@ where
 			},
 		);
 
-	pre_delta_prover_message[ROWS_PER_HYPERCUBE_VERTEX..(2 * ROWS_PER_HYPERCUBE_VERTEX)]
-		.copy_from_slice(&pre_delta_prover_message_extension_domain[..ROWS_PER_HYPERCUBE_VERTEX]);
+	pre_delta_prover_message[ROWS_PER_HYPERCUBE_VERTEX..2 * ROWS_PER_HYPERCUBE_VERTEX]
+		.copy_from_slice(&pre_delta_prover_message_extension_domain);
 
-	let pre_delta_prover_message_poly =
-		GenericPo2UnivariatePoly::new(pre_delta_prover_message, subfield_iso_lookup);
+	let pre_delta_poly = GenericPo2UnivariatePoly::new(pre_delta_prover_message, subfield_iso_lookup);
 
-	let delta_polynomial =
-		delta_poly(univariate_zerocheck_challenge, SKIPPED_VARS, subfield_iso_lookup);
+	let delta = delta_poly(univariate_zerocheck_challenge, SKIPPED_VARS, subfield_iso_lookup);
 
-	let final_prover_message_evals = (0..PROVER_MESSAGE_NUM_POINTS)
+	let final_evals = (0..PROVER_MESSAGE_NUM_POINTS)
 		.map(|i| {
 			let point = subfield_iso_lookup.lookup_8b_value(AESTowerField8b::new(i as u8));
-			pre_delta_prover_message_poly.evaluate_at_subfield_point(point)
-				* delta_polynomial.evaluate_at_subfield_point(point)
+			pre_delta_poly.evaluate_at_subfield_point(point) * delta.evaluate_at_subfield_point(point)
 		})
 		.collect();
 
-	GenericPo2UnivariatePoly::new(final_prover_message_evals, subfield_iso_lookup)
+	GenericPo2UnivariatePoly::new(final_evals, subfield_iso_lookup)
 }
 
 // Sends the sum claim from first multilinear round (second overall round)
@@ -176,14 +129,9 @@ pub fn sum_claim<BF: Field + From<BinaryField128bPolyval>>(
 	third_col: &FieldBuffer<BF>,
 	eq_ind: &FieldBuffer<BF>,
 ) -> BF {
-	let mut sum = BF::ZERO;
-	for (row_from_first, row_from_second, row_from_third, row_from_eq) in
-		izip!(first_col.as_ref(), second_col.as_ref(), third_col.as_ref(), eq_ind.as_ref(),)
-	{
-		sum += (*row_from_first * *row_from_second - *row_from_third) * *row_from_eq;
-	}
-
-	sum.iter().sum()
+	izip!(first_col.as_ref(), second_col.as_ref(), third_col.as_ref(), eq_ind.as_ref())
+		.map(|(a, b, c, eq)| (*a * *b - *c) * *eq)
+		.sum()
 }
 
 #[cfg(test)]
@@ -193,7 +141,6 @@ mod test {
 	};
 	use binius_math::{multilinear::eq::eq_ind_partial_eval};
 	use rand::{SeedableRng, rngs::StdRng};
-
 	use super::univariate_round_message;
 	use crate::protocols::sumcheck::and_reduction::{
 		fold_lookups::precompute_fold_lookup,
