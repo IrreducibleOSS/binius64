@@ -43,10 +43,13 @@ itertools = "0.14.0"
 lazy_static = "1.5.0"
 num-bigint = "0.4.6"
 num-integer = "0.1.46"
+num-traits = "0.2.19"
 paste = "1.0.15"
 proptest = "1.2.0"
 rand = { version = "0.9.1", default-features = false, features = ["std"] }
 rayon = "1.10.0"
+# Uses RC because latest stable rsa-0.9.8 API requires RNG from rand=0.6
+rsa = "0.10.0-rc.3"
 seq-macro = "0.3.5"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"

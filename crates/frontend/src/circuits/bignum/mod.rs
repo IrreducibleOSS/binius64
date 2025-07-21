@@ -17,6 +17,7 @@ use crate::{
 /// - Each `Wire` holds a 64-bit unsigned integer value (a "limb")
 /// - Limbs are stored in little-endian order (index 0 = least significant)
 /// - The total bit width is always a multiple of 64 bits (number of limbs × 64)
+#[derive(Clone)]
 pub struct BigNum {
 	pub limbs: Vec<Wire>,
 }
