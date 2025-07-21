@@ -1,5 +1,8 @@
-use binius_field::{BinaryField, ExtensionField, Field, PackedExtension, TowerField, PackedField};
-use binius_math::{ring_switch::{eval_rs_eq, construct_bitsliced_claims}, multilinear::eq::eq_ind_partial_eval};
+use binius_field::{BinaryField, ExtensionField, Field, PackedExtension, PackedField, TowerField};
+use binius_math::{
+	multilinear::eq::eq_ind_partial_eval,
+	ring_switch::{construct_bitsliced_claims, eval_rs_eq},
+};
 use binius_transcript::{
 	VerifierTranscript,
 	fiat_shamir::{CanSample, Challenger},
@@ -9,10 +12,7 @@ use itertools::Itertools;
 
 use super::utils::{KAPPA, compute_expected_sumcheck_claim, compute_mle_eq_sum};
 use crate::{
-	basefold::{ verifier::BaseFoldVerifier},
-	fields::B1,
-	fri::FRIParams,
-	merkle_tree::MerkleTreeScheme,
+	basefold::verifier::BaseFoldVerifier, fields::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme,
 };
 
 pub struct OneBitPCSVerifier {}
@@ -28,7 +28,12 @@ impl OneBitPCSVerifier {
 		n_vars: usize,
 	) -> Result<(), String>
 	where
-		BigField: Field + BinaryField + PackedField<Scalar=BigField> + ExtensionField<FA> + TowerField + PackedExtension<B1>,
+		BigField: Field
+			+ BinaryField
+			+ PackedField<Scalar = BigField>
+			+ ExtensionField<FA>
+			+ TowerField
+			+ PackedExtension<B1>,
 		FA: BinaryField,
 		TranscriptChallenger: Challenger + Clone,
 		VCS: MerkleTreeScheme<BigField, Digest: DeserializeBytes>,
