@@ -53,10 +53,9 @@ pub(crate) trait IndexedParallelIteratorInner: ParallelIteratorInner {
 	}
 
 	#[inline]
-	fn zip_eq<Z>(self, zip_op: Z) -> itertools::ZipEq<Self, Z::Iter>
+	fn zip_eq<Z>(self, zip_op: Z) -> itertools::ZipEq<Self, Z>
 	where
-		Z: IntoParallelIterator,
-		Z::Iter: IndexedParallelIteratorInner,
+		Z: IndexedParallelIteratorInner,
 	{
 		itertools::Itertools::zip_eq(self, zip_op)
 	}
@@ -179,6 +178,25 @@ pub trait IndexedParallelIterator: ParallelIterator {
 		Z: IntoParallelIterator<Iter: IndexedParallelIterator>,
 	{
 		ParallelWrapper::new(IndexedParallelIteratorInner::zip(
+			IndexedParallelIterator::into_inner(self),
+			IndexedParallelIterator::into_inner(zip_op.into_par_iter()),
+		))
+	}
+
+	#[inline]
+	fn zip_eq<Z>(
+		self,
+		zip_op: Z,
+	) -> ParallelWrapper<
+		itertools::ZipEq<
+			<Self as IndexedParallelIterator>::Inner,
+			<<Z as IntoParallelIterator>::Iter as IndexedParallelIterator>::Inner,
+		>,
+	>
+	where
+		Z: IntoParallelIterator<Iter: IndexedParallelIterator>,
+	{
+		ParallelWrapper::new(IndexedParallelIteratorInner::zip_eq(
 			IndexedParallelIterator::into_inner(self),
 			IndexedParallelIterator::into_inner(zip_op.into_par_iter()),
 		))
