@@ -1,12 +1,12 @@
 use binius_field::{
-	BinaryField1b, BinaryField128bPolyval, ExtensionField, Field, PackedAESBinaryField16x8b,
-	PackedBinaryField128x1b, PackedExtension, PackedField, packed::iter_packed_slice_with_offset,
+	arithmetic_traits::InvertOrZero, BinaryField1b, ExtensionField, Field,
+	PackedAESBinaryField16x8b, PackedBinaryField128x1b, PackedExtension, 
+	packed::iter_packed_slice_with_offset,
 };
-use binius_math::{Error, FieldBuffer};
+use binius_math::FieldBuffer;
 use binius_utils::rayon::prelude::{
 	IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator,
 };
-
 use crate::protocols::sumcheck::and_reduction::{
 	fold_lookups::FoldLookup,
 	univariate::{
@@ -26,7 +26,6 @@ pub struct OneBitMultivariate {
 }
 
 impl OneBitMultivariate {
-	#[allow(clippy::modulo_one)]
 	pub fn fold_naive<F>(
 		&self,
 		challenge: F,
@@ -35,10 +34,7 @@ impl OneBitMultivariate {
 	where
 		F: ExtensionField<BinaryField1b> + Field,
 	{
-		let _span = tracing::debug_span!("fold_naive").entered();
-
-		let new_n_vars = self.log_num_rows - SKIPPED_VARS;
-		let mut multilin = FieldBuffer::zeros(new_n_vars);
+		let mut multilin = FieldBuffer::zeros(self.log_num_rows - SKIPPED_VARS);
 
 		let numerators = lexicographic_lagrange_numerators_polyval(
 			ROWS_PER_HYPERCUBE_VERTEX,
@@ -46,41 +42,32 @@ impl OneBitMultivariate {
 			iso_lookup,
 		);
 
-		let denominator = lexicographic_lagrange_denominator(SKIPPED_VARS);
-		let inverse_denominator = iso_lookup.lookup_8b_value(denominator.invert_or_zero());
-		let lagrange_basis_vectors: Vec<_> = numerators
-			.iter()
-			.map(|n| *n * inverse_denominator)
-			.collect();
+		let denom_inv = iso_lookup.lookup_8b_value(
+			lexicographic_lagrange_denominator(SKIPPED_VARS).invert_or_zero()
+		);
 
 		multilin.as_mut().par_iter_mut().enumerate().for_each(
 			|(group_idx, hyprecube_vertex_val)| {
-				let this_group_bit_coefficients = iter_packed_slice_with_offset(
+				let coeffs = iter_packed_slice_with_offset(
 					&self.packed_evals,
 					group_idx * ROWS_PER_HYPERCUBE_VERTEX,
 				);
 
-				*hyprecube_vertex_val = lagrange_basis_vectors
+				*hyprecube_vertex_val = numerators
 					.iter()
-					.zip(this_group_bit_coefficients)
-					.map(|(basis_vec, coeff)| *basis_vec * coeff)
+					.zip(coeffs)
+					.map(|(n, coeff)| *n * denom_inv * coeff)
 					.sum();
 			},
 		);
 		multilin
 	}
 
-	#[allow(clippy::modulo_one)]
 	pub fn fold<F>(&self, lookup: &FoldLookup<F>) -> FieldBuffer<F>
 	where
 		F: Field + std::iter::Sum<F>,
 	{
-		let _span = tracing::debug_span!("fold").entered();
-
-		let new_n_vars = self.log_num_rows - SKIPPED_VARS;
-		let mut multilin = FieldBuffer::zeros(new_n_vars);
-
-		let bytes_per_group = ROWS_PER_HYPERCUBE_VERTEX / 8;
+		let mut multilin = FieldBuffer::zeros(self.log_num_rows - SKIPPED_VARS);
 
 		let packed_evals_as_bytes =
 			<PackedAESBinaryField16x8b as PackedExtension<BinaryField1b>>::cast_exts(
@@ -88,18 +75,16 @@ impl OneBitMultivariate {
 			);
 
 		multilin.as_mut().par_iter_mut().enumerate().for_each(
-			|(group_idx, hyprecube_vertex_val)| {
-				let this_group_byte_chunks = iter_packed_slice_with_offset(
+			|(group_idx, vertex_val)| {
+				let bytes = iter_packed_slice_with_offset(
 					packed_evals_as_bytes,
-					group_idx * bytes_per_group,
+					group_idx * ROWS_PER_HYPERCUBE_VERTEX / 8,
 				)
-				.take(bytes_per_group);
+				.take(ROWS_PER_HYPERCUBE_VERTEX / 8);
 
-				*hyprecube_vertex_val = this_group_byte_chunks
+				*vertex_val = bytes
 					.enumerate()
-					.map(|(byte_chunk_idx, byte_field_elem)| {
-						lookup[byte_chunk_idx][Into::<u8>::into(byte_field_elem) as usize]
-					})
+					.map(|(idx, byte)| lookup[idx][Into::<u8>::into(byte) as usize])
 					.sum();
 			},
 		);
@@ -135,19 +120,12 @@ mod test {
 
 		let iso_lookup = SubfieldIsomorphismLookup::new::<AESTowerField128b>();
 
-		let fp_lookup = precompute_fold_lookup(challenge, &iso_lookup);
-
-		let polyval_lookup = precompute_fold_lookup(challenge, &iso_lookup);
-
+		let lookup = precompute_fold_lookup(challenge, &iso_lookup);
 		let folded_naive = mlv.fold_naive(challenge, &iso_lookup);
-
-		let fp_folded_smart = mlv.fold(&fp_lookup);
-
-		let polyval_folded_smart = mlv.fold(&polyval_lookup);
+		let folded_smart = mlv.fold(&lookup);
 
 		for i in 0..1 << (log_num_rows - SKIPPED_VARS) {
-			assert_eq!(polyval_folded_smart.as_ref()[i], fp_folded_smart.as_ref()[i]);
-			assert_eq!(folded_naive.as_ref()[i], fp_folded_smart.as_ref()[i]);
+			assert_eq!(folded_naive.as_ref()[i], folded_smart.as_ref()[i]);
 		}
 	}
 }
