@@ -1,7 +1,6 @@
 pub mod fold_lookups;
 pub mod mle_sumcheck_integration_test;
 pub mod one_bit_multivariate;
-pub mod prover;
 pub mod sumcheck_prover;
 pub mod sumcheck_round_message;
 pub mod univariate;
