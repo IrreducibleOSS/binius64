@@ -4,7 +4,6 @@ use binius_field::Field;
 use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval};
 use binius_maybe_rayon::prelude::{
 	IndexedParallelIterator, IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator,
-	ParallelSliceMut,
 };
 use binius_verifier::protocols::sumcheck::RoundCoeffs;
 use rand::{SeedableRng, rngs::StdRng};
@@ -359,7 +358,7 @@ pub fn multilinear_sumcheck<F: Field>(mut prover: AndReductionProver<F>) -> (F, 
 
 #[cfg(test)]
 pub mod test {
-	use binius_field::{AESTowerField128b, BinaryField128bPolyval, Random};
+	use binius_field::{BinaryField128bPolyval, Random};
 
 	use super::*;
 	type BF = BinaryField128bPolyval;
@@ -410,7 +409,7 @@ pub mod test {
 		.unwrap();
 
 		// create multilinear sumcheck prover
-		let mut prover = AndReductionProver::new(
+		let prover = AndReductionProver::new(
 			multilinears,
 			zerocheck_challenges.clone(),
 			overall_claim,
