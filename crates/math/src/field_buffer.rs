@@ -9,8 +9,10 @@ use binius_field::{
 	Field, PackedField,
 	packed::{get_packed_slice_unchecked, set_packed_slice_unchecked},
 };
-use binius_maybe_rayon::{prelude::*, slice::ParallelSlice};
-use binius_utils::checked_arithmetics::{checked_log_2, strict_log_2};
+use binius_utils::{
+	checked_arithmetics::{checked_log_2, strict_log_2},
+	rayon::{prelude::*, slice::ParallelSlice},
+};
 use bytemuck::zeroed_vec;
 
 use crate::Error;

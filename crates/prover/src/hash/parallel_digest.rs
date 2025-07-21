@@ -2,12 +2,14 @@
 
 use std::{array, mem::MaybeUninit};
 
-use binius_maybe_rayon::{
-	iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
-	slice::ParallelSliceMut,
-};
 use binius_transcript::BufMut;
-use binius_utils::SerializeBytes;
+use binius_utils::{
+	SerializeBytes,
+	rayon::{
+		iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
+		slice::ParallelSliceMut,
+	},
+};
 use binius_verifier::hash::HashBuffer;
 use bytes::BytesMut;
 use digest::{Digest, Output, core_api::BlockSizeUser};
@@ -179,7 +181,7 @@ impl<D: Digest + BlockSizeUser + Send + Sync + Clone> ParallelDigest for D {
 mod tests {
 	use std::iter::repeat_with;
 
-	use binius_maybe_rayon::iter::IntoParallelRefIterator;
+	use binius_utils::rayon::iter::IntoParallelRefIterator;
 	use digest::{
 		FixedOutput, HashMarker, OutputSizeUser, Reset, Update,
 		consts::{U1, U32},

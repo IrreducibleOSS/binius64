@@ -9,12 +9,12 @@ workspace = true
 
 [dependencies]
 auto_impl.workspace = true
-binius-maybe-rayon = { path = "../maybe-rayon", default-features = false }
 bytemuck = { workspace = true, features = ["extern_crate_alloc"] }
 bytes.workspace = true
 cfg-if.workspace = true
 generic-array.workspace = true
 itertools.workspace = true
+rayon = { optional = true, workspace = true }
 thiserror.workspace = true
 
 [dev-dependencies]
@@ -23,4 +23,4 @@ rand.workspace = true
 [features]
 default = ["rayon"]
 bail_panic = []
-rayon = ["binius-maybe-rayon/rayon"]
+rayon = ["dep:rayon"]

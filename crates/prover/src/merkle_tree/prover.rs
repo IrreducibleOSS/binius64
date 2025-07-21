@@ -1,8 +1,8 @@
 // Copyright 2024-2025 Irreducible Inc.
 
 use binius_field::Field;
-use binius_maybe_rayon::iter::IndexedParallelIterator;
 use binius_transcript::{BufMut, TranscriptWriter};
+use binius_utils::rayon::iter::IndexedParallelIterator;
 use binius_verifier::{
 	hash::PseudoCompressionFunction,
 	merkle_tree::{BinaryMerkleTreeScheme, Commitment, Error},

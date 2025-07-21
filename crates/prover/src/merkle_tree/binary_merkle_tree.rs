@@ -3,8 +3,12 @@
 use std::{array, fmt::Debug, mem::MaybeUninit};
 
 use binius_field::Field;
-use binius_maybe_rayon::{prelude::*, slice::ParallelSlice};
-use binius_utils::{bail, checked_arithmetics::log2_strict_usize, mem::slice_assume_init_mut};
+use binius_utils::{
+	bail,
+	checked_arithmetics::log2_strict_usize,
+	mem::slice_assume_init_mut,
+	rayon::{prelude::*, slice::ParallelSlice},
+};
 use binius_verifier::{hash::PseudoCompressionFunction, merkle_tree::Error};
 use digest::{FixedOutputReset, Output, crypto_common::BlockSizeUser};
 use tracing::instrument;

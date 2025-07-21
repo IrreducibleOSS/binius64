@@ -3,7 +3,7 @@
 use std::ops::{Deref, DerefMut};
 
 use binius_field::{Field, PackedField};
-use binius_maybe_rayon::prelude::*;
+use binius_utils::rayon::prelude::*;
 
 use crate::{
 	Error, FieldBuffer, inner_product::inner_product_packed, multilinear::eq::eq_ind_partial_eval,

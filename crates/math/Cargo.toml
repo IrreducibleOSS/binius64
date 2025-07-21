@@ -9,7 +9,6 @@ workspace = true
 
 [dependencies]
 binius-field = { path = "../field", default-features = false }
-binius-maybe-rayon = { path = "../maybe-rayon", default-features = false }
 binius-utils = { path = "../utils", default-features = false }
 bytemuck.workspace = true
 getset.workspace = true
@@ -31,7 +30,7 @@ rand = { workspace = true, features = ["std_rng", "thread_rng"] }
 default = ["nightly-features"]
 test-utils = []
 nightly-features = ["binius-field/nightly_features"]
-rayon = ["binius-maybe-rayon/rayon"]
+rayon = ["binius-utils/rayon"]
 
 [lib]
 bench = false

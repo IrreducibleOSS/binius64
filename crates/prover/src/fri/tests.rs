@@ -139,7 +139,7 @@ fn test_commit_prove_verify_success<F, FA, P>(
 
 #[test]
 fn test_commit_prove_verify_success_128b_full() {
-	binius_utils::rayon::adjust_thread_pool();
+	binius_utils::rayon::config::adjust_thread_pool();
 
 	// This tests the case where we have a round commitment for every round
 	let log_dimension = 8;

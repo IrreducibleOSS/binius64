@@ -1,8 +1,10 @@
 // Copyright 2024-2025 Irreducible Inc.
 
 use binius_field::{BinaryField, PackedField};
-use binius_maybe_rayon::prelude::*;
-use binius_utils::{rayon::get_log_max_threads, strided_array::StridedArray2DViewMut};
+use binius_utils::{
+	rayon::{config::get_log_max_threads, prelude::*},
+	strided_array::StridedArray2DViewMut,
+};
 
 use super::{
 	additive_ntt::{AdditiveNTT, NTTShape},

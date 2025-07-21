@@ -3,7 +3,7 @@
 use std::{iter, ops::DerefMut};
 
 use binius_field::{Field, PackedField};
-use binius_maybe_rayon::prelude::*;
+use binius_utils::rayon::prelude::*;
 
 use crate::{Error, FieldBuffer};
 

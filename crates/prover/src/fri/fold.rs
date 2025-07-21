@@ -2,12 +2,13 @@
 
 use binius_field::{BinaryField, ExtensionField, PackedField, packed::len_packed_slice};
 use binius_math::{multilinear::eq::eq_ind_partial_eval, ntt::AdditiveNTT};
-use binius_maybe_rayon::prelude::*;
 use binius_transcript::{
 	ProverTranscript,
 	fiat_shamir::{CanSampleBits, Challenger},
 };
-use binius_utils::{SerializeBytes, bail, checked_arithmetics::log2_strict_usize};
+use binius_utils::{
+	SerializeBytes, bail, checked_arithmetics::log2_strict_usize, rayon::prelude::*,
+};
 use binius_verifier::{
 	fri::{FRIParams, fold::fold_interleaved_chunk},
 	merkle_tree::MerkleTreeScheme,

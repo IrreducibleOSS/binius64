@@ -1,12 +1,14 @@
 use binius_field::{Field, PackedExtension, PackedField};
 use binius_frontend::{constraint_system::ValueVec, word::Word};
 use binius_math::{FieldBuffer, ntt::AdditiveNTT};
-use binius_maybe_rayon::{iter::repeatn, prelude::*};
 use binius_transcript::{
 	ProverTranscript,
 	fiat_shamir::{CanSample, Challenger},
 };
-use binius_utils::SerializeBytes;
+use binius_utils::{
+	SerializeBytes,
+	rayon::{iter::repeatn, prelude::*},
+};
 use binius_verifier::{
 	LOG_WORDS_PER_ELEM, Params, fields::B128, fri::FRIParams, merkle_tree::MerkleTreeScheme,
 };

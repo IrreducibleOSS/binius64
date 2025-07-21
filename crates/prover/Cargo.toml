@@ -11,7 +11,6 @@ workspace = true
 binius-field = { path = "../field" }
 binius-frontend = { path = "../frontend" }
 binius-math = { path = "../math" }
-binius-maybe-rayon = { path = "../maybe-rayon" }
 binius-transcript = { path = "../transcript" }
 binius-verifier = { path = "../verifier" }
 binius-utils = { path = "../utils" }

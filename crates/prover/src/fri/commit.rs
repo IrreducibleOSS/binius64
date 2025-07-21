@@ -1,7 +1,6 @@
 use binius_field::{BinaryField, PackedExtension, PackedField};
 use binius_math::{FieldSlice, ntt::AdditiveNTT};
-use binius_maybe_rayon::prelude::*;
-use binius_utils::bail;
+use binius_utils::{bail, rayon::prelude::*};
 use binius_verifier::{fri::FRIParams, merkle_tree::MerkleTreeScheme};
 use bytemuck::zeroed_vec;
 use tracing::instrument;

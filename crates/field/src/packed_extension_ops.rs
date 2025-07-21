@@ -1,6 +1,6 @@
 // Copyright 2024-2025 Irreducible Inc.
 
-use binius_maybe_rayon::prelude::{
+use binius_utils::rayon::prelude::{
 	IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator,
 };
 

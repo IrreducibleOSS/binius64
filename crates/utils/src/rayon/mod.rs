@@ -1,4 +1,5 @@
-// Copyright 2025 Irreducible Inc.
+// Copyright 2024-2025 Irreducible Inc.
+
 // The code is initially based on `maybe-rayon` crate, https://github.com/shssoichiro/maybe-rayon
 
 //! This crate provides a subset of the `rayon` API to allow conditional
@@ -111,3 +112,5 @@ cfg_if::cfg_if! {
 		pub use rayon::*;
 	}
 }
+
+pub mod config;

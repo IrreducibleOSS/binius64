@@ -1,5 +1,5 @@
-use binius_maybe_rayon::prelude::IndexedParallelIterator;
 use binius_transcript::{BufMut, TranscriptWriter};
+use binius_utils::rayon::prelude::IndexedParallelIterator;
 use binius_verifier::merkle_tree::{Commitment, Error, MerkleTreeScheme};
 
 pub mod binary_merkle_tree;
