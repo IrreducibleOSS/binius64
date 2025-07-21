@@ -161,50 +161,21 @@ impl<F: Field> SumcheckProver<F> for AndReductionProver<F> {
                 // optimzation, handle eq differently w/ cheeky factorization
                 self.eq_factor *=  self.zerocheck_challenges[self.round_index] + sumcheck_challenge + F::ONE;
             }
-            // Parallel fold safe better for high-to-low
             FoldDirection::HighToLow => {
+                for m in self.multilinears.iter_mut() {
+                    
+                    let mut new_buf = bytemuck::zeroed_vec::<F>(n_half);
 
-                let mut multilinears = vec![
-                    field_buffer_to_mle(self.multilinears[0].clone()).unwrap(),
-                    field_buffer_to_mle(self.multilinears[1].clone()).unwrap(),
-                    field_buffer_to_mle(self.multilinears[2].clone()).unwrap(),
-                    field_buffer_to_mle(self.multilinears[3].clone()).unwrap(),
-                ];
-
-                let [a, b, c, d] = &mut multilinears[..] else {
-                    panic!("expected 4 multilinears")
-                };
-                let (a_low, a_high) = a.packed_evals.split_at_mut(n_half);
-                let (b_low, b_high) = b.packed_evals.split_at_mut(n_half);
-                let (c_low, c_high) = c.packed_evals.split_at_mut(n_half);
-                let (d_low, d_high) = d.packed_evals.split_at_mut(n_half);
-
-                for (low, high) in [
-                    (a_low, a_high),
-                    (b_low, b_high),
-                    (c_low, c_high),
-                    (d_low, d_high),
-                ] {
-                    low.par_chunks_mut(1024).for_each(|chunk| {
-                        for (elm, high_elm) in chunk.iter_mut().zip(high.iter()) {
-                            *elm += sumcheck_challenge * (*high_elm - *elm);
-                        }
+                    new_buf.par_iter_mut().enumerate().for_each(|(j, elm)| {
+                        let low_elm = m.get(j).unwrap();
+                        let high_elm = m.get(j + n_half).unwrap();
+                        *elm = low_elm + sumcheck_challenge * (high_elm - low_elm);
                     });
+
+                    *m = FieldBuffer::from_values(&new_buf).unwrap();
                 }
-
-                for i in 0..multilinears.len() {
-                    multilinears[i].packed_evals.truncate(n_half);
-                    multilinears[i].n_vars -= 1;
-                }
-
-
-                self.multilinears[0] = mle_to_field_buffer(&multilinears[0].clone()).unwrap();
-                self.multilinears[1] = mle_to_field_buffer(&multilinears[1].clone()).unwrap();
-                self.multilinears[2] = mle_to_field_buffer(&multilinears[2].clone()).unwrap();
-                self.multilinears[3] = mle_to_field_buffer(&multilinears[3].clone()).unwrap();
             }
         }
-
 
         let zerocheck_challenge = self.zerocheck_challenges[self.zerocheck_challenge_idx()];
 
