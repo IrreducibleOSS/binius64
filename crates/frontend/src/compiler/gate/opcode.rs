@@ -1,4 +1,4 @@
-use crate::word::Word;
+use crate::{compiler::gate, word::Word};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Opcode {
@@ -44,135 +44,33 @@ impl Opcode {
 	pub fn shape(&self) -> OpcodeShape {
 		match self {
 			// Bitwise operations
-			Opcode::Band => OpcodeShape {
-				const_in: &[],
-				n_in: 2,
-				n_out: 1,
-				n_internal: 0,
-				n_imm: 0,
-			},
-			Opcode::Bxor => OpcodeShape {
-				const_in: &[Word::ALL_ONE],
-				n_in: 2,
-				n_out: 1,
-				n_internal: 0,
-				n_imm: 0,
-			},
-			Opcode::Bor => OpcodeShape {
-				const_in: &[],
-				n_in: 2,
-				n_out: 1,
-				n_internal: 0,
-				n_imm: 0,
-			},
+			Opcode::Band => gate::band::shape(),
+			Opcode::Bxor => gate::bxor::shape(),
+			Opcode::Bor => gate::bor::shape(),
 
 			// Arithmetic
-			Opcode::IaddCinCout => OpcodeShape {
-				const_in: &[Word::ALL_ONE],
-				n_in: 3,
-				n_out: 2,
-				n_internal: 1,
-				n_imm: 0,
-			},
-			Opcode::Iadd32 => OpcodeShape {
-				const_in: &[Word::MASK_32],
-				n_in: 2,
-				n_out: 1,
-				n_imm: 0,
-				n_internal: 1,
-			},
-			Opcode::Imul => OpcodeShape {
-				const_in: &[],
-				n_in: 2,
-				n_out: 2,
-				n_internal: 0,
-				n_imm: 0,
-			},
+			Opcode::IaddCinCout => gate::iadd_cin_cout::shape(),
+			Opcode::Iadd32 => gate::iadd32::shape(),
+			Opcode::Imul => gate::imul::shape(),
 
 			// Shifts
-			Opcode::Shr => OpcodeShape {
-				const_in: &[Word::ALL_ONE],
-				n_in: 1,
-				n_out: 1,
-				n_internal: 0,
-				n_imm: 1,
-			},
-			Opcode::Shl => OpcodeShape {
-				const_in: &[Word::ALL_ONE],
-				n_in: 1,
-				n_out: 1,
-				n_internal: 0,
-				n_imm: 1,
-			},
-			Opcode::Shr32 => OpcodeShape {
-				const_in: &[Word::MASK_32],
-				n_in: 1,
-				n_out: 1,
-				n_internal: 0,
-				n_imm: 1,
-			},
-			Opcode::Rotr32 => OpcodeShape {
-				const_in: &[Word::MASK_32],
-				n_in: 1,
-				n_out: 1,
-				n_internal: 0,
-				n_imm: 1,
-			},
+			Opcode::Shr => gate::shr::shape(),
+			Opcode::Shl => gate::shl::shape(),
+			Opcode::Shr32 => gate::shr32::shape(),
+			Opcode::Rotr32 => gate::rotr32::shape(),
 
 			// Comparisons
-			Opcode::IcmpUlt => OpcodeShape {
-				const_in: &[Word::ALL_ONE],
-				n_in: 2,
-				n_out: 1,
-				n_internal: 1,
-				n_imm: 0,
-			},
-			Opcode::IcmpEq => OpcodeShape {
-				const_in: &[],
-				n_in: 3,
-				n_out: 1,
-				n_internal: 1,
-				n_imm: 0,
-			},
+			Opcode::IcmpUlt => gate::icmp_ult::shape(),
+			Opcode::IcmpEq => gate::icmp_eq::shape(),
 
 			// Extraction
-			Opcode::ExtractByte => OpcodeShape {
-				const_in: &[Word(0xFF), Word(0xFFFFFFFFFFFFFF00u64)],
-				n_in: 1,
-				n_out: 1,
-				n_internal: 0,
-				n_imm: 1,
-			},
+			Opcode::ExtractByte => gate::extract_byte::shape(),
 
 			// Assertions (no outputs)
-			Opcode::AssertEq => OpcodeShape {
-				const_in: &[Word::ALL_ONE],
-				n_in: 2,
-				n_out: 0,
-				n_internal: 0,
-				n_imm: 0,
-			},
-			Opcode::Assert0 => OpcodeShape {
-				const_in: &[Word::ALL_ONE],
-				n_in: 1,
-				n_out: 0,
-				n_internal: 0,
-				n_imm: 0,
-			},
-			Opcode::AssertBand0 => OpcodeShape {
-				const_in: &[],
-				n_in: 2,
-				n_out: 0,
-				n_internal: 0,
-				n_imm: 0,
-			},
-			Opcode::AssertEqCond => OpcodeShape {
-				const_in: &[],
-				n_in: 3,
-				n_out: 0,
-				n_internal: 0,
-				n_imm: 0,
-			},
+			Opcode::AssertEq => gate::assert_eq::shape(),
+			Opcode::Assert0 => gate::assert_0::shape(),
+			Opcode::AssertBand0 => gate::assert_band_0::shape(),
+			Opcode::AssertEqCond => gate::assert_eq_cond::shape(),
 		}
 	}
 }

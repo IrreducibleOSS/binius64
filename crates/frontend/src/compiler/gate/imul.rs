@@ -3,10 +3,21 @@
 use crate::{
 	compiler::{
 		circuit,
+		gate::opcode::OpcodeShape,
 		gate_graph::{Gate, GateData, GateParam},
 	},
 	constraint_system::{ConstraintSystem, MulConstraint, ShiftedValueIndex},
 };
+
+pub fn shape() -> OpcodeShape {
+	OpcodeShape {
+		const_in: &[],
+		n_in: 2,
+		n_out: 2,
+		n_internal: 0,
+		n_imm: 0,
+	}
+}
 
 pub fn constrain(
 	_gate: Gate,
