@@ -1,16 +1,47 @@
-use binius_field::{BinaryField128bPolyval, Field, Random, ExtensionField, AESTowerField128b};
+
+use binius_field::{Field, Random, ExtensionField};
 use rand::{SeedableRng, rngs::StdRng};
 use std::vec;
-use binius_maybe_rayon::prelude::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator, IntoParallelRefIterator, ParallelSliceMut, IntoParallelIterator};
+use binius_maybe_rayon::prelude::{
+    IndexedParallelIterator, 
+    IntoParallelRefMutIterator, 
+    ParallelIterator, 
+    IntoParallelRefIterator, 
+    ParallelSliceMut, 
+    IntoParallelIterator,
+};
 use binius_verifier::protocols::sumcheck::RoundCoeffs;
 use crate::protocols::sumcheck::{
     common::SumcheckProver,
     error::Error,
 };
 
-use binius_math::{FieldBuffer, multilinear::eq::tensor_prod_eq_ind};
+use binius_math::FieldBuffer;
 
-pub fn eq_ind<F: Field>(zerocheck_challenges: &[F]) -> FieldBuffer<F> {
+
+#[derive(Debug, Clone)]
+pub struct BigFieldMultilinear<F: Field> {
+    pub n_vars: usize,
+    pub packed_evals: Vec<F>,
+}
+
+pub fn mle_to_field_buffer<F: Field>(mle: &BigFieldMultilinear<F>) -> Result<FieldBuffer<F>, Error> {
+    Ok(FieldBuffer::from_values(&mle.packed_evals).unwrap())
+}
+
+pub fn field_buffer_to_mle<F: Field>(buf: FieldBuffer<F>) -> Result<BigFieldMultilinear<F>, Error> {
+    let mut values = vec![];
+    for i in 0..buf.len() {
+        values.push(buf.get(i).unwrap());
+    }
+    Ok(BigFieldMultilinear {
+        n_vars: buf.log_len(),
+        packed_evals: values,
+    })
+}
+
+
+pub fn eq_ind<F: Field>(zerocheck_challenges: &[F]) -> BigFieldMultilinear<F> {
     let mut mle = bytemuck::zeroed_vec(1 << zerocheck_challenges.len());
 
     let _span = tracing::debug_span!("eq ind").entered();
@@ -31,7 +62,10 @@ pub fn eq_ind<F: Field>(zerocheck_challenges: &[F]) -> FieldBuffer<F> {
             });
     }
 
-    FieldBuffer::from_values(&mle).unwrap()
+    BigFieldMultilinear {
+        n_vars: zerocheck_challenges.len(),
+        packed_evals: mle,
+    }
 }
 
 
@@ -62,7 +96,9 @@ impl<F: Field> MultilinearSumcheckProver<F> {
         debug_assert_eq!(multilinears.len(), 3);
 
         // compute eq indicator from zerocheck challenges, add to multilinears for folding
-        let eq_r: FieldBuffer<F> = eq_ind(&zerocheck_challenges); //tensor_prod_eq_ind(&zerocheck_challenges);
+        let eq_r: BigFieldMultilinear<F> = eq_ind(&zerocheck_challenges);
+        let eq_r: FieldBuffer<F> = mle_to_field_buffer(&eq_r).unwrap();
+        
         let mut multilinears = multilinears;
         multilinears.push(eq_r);
 
@@ -82,25 +118,26 @@ impl<F: Field> MultilinearSumcheckProver<F> {
     }
 
     // sums the composition of 4 multilinears (A * B - C) * D
-	pub fn sum_composition(
-        a: &FieldBuffer<F>, 
-        b: &FieldBuffer<F>, 
-        c: &FieldBuffer<F>, 
-        d: &FieldBuffer<F>
+    pub fn sum_composition(
+        a: &FieldBuffer<F>,
+        b: &FieldBuffer<F>,
+        c: &FieldBuffer<F>,
+        d: &FieldBuffer<F>,
     ) -> Result<F, Error> {
 
-		let mut sum = F::ZERO;
-		for i in 0..a.len() {
-			let a_i = a.get(i)?;
-			let b_i = b.get(i)?;
+        let n = 1 << a.log_len();
+        let mut sum = F::ZERO;
+        for i in 0..n {
+            let a_i = a.get(i)?;
+            let b_i = b.get(i)?;
             let c_i = c.get(i)?;
             let d_i = d.get(i)?;
 
-			sum += (a_i * b_i - c_i) * d_i;
-		}
+            sum += (a_i * b_i - c_i) * d_i;
+        }
 
-		Ok(sum)
-	}
+        Ok(sum)
+    }
 
     fn zerocheck_challenge_idx(&self) -> usize {
         match self.fold_direction {
@@ -112,14 +149,23 @@ impl<F: Field> MultilinearSumcheckProver<F> {
     fn round_msg_par(&self) -> Vec<F> {
         let _span = tracing::debug_span!("round message parallel").entered();
 
+
+        // let a = &self.multilinears[0].packed_evals;
+        // let b = &self.multilinears[1].packed_evals;
+        // let c = &self.multilinears[2].packed_evals;
+        // let d = &self.multilinears[3].packed_evals;
+
+
+        let a = field_buffer_to_mle(self.multilinears[0].clone()).unwrap().packed_evals;
+        let b = field_buffer_to_mle(self.multilinears[1].clone()).unwrap().packed_evals;
+        let c = field_buffer_to_mle(self.multilinears[2].clone()).unwrap().packed_evals;
+        let d = field_buffer_to_mle(self.multilinears[3].clone()).unwrap().packed_evals;
+
+
         let log_n = self.multilinears[0].log_len();
         let n = 1 << log_n;
         let n_half = n >> 1;
 
-        let a = &self.multilinears[0];
-        let b = &self.multilinears[1];
-        let c = &self.multilinears[2];
-        let d = &self.multilinears[3];
 
         // compute indices for either high to low or low to high
         let compute_idx: fn((usize, usize)) -> (usize, usize) = match self.fold_direction {
@@ -140,14 +186,14 @@ impl<F: Field> MultilinearSumcheckProver<F> {
                 for j in chunk {
                     let (low_idx, high_idx) = compute_idx((j, n_half));
 
-                    let a_lower = a.get(low_idx).unwrap();
-                    let b_lower = b.get(low_idx).unwrap();
-                    let c_lower = c.get(low_idx).unwrap();
-                    let d_lower = d.get(low_idx).unwrap();
+                    let a_lower = a[low_idx];
+                    let b_lower = b[low_idx];
+                    let c_lower = c[low_idx];
+                    let d_lower = d[low_idx];
 
-                    let a_upper = a.get(high_idx).unwrap();
-                    let b_upper = b.get(high_idx).unwrap(); 
-                    let d_upper = d.get(high_idx).unwrap();
+                    let a_upper = a[high_idx];
+                    let b_upper = b[high_idx];
+                    let d_upper = d[high_idx];
 
                     acc_g_of_zero += (a_lower * b_lower - c_lower) * d_lower;
                     acc_g_leading_coeff +=
@@ -187,52 +233,61 @@ impl<F: Field> SumcheckProver<F> for MultilinearSumcheckProver<F> {
         let n = 1 << self.multilinears[0].log_len();
         let n_half = n >> 1;
 
+        let mut multilinears = vec![
+            field_buffer_to_mle(self.multilinears[0].clone()).unwrap(),
+            field_buffer_to_mle(self.multilinears[1].clone()).unwrap(),
+            field_buffer_to_mle(self.multilinears[2].clone()).unwrap(),
+            field_buffer_to_mle(self.multilinears[3].clone()).unwrap(),
+        ];
+
         match self.fold_direction {
             // Parallel fold safe for high-to-low and low-to-high
             FoldDirection::LowToHigh => {
-                self.multilinears
+                multilinears
                     .par_iter_mut()
                     .enumerate()
                     .for_each(|(i, multilinear)| {
 
-                        let new_mle = bytemuck::zeroed_vec(n_half);
-                        let out_buf = FieldBuffer::from_values(&new_mle).unwrap();
-
                         if i < 3 {
                             for j in 0..n_half {
                                 let (low_idx, high_idx) = (2 * j, 2 * j + 1);
-                                let even = multilinear.get(low_idx).unwrap();
-                                let odd = multilinear.get(high_idx).unwrap();
-                                out_buf.set(j, even + sumcheck_challenge * (odd - even));
+                                let even = multilinear.packed_evals[low_idx];
+                                let odd = multilinear.packed_evals[high_idx];
+                                multilinear.packed_evals[j] = even + sumcheck_challenge * (odd - even);
                             }
                         } else {
                             for j in 0..n_half {
                                 let (low_idx, high_idx) = (2 * j, 2 * j + 1);
-                                let even = multilinear.get(low_idx).unwrap();
-                                let odd = multilinear.get(high_idx).unwrap();
-                                out_buf.set(j, even + odd);
+                                let even = multilinear.packed_evals[low_idx];
+                                let odd = multilinear.packed_evals[high_idx];
+                                multilinear.packed_evals[j] = even + odd;
                             }
                         }
 
-                        *multilinear = out_buf;
+                        // remove last 1 << n-1 elements from each multilinear
+                        multilinear.packed_evals.truncate(n_half);
+                        multilinear.n_vars -= 1;
                     });
 
                 // optimzation, handle eq differently w/ cheeky factorization
                 self.eq_factor *=  self.zerocheck_challenges[self.round_index] + sumcheck_challenge + F::ONE;
+
+
+                self.multilinears[0] = mle_to_field_buffer(&multilinears[0].clone()).unwrap();
+                self.multilinears[1] = mle_to_field_buffer(&multilinears[1].clone()).unwrap();
+                self.multilinears[2] = mle_to_field_buffer(&multilinears[2].clone()).unwrap();
+                self.multilinears[3] = mle_to_field_buffer(&multilinears[3].clone()).unwrap();
+
             }
             // Parallel fold safe better for high-to-low
             FoldDirection::HighToLow => {
-                let [a, b, c, d] = &mut self.multilinears[..] else {
+                let [a, b, c, d] = &mut multilinears[..] else {
                     panic!("expected 4 multilinears")
                 };
-
-                let out_buf = bytemuck::zeroed_vec(n_half);
-                let out_buf = FieldBuffer::from_values(&out_buf).unwrap();
-
-                let (a_low, a_high) = a.split_at_mut(n_half);
-                let (b_low, b_high) = b.split_at_mut(n_half);
-                let (c_low, c_high) = c.split_at_mut(n_half);
-                let (d_low, d_high) = d.split_at_mut(n_half);
+                let (a_low, a_high) = a.packed_evals.split_at_mut(n_half);
+                let (b_low, b_high) = b.packed_evals.split_at_mut(n_half);
+                let (c_low, c_high) = c.packed_evals.split_at_mut(n_half);
+                let (d_low, d_high) = d.packed_evals.split_at_mut(n_half);
 
                 for (low, high) in [
                     (a_low, a_high),
@@ -248,14 +303,18 @@ impl<F: Field> SumcheckProver<F> for MultilinearSumcheckProver<F> {
                     });
                 }
 
-                for i in 0..self.multilinears.len() {
-                    self.multilinears[i].packed_evals.truncate(n_half);
-                    self.multilinears[i].log_len -= 1;
+                for i in 0..multilinears.len() {
+                    multilinears[i].packed_evals.truncate(n_half);
+                    multilinears[i].n_vars -= 1;
                 }
+
+
+                self.multilinears[0] = mle_to_field_buffer(&multilinears[0].clone()).unwrap();
+                self.multilinears[1] = mle_to_field_buffer(&multilinears[1].clone()).unwrap();
+                self.multilinears[2] = mle_to_field_buffer(&multilinears[2].clone()).unwrap();
+                self.multilinears[3] = mle_to_field_buffer(&multilinears[3].clone()).unwrap();
             }
         }
-
-
 
 
         let zerocheck_challenge = self.zerocheck_challenges[self.zerocheck_challenge_idx()];
@@ -281,14 +340,23 @@ impl<F: Field> SumcheckProver<F> for MultilinearSumcheckProver<F> {
         let round_msg = self.round_msg_par();
 
 
+        let mut multilinears = vec![
+            field_buffer_to_mle(self.multilinears[0].clone()).unwrap(),
+            field_buffer_to_mle(self.multilinears[1].clone()).unwrap(),
+            field_buffer_to_mle(self.multilinears[2].clone()).unwrap(),
+            field_buffer_to_mle(self.multilinears[3].clone()).unwrap(),
+        ];
+
+
+
         let log_n = self.multilinears[0].log_len();
         let n = 1 << log_n;
         let n_half = n >> 1;
 
-        let a = &self.multilinears[0].packed_evals;
-        let b = &self.multilinears[1].packed_evals;
-        let c = &self.multilinears[2].packed_evals;
-        let d = &self.multilinears[3].packed_evals;
+        let a = &multilinears[0].packed_evals;
+        let b = &multilinears[1].packed_evals;
+        let c = &multilinears[2].packed_evals;
+        let d = &multilinears[3].packed_evals;
 
         // compute indices for either high to low or low to high
         let compute_idx: fn((usize, usize)) -> (usize, usize) = match self.fold_direction {
@@ -341,6 +409,13 @@ impl<F: Field> SumcheckProver<F> for MultilinearSumcheckProver<F> {
         self.round_message = Some(
             RoundCoeffs {0: vec![g_of_zero, g_of_one, g_leading_coeff]}
         );
+
+
+
+        self.multilinears[0] = mle_to_field_buffer(&multilinears[0].clone()).unwrap();
+        self.multilinears[1] = mle_to_field_buffer(&multilinears[1].clone()).unwrap();
+        self.multilinears[2] = mle_to_field_buffer(&multilinears[2].clone()).unwrap();
+        self.multilinears[3] = mle_to_field_buffer(&multilinears[3].clone()).unwrap();
 
         Ok(vec![self.round_message.clone().unwrap()])
     }
@@ -459,13 +534,11 @@ pub fn multilinear_sumcheck<F: Field>(
 pub mod test {
     use super::*;
     use binius_field::{AESTowerField128b, BinaryField128bPolyval, Random};
-    use crate::protocols::sumcheck::and_reduction::mle::{mle_to_field_buffer, field_buffer_to_mle};
-
     type BF = BinaryField128bPolyval;
 
 
     // generate multiple random multilinears of log_n variables
-    pub fn random_multilinears(
+    pub fn random_field_buffer(
         num_multilinears: usize,
         log_n: usize,
     ) -> Vec<FieldBuffer<BF>> {
@@ -475,8 +548,10 @@ pub mod test {
         let mut multilinears = Vec::with_capacity(num_multilinears);
         for _ in 0..num_multilinears {
             let multilinear = FieldBuffer::from_values(
-                (0..n).map(|_| BF::random(&mut rng)).collect::<Vec<BF>>(),
-            );
+                &(0..n)
+                    .map(|_| BF::random(&mut rng))
+                    .collect::<Vec<BF>>(),
+            ).unwrap();
 
             multilinears.push(multilinear);
         }
@@ -498,10 +573,11 @@ pub mod test {
             .collect::<Vec<BF>>();
 
             let multilinears: Vec<FieldBuffer<BF>> =
-                random_multilinears(num_multilinears, log_n);
+                random_field_buffer(num_multilinears, log_n);
 
             // eq_r is the multilinear equality indicator for some vector of log_n zerocheck challenges
-            let eq_r: FieldBuffer<BF> = eq_ind(&zerocheck_challenges.clone());
+            let eq_r: BigFieldMultilinear<BF> = eq_ind(&zerocheck_challenges.clone());
+            let eq_r: FieldBuffer<BF> = mle_to_field_buffer(&eq_r).unwrap();
 
             // compute overall sum claim for (A * B - C) * eq_r
             let overall_claim = MultilinearSumcheckProver::<BF>::sum_composition(
@@ -509,7 +585,7 @@ pub mod test {
                 &multilinears[1],
                 &multilinears[2],
                 &eq_r,
-            );
+            ).unwrap();
 
             // create multilinear sumcheck prover
             let mut prover = MultilinearSumcheckProver::new(
@@ -542,22 +618,23 @@ pub mod test {
         let num_multilinears = 4;
 
         let multilinears: Vec<FieldBuffer<BF>> =
-            random_multilinears(num_multilinears, log_n);
+            random_field_buffer(num_multilinears, log_n);
+
         let overall_sum = MultilinearSumcheckProver::sum_composition(
             &multilinears[0],
             &multilinears[1],
             &multilinears[2],
             &multilinears[3],
-        );
+        ).unwrap();
 
         // produce g(0), g(1) by summing over evals where first var is 0, 1
         let mut g_of_zero = BF::ZERO;
         let mut g_of_one = BF::ZERO;
         for j in 0..n {
-            let a = multilinears[0].packed_evals[j];
-            let b = multilinears[1].packed_evals[j];
-            let c = multilinears[2].packed_evals[j];
-            let d = multilinears[3].packed_evals[j];
+            let a = multilinears[0].get(j).unwrap();
+            let b = multilinears[1].get(j).unwrap();
+            let c = multilinears[2].get(j).unwrap();
+            let d = multilinears[3].get(j).unwrap();
 
             if j % 2 == 0 {
                 g_of_zero += (a * b - c) * d;
