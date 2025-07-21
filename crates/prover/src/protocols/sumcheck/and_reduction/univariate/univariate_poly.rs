@@ -125,27 +125,26 @@ impl<F: Field> UnivariatePoly<F, F>
 #[cfg(test)]
 mod test {
     use binius_field::{AESTowerField8b, BinaryField128bPolyval, PackedField, AESTowerField128b};
-
-    // use crate::{
-    //     utils::subfield_isomorphism_lookup::SubfieldIsomorphismLookup, univariate::univariate_poly::UnivariatePoly,
-    // };
-
-    // use super::GenericPo2UnivariatePoly;
+    use crate::{
+        protocols::sumcheck::and_reduction::univariate::subfield_isomorphism::SubfieldIsomorphismLookup,
+        protocols::sumcheck::and_reduction::univariate::univariate_poly::UnivariatePoly,
+    };
+    use super::GenericPo2UnivariatePoly;
 
     #[test]
     fn univariate_po2_sanity_check() {
-        // let iso_lookup = SubfieldIsomorphismLookup::new::<AESTowerField128b>();
+        let iso_lookup = SubfieldIsomorphismLookup::new::<AESTowerField128b>();
 
-        // let v = (0..64)
-        //     .map(AESTowerField8b::new)
-        //     .map(|x| x.square())
-        //     .collect();
-        // let poly = GenericPo2UnivariatePoly::new(v, &iso_lookup);
-        // for i in 990..1000 {
-        //     assert_eq!(
-        //         poly.evaluate_at_challenge(BinaryField128bPolyval::from(i as u128)),
-        //         BinaryField128bPolyval::from(i as u128).square()
-        //     );
-        // }
+        let v = (0..64)
+            .map(AESTowerField8b::new)
+            .map(|x| x.square())
+            .collect();
+        let poly = GenericPo2UnivariatePoly::new(v, &iso_lookup);
+        for i in 990..1000 {
+            assert_eq!(
+                poly.evaluate_at_challenge(BinaryField128bPolyval::from(i as u128)),
+                BinaryField128bPolyval::from(i as u128).square()
+            );
+        }
     }
 }
