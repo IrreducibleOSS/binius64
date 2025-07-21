@@ -142,6 +142,20 @@ impl GateGraph {
 		}
 	}
 
+	pub fn add_inout(&mut self) -> Wire {
+		self.n_inout += 1;
+		self.wires.push(WireData {
+			kind: WireKind::Inout,
+		})
+	}
+
+	pub fn add_witness(&mut self) -> Wire {
+		self.n_witness += 1;
+		self.wires.push(WireData {
+			kind: WireKind::Witness,
+		})
+	}
+
 	pub fn add_internal(&mut self) -> Wire {
 		// Internal wires are treated as witnesses for allocation purposes
 		self.n_witness += 1;

@@ -172,28 +172,17 @@ impl CircuitBuilder {
 	}
 
 	pub fn add_inout(&self) -> Wire {
-		let mut graph = self.graph_mut();
-		graph.n_inout += 1;
-		graph.wires.push(WireData {
-			kind: WireKind::Inout,
-		})
+		self.graph_mut().add_inout()
 	}
 
 	pub fn add_witness(&self) -> Wire {
-		let mut graph = self.graph_mut();
-		graph.n_witness += 1;
-		graph.wires.push(WireData {
-			kind: WireKind::Witness,
-		})
+		self.graph_mut().add_witness()
 	}
 
 	/// Adds a wire similar to `add_witness`. Internal wires are meant to designate wires that
 	/// are prunable.
 	fn add_internal(&self) -> Wire {
-		let mut graph = self.graph_mut();
-		// We treat internal as sort of witness.
-		graph.n_witness += 1;
-		graph.add_internal()
+		self.graph_mut().add_internal()
 	}
 
 	pub fn band(&self, x: Wire, y: Wire) -> Wire {
