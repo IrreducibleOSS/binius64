@@ -1,5 +1,5 @@
-use binius_field::{BinaryField, ExtensionField, Field, PackedExtension, TowerField};
-use binius_math::ring_switch::{construct_s_hat_u, eval_rs_eq};
+use binius_field::{BinaryField, ExtensionField, Field, PackedExtension, TowerField, PackedField};
+use binius_math::{ring_switch::{eval_rs_eq, construct_bitsliced_claims}, multilinear::eq::eq_ind_partial_eval};
 use binius_transcript::{
 	VerifierTranscript,
 	fiat_shamir::{CanSample, Challenger},
@@ -9,7 +9,7 @@ use itertools::Itertools;
 
 use super::utils::{KAPPA, compute_expected_sumcheck_claim, compute_mle_eq_sum};
 use crate::{
-	basefold::{utils::eq_ind_mle, verifier::BaseFoldVerifier},
+	basefold::{ verifier::BaseFoldVerifier},
 	fields::B1,
 	fri::FRIParams,
 	merkle_tree::MerkleTreeScheme,
@@ -28,7 +28,7 @@ impl OneBitPCSVerifier {
 		n_vars: usize,
 	) -> Result<(), String>
 	where
-		BigField: Field + BinaryField + ExtensionField<FA> + TowerField + PackedExtension<B1>,
+		BigField: Field + BinaryField + PackedField<Scalar=BigField> + ExtensionField<FA> + TowerField + PackedExtension<B1>,
 		FA: BinaryField,
 		TranscriptChallenger: Challenger + Clone,
 		VCS: MerkleTreeScheme<BigField, Digest: DeserializeBytes>,
@@ -43,17 +43,17 @@ impl OneBitPCSVerifier {
 		let (eval_point_low, _) = eval_point.split_at(KAPPA);
 		assert_eq!(
 			evaluation_claim,
-			compute_mle_eq_sum(&s_hat_v, eq_ind_mle(eval_point_low).as_ref())
+			compute_mle_eq_sum(&s_hat_v, eq_ind_partial_eval(eval_point_low).as_ref())
 		);
 
 		// basis decompose/recombine s_hat_v across opposite dimension
-		let s_hat_u: Vec<BigField> = construct_s_hat_u::<B1, BigField>(s_hat_v);
+		let s_hat_u: Vec<BigField> = construct_bitsliced_claims::<B1, BigField>(s_hat_v);
 
 		// retrieve batching scalars
 		let batching_scalars: Vec<BigField> =
 			OneBitPCSVerifier::verifier_samples_batching_scalars(transcript);
 
-		let verifier_eq_r_double_prime = eq_ind_mle(&batching_scalars);
+		let verifier_eq_r_double_prime = eq_ind_partial_eval(&batching_scalars);
 
 		// infer sumcheck claim from transcript
 		let verifier_computed_sumcheck_claim = compute_expected_sumcheck_claim::<B1, BigField>(
@@ -77,7 +77,7 @@ impl OneBitPCSVerifier {
 		let rs_eq_at_basefold_challenges_verifier = eval_rs_eq(
 			eval_point_high,
 			&basefold_challenges,
-			eq_ind_mle(&batching_scalars).as_ref(),
+			eq_ind_partial_eval(&batching_scalars).as_ref(),
 		);
 
 		assert_eq!(fri_final_value * rs_eq_at_basefold_challenges_verifier, sumcheck_final_claim);

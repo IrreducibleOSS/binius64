@@ -2,7 +2,7 @@ use binius_field::{BinaryField, ExtensionField, Field, PackedExtension, PackedFi
 use binius_math::{
 	FieldBuffer,
 	ntt::AdditiveNTT,
-	ring_switch::{construct_s_hat_u, eq_ind_mle, rs_eq_ind},
+	ring_switch::{rs_eq_ind, construct_bitsliced_claims}, multilinear::eq::eq_ind_partial_eval,
 };
 // use binius_prover::merkle_tree::MerkleTreeProver;
 use binius_transcript::{
@@ -40,7 +40,7 @@ where
 
 impl<BigField> OneBitPCSProver<BigField>
 where
-	BigField: TowerField + From<u128> + PackedExtension<B1>,
+	BigField: TowerField + From<u128> + PackedExtension<B1> + PackedField<Scalar = BigField>,
 {
 	pub fn new(
 		// We will need to figure out how to handle these parameters.
@@ -71,7 +71,7 @@ where
 		committed: &'a MerkleProver::Committed,
 	) where
 		TranscriptChallenger: Challenger,
-		BigField: TowerField + ExtensionField<FA> + From<u128> + PackedExtension<B1>,
+		BigField: TowerField + ExtensionField<FA> + From<u128> + PackedExtension<B1>+ PackedField<Scalar=BigField>,
 		FA: BinaryField,
 		NTT: AdditiveNTT<FA> + Sync,
 		MerkleProver: MerkleTreeProver<BigField, Scheme = VCS>,
@@ -85,14 +85,14 @@ where
 		// Verifier basis decomposes and recombines s_hat_v into s_hat_u
 		// A then undergoes a linear recombination across the opposite dimension for which it was
 		// decomposed. This is the same as reinterpreting the rows of matrix A as columns.
-		let prover_s_hat_u: Vec<BigField> = construct_s_hat_u::<B1, BigField>(prover_s_hat_v);
+		let prover_s_hat_u: Vec<BigField> = construct_bitsliced_claims::<B1, BigField>(prover_s_hat_v);
 
 		// Verifier sends batching scalars
 		let prover_r_double_prime: Vec<BigField> = prover_samples_batching_scalars(transcript);
 
 		// Technically, we are interested in multiple sumchecks, but because of the mechanics of
 		// the sumcheck, we can batch them all into a single sumcheck for efficiency. The
-		let prover_eq_r_double_prime = eq_ind_mle(&prover_r_double_prime);
+		let prover_eq_r_double_prime = eq_ind_partial_eval(&prover_r_double_prime);
 
 		// The verifier computes the expected sumcheck claim for which the prover must convince
 		// the verifier is correct as to their prior commitment.
@@ -130,7 +130,7 @@ where
 		// Lift the packed multilinear to the large field
 		let small_field_mle = <BigField as PackedExtension<B1>>::cast_bases(packed_mle.as_ref());
 
-		let eq_at_high = eq_ind_mle(eval_point_high);
+		let eq_at_high = eq_ind_partial_eval::<BigField>(eval_point_high);
 
 		let mut s_hat_v = vec![BigField::ZERO; 1 << KAPPA];
 
@@ -195,7 +195,7 @@ pub fn prover_samples_batching_scalars<F: Field + TowerField, TranscriptChalleng
 mod test {
 	use binius_field::{ExtensionField, Field, Random};
 	use binius_math::{
-		FieldBuffer, ReedSolomonCode, ntt::SingleThreadedNTT, ring_switch::eq_ind_mle,
+		FieldBuffer, ReedSolomonCode, ntt::SingleThreadedNTT, multilinear::eq::eq_ind_partial_eval,
 	};
 	use binius_transcript::ProverTranscript;
 	use binius_verifier::{
@@ -299,7 +299,7 @@ mod test {
 		// evaluate small field multilinear at the evaluation point
 		// It is assumed the prover and verifier already know the evaluation claim
 		let evaluation_claim =
-			compute_mle_eq_sum(&lifted_small_field_mle, eq_ind_mle(&evaluation_point).as_ref());
+			compute_mle_eq_sum(&lifted_small_field_mle, eq_ind_partial_eval(&evaluation_point).as_ref());
 
 		// Instantiate ring switch pcs
 		let ring_switch_pcs_prover =
