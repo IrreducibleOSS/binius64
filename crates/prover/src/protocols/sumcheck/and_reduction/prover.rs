@@ -455,7 +455,7 @@ pub mod test {
 			let c = multilinears[2].get(j).unwrap();
 			let d = multilinears[3].get(j).unwrap();
 
-			if j % 2 == 0 {
+			if j.is_multiple_of(2) {
 				g_of_zero += (a * b - c) * d;
 			} else {
 				g_of_one += (a * b - c) * d;
