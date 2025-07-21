@@ -1,22 +1,20 @@
 
-use binius_field::{Field, Random, ExtensionField};
+use binius_field::Field;
 use rand::{SeedableRng, rngs::StdRng};
 use std::vec;
 use binius_maybe_rayon::prelude::{
     IndexedParallelIterator, 
     IntoParallelRefMutIterator, 
     ParallelIterator, 
-    IntoParallelRefIterator, 
     ParallelSliceMut, 
     IntoParallelIterator,
 };
 use binius_verifier::protocols::sumcheck::RoundCoeffs;
+use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval};
 use crate::protocols::sumcheck::{
     common::SumcheckProver,
     error::Error,
 };
-
-use binius_math::FieldBuffer;
 
 
 #[derive(Debug, Clone)]
@@ -40,40 +38,11 @@ pub fn field_buffer_to_mle<F: Field>(buf: FieldBuffer<F>) -> Result<BigFieldMult
     })
 }
 
-
-pub fn eq_ind<F: Field>(zerocheck_challenges: &[F]) -> BigFieldMultilinear<F> {
-    let mut mle = bytemuck::zeroed_vec(1 << zerocheck_challenges.len());
-
-    let _span = tracing::debug_span!("eq ind").entered();
-
-    mle[0] = F::ONE;
-    for (curr_log_len, challenge) in zerocheck_challenges.iter().enumerate() {
-        let _span = tracing::debug_span!("compute eq_ind for curr log len").entered();
-
-        let (mle_lower, mle_upper) = mle.split_at_mut(1 << curr_log_len);
-
-        mle_lower
-            .par_iter_mut()
-            .zip(mle_upper.par_iter_mut())
-            .for_each(|(low, up)| {
-                let multiplied = *low * *challenge;
-                *up = multiplied;
-                *low -= multiplied;
-            });
-    }
-
-    BigFieldMultilinear {
-        n_vars: zerocheck_challenges.len(),
-        packed_evals: mle,
-    }
-}
-
-
 pub enum FoldDirection {
     LowToHigh,
     HighToLow,
 }
-pub struct MultilinearSumcheckProver<F: Field> {
+pub struct AndReductionProver<F: Field> {
     multilinears: Vec<FieldBuffer<F>>,
     overall_claim: F,
     log_n: usize,
@@ -85,7 +54,7 @@ pub struct MultilinearSumcheckProver<F: Field> {
     eq_factor: F,
 }
 
-impl<F: Field> MultilinearSumcheckProver<F> {
+impl<F: Field> AndReductionProver<F> {
     pub fn new(
         multilinears: Vec<FieldBuffer<F>>,
         zerocheck_challenges: Vec<F>,
@@ -96,8 +65,7 @@ impl<F: Field> MultilinearSumcheckProver<F> {
         debug_assert_eq!(multilinears.len(), 3);
 
         // compute eq indicator from zerocheck challenges, add to multilinears for folding
-        let eq_r: BigFieldMultilinear<F> = eq_ind(&zerocheck_challenges);
-        let eq_r: FieldBuffer<F> = mle_to_field_buffer(&eq_r).unwrap();
+        let eq_r: FieldBuffer<F> = eq_ind_partial_eval(&zerocheck_challenges);
         
         let mut multilinears = multilinears;
         multilinears.push(eq_r);
@@ -221,7 +189,7 @@ impl<F: Field> MultilinearSumcheckProver<F> {
     }
 }
 
-impl<F: Field> SumcheckProver<F> for MultilinearSumcheckProver<F> {
+impl<F: Field> SumcheckProver<F> for AndReductionProver<F> {
 
     fn n_vars(&self) -> usize {
         self.multilinears[0].log_len()
@@ -337,8 +305,6 @@ impl<F: Field> SumcheckProver<F> for MultilinearSumcheckProver<F> {
 
     // computes univariate round message for the current round
     fn execute(&mut self) -> Result<Vec<RoundCoeffs<F>>, Error> {
-        let round_msg = self.round_msg_par();
-
 
         let mut multilinears = vec![
             field_buffer_to_mle(self.multilinears[0].clone()).unwrap(),
@@ -489,7 +455,7 @@ pub fn verify_round<F: Field>(
 // runs sumcheck interactive protocol for multilinear composition (A * B - C) * eq_r
 // eq_r is the multilinear equality indicator for some vector of log_n zerocheck challenges
 pub fn multilinear_sumcheck<F: Field>(
-    mut prover: MultilinearSumcheckProver<F>,
+    mut prover: AndReductionProver<F>,
 ) -> (F, Vec<F>) {
     let _span = tracing::debug_span!("multilinear_sumcheck").entered();
     let log_n = prover.log_n;
@@ -576,11 +542,10 @@ pub mod test {
                 random_field_buffer(num_multilinears, log_n);
 
             // eq_r is the multilinear equality indicator for some vector of log_n zerocheck challenges
-            let eq_r: BigFieldMultilinear<BF> = eq_ind(&zerocheck_challenges.clone());
-            let eq_r: FieldBuffer<BF> = mle_to_field_buffer(&eq_r).unwrap();
+            let eq_r: FieldBuffer<BF> = eq_ind_partial_eval(&zerocheck_challenges.clone());
 
             // compute overall sum claim for (A * B - C) * eq_r
-            let overall_claim = MultilinearSumcheckProver::<BF>::sum_composition(
+            let overall_claim = AndReductionProver::<BF>::sum_composition(
                 &multilinears[0],
                 &multilinears[1],
                 &multilinears[2],
@@ -588,7 +553,7 @@ pub mod test {
             ).unwrap();
 
             // create multilinear sumcheck prover
-            let mut prover = MultilinearSumcheckProver::new(
+            let mut prover = AndReductionProver::new(
                 multilinears,
                 zerocheck_challenges.clone(),
                 overall_claim,
@@ -620,7 +585,7 @@ pub mod test {
         let multilinears: Vec<FieldBuffer<BF>> =
             random_field_buffer(num_multilinears, log_n);
 
-        let overall_sum = MultilinearSumcheckProver::sum_composition(
+        let overall_sum = AndReductionProver::sum_composition(
             &multilinears[0],
             &multilinears[1],
             &multilinears[2],
