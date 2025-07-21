@@ -4,6 +4,7 @@ use binius_field::{
 use binius_utils::rayon::prelude::{
 	IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator,
 };
+
 use crate::{FieldBuffer, multilinear::eq::eq_ind_partial_eval, tensor_algebra::TensorAlgebra};
 
 pub fn rs_eq_ind<BF>(batching_challenges: &[BF], z_vals: &[BF]) -> FieldBuffer<BF>
@@ -51,9 +52,11 @@ pub fn construct_bitsliced_claims<
 #[cfg(test)]
 mod test {
 	use std::iter::repeat_with;
+
 	use binius_field::{BinaryField128b, Random};
 	use binius_math::multilinear::eq::eq_ind;
 	use rand::{SeedableRng, rngs::StdRng};
+
 	use super::rs_eq_ind;
 	use crate::test_utils::index_to_hypercube_point;
 
