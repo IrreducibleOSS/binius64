@@ -537,6 +537,16 @@ mod tests {
 	}
 
 	#[test]
+	fn how_much() {
+		const BYTE_LEN: usize = 2048;
+		println!("SHA-256 of {BYTE_LEN} bytes\n--");
+		let mut b = compiler::CircuitBuilder::new();
+		let _c = mk_circuit(&mut b, 2048);
+		let circuit = b.build();
+		crate::util::print_stat(&circuit);
+	}
+
+	#[test]
 	fn full_sha256() {
 		let mut b = compiler::CircuitBuilder::new();
 		let c = mk_circuit(&mut b, 2048);

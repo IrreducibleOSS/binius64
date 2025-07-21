@@ -271,9 +271,6 @@ mod tests {
 		}
 		circuit.populate_wire_witness(&mut w).unwrap();
 
-		println!("Number of AND constraints: {}", cs.n_and_constraints());
-		println!("Number of gates: {}", circuit.n_gates());
-
 		verify_constraints(&cs, &w.into_value_vec()).unwrap();
 	}
 
@@ -320,10 +317,6 @@ mod tests {
 		}
 		circuit.populate_wire_witness(&mut w).unwrap();
 
-		println!("Number of AND constraints: {}", cs.n_and_constraints());
-		println!("Number of gates: {}", circuit.n_gates());
-		println!("Length of value vec: {}", cs.value_vec_len());
-
 		verify_constraints(&cs, &w.into_value_vec()).unwrap();
 	}
 
@@ -357,10 +350,6 @@ mod tests {
 			compress.populate_m(&mut w, [0; 64]);
 		}
 		circuit.populate_wire_witness(&mut w).unwrap();
-
-		println!("Number of AND constraints: {}", cs.n_and_constraints());
-		println!("Number of gates: {}", circuit.n_gates());
-		println!("Length of value vec: {}", cs.value_vec_len());
 
 		verify_constraints(&cs, &w.into_value_vec()).unwrap();
 	}

@@ -49,6 +49,6 @@ pub fn evaluate(
 		let name = assertion_name
 			.map(|s| s.as_str())
 			.unwrap_or("<unnamed assertion>");
-		w.flag_assertion_failed(format!("{} failed: {:?} != {:?}", name, w[*x], w[*y]));
+		w.flag_assertion_failed(|w| format!("{} failed: {:?} != {:?}", name, w[*x], w[*y]));
 	}
 }

@@ -35,15 +35,20 @@ impl error::Error for PopulateError {}
 pub struct WitnessFiller<'a> {
 	pub(crate) circuit: &'a Circuit,
 	pub(crate) value_vec: ValueVec,
+	pub(crate) ignore_assertions: bool,
 	pub(crate) assertion_failed_message_vec: Vec<String>,
 	pub(crate) assertion_failed_count: usize,
 }
 
 impl<'a> WitnessFiller<'a> {
-	pub fn flag_assertion_failed(&mut self, condition: String) {
+	pub fn flag_assertion_failed(&mut self, condition: impl FnOnce(&mut Self) -> String) {
+		if self.ignore_assertions {
+			return;
+		}
 		self.assertion_failed_count += 1;
 		if self.assertion_failed_message_vec.len() < MAX_ASSERTION_MESSAGES {
-			self.assertion_failed_message_vec.push(condition);
+			let assertion_message = condition(self);
+			self.assertion_failed_message_vec.push(assertion_message);
 		}
 	}
 
@@ -97,6 +102,7 @@ impl Circuit {
 			),
 			assertion_failed_message_vec: Vec::new(),
 			assertion_failed_count: 0,
+			ignore_assertions: false,
 		}
 	}
 
@@ -125,18 +131,12 @@ impl Circuit {
 			}
 		}
 
-		use std::time::Instant;
-		let start = Instant::now();
-
 		// Evaluate all gates
 		for (gate_id, _) in self.shared.graph.gates.iter() {
 			gate::evaluate(gate_id, &self.shared.graph, w);
 		}
 
-		let elapsed = start.elapsed();
-		println!("fill_witness took {} microseconds", elapsed.as_micros());
-
-		if w.assertion_failed_count > 0 {
+		if !w.ignore_assertions && w.assertion_failed_count > 0 {
 			return Err(PopulateError {
 				messages: w.assertion_failed_message_vec.clone(),
 				total_count: w.assertion_failed_count,

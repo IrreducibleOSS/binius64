@@ -13,6 +13,7 @@ use crate::{
 ///
 /// Picking the numbers are a tradeoff. Picking a large number will require a larger circuit and
 /// thus more proving time. Picking a small number may make some statements unprovable.
+#[derive(Debug)]
 pub struct Config {
 	/// Maximum byte length of the base64 decoded JWT header. Must be a multiple of 8.
 	pub max_len_json_jwt_header: usize,
@@ -304,14 +305,8 @@ fn how_much() {
 		max_len_nonce_r: 48,
 		max_len_t_max: 48,
 	};
+	println!("ZK Login circuit\nconfig: {config:#?}\n--");
 	let _zklogin = ZkLogin::new(&mut builder, config);
 	let circuit = builder.build();
-	let cs = circuit.constraint_system();
-
-	println!("Number of AND constraints: {}", cs.n_and_constraints());
-	println!("Number of gates: {}", circuit.n_gates());
-	println!("Length of value vec: {}", cs.value_vec_len());
-
-	let mut w = circuit.new_witness_filler();
-	let _ = circuit.populate_wire_witness(&mut w);
+	crate::util::print_stat(&circuit);
 }
