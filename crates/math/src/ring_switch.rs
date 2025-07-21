@@ -56,8 +56,8 @@ mod test {
 	use std::iter::repeat_with;
 
 	use binius_field::{BinaryField128b, Random};
-	use rand::{SeedableRng, rngs::StdRng};
 	use binius_math::multilinear::eq::{eq_ind, eq_ind_partial_eval};
+	use rand::{SeedableRng, rngs::StdRng};
 
 	use super::rs_eq_ind;
 	use crate::test_utils::index_to_hypercube_point;
@@ -70,14 +70,16 @@ mod test {
 			.take(n_vars_big_field)
 			.collect();
 
-		let row_batching_challenges: Vec<_> =
-			repeat_with(|| BinaryField128b::random(&mut rng)).take(7).collect();
+		let row_batching_challenges: Vec<_> = repeat_with(|| BinaryField128b::random(&mut rng))
+			.take(7)
+			.collect();
 
 		let mle = rs_eq_ind(&row_batching_challenges, &z_vals);
 
 		let n_vars = 3;
 		for hypercube_point in 0..1 << n_vars {
-			let evaluated_at_pt = eq_ind(&z_vals, &index_to_hypercube_point(n_vars, hypercube_point));
+			let evaluated_at_pt =
+				eq_ind(&z_vals, &index_to_hypercube_point(n_vars, hypercube_point));
 
 			assert_eq!(mle.get(hypercube_point).unwrap(), evaluated_at_pt);
 		}
