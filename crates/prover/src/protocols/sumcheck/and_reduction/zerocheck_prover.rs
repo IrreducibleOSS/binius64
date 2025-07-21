@@ -8,7 +8,7 @@ use crate::{
     protocols::sumcheck::and_reduction::{
         fold_lookups::precompute_fold_lookup,
         sumcheck_prover::{FoldDirection, AndReductionMultilinearSumcheckProver},
-        sumcheck_round_message::{univariate_round_message, eq_ind},
+        sumcheck_round_message::univariate_round_message,
         univariate::{
             ntt_lookup::NTTLookup,
             univariate_poly::{GenericPo2UnivariatePoly, UnivariatePoly},
@@ -17,7 +17,7 @@ use crate::{
 
     protocols::sumcheck::and_reduction::univariate::subfield_isomorphism::SubfieldIsomorphismLookup,
     protocols::sumcheck::and_reduction::univariate::delta::delta_poly,
-    protocols::sumcheck::and_reduction::univariate::ntt_lookup::precompute_lookup,
+    protocols::sumcheck::and_reduction::univariate::ntt_lookup::precompute_loSokup,
     protocols::sumcheck::and_reduction::one_bit_multivariate::OneBitMultivariate,
 };
 use crate::protocols::sumcheck::and_reduction::univariate::ntt_lookup::{ SKIPPED_VARS, ROWS_PER_HYPERCUBE_VERTEX};
