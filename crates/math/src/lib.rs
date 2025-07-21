@@ -22,6 +22,7 @@ pub mod ntt;
 pub mod reed_solomon;
 #[cfg(feature = "test-utils")]
 pub mod test_utils;
+pub mod univariate;
 
 pub use binary_subspace::BinarySubspace;
 pub use error::Error;
