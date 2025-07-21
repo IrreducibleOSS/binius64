@@ -189,7 +189,7 @@ impl ZkLogin {
 		let max_len_jwt_signing_payload = (config.max_len_base64_jwt_header()
 			+ 1 + config.max_len_base64_jwt_payload())
 		.next_multiple_of(8);
-		let jwt_signing_payload = FixedByteVec::new_witness(b, dbg!(max_len_jwt_signing_payload));
+		let jwt_signing_payload = FixedByteVec::new_witness(b, max_len_jwt_signing_payload);
 		let _jwt_signing_payload_concat = Concat::new(
 			b,
 			max_len_jwt_signing_payload,
