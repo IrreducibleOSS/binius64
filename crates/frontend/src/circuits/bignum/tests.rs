@@ -252,12 +252,12 @@ proptest! {
 	}
 
 	#[test]
-	fn prop_compare_equal(vals in prop::collection::vec(any::<u64>(), 0..=8)) {
+	fn prop_assert_eq_equal(vals in prop::collection::vec(any::<u64>(), 0..=8)) {
 		let builder = CircuitBuilder::new();
 		let a = BigNum::new_witness(&builder, vals.len());
 		let b = BigNum::new_witness(&builder, vals.len());
 
-		let result = compare(&builder, &a, &b);
+		assert_eq(&builder, "prop_assert_eq", &a, &b);
 
 		let cs = builder.build();
 		let mut w = cs.new_witness_filler();
@@ -269,15 +269,11 @@ proptest! {
 		}
 
 		cs.populate_wire_witness(&mut w).unwrap();
-
-		// Should be equal (all 1s)
-		assert_eq!(w[result], Word(u64::MAX), "Result is not all 1s");
-
 		verify_constraints(&cs.constraint_system(), &w.into_value_vec()).unwrap();
 	}
 
 	#[test]
-	fn prop_compare_different(vals in prop::collection::vec((any::<u64>(), any::<u64>()), 1..=8)) {
+	fn prop_assert_eq_different(vals in prop::collection::vec((any::<u64>(), any::<u64>()), 1..=8)) {
 		let a_vals: Vec<u64> = vals.iter().map(|(a, _)| *a).collect();
 		let b_vals: Vec<u64> = vals.iter().map(|(_, b)| *b).collect();
 		// Skip if they're actually equal
@@ -287,7 +283,7 @@ proptest! {
 		let a = BigNum::new_witness(&builder, a_vals.len());
 		let b = BigNum::new_witness(&builder, b_vals.len());
 
-		let result = compare(&builder, &a, &b);
+		assert_eq(&builder, "prop_assert_eq_different", &a, &b);
 
 		let cs = builder.build();
 		let mut w = cs.new_witness_filler();
@@ -299,13 +295,7 @@ proptest! {
 			w[b.limbs[i]] = Word(val);
 		}
 
-		// Run the circuit - this might fail for some cases
-		cs.populate_wire_witness(&mut w).unwrap();
-
-		// Should be not equal (all 0s)
-		assert_eq!(w[result], Word(0), "Different values detected as equal");
-
-		verify_constraints(&cs.constraint_system(), &w.into_value_vec()).unwrap();
+		assert!(cs.populate_wire_witness(&mut w).is_err());
 	}
 
 	#[test]

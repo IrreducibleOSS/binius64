@@ -104,50 +104,25 @@ pub fn square(builder: &CircuitBuilder, a: &BigNum) -> BigNum {
 	compute_stack_adds(builder, &accumulator)
 }
 
-/// Compare two arbitrary-sized `BigNum`s for equality.
+/// Asserts that that two `BigNum`s are equal.
 ///
 /// # Arguments
 /// * `builder` - Circuit builder for constraint generation
 /// * `a` - First operand `BigNum`
 /// * `b` - Second operand `BigNum` (must have same number of limbs as `a`)
 ///
-/// # Returns
-/// A `Wire` that evaluates to:
-/// - `0xFFFFFFFFFFFFFFFF` (all ones) if `a == b`
-/// - `0x0000000000000000` (all zeros) if `a != b`
-///
 /// # Panics
 /// Panics if `a` and `b` have different number of limbs.
-pub fn compare(builder: &CircuitBuilder, a: &BigNum, b: &BigNum) -> Wire {
-	assert_eq!(a.limbs.len(), b.limbs.len(), "compare: inputs must have the same number of limbs");
-
-	if a.limbs.is_empty() {
-		return builder.add_constant(Word::ALL_ONE);
+pub fn assert_eq(builder: &CircuitBuilder, name: impl Into<String>, a: &BigNum, b: &BigNum) {
+	assert_eq!(
+		a.limbs.len(),
+		b.limbs.len(),
+		"bignum assert_eq: inputs must have the same number of limbs"
+	);
+	let base_name = name.into();
+	for (i, (&a_l, &b_l)) in a.limbs.iter().zip(b.limbs.iter()).enumerate() {
+		builder.assert_eq(format!("{base_name}[{i}]"), a_l, b_l);
 	}
-
-	// NB: An alternative approach, to reduce the number of icmp_eq gates used
-	// is:
-	//
-	//  1. XOR each limb pair
-	//  2. OR all the results together
-	//  3. compare the result of 2 with zero
-	//
-	// However when I treid this I got constraint verification errors in the
-	// tests.
-
-	// For each limb pair, compute equality (all 1s if equal, all 0s if not)
-	let eq_results: Vec<Wire> = a
-		.limbs
-		.iter()
-		.zip(b.limbs.iter())
-		.map(|(&x, &y)| builder.icmp_eq(x, y))
-		.collect();
-
-	// AND all equality results together
-	eq_results
-		.into_iter()
-		.reduce(|acc, x| builder.band(acc, x))
-		.unwrap()
 }
 
 /// Add two arbitrary-sized `BigNums`s with carry propagation.
@@ -305,9 +280,7 @@ impl ModReduce {
 		a_padded.resize(reconstructed.limbs.len(), zero);
 		let a_padded = BigNum { limbs: a_padded };
 
-		let eq = compare(builder, &reconstructed, &a_padded);
-		let all_ones = builder.add_constant(Word::ALL_ONE);
-		builder.assert_eq("mod_reduce_reconstruction", eq, all_ones);
+		assert_eq(builder, "modreduce_a_eq_reconstructed", &reconstructed, &a_padded);
 
 		ModReduce {
 			a,
