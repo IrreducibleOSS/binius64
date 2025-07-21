@@ -43,32 +43,33 @@ pub fn tensor_prod_eq_ind<P: PackedField, Data: DerefMut<Target = [P]>>(
 			expected: expected_len,
 		});
 	}
+	if values.len() > expected_len {
+		let mut split = values
+			.split_half_mut_no_closure()
+			.expect("values.len() > expected_len => values.len() >= 2");
+		let (mut lo, _) = split.halves();
+		return tensor_prod_eq_ind(log_n_values, &mut lo, extra_query_coordinates);
+	}
 
 	let Some((&r_i, remaining_coordinates)) = extra_query_coordinates.split_last() else {
 		return Ok(());
 	};
 
-	if values.len() > expected_len {
-		return values
-			.split_half_mut(|lo, _| tensor_prod_eq_ind(log_n_values, lo, extra_query_coordinates))
-			.expect("values.len() > expected_len => values.len() >= 2");
-	}
+	let mut split = values.split_half_mut_no_closure().expect(
+		"extra_query_coordinates.len() > 0; expected_len > 1; values.len() == expected_len",
+	);
+	let (mut lo, mut hi) = split.halves();
+	tensor_prod_eq_ind(log_n_values, &mut lo, remaining_coordinates)?;
 
-	values.split_half_mut(|lo, hi| {
-		tensor_prod_eq_ind(log_n_values, lo, remaining_coordinates)?;
+	let packed_r_i = P::broadcast(r_i);
 
-		let packed_r_i = P::broadcast(r_i);
-
-		(lo.as_mut(), hi.as_mut())
-			.into_par_iter()
-			.for_each(|(lo_i, hi_i)| {
-				let prod = (*lo_i) * packed_r_i;
-				*lo_i -= prod;
-				*hi_i = prod;
-			});
-
-		Ok(())
-	})??;
+	(lo.as_mut(), hi.as_mut())
+		.into_par_iter()
+		.for_each(|(lo_i, hi_i)| {
+			let prod = (*lo_i) * packed_r_i;
+			*lo_i -= prod;
+			*hi_i = prod;
+		});
 
 	Ok(())
 }
