@@ -1,5 +1,5 @@
 use crate::{
-	compiler::{CircuitBuilder, Wire},
+	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
 	word::Word,
 };
 
@@ -133,12 +133,12 @@ impl Slice {
 	}
 
 	/// Populate the len_input wire with the actual input size in bytes
-	pub fn populate_len_input(&self, w: &mut crate::compiler::WitnessFiller, len_input: usize) {
+	pub fn populate_len_input(&self, w: &mut WitnessFiller, len_input: usize) {
 		w[self.len_input] = Word(len_input as u64);
 	}
 
 	/// Populate the len_slice wire with the actual slice size in bytes
-	pub fn populate_len_slice(&self, w: &mut crate::compiler::WitnessFiller, len_slice: usize) {
+	pub fn populate_len_slice(&self, w: &mut WitnessFiller, len_slice: usize) {
 		w[self.len_slice] = Word(len_slice as u64);
 	}
 
@@ -146,7 +146,7 @@ impl Slice {
 	///
 	/// # Panics
 	/// Panics if input.len() > max_n_input (the maximum size specified during construction)
-	pub fn populate_input(&self, w: &mut crate::compiler::WitnessFiller, input: &[u8]) {
+	pub fn populate_input(&self, w: &mut WitnessFiller, input: &[u8]) {
 		let max_n_input = self.input.len() * 8;
 		assert!(
 			input.len() <= max_n_input,
@@ -176,7 +176,7 @@ impl Slice {
 	///
 	/// # Panics
 	/// Panics if slice.len() > max_n_slice (the maximum size specified during construction)
-	pub fn populate_slice(&self, w: &mut crate::compiler::WitnessFiller, slice: &[u8]) {
+	pub fn populate_slice(&self, w: &mut WitnessFiller, slice: &[u8]) {
 		let max_n_slice = self.slice.len() * 8;
 		assert!(
 			slice.len() <= max_n_slice,
@@ -203,7 +203,7 @@ impl Slice {
 	}
 
 	/// Populate the offset wire
-	pub fn populate_offset(&self, w: &mut crate::compiler::WitnessFiller, offset: usize) {
+	pub fn populate_offset(&self, w: &mut WitnessFiller, offset: usize) {
 		w[self.offset] = Word(offset as u64);
 	}
 }

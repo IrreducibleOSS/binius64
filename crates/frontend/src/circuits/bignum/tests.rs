@@ -4,7 +4,7 @@ use proptest::prelude::*;
 
 use super::*;
 use crate::{
-	compiler::{CircuitBuilder, WitnessFiller},
+	compiler::{CircuitBuilder, circuit::WitnessFiller},
 	constraint_verifier::verify_constraints,
 	word::Word,
 };

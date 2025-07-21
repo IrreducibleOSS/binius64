@@ -1,7 +1,7 @@
 use cranelift_entity::{PrimaryMap, SecondaryMap, entity_impl};
 
-use super::{Circuit, ConstPool, Wire, WireData, WitnessFiller};
-use crate::constraint_system::ConstraintSystem;
+use super::{ConstPool, Wire, WireData};
+use crate::{compiler::circuit, constraint_system::ConstraintSystem};
 
 pub mod opcode;
 use opcode::Opcode;
@@ -80,7 +80,12 @@ impl GateGraph {
 	}
 }
 
-pub fn constrain(gate: Gate, graph: &GateGraph, circuit: &Circuit, cs: &mut ConstraintSystem) {
+pub fn constrain(
+	gate: Gate,
+	graph: &GateGraph,
+	circuit: &circuit::Circuit,
+	cs: &mut ConstraintSystem,
+) {
 	let data = &graph.gates[gate];
 	match data.opcode {
 		Opcode::Band => band::constrain(gate, data, circuit, cs),
@@ -103,7 +108,7 @@ pub fn constrain(gate: Gate, graph: &GateGraph, circuit: &Circuit, cs: &mut Cons
 	}
 }
 
-pub fn evaluate(gate: Gate, graph: &GateGraph, w: &mut WitnessFiller) {
+pub fn evaluate(gate: Gate, graph: &GateGraph, w: &mut circuit::WitnessFiller) {
 	let data = &graph.gates[gate];
 	let assertion_name = graph.assertion_names.get(gate);
 

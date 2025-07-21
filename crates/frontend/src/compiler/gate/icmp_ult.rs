@@ -21,12 +21,17 @@
 /// 2. Mask generation: `out_mask = bout SRA 63`
 use super::{Gate, GateData};
 use crate::{
-	compiler::{Circuit, WitnessFiller},
+	compiler::circuit,
 	constraint_system::{AndConstraint, ConstraintSystem, ShiftedValueIndex},
 	word::Word,
 };
 
-pub fn constrain(_gate: Gate, data: &GateData, circuit: &Circuit, cs: &mut ConstraintSystem) {
+pub fn constrain(
+	_gate: Gate,
+	data: &GateData,
+	circuit: &circuit::Circuit,
+	cs: &mut ConstraintSystem,
+) {
 	let [x, y, all_1] = data.inputs() else {
 		unreachable!()
 	};
@@ -70,7 +75,7 @@ pub fn constrain(_gate: Gate, data: &GateData, circuit: &Circuit, cs: &mut Const
 	));
 }
 
-pub fn evaluate(_gate: Gate, data: &GateData, w: &mut WitnessFiller) {
+pub fn evaluate(_gate: Gate, data: &GateData, w: &mut circuit::WitnessFiller) {
 	let [x, y, all_1] = data.inputs() else {
 		unreachable!()
 	};
@@ -90,7 +95,7 @@ pub fn evaluate(_gate: Gate, data: &GateData, w: &mut WitnessFiller) {
 
 	// Broadcast the MSB of bout to all bits to create the comparison mask
 	let Word(bout_val_raw) = bout_val;
-	let bout_msb_broadcast = ((bout_val_raw as i64) >> 63) as u64;
+	let bout_msb_broadcast = (bout_val_raw as i64 >> 63) as u64;
 	let out_mask_val = Word(bout_msb_broadcast);
 	w[*out_mask] = out_mask_val;
 }

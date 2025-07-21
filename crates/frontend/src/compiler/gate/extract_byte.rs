@@ -17,12 +17,17 @@
 /// 2. High bits zeroing: `z ∧ 0xFFFFFFFFFFFFFF00 = 0`
 use super::{Gate, GateData};
 use crate::{
-	compiler::{Circuit, WitnessFiller},
+	compiler::circuit,
 	constraint_system::{AndConstraint, ConstraintSystem, ShiftedValueIndex},
 	word::Word,
 };
 
-pub fn constrain(_gate: Gate, data: &GateData, circuit: &Circuit, cs: &mut ConstraintSystem) {
+pub fn constrain(
+	_gate: Gate,
+	data: &GateData,
+	circuit: &circuit::Circuit,
+	cs: &mut ConstraintSystem,
+) {
 	let [word, mask_ff, mask_high56] = data.inputs() else {
 		unreachable!()
 	};
@@ -52,7 +57,7 @@ pub fn constrain(_gate: Gate, data: &GateData, circuit: &Circuit, cs: &mut Const
 	cs.add_and_constraint(AndConstraint::plain_abc([z_idx], [mask_high56_idx], []));
 }
 
-pub fn evaluate(_gate: Gate, data: &GateData, w: &mut WitnessFiller) {
+pub fn evaluate(_gate: Gate, data: &GateData, w: &mut circuit::WitnessFiller) {
 	let [word, _mask_ff, _mask_high56] = data.inputs() else {
 		unreachable!()
 	};

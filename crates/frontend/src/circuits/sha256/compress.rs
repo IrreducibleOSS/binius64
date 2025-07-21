@@ -1,5 +1,5 @@
 use crate::{
-	compiler::{CircuitBuilder, Wire, WitnessFiller},
+	compiler::{CircuitBuilder, Wire},
 	word::Word,
 };
 
@@ -118,7 +118,7 @@ impl Compress {
 		}
 	}
 
-	pub fn populate_m(&self, w: &mut WitnessFiller, m: [u8; 64]) {
+	pub fn populate_m(&self, w: &mut crate::compiler::circuit::WitnessFiller, m: [u8; 64]) {
 		debug_assert_eq!(self.m.len(), 16);
 
 		for i in 0..16 {

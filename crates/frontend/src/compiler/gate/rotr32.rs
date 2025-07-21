@@ -19,11 +19,16 @@
 /// - `((x >> n) ⊕ (x << (32-n))) ∧ MASK_32 = z`
 use super::{Gate, GateData};
 use crate::{
-	compiler::{Circuit, WitnessFiller},
+	compiler::circuit,
 	constraint_system::{AndConstraint, ConstraintSystem, ShiftedValueIndex},
 };
 
-pub fn constrain(_gate: Gate, data: &GateData, circuit: &Circuit, cs: &mut ConstraintSystem) {
+pub fn constrain(
+	_gate: Gate,
+	data: &GateData,
+	circuit: &circuit::Circuit,
+	cs: &mut ConstraintSystem,
+) {
 	let [x, mask32] = data.inputs() else {
 		unreachable!()
 	};
@@ -48,7 +53,7 @@ pub fn constrain(_gate: Gate, data: &GateData, circuit: &Circuit, cs: &mut Const
 	));
 }
 
-pub fn evaluate(_gate: Gate, data: &GateData, w: &mut WitnessFiller) {
+pub fn evaluate(_gate: Gate, data: &GateData, w: &mut circuit::WitnessFiller) {
 	let [x, _mask32] = data.inputs() else {
 		unreachable!()
 	};

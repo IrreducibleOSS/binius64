@@ -1,5 +1,5 @@
 use crate::{
-	compiler::{CircuitBuilder, Wire},
+	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
 	word::Word,
 };
 
@@ -49,7 +49,7 @@ pub struct Term {
 
 impl Term {
 	/// Populate the length wire with the actual term size in bytes.
-	pub fn populate_len(&self, w: &mut crate::compiler::WitnessFiller, len: usize) {
+	pub fn populate_len(&self, w: &mut WitnessFiller, len: usize) {
 		w[self.len] = Word(len as u64);
 	}
 
@@ -60,7 +60,7 @@ impl Term {
 	///
 	/// # Panics
 	/// Panics if `data.len()` > `self.max_len`
-	pub fn populate_data(&self, w: &mut crate::compiler::WitnessFiller, data: &[u8]) {
+	pub fn populate_data(&self, w: &mut WitnessFiller, data: &[u8]) {
 		assert!(
 			data.len() <= self.max_len,
 			"term data length {} exceeds maximum {}",
@@ -262,7 +262,7 @@ impl Concat {
 	}
 
 	/// Populate the len_joined wire with the actual joined size in bytes.
-	pub fn populate_len_joined(&self, w: &mut crate::compiler::WitnessFiller, len_joined: usize) {
+	pub fn populate_len_joined(&self, w: &mut WitnessFiller, len_joined: usize) {
 		w[self.len_joined] = Word(len_joined as u64);
 	}
 
@@ -273,7 +273,7 @@ impl Concat {
 	///
 	/// # Panics
 	/// Panics if `joined.len()` > `max_n_joined` (the maximum size specified during construction)
-	pub fn populate_joined(&self, w: &mut crate::compiler::WitnessFiller, joined: &[u8]) {
+	pub fn populate_joined(&self, w: &mut WitnessFiller, joined: &[u8]) {
 		let max_n_joined = self.joined.len() * 8;
 		assert!(
 			joined.len() <= max_n_joined,

@@ -12,12 +12,17 @@
 /// - `x ∧ all-1 = 0`
 use super::{Gate, GateData};
 use crate::{
-	compiler::{Circuit, WitnessFiller},
+	compiler::circuit,
 	constraint_system::{AndConstraint, ConstraintSystem},
 	word::Word,
 };
 
-pub fn constrain(_gate: Gate, data: &GateData, circuit: &Circuit, cs: &mut ConstraintSystem) {
+pub fn constrain(
+	_gate: Gate,
+	data: &GateData,
+	circuit: &circuit::Circuit,
+	cs: &mut ConstraintSystem,
+) {
 	let [x, all_1] = data.inputs() else {
 		unreachable!()
 	};
@@ -33,7 +38,7 @@ pub fn evaluate(
 	_gate: Gate,
 	data: &GateData,
 	assertion_name: Option<&String>,
-	w: &mut WitnessFiller,
+	w: &mut circuit::WitnessFiller,
 ) {
 	let [x, _all_1] = data.inputs() else {
 		unreachable!()

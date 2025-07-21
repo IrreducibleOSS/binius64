@@ -1,5 +1,5 @@
 use crate::{
-	compiler::{CircuitBuilder, Wire, WitnessFiller},
+	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
 	word::Word,
 };
 

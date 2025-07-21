@@ -2,11 +2,16 @@
 /// Uses the MulConstraint: X * Y = (HI << 64) | LO
 use super::{Gate, GateData};
 use crate::{
-	compiler::{Circuit, WitnessFiller},
+	compiler::circuit,
 	constraint_system::{ConstraintSystem, MulConstraint, ShiftedValueIndex},
 };
 
-pub fn constrain(_gate: Gate, data: &GateData, circuit: &Circuit, cs: &mut ConstraintSystem) {
+pub fn constrain(
+	_gate: Gate,
+	data: &GateData,
+	circuit: &circuit::Circuit,
+	cs: &mut ConstraintSystem,
+) {
 	let [x, y] = data.inputs() else {
 		unreachable!()
 	};
@@ -30,7 +35,7 @@ pub fn constrain(_gate: Gate, data: &GateData, circuit: &Circuit, cs: &mut Const
 	cs.add_mul_constraint(mul_constraint);
 }
 
-pub fn evaluate(_gate: Gate, data: &GateData, w: &mut WitnessFiller) {
+pub fn evaluate(_gate: Gate, data: &GateData, w: &mut circuit::WitnessFiller) {
 	let [x, y] = data.inputs() else {
 		unreachable!()
 	};

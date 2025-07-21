@@ -1,20 +1,17 @@
 use std::{
 	cell::{RefCell, RefMut},
 	collections::HashMap,
-	fmt,
 	rc::Rc,
 };
 
 use cranelift_entity::{PrimaryMap, SecondaryMap, entity_impl};
 
-use crate::{
-	constraint_system::{ConstraintSystem, ValueIndex, ValueVec},
-	word::Word,
-};
+use crate::{compiler::circuit::Circuit, constraint_system::ValueIndex, word::Word};
 
 mod gate;
 use gate::{GateData, GateGraph, opcode::Opcode};
 
+pub mod circuit;
 #[cfg(test)]
 mod tests;
 
@@ -58,8 +55,8 @@ pub struct WireData {
 	pub kind: WireKind,
 }
 
-struct Shared {
-	graph: gate::GateGraph,
+pub(crate) struct Shared {
+	pub(crate) graph: gate::GateGraph,
 }
 
 /// # Clone
@@ -136,10 +133,7 @@ impl CircuitBuilder {
 			wire_mapping[wire.0 as usize] = ValueIndex(sorted_index as u32);
 		}
 
-		Circuit {
-			shared,
-			wire_mapping,
-		}
+		Circuit::new(shared, wire_mapping)
 	}
 
 	pub fn subcircuit(&self, name: impl Into<String>) -> CircuitBuilder {
@@ -604,164 +598,5 @@ impl CircuitBuilder {
 		});
 
 		z
-	}
-}
-
-const MAX_ASSERTION_MESSAGES: usize = 100;
-
-/// Error returned when populating wire witness fails due to assertion failures.
-#[derive(Debug)]
-pub struct PopulateError {
-	/// List of assertion failure messages (limited to MAX_ASSERTION_MESSAGES).
-	messages: Vec<String>,
-	/// Total count of assertion failures (may exceed messages.len()).
-	total_count: usize,
-}
-
-impl fmt::Display for PopulateError {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		writeln!(f, "assertions failed:")?;
-		for message in &self.messages {
-			writeln!(f, "{message}")?;
-		}
-		if self.total_count > self.messages.len() {
-			writeln!(f, "(Some assertions are omitted. Total: {})", self.total_count)?;
-		}
-		Ok(())
-	}
-}
-
-impl std::error::Error for PopulateError {}
-
-pub struct WitnessFiller<'a> {
-	circuit: &'a Circuit,
-	value_vec: ValueVec,
-	assertion_failed_message_vec: Vec<String>,
-	assertion_failed_count: usize,
-}
-
-impl<'a> WitnessFiller<'a> {
-	pub fn flag_assertion_failed(&mut self, condition: String) {
-		self.assertion_failed_count += 1;
-		if self.assertion_failed_message_vec.len() < MAX_ASSERTION_MESSAGES {
-			self.assertion_failed_message_vec.push(condition);
-		}
-	}
-
-	pub fn into_value_vec(self) -> ValueVec {
-		self.value_vec
-	}
-}
-
-impl<'a> std::ops::Index<Wire> for WitnessFiller<'a> {
-	type Output = Word;
-
-	fn index(&self, wire: Wire) -> &Self::Output {
-		&self.value_vec[self.circuit.witness_index(wire)]
-	}
-}
-
-impl<'a> std::ops::IndexMut<Wire> for WitnessFiller<'a> {
-	fn index_mut(&mut self, wire: Wire) -> &mut Self::Output {
-		&mut self.value_vec[self.circuit.witness_index(wire)]
-	}
-}
-
-pub struct Circuit {
-	shared: Shared,
-	wire_mapping: Vec<ValueIndex>,
-}
-
-impl Circuit {
-	/// For the given wire, returns its index in the witness vector.
-	#[inline(always)]
-	pub fn witness_index(&self, wire: Wire) -> ValueIndex {
-		self.wire_mapping[wire.0 as usize]
-	}
-
-	pub fn new_witness_filler(&self) -> WitnessFiller<'_> {
-		WitnessFiller {
-			circuit: self,
-			value_vec: ValueVec::new(
-				self.shared.graph.const_pool.pool.len(),
-				self.shared.graph.n_inout,
-				self.shared.graph.n_witness,
-			),
-			assertion_failed_message_vec: Vec::new(),
-			assertion_failed_count: 0,
-		}
-	}
-
-	/// Populates non-input values (wires) in the witness.
-	///
-	/// Specifically, this will evaluate the circuit gate-by-gate and save the results in the
-	/// witness vector.
-	///
-	/// This function expects that the input wires are already filled. The input wires are
-	///
-	/// - [`CircuitBuilder::add_inout`],
-	/// - [`CircuitBuilder::add_witness`] that were not created by the gates,
-	///
-	/// The wires created by [`CircuitBuilder::add_constant`] (and its convenience methods) are
-	/// automatically populated by this function as well.
-	///
-	/// # Errors
-	///
-	/// In case the circuit is not satisfiable (any assertion fails), this function will return an
-	/// error with a list of assertion failure messages.
-	pub fn populate_wire_witness(&self, w: &mut WitnessFiller) -> Result<(), PopulateError> {
-		// Fill constants
-		for (wire, wire_data) in self.shared.graph.wires.iter() {
-			if let WireKind::Constant(value) = wire_data.kind {
-				w[wire] = value;
-			}
-		}
-
-		use std::time::Instant;
-		let start = Instant::now();
-
-		// Evaluate all gates
-		for (gate_id, _) in self.shared.graph.gates.iter() {
-			gate::evaluate(gate_id, &self.shared.graph, w);
-		}
-
-		let elapsed = start.elapsed();
-		println!("fill_witness took {} microseconds", elapsed.as_micros());
-
-		if w.assertion_failed_count > 0 {
-			return Err(PopulateError {
-				messages: w.assertion_failed_message_vec.clone(),
-				total_count: w.assertion_failed_count,
-			});
-		}
-
-		Ok(())
-	}
-
-	/// Builds a constraint system from this circuit.
-	pub fn constraint_system(&self) -> ConstraintSystem {
-		let mut cs = ConstraintSystem::new(
-			self.shared
-				.graph
-				.const_pool
-				.pool
-				.keys()
-				.cloned()
-				.collect::<Vec<_>>(),
-			self.shared.graph.n_inout,
-			self.shared.graph.n_witness,
-		);
-		for (gate_id, _) in self.shared.graph.gates.iter() {
-			gate::constrain(gate_id, &self.shared.graph, self, &mut cs);
-		}
-		cs
-	}
-
-	/// Returns the number of gates in this circuit.
-	///
-	/// Depending on what type of gates this circuit uses, the number of constraints might be
-	/// significantly larger.
-	pub fn n_gates(&self) -> usize {
-		self.shared.graph.gates.len()
 	}
 }

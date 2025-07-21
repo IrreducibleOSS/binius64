@@ -27,11 +27,16 @@
 /// 2. **Sum constraint**: Ensures the sum equals `a ^ b ^ (cout << 1) ^ cin_msb`
 use super::{Gate, GateData};
 use crate::{
-	compiler::{Circuit, WitnessFiller},
+	compiler::circuit,
 	constraint_system::{AndConstraint, ConstraintSystem, ShiftedValueIndex},
 };
 
-pub fn constrain(_gate: Gate, data: &GateData, circuit: &Circuit, cs: &mut ConstraintSystem) {
+pub fn constrain(
+	_gate: Gate,
+	data: &GateData,
+	circuit: &circuit::Circuit,
+	cs: &mut ConstraintSystem,
+) {
 	let [a, b, cin, all_1] = data.inputs() else {
 		unreachable!()
 	};
@@ -73,7 +78,7 @@ pub fn constrain(_gate: Gate, data: &GateData, circuit: &Circuit, cs: &mut Const
 	));
 }
 
-pub fn evaluate(_gate: Gate, data: &GateData, w: &mut WitnessFiller) {
+pub fn evaluate(_gate: Gate, data: &GateData, w: &mut circuit::WitnessFiller) {
 	let [a, b, cin, _all_1] = data.inputs() else {
 		unreachable!()
 	};
