@@ -1,10 +1,8 @@
 use std::vec;
-
 use binius_field::{
     AESTowerField8b, BinaryField1b, Field, PackedAESBinaryField16x8b, PackedBinaryField8x1b,
     PackedField, packed::set_packed_slice,
 };
-
 use crate::{
     protocols::sumcheck::and_reduction::univariate::univariate_lagrange::{
         lexicographic_lagrange_denominator, lexicographic_lagrange_numerators_8b,
