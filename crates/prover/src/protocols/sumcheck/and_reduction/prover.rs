@@ -70,7 +70,6 @@ impl<F: Field> AndReductionProver<F> {
         let mut multilinears = multilinears;
         multilinears.push(eq_r);
 
-
         Self {
             multilinears,
             overall_claim,
@@ -79,7 +78,6 @@ impl<F: Field> AndReductionProver<F> {
             current_round_claim: overall_claim,
             eq_factor: F::ONE,
             fold_direction,
-
             round_message: None,
             round_index: 0,
         }
@@ -113,80 +111,6 @@ impl<F: Field> AndReductionProver<F> {
             FoldDirection::HighToLow => self.log_n - self.round_index - 1,
         }
     }
-
-    fn round_msg_par(&self) -> Vec<F> {
-        let _span = tracing::debug_span!("round message parallel").entered();
-
-
-        // let a = &self.multilinears[0].packed_evals;
-        // let b = &self.multilinears[1].packed_evals;
-        // let c = &self.multilinears[2].packed_evals;
-        // let d = &self.multilinears[3].packed_evals;
-
-
-        let a = field_buffer_to_mle(self.multilinears[0].clone()).unwrap().packed_evals;
-        let b = field_buffer_to_mle(self.multilinears[1].clone()).unwrap().packed_evals;
-        let c = field_buffer_to_mle(self.multilinears[2].clone()).unwrap().packed_evals;
-        let d = field_buffer_to_mle(self.multilinears[3].clone()).unwrap().packed_evals;
-
-
-        let log_n = self.multilinears[0].log_len();
-        let n = 1 << log_n;
-        let n_half = n >> 1;
-
-
-        // compute indices for either high to low or low to high
-        let compute_idx: fn((usize, usize)) -> (usize, usize) = match self.fold_direction {
-            FoldDirection::LowToHigh => |(j, _)| (2 * j, 2 * j + 1),
-            FoldDirection::HighToLow => |(j, n)| (j, n + j),
-        };
-
-        // chunk indices into 1024 chunks
-        let (mut g_of_zero, mut g_leading_coeff) = (0..n_half)
-            .into_par_iter()
-            .chunks(1024)
-            .map(|chunk| {
-                // let _span = tracing::debug_span!("high to low fold inplace parallel").entered();
-
-                let mut acc_g_of_zero = F::ZERO;
-                let mut acc_g_leading_coeff = F::ZERO;
-
-                for j in chunk {
-                    let (low_idx, high_idx) = compute_idx((j, n_half));
-
-                    let a_lower = a[low_idx];
-                    let b_lower = b[low_idx];
-                    let c_lower = c[low_idx];
-                    let d_lower = d[low_idx];
-
-                    let a_upper = a[high_idx];
-                    let b_upper = b[high_idx];
-                    let d_upper = d[high_idx];
-
-                    acc_g_of_zero += (a_lower * b_lower - c_lower) * d_lower;
-                    acc_g_leading_coeff +=
-                        (a_lower + a_upper) * (b_lower + b_upper) * (d_lower + d_upper);
-                }
-
-                (acc_g_of_zero, acc_g_leading_coeff)
-            })
-            .reduce(
-                || (F::ZERO, F::ZERO),
-                |(sum0, sum1), (x0, x1)| (sum0 + x0, sum1 + x1),
-            );
-
-        // multiply by eq_factor
-        g_of_zero *= self.eq_factor;
-        g_leading_coeff *= self.eq_factor;
-
-        // g(1) = current_round_claim - g(0)
-        let g_of_one = self.current_round_claim - g_of_zero;
-
-        // return round message
-        let mut round_msg = Vec::with_capacity(3);
-        round_msg.extend([g_of_zero, g_of_one, g_leading_coeff]);
-        round_msg
-    }
 }
 
 impl<F: Field> SumcheckProver<F> for AndReductionProver<F> {
@@ -201,17 +125,10 @@ impl<F: Field> SumcheckProver<F> for AndReductionProver<F> {
         let n = 1 << self.multilinears[0].log_len();
         let n_half = n >> 1;
 
-        let mut multilinears = vec![
-            field_buffer_to_mle(self.multilinears[0].clone()).unwrap(),
-            field_buffer_to_mle(self.multilinears[1].clone()).unwrap(),
-            field_buffer_to_mle(self.multilinears[2].clone()).unwrap(),
-            field_buffer_to_mle(self.multilinears[3].clone()).unwrap(),
-        ];
 
         match self.fold_direction {
-            // Parallel fold safe for high-to-low and low-to-high
             FoldDirection::LowToHigh => {
-                multilinears
+                self.multilinears
                     .par_iter_mut()
                     .enumerate()
                     .for_each(|(i, multilinear)| {
@@ -219,36 +136,41 @@ impl<F: Field> SumcheckProver<F> for AndReductionProver<F> {
                         if i < 3 {
                             for j in 0..n_half {
                                 let (low_idx, high_idx) = (2 * j, 2 * j + 1);
-                                let even = multilinear.packed_evals[low_idx];
-                                let odd = multilinear.packed_evals[high_idx];
-                                multilinear.packed_evals[j] = even + sumcheck_challenge * (odd - even);
+                                let even = multilinear.get(low_idx).unwrap();
+                                let odd = multilinear.get(high_idx).unwrap();
+                                multilinear.set(j, even + sumcheck_challenge * (odd - even)).unwrap();
                             }
                         } else {
                             for j in 0..n_half {
                                 let (low_idx, high_idx) = (2 * j, 2 * j + 1);
-                                let even = multilinear.packed_evals[low_idx];
-                                let odd = multilinear.packed_evals[high_idx];
-                                multilinear.packed_evals[j] = even + odd;
+                                let even = multilinear.get(low_idx).unwrap();
+                                let odd = multilinear.get(high_idx).unwrap();
+                                multilinear.set(j, even + odd).unwrap();
                             }
                         }
+                        
+                        // ! replace w/ truncate method once available
+                        let mut new = vec![];
+                        for i in 0..n_half {
+                            new.push(multilinear.get(i).unwrap());
+                        }
 
-                        // remove last 1 << n-1 elements from each multilinear
-                        multilinear.packed_evals.truncate(n_half);
-                        multilinear.n_vars -= 1;
+                        *multilinear = FieldBuffer::from_values(&new).unwrap();
                     });
 
                 // optimzation, handle eq differently w/ cheeky factorization
                 self.eq_factor *=  self.zerocheck_challenges[self.round_index] + sumcheck_challenge + F::ONE;
-
-
-                self.multilinears[0] = mle_to_field_buffer(&multilinears[0].clone()).unwrap();
-                self.multilinears[1] = mle_to_field_buffer(&multilinears[1].clone()).unwrap();
-                self.multilinears[2] = mle_to_field_buffer(&multilinears[2].clone()).unwrap();
-                self.multilinears[3] = mle_to_field_buffer(&multilinears[3].clone()).unwrap();
-
             }
             // Parallel fold safe better for high-to-low
             FoldDirection::HighToLow => {
+
+                let mut multilinears = vec![
+                    field_buffer_to_mle(self.multilinears[0].clone()).unwrap(),
+                    field_buffer_to_mle(self.multilinears[1].clone()).unwrap(),
+                    field_buffer_to_mle(self.multilinears[2].clone()).unwrap(),
+                    field_buffer_to_mle(self.multilinears[3].clone()).unwrap(),
+                ];
+
                 let [a, b, c, d] = &mut multilinears[..] else {
                     panic!("expected 4 multilinears")
                 };
@@ -264,7 +186,6 @@ impl<F: Field> SumcheckProver<F> for AndReductionProver<F> {
                     (d_low, d_high),
                 ] {
                     low.par_chunks_mut(1024).for_each(|chunk| {
-                        // let _span = tracing::debug_span!("high to low fold inplace parallel").entered();
                         for (elm, high_elm) in chunk.iter_mut().zip(high.iter()) {
                             *elm += sumcheck_challenge * (*high_elm - *elm);
                         }
@@ -312,8 +233,6 @@ impl<F: Field> SumcheckProver<F> for AndReductionProver<F> {
             field_buffer_to_mle(self.multilinears[2].clone()).unwrap(),
             field_buffer_to_mle(self.multilinears[3].clone()).unwrap(),
         ];
-
-
 
         let log_n = self.multilinears[0].log_len();
         let n = 1 << log_n;
@@ -375,8 +294,6 @@ impl<F: Field> SumcheckProver<F> for AndReductionProver<F> {
         self.round_message = Some(
             RoundCoeffs {0: vec![g_of_zero, g_of_one, g_leading_coeff]}
         );
-
-
 
         self.multilinears[0] = mle_to_field_buffer(&multilinears[0].clone()).unwrap();
         self.multilinears[1] = mle_to_field_buffer(&multilinears[1].clone()).unwrap();
@@ -535,7 +452,7 @@ pub mod test {
 
         // zerocheck challenges (polyval)
         let zerocheck_challenges = (0..log_n)
-            .map(|_| BinaryField128bPolyval::from(AESTowerField128b::random(&mut rng)))
+            .map(|_| BinaryField128bPolyval::random(&mut rng))
             .collect::<Vec<BF>>();
 
             let multilinears: Vec<FieldBuffer<BF>> =
