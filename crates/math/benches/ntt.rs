@@ -5,7 +5,7 @@ use std::{
 
 use binius_field::{BinaryField, PackedField};
 use binius_math::ntt::{AdditiveNTT, NTTShape, SingleThreadedNTT};
-use binius_maybe_rayon::{ThreadPool, ThreadPoolBuilder};
+use binius_utils::rayon::{ThreadPool, ThreadPoolBuilder};
 use criterion::{
 	BenchmarkGroup, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main,
 	measurement::{Measurement, ValueFormatter},
@@ -18,6 +18,7 @@ use criterion::{
 fn bench_ntts<F, P>(
 	group: &mut BenchmarkGroup<WallTimeMulThroughput>,
 	thread_pool: &ThreadPool,
+	num_threads: usize,
 	data: &mut [P],
 	log_x: usize,
 	log_z: usize,
@@ -41,8 +42,7 @@ fn bench_ntts<F, P>(
 	};
 
 	let parameter = format!(
-		"threads={}/log_d={log_d}/log_x={log_x}/log_y={log_y}/log_z={log_z}/skip_rounds={skip_rounds}",
-		thread_pool.current_num_threads()
+		"threads={num_threads}/log_d={log_d}/log_x={log_x}/log_y={log_y}/log_z={log_z}/skip_rounds={skip_rounds}"
 	);
 
 	// We set the input size for the throughput to be the number of performed multiplications.
@@ -114,9 +114,9 @@ where
 				group.sample_size(50);
 			}
 
-			bench_ntts(&mut group, &thread_pool, &mut data, 0, 0, 0);
-			bench_ntts(&mut group, &thread_pool, &mut data, 4, 0, 0);
-			bench_ntts(&mut group, &thread_pool, &mut data, 0, 4, 0);
+			bench_ntts(&mut group, &thread_pool, num_threads, &mut data, 0, 0, 0);
+			bench_ntts(&mut group, &thread_pool, num_threads, &mut data, 4, 0, 0);
+			bench_ntts(&mut group, &thread_pool, num_threads, &mut data, 0, 4, 0);
 			// bench_ntts(&mut group, &mut data, 0, 0, 4);
 		}
 	}
