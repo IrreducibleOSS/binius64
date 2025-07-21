@@ -1,0 +1,43 @@
+/// Bitwise OR operation.
+///
+/// Returns `z = x | y`.
+///
+/// # Algorithm
+///
+/// Computes the bitwise OR using De Morgan's law: `x | y = ¬(¬x ∧ ¬y)`.
+/// This is implemented as `x ∧ y = (x ⊕ y ⊕ z)`.
+///
+/// # Constraints
+///
+/// The gate generates 1 AND constraint:
+/// - `x ∧ y = x ⊕ y ⊕ z`
+use super::{Gate, GateData};
+use crate::{
+	compiler::{Circuit, WitnessFiller},
+	constraint_system::{AndConstraint, ConstraintSystem},
+};
+
+pub fn constrain(_gate: Gate, data: &GateData, circuit: &Circuit, cs: &mut ConstraintSystem) {
+	let [x, y] = data.inputs() else {
+		unreachable!()
+	};
+	let [z] = data.outputs() else { unreachable!() };
+
+	let x_idx = circuit.witness_index(*x);
+	let y_idx = circuit.witness_index(*y);
+	let z_idx = circuit.witness_index(*z);
+
+	// Constraint: Bitwise OR
+	//
+	// x ∧ y = x ⊕ y ⊕ z
+	cs.add_and_constraint(AndConstraint::plain_abc([x_idx], [y_idx], [x_idx, y_idx, z_idx]));
+}
+
+pub fn evaluate(_gate: Gate, data: &GateData, w: &mut WitnessFiller) {
+	let [x, y] = data.inputs() else {
+		unreachable!()
+	};
+	let [z] = data.outputs() else { unreachable!() };
+
+	w[*z] = w[*x] | w[*y];
+}

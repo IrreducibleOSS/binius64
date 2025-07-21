@@ -5,10 +5,7 @@ use std::{
 	rc::Rc,
 };
 
-use gate::{
-	Assert0, AssertBand0, AssertEq, AssertEqCond, Band, Bor, Bxor, ExtractByte, Gate, Iadd32,
-	IaddCinCout, IcmpEq, IcmpUlt, Imul, Rotr32, Shl, Shr, Shr32,
-};
+use cranelift_entity::{PrimaryMap, SecondaryMap, entity_impl};
 
 use crate::{
 	constraint_system::{ConstraintSystem, ValueIndex, ValueVec},
@@ -16,6 +13,7 @@ use crate::{
 };
 
 mod gate;
+use gate::{GateData, GateGraph, opcode::Opcode};
 
 #[cfg(test)]
 mod tests;
@@ -46,25 +44,22 @@ impl ConstPool {
 /// compilation and some wires might be pruned altogether.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Wire(u32);
+entity_impl!(Wire);
 
 #[derive(Copy, Clone)]
-enum WireKind {
+pub enum WireKind {
 	Constant(Word),
 	Inout,
-	Private,
+	Witness,
 }
 
 #[derive(Copy, Clone)]
 pub struct WireData {
-	kind: WireKind,
+	pub kind: WireKind,
 }
 
 struct Shared {
-	cp: ConstPool,
-	n_inout: usize,
-	n_witness: usize,
-	wires: Vec<WireData>,
-	gates: Vec<Box<dyn Gate>>,
+	graph: gate::GateGraph,
 }
 
 /// # Clone
@@ -81,11 +76,14 @@ impl Default for CircuitBuilder {
 		CircuitBuilder {
 			name: String::new(),
 			shared: Rc::new(RefCell::new(Some(Shared {
-				cp: ConstPool::new(),
-				n_witness: 0,
-				n_inout: 0,
-				wires: Vec::new(),
-				gates: Vec::new(),
+				graph: GateGraph {
+					gates: PrimaryMap::new(),
+					wires: PrimaryMap::new(),
+					assertion_names: SecondaryMap::new(),
+					const_pool: ConstPool::new(),
+					n_witness: 0,
+					n_inout: 0,
+				},
 			}))),
 		}
 	}
@@ -105,6 +103,8 @@ impl CircuitBuilder {
 			panic!("CircuitBuilder::build called twice");
 		};
 
+		shared.graph.validate();
+
 		// `ValueVec` expects the wires to be in a certain order. Specifically:
 		//
 		// 1. const
@@ -113,27 +113,27 @@ impl CircuitBuilder {
 		//
 		// So we create a mapping between a `Wire` to the final `ValueIndex`.
 
-		// Create a vector of (original_index, priority) pairs and sort by priority.
-		let mut indexed_wires: Vec<(usize, u8)> = shared
+		// Create a vector of (Wire, WireData, priority) tuples and sort by priority.
+		let mut indexed_wires: Vec<(Wire, WireData, u8)> = shared
+			.graph
 			.wires
 			.iter()
-			.enumerate()
-			.map(|(i, wire_data)| {
+			.map(|(wire, &wire_data)| {
 				let priority = match wire_data.kind {
 					WireKind::Constant(_) => 0,
 					WireKind::Inout => 1,
-					WireKind::Private => 2,
+					WireKind::Witness => 2,
 				};
-				(i, priority)
+				(wire, wire_data, priority)
 			})
 			.collect();
 
-		indexed_wires.sort_by_key(|(_, priority)| *priority);
+		indexed_wires.sort_by_key(|(_, _, priority)| *priority);
 
-		// Create the mapping from original wire index to sorted ValueIndex.
-		let mut wire_mapping = vec![ValueIndex(0); shared.wires.len()];
-		for (sorted_index, (original_index, _)) in indexed_wires.iter().enumerate() {
-			wire_mapping[*original_index] = ValueIndex(sorted_index as u32);
+		// Create the mapping from Wire to sorted ValueIndex.
+		let mut wire_mapping = vec![ValueIndex(0); shared.graph.wires.len()];
+		for (sorted_index, (wire, _, _)) in indexed_wires.iter().enumerate() {
+			wire_mapping[wire.0 as usize] = ValueIndex(sorted_index as u32);
 		}
 
 		Circuit {
@@ -150,12 +150,8 @@ impl CircuitBuilder {
 		}
 	}
 
-	fn shared_mut(&self) -> RefMut<'_, Shared> {
-		RefMut::map(self.shared.borrow_mut(), |shared| shared.as_mut().unwrap())
-	}
-
-	fn emit(&self, gate: impl Gate + 'static) {
-		self.shared_mut().gates.push(Box::new(gate))
+	fn graph_mut(&self) -> RefMut<'_, GateGraph> {
+		RefMut::map(self.shared.borrow_mut(), |shared| &mut shared.as_mut().unwrap().graph)
 	}
 
 	fn namespaced(&self, name: String) -> String {
@@ -163,10 +159,8 @@ impl CircuitBuilder {
 	}
 
 	fn add_wire(&self, wire_data: WireData) -> Wire {
-		let mut shared = self.shared_mut();
-		let id = shared.wires.len();
-		shared.wires.push(wire_data);
-		Wire(id as u32)
+		let mut graph = self.graph_mut();
+		graph.wires.push(wire_data)
 	}
 
 	/// Creates a wire from a 64-bit word.
@@ -184,13 +178,15 @@ impl CircuitBuilder {
 	///
 	/// Constants have no constraint cost - they are "free" in the circuit.
 	pub fn add_constant(&self, word: Word) -> Wire {
-		if let Some(wire) = self.shared_mut().cp.get(word) {
+		let graph = self.graph_mut();
+		if let Some(wire) = graph.const_pool.get(word) {
 			return wire;
 		}
+		drop(graph);
 		let wire = self.add_wire(WireData {
 			kind: WireKind::Constant(word),
 		});
-		self.shared_mut().cp.insert(word, wire);
+		self.graph_mut().const_pool.insert(word, wire);
 		wire
 	}
 
@@ -225,31 +221,46 @@ impl CircuitBuilder {
 	}
 
 	pub fn add_inout(&self) -> Wire {
-		self.shared_mut().n_inout += 1;
-		self.add_wire(WireData {
+		let mut graph = self.graph_mut();
+		graph.n_inout += 1;
+		graph.wires.push(WireData {
 			kind: WireKind::Inout,
 		})
 	}
 
 	pub fn add_witness(&self) -> Wire {
-		self.shared_mut().n_witness += 1;
-		self.add_wire(WireData {
-			kind: WireKind::Private,
+		let mut graph = self.graph_mut();
+		graph.n_witness += 1;
+		graph.wires.push(WireData {
+			kind: WireKind::Witness,
 		})
 	}
 
 	pub fn band(&self, a: Wire, b: Wire) -> Wire {
-		let gate = Band::new(self, a, b);
-		let out = gate.z;
-		self.emit(gate);
-		out
+		let z = self.add_witness();
+		let mut graph = self.graph_mut();
+
+		graph.gates.push(GateData {
+			opcode: Opcode::Band,
+			wires: vec![a, b, z],
+			immediates: vec![],
+		});
+
+		z
 	}
 
 	pub fn bxor(&self, a: Wire, b: Wire) -> Wire {
-		let gate = Bxor::new(self, a, b);
-		let out = gate.z;
-		self.emit(gate);
-		out
+		let z = self.add_witness();
+		let all_1 = self.add_constant(Word::ALL_ONE);
+		let mut graph = self.graph_mut();
+
+		graph.gates.push(GateData {
+			opcode: Opcode::Bxor,
+			wires: vec![a, b, all_1, z],
+			immediates: vec![],
+		});
+
+		z
 	}
 
 	/// Bitwise Not
@@ -259,17 +270,31 @@ impl CircuitBuilder {
 	}
 
 	pub fn bor(&self, a: Wire, b: Wire) -> Wire {
-		let gate = Bor::new(self, a, b);
-		let out = gate.z;
-		self.emit(gate);
-		out
+		let z = self.add_witness();
+		let mut graph = self.graph_mut();
+
+		graph.gates.push(GateData {
+			opcode: Opcode::Bor,
+			wires: vec![a, b, z],
+			immediates: vec![],
+		});
+
+		z
 	}
 
 	pub fn iadd_32(&self, a: Wire, b: Wire) -> Wire {
-		let gate = Iadd32::new(self, a, b);
-		let out = gate.z;
-		self.emit(gate);
-		out
+		let z = self.add_witness();
+		let cout = self.add_witness();
+		let mask32 = self.add_constant(Word::MASK_32);
+		let mut graph = self.graph_mut();
+
+		graph.gates.push(GateData {
+			opcode: Opcode::Iadd32,
+			wires: vec![a, b, mask32, z, cout],
+			immediates: vec![],
+		});
+
+		z
 	}
 
 	/// 64-bit addition with carry input and output.
@@ -283,27 +308,48 @@ impl CircuitBuilder {
 	///
 	/// 2 AND constraints.
 	pub fn iadd_cin_cout(&self, a: Wire, b: Wire, cin: Wire) -> (Wire, Wire) {
-		let gate = IaddCinCout::new(self, a, b, cin);
-		let sum = gate.sum;
-		let cout = gate.cout;
-		self.emit(gate);
+		let sum = self.add_witness();
+		let cout = self.add_witness();
+		let all_1 = self.add_constant(Word::ALL_ONE);
+		let mut graph = self.graph_mut();
+
+		graph.gates.push(GateData {
+			opcode: Opcode::IaddCinCout,
+			wires: vec![a, b, cin, all_1, sum, cout],
+			immediates: vec![],
+		});
+
 		(sum, cout)
 	}
 
 	pub fn rotr_32(&self, a: Wire, n: u32) -> Wire {
-		assert!(n < 32, "shift amount n={n} out of range");
-		let gate = Rotr32::new(self, a, n);
-		let out = gate.z;
-		self.emit(gate);
-		out
+		assert!(n < 32, "rotate amount n={n} out of range");
+		let z = self.add_witness();
+		let mask32 = self.add_constant(Word::MASK_32);
+		let mut graph = self.graph_mut();
+
+		graph.gates.push(GateData {
+			opcode: Opcode::Rotr32,
+			wires: vec![a, mask32, z],
+			immediates: vec![n],
+		});
+
+		z
 	}
 
 	pub fn shr_32(&self, a: Wire, n: u32) -> Wire {
 		assert!(n < 32, "shift amount n={n} out of range");
-		let gate = Shr32::new(self, a, n);
-		let out = gate.z;
-		self.emit(gate);
-		out
+		let z = self.add_witness();
+		let mask32 = self.add_constant(Word::MASK_32);
+		let mut graph = self.graph_mut();
+
+		graph.gates.push(GateData {
+			opcode: Opcode::Shr32,
+			wires: vec![a, mask32, z],
+			immediates: vec![n],
+		});
+
+		z
 	}
 
 	/// Logical left shift.
@@ -317,10 +363,17 @@ impl CircuitBuilder {
 	/// 1 AND constraint.
 	pub fn shl(&self, a: Wire, n: u32) -> Wire {
 		assert!(n < 64, "shift amount n={n} out of range");
-		let gate = Shl::new(self, a, n);
-		let out = gate.z;
-		self.emit(gate);
-		out
+		let z = self.add_witness();
+		let all_1 = self.add_constant(Word::ALL_ONE);
+		let mut graph = self.graph_mut();
+
+		graph.gates.push(GateData {
+			opcode: Opcode::Shl,
+			wires: vec![a, all_1, z],
+			immediates: vec![n],
+		});
+
+		z
 	}
 
 	/// Logical right shift.
@@ -334,10 +387,17 @@ impl CircuitBuilder {
 	/// 1 AND constraint.
 	pub fn shr(&self, a: Wire, n: u32) -> Wire {
 		assert!(n < 64, "shift amount n={n} out of range");
-		let gate = Shr::new(self, a, n);
-		let out = gate.z;
-		self.emit(gate);
-		out
+		let z = self.add_witness();
+		let all_1 = self.add_constant(Word::ALL_ONE);
+		let mut graph = self.graph_mut();
+
+		graph.gates.push(GateData {
+			opcode: Opcode::Shr,
+			wires: vec![a, all_1, z],
+			immediates: vec![n],
+		});
+
+		z
 	}
 
 	/// Equality assertion.
@@ -351,8 +411,17 @@ impl CircuitBuilder {
 	///
 	/// 1 AND constraint.
 	pub fn assert_eq(&self, name: impl Into<String>, x: Wire, y: Wire) {
+		let all_1 = self.add_constant(Word::ALL_ONE);
+		let mut graph = self.graph_mut();
+
+		let gate = graph.gates.push(GateData {
+			opcode: Opcode::AssertEq,
+			wires: vec![x, y, all_1],
+			immediates: vec![],
+		});
+
 		let name = self.namespaced(name.into());
-		self.emit(AssertEq::new(self, name, x, y))
+		graph.assertion_names[gate] = name;
 	}
 
 	/// Vector equality assertion.
@@ -374,9 +443,18 @@ impl CircuitBuilder {
 
 	/// Asserts that the given wire equals zero using a single AND constraint.
 	/// This is more efficient than using assert_eq with a zero constant.
-	pub fn assert_0(&self, name: impl Into<String>, a: Wire) {
+	pub fn assert_0(&self, name: impl Into<String>, x: Wire) {
+		let all_1 = self.add_constant(Word::ALL_ONE);
+		let mut graph = self.graph_mut();
+
+		let gate = graph.gates.push(GateData {
+			opcode: Opcode::Assert0,
+			wires: vec![x, all_1],
+			immediates: vec![],
+		});
+
 		let name = self.namespaced(name.into());
-		self.emit(Assert0::new(self, name, a))
+		graph.assertion_names[gate] = name;
 	}
 
 	/// Bitwise AND assertion with constant equals zero.
@@ -390,18 +468,33 @@ impl CircuitBuilder {
 	/// # Cost
 	///
 	/// 1 AND constraint.
-	pub fn assert_band_0(&self, name: impl Into<String>, a: Wire, constant: Word) {
+	pub fn assert_band_0(&self, name: impl Into<String>, x: Wire, constant: Word) {
+		let y = self.add_constant(constant);
+		let mut graph = self.graph_mut();
+
+		let gate = graph.gates.push(GateData {
+			opcode: Opcode::AssertBand0,
+			wires: vec![x, y],
+			immediates: vec![],
+		});
+
 		let name = self.namespaced(name.into());
-		self.emit(AssertBand0::new(self, name, a, constant))
+		graph.assertion_names[gate] = name;
 	}
 
 	/// 64-bit × 64-bit → 128-bit unsigned multiplication.
 	/// Returns (hi, lo) where result = (hi << 64) | lo
 	pub fn imul(&self, a: Wire, b: Wire) -> (Wire, Wire) {
-		let gate = Imul::new(self, a, b);
-		let hi = gate.hi;
-		let lo = gate.lo;
-		self.emit(gate);
+		let hi = self.add_witness();
+		let lo = self.add_witness();
+		let mut graph = self.graph_mut();
+
+		graph.gates.push(GateData {
+			opcode: Opcode::Imul,
+			wires: vec![a, b, hi, lo],
+			immediates: vec![],
+		});
+
 		(hi, lo)
 	}
 
@@ -419,9 +512,17 @@ impl CircuitBuilder {
 	/// # Cost
 	///
 	/// 1 AND constraint.
-	pub fn assert_eq_cond(&self, name: impl Into<String>, a: Wire, b: Wire, mask: Wire) {
+	pub fn assert_eq_cond(&self, name: impl Into<String>, x: Wire, y: Wire, mask: Wire) {
+		let mut graph = self.graph_mut();
+
+		let gate = graph.gates.push(GateData {
+			opcode: Opcode::AssertEqCond,
+			wires: vec![x, y, mask],
+			immediates: vec![],
+		});
+
 		let name = self.namespaced(name.into());
-		self.emit(AssertEqCond::new(name, a, b, mask))
+		graph.assertion_names[gate] = name;
 	}
 
 	/// Unsigned less-than comparison.
@@ -435,11 +536,19 @@ impl CircuitBuilder {
 	/// # Cost
 	///
 	/// 2 AND constraints.
-	pub fn icmp_ult(&self, a: Wire, b: Wire) -> Wire {
-		let gate = IcmpUlt::new(self, a, b);
-		let out = gate.out_mask;
-		self.emit(gate);
-		out
+	pub fn icmp_ult(&self, x: Wire, y: Wire) -> Wire {
+		let out_mask = self.add_witness();
+		let bout = self.add_witness();
+		let all_1 = self.add_constant(Word::ALL_ONE);
+		let mut graph = self.graph_mut();
+
+		graph.gates.push(GateData {
+			opcode: Opcode::IcmpUlt,
+			wires: vec![x, y, all_1, out_mask, bout],
+			immediates: vec![],
+		});
+
+		out_mask
 	}
 
 	/// Equality comparison.
@@ -453,11 +562,19 @@ impl CircuitBuilder {
 	/// # Cost
 	///
 	/// 2 AND constraints.
-	pub fn icmp_eq(&self, a: Wire, b: Wire) -> Wire {
-		let gate = IcmpEq::new(self, a, b);
-		let out = gate.out_mask;
-		self.emit(gate);
-		out
+	pub fn icmp_eq(&self, x: Wire, y: Wire) -> Wire {
+		let out_mask = self.add_witness();
+		let cout = self.add_witness();
+		let all_1 = self.add_constant(Word::ALL_ONE);
+		let mut graph = self.graph_mut();
+
+		graph.gates.push(GateData {
+			opcode: Opcode::IcmpEq,
+			wires: vec![x, y, all_1, out_mask, cout],
+			immediates: vec![],
+		});
+
+		out_mask
 	}
 
 	/// Byte extraction.
@@ -474,11 +591,19 @@ impl CircuitBuilder {
 	///
 	/// 2 AND constraints.
 	pub fn extract_byte(&self, word: Wire, j: u32) -> Wire {
-		assert!(j < 8, "byte index out of range");
-		let gate = ExtractByte::new(self, word, j);
-		let out = gate.z;
-		self.emit(gate);
-		out
+		assert!(j < 8, "byte index j={j} out of range");
+		let z = self.add_witness();
+		let mask_ff = self.add_constant(Word::from_u64(0xFF));
+		let mask_high56 = self.add_constant(Word::from_u64(0xFFFFFFFFFFFFFF00));
+		let mut graph = self.graph_mut();
+
+		graph.gates.push(GateData {
+			opcode: Opcode::ExtractByte,
+			wires: vec![word, mask_ff, mask_high56, z],
+			immediates: vec![j],
+		});
+
+		z
 	}
 }
 
@@ -558,9 +683,9 @@ impl Circuit {
 		WitnessFiller {
 			circuit: self,
 			value_vec: ValueVec::new(
-				self.shared.cp.pool.len(),
-				self.shared.n_inout,
-				self.shared.n_witness,
+				self.shared.graph.const_pool.pool.len(),
+				self.shared.graph.n_inout,
+				self.shared.graph.n_witness,
 			),
 			assertion_failed_message_vec: Vec::new(),
 			assertion_failed_count: 0,
@@ -585,18 +710,19 @@ impl Circuit {
 	/// In case the circuit is not satisfiable (any assertion fails), this function will return an
 	/// error with a list of assertion failure messages.
 	pub fn populate_wire_witness(&self, w: &mut WitnessFiller) -> Result<(), PopulateError> {
-		for (i, wire) in self.shared.wires.iter().enumerate() {
-			if let WireKind::Constant(value) = wire.kind {
-				// TODO: don't conjure up a wire.
-				w[Wire(i as u32)] = value;
+		// Fill constants
+		for (wire, wire_data) in self.shared.graph.wires.iter() {
+			if let WireKind::Constant(value) = wire_data.kind {
+				w[wire] = value;
 			}
 		}
 
 		use std::time::Instant;
 		let start = Instant::now();
 
-		for gate in self.shared.gates.iter() {
-			gate.populate_wire_witness(w);
+		// Evaluate all gates
+		for (gate_id, _) in self.shared.graph.gates.iter() {
+			gate::evaluate(gate_id, &self.shared.graph, w);
 		}
 
 		let elapsed = start.elapsed();
@@ -615,12 +741,18 @@ impl Circuit {
 	/// Builds a constraint system from this circuit.
 	pub fn constraint_system(&self) -> ConstraintSystem {
 		let mut cs = ConstraintSystem::new(
-			self.shared.cp.pool.keys().cloned().collect::<Vec<_>>(),
-			self.shared.n_inout,
-			self.shared.n_witness,
+			self.shared
+				.graph
+				.const_pool
+				.pool
+				.keys()
+				.cloned()
+				.collect::<Vec<_>>(),
+			self.shared.graph.n_inout,
+			self.shared.graph.n_witness,
 		);
-		for gate in self.shared.gates.iter() {
-			gate.constrain(self, &mut cs);
+		for (gate_id, _) in self.shared.graph.gates.iter() {
+			gate::constrain(gate_id, &self.shared.graph, self, &mut cs);
 		}
 		cs
 	}
@@ -630,6 +762,6 @@ impl Circuit {
 	/// Depending on what type of gates this circuit uses, the number of constraints might be
 	/// significantly larger.
 	pub fn n_gates(&self) -> usize {
-		self.shared.gates.len()
+		self.shared.graph.gates.len()
 	}
 }

@@ -7,6 +7,9 @@ authors.workspace = true
 [lints]
 workspace = true
 
+[dependencies]
+cranelift-entity = { workspace = true }
+
 [dev-dependencies]
 rand = { workspace = true, features = ["std_rng", "thread_rng"] }
 hex-literal = { workspace = true }

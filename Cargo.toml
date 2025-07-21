@@ -30,6 +30,7 @@ bytemuck = { version = "1.18.0", features = [
 ] }
 bytes = "1.7.2"
 cfg-if = "1.0.0"
+cranelift-entity = "0.121.1"
 criterion = "0.6.0"
 derive_more = "0.99.17"
 digest = "0.10.7"
