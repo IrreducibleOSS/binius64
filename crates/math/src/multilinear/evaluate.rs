@@ -62,40 +62,6 @@ where
 	evaluate_inplace(temp_buffer, remaining_coords)
 }
 
-/// Evaluates a multilinear polynomial at a given point using inner product with eq indicator.
-///
-/// This method computes the evaluation by:
-/// 1. Computing the tensor expansion of the equality indicator at the given coordinates
-/// 2. Taking the inner product of the evaluations and the eq tensor
-///
-/// # Arguments
-/// * `evals` - A FieldBuffer containing the 2^n evaluations over the boolean hypercube
-/// * `coords` - The n coordinates at which to evaluate the polynomial
-///
-/// # Returns
-/// The evaluation of the multilinear polynomial at the given point
-pub fn evaluate_with_inner_product<F, P, Data>(
-	evals: &FieldBuffer<P, Data>,
-	point: &[F],
-) -> Result<F, Error>
-where
-	F: Field,
-	P: PackedField<Scalar = F>,
-	Data: Deref<Target = [P]>,
-{
-	if point.len() != evals.log_len() {
-		return Err(Error::IncorrectArgumentLength {
-			arg: "coords".to_string(),
-			expected: evals.log_len(),
-		});
-	}
-
-	// Compute the equality indicator tensor expansion
-	let eq_tensor = eq_ind_partial_eval::<P>(point);
-	let result = inner_product_par(evals, &eq_tensor);
-	Ok(result)
-}
-
 /// Evaluates a multilinear polynomial at a given point, modifying the buffer in-place.
 ///
 /// This method computes the evaluation of a multilinear polynomial specified by it's evaluations
@@ -156,6 +122,29 @@ mod tests {
 
 	#[test]
 	fn test_evaluate_consistency() {
+		/// Simple reference function for multilinear polynomial evaluation.
+		fn evaluate_with_inner_product<F, P, Data>(
+			evals: &FieldBuffer<P, Data>,
+			point: &[F],
+		) -> Result<F, Error>
+		where
+			F: Field,
+			P: PackedField<Scalar = F>,
+			Data: Deref<Target = [P]>,
+		{
+			if point.len() != evals.log_len() {
+				return Err(Error::IncorrectArgumentLength {
+					arg: "coords".to_string(),
+					expected: evals.log_len(),
+				});
+			}
+
+			// Compute the equality indicator tensor expansion
+			let eq_tensor = eq_ind_partial_eval::<P>(point);
+			let result = inner_product_par(evals, &eq_tensor);
+			Ok(result)
+		}
+
 		let mut rng = StdRng::seed_from_u64(0);
 
 		// Generate random buffer and evaluation point
@@ -187,7 +176,7 @@ mod tests {
 			let point = index_to_hypercube_point::<BinaryField128bGhash>(log_n, index);
 
 			// Evaluate at the hypercube point
-			let eval_result = evaluate_with_inner_product(&buffer, &point).unwrap();
+			let eval_result = evaluate(&buffer, &point).unwrap();
 
 			// Get the value directly from the buffer
 			let direct_value = buffer.get(index).unwrap();
@@ -216,7 +205,7 @@ mod tests {
 				.iter()
 				.map(|&coord_val| {
 					point[coord_idx] = coord_val;
-					evaluate_with_inner_product(&buffer, &point).unwrap()
+					evaluate(&buffer, &point).unwrap()
 				})
 				.collect();
 
