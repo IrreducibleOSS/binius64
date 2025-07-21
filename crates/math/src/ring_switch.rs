@@ -1,5 +1,3 @@
-use std::iter;
-
 use binius_field::{
 	BinaryField, BinaryField1b as B1, ExtensionField, Field, PackedExtension, PackedField,
 };
