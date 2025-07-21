@@ -37,6 +37,8 @@ pub enum WireKind {
 	Constant(Word),
 	Inout,
 	Witness,
+	/// An internal wire is a wire created inside a gate.
+	Internal,
 }
 
 #[derive(Copy, Clone)]
@@ -61,6 +63,7 @@ pub struct GateData {
 	/// They are laid out in the following order:
 	/// - Inputs
 	/// - Outputs
+	/// - Internal
 	///
 	/// The number of input and output wires is specified by the opcode's shape.
 	pub wires: Vec<Wire>,
@@ -82,13 +85,23 @@ impl GateData {
 
 	pub fn outputs(&self) -> &[Wire] {
 		let shape = self.opcode.shape();
-		&self.wires[shape.n_in..]
+		let start = shape.n_in;
+		let end = start + shape.n_out;
+		&self.wires[start..end]
+	}
+
+	pub fn internals(&self) -> &[Wire] {
+		let shape = self.opcode.shape();
+		let start = shape.n_in + shape.n_out;
+		let end = start + shape.n_internal;
+		&self.wires[start..end]
 	}
 
 	/// Ensures the gate has the right shape.
 	pub fn validate_shape(&self) {
 		assert_eq!(self.inputs().len(), self.opcode.shape().n_in);
 		assert_eq!(self.outputs().len(), self.opcode.shape().n_out);
+		assert_eq!(self.internals().len(), self.opcode.shape().n_internal);
 		assert_eq!(self.immediates.len(), self.opcode.shape().n_imm);
 	}
 }

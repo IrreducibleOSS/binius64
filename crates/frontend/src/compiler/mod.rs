@@ -76,6 +76,7 @@ impl CircuitBuilder {
 		// 1. const
 		// 2. inout
 		// 3. witness
+		// 4. internal
 		//
 		// So we create a mapping between a `Wire` to the final `ValueIndex`.
 
@@ -89,6 +90,7 @@ impl CircuitBuilder {
 					WireKind::Constant(_) => 0,
 					WireKind::Inout => 1,
 					WireKind::Witness => 2,
+					WireKind::Internal => 3,
 				};
 				(wire, wire_data, priority)
 			})
@@ -199,6 +201,15 @@ impl CircuitBuilder {
 		})
 	}
 
+	fn add_internal(&self) -> Wire {
+		let mut graph = self.graph_mut();
+		// We treat internal as sort of witness.
+		graph.n_witness += 1;
+		graph.wires.push(WireData {
+			kind: WireKind::Internal,
+		})
+	}
+
 	pub fn band(&self, a: Wire, b: Wire) -> Wire {
 		let z = self.add_witness();
 		let mut graph = self.graph_mut();
@@ -247,7 +258,7 @@ impl CircuitBuilder {
 
 	pub fn iadd_32(&self, a: Wire, b: Wire) -> Wire {
 		let z = self.add_witness();
-		let cout = self.add_witness();
+		let cout = self.add_internal();
 		let mask32 = self.add_constant(Word::MASK_32);
 		let mut graph = self.graph_mut();
 
@@ -272,7 +283,7 @@ impl CircuitBuilder {
 	/// 2 AND constraints.
 	pub fn iadd_cin_cout(&self, a: Wire, b: Wire, cin: Wire) -> (Wire, Wire) {
 		let sum = self.add_witness();
-		let cout = self.add_witness();
+		let cout = self.add_internal();
 		let all_1 = self.add_constant(Word::ALL_ONE);
 		let mut graph = self.graph_mut();
 
@@ -501,7 +512,7 @@ impl CircuitBuilder {
 	/// 2 AND constraints.
 	pub fn icmp_ult(&self, x: Wire, y: Wire) -> Wire {
 		let out_mask = self.add_witness();
-		let bout = self.add_witness();
+		let bout = self.add_internal();
 		let all_1 = self.add_constant(Word::ALL_ONE);
 		let mut graph = self.graph_mut();
 
@@ -527,7 +538,7 @@ impl CircuitBuilder {
 	/// 2 AND constraints.
 	pub fn icmp_eq(&self, x: Wire, y: Wire) -> Wire {
 		let out_mask = self.add_witness();
-		let cout = self.add_witness();
+		let cout = self.add_internal();
 		let all_1 = self.add_constant(Word::ALL_ONE);
 		let mut graph = self.graph_mut();
 

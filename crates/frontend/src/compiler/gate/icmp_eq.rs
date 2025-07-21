@@ -39,7 +39,10 @@ pub fn constrain(
 	let [x, y, all_1] = data.inputs() else {
 		unreachable!()
 	};
-	let [out_mask, cout] = data.outputs() else {
+	let [out_mask] = data.outputs() else {
+		unreachable!()
+	};
+	let [cout] = data.internals() else {
 		unreachable!()
 	};
 
@@ -80,7 +83,10 @@ pub fn evaluate(_gate: Gate, data: &GateData, w: &mut circuit::WitnessFiller) {
 	let [x, y, _all_1] = data.inputs() else {
 		unreachable!()
 	};
-	let [out_mask, cout] = data.outputs() else {
+	let [out_mask] = data.outputs() else {
+		unreachable!()
+	};
+	let [cout] = data.internals() else {
 		unreachable!()
 	};
 
