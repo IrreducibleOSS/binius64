@@ -14,6 +14,7 @@ pub mod binary_subspace;
 mod error;
 pub mod field_buffer;
 pub mod fold;
+pub mod inner_product;
 pub mod line;
 pub mod matrix;
 pub mod multilinear;
