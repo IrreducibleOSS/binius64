@@ -1,4 +1,4 @@
-use binius_field::{AESTowerField8b, BinaryField128bPolyval, Field};
+use binius_field::{AESTowerField8b, Field};
 
 use crate::protocols::sumcheck::and_reduction::univariate::subfield_isomorphism::SubfieldIsomorphismLookup;
 

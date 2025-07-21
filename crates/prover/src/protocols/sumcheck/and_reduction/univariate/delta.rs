@@ -30,7 +30,7 @@ pub fn delta_poly<'a, F: Field>(
 	GenericPo2UnivariatePoly::new(univariate_lagrange_coeffs, iso_lookup)
 }
 
-// #[cfg(test)]
+#[cfg(test)]
 mod tests {
 	use binius_field::{AESTowerField8b, AESTowerField128b, BinaryField128bPolyval, Field};
 
