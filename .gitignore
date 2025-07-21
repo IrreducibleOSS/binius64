@@ -3,5 +3,6 @@
 profile.json
 Cargo.lock
 CLAUDE.local.md
+/.claude/commands/local
 /.idea/
 **/.DS_Store
