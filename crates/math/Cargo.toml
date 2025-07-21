@@ -28,7 +28,7 @@ proptest.workspace = true
 rand = { workspace = true, features = ["std_rng", "thread_rng"] }
 
 [features]
-default = ["nightly-features", "rayon"]
+default = ["nightly-features"]
 test-utils = []
 nightly-features = ["binius-field/nightly_features"]
 rayon = ["binius-maybe-rayon/rayon"]

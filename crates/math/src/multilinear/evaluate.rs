@@ -1,11 +1,9 @@
 // Copyright 2025 Irreducible Inc.
 
-use std::{
-	iter,
-	ops::{Deref, DerefMut},
-};
+use std::ops::{Deref, DerefMut};
 
 use binius_field::{Field, PackedField};
+use binius_maybe_rayon::prelude::*;
 
 use crate::{
 	Error, FieldBuffer, inner_product::inner_product_packed, multilinear::eq::eq_ind_partial_eval,
@@ -51,7 +49,7 @@ where
 
 	// Collect inner products of chunks into scalar values
 	let scalars = evals
-		.chunks(log_chunk_size)?
+		.chunks_par(log_chunk_size)?
 		.map(|chunk| inner_product_packed(&chunk, &eq_tensor))
 		.collect::<Vec<_>>();
 
@@ -97,9 +95,13 @@ where
 			// Compute the folded values: lo + (hi - lo) * coord
 			// This is equivalent to lo * (1 - coord) + hi * coord
 			let packed_coord = P::broadcast(last_coord);
-			for (lo_i, hi_i) in iter::zip(evals_lo.as_mut(), evals_hi.as_ref()) {
-				*lo_i += (*hi_i - *lo_i) * packed_coord;
-			}
+			evals_lo
+				.as_mut()
+				.par_iter_mut()
+				.zip(evals_hi.as_ref())
+				.for_each(|(lo_i, hi_i)| {
+					*lo_i += (*hi_i - *lo_i) * packed_coord;
+				});
 
 			evaluate_inplace(evals_lo.to_mut(), remaining_coords)
 		})?
