@@ -8,7 +8,7 @@ use std::{
 use binius_field::{Field, PackedField};
 
 use crate::{
-	Error, FieldBuffer, inner_product::inner_product_par, multilinear::eq::eq_ind_partial_eval,
+	Error, FieldBuffer, inner_product::inner_product_packed, multilinear::eq::eq_ind_partial_eval,
 };
 
 /// Evaluates a multilinear polynomial at a given point using sqrt(n) memory.
@@ -52,7 +52,7 @@ where
 	// Collect inner products of chunks into scalar values
 	let scalars = evals
 		.chunks(log_chunk_size)?
-		.map(|chunk| inner_product_par(&chunk, &eq_tensor))
+		.map(|chunk| inner_product_packed(&chunk, &eq_tensor))
 		.collect::<Vec<_>>();
 
 	// Create temporary buffer from collected scalar values
@@ -118,7 +118,10 @@ mod tests {
 	use rand::{RngCore, SeedableRng, rngs::StdRng};
 
 	use super::*;
-	use crate::test_utils::{index_to_hypercube_point, random_field_buffer, random_scalars};
+	use crate::{
+		inner_product::inner_product_par,
+		test_utils::{index_to_hypercube_point, random_field_buffer, random_scalars},
+	};
 
 	#[test]
 	fn test_evaluate_consistency() {

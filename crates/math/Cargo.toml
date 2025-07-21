@@ -21,14 +21,17 @@ transpose.workspace = true
 
 [dev-dependencies]
 assert_matches.workspace = true
-binius-math = { path = ".", default-features = false, features = ["test-utils"] }
+binius-math = { path = ".", features = ["test-utils"] }
 criterion.workspace = true
 lazy_static.workspace = true
 proptest.workspace = true
 rand = { workspace = true, features = ["std_rng", "thread_rng"] }
 
 [features]
+default = ["nightly-features", "rayon"]
 test-utils = []
+nightly-features = ["binius-field/nightly_features"]
+rayon = ["binius-maybe-rayon/rayon"]
 
 [lib]
 bench = false
@@ -39,4 +42,8 @@ harness = false
 
 [[bench]]
 name = "large_transform"
+harness = false
+
+[[bench]]
+name = "multilinear_evaluate"
 harness = false
