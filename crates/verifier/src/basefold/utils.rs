@@ -6,6 +6,7 @@ use binius_field::Field;
 pub fn evaluate_round_polynomial_at<F: Field>(x: F, round_msg: Vec<F>) -> F {
 	let (x_0, y_0) = (F::ZERO, round_msg[0]);
 	let (x_1, y_1) = (F::ONE, round_msg[1]);
+
 	let y_leading_coeff = round_msg[2];
 
 	// lagrange basis polynomials

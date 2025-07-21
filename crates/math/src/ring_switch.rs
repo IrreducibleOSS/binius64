@@ -1,49 +1,39 @@
 use std::iter;
 
-use binius_field::{BinaryField1b, BinaryField128b, ExtensionField, Field, PackedExtension};
+use binius_field::{BinaryField1b as B1, ExtensionField, Field, PackedExtension, PackedField, BinaryField};
+use binius_utils::rayon::prelude::{
+	IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator,
+};
 
-use crate::{FieldBuffer, multilinear::eq::tensor_prod_eq_ind, tensor_algebra::TensorAlgebra};
+use crate::{FieldBuffer, multilinear::eq::eq_ind_partial_eval, tensor_algebra::TensorAlgebra};
 
-pub type B1 = BinaryField1b;
-pub type B128 = BinaryField128b;
-
-pub fn eq_ind_mle<F: Field>(zerocheck_challenges: &[F]) -> FieldBuffer<F> {
-	let mut mle = FieldBuffer::<F>::zeros(zerocheck_challenges.len());
-	let _ = mle.set(0, F::ONE);
-	let _ = tensor_prod_eq_ind(0, &mut mle, zerocheck_challenges);
-	mle
-}
-
-pub fn rs_eq_ind<BF: Field + ExtensionField<B1> + PackedExtension<B1>>(
-	batching_challenges: &[BF],
-	z_vals: &[BF],
-) -> FieldBuffer<BF> {
-	let big_field_hypercube_vertices = 1 << z_vals.len();
-
+pub fn rs_eq_ind<BF>(batching_challenges: &[BF], z_vals: &[BF]) -> FieldBuffer<BF>
+where
+	BF: BinaryField + PackedExtension<B1> + PackedField<Scalar = BF>,
+{
 	// MLE-random-linear-combination of bit-slices of the eq_ind for z_vals
-	let z_vals_eq_ind = eq_ind_mle(z_vals);
+	let z_vals_eq_ind = eq_ind_partial_eval(z_vals);
 
-	let row_batching_query = eq_ind_mle::<BF>(batching_challenges);
+	let row_batching_query = eq_ind_partial_eval::<BF>(batching_challenges);
 
 	let mut rs_eq_mle = FieldBuffer::<BF>::zeros(z_vals.len());
 
-	for big_field_hypercube_vertex in 0..big_field_hypercube_vertices {
-		for (index, bit) in <BF as ExtensionField<BinaryField1b>>::into_iter_bases(
-			z_vals_eq_ind.as_ref()[big_field_hypercube_vertex],
-		)
-		.enumerate()
-		{
-			if bit == BinaryField1b::ONE {
-				rs_eq_mle.as_mut()[big_field_hypercube_vertex] +=
-					row_batching_query.as_ref()[index];
+	rs_eq_mle
+		.as_mut()
+		.par_iter_mut()
+		.zip(z_vals_eq_ind.as_ref().par_iter())
+		.for_each(|(rs_eq_val, eq_val)| {
+			for (index, bit) in <BF as ExtensionField<B1>>::into_iter_bases(*eq_val).enumerate() {
+				if bit == B1::ONE {
+					*rs_eq_val += row_batching_query.as_ref()[index];
+				}
 			}
-		}
-	}
+		});
 
 	rs_eq_mle
 }
 
-pub fn eval_rs_eq<BF: Field + ExtensionField<B1> + PackedExtension<B1>>(
+pub fn eval_rs_eq<BF: BinaryField + PackedExtension<B1>>(
 	z_vals: &[BF],
 	query: &[BF],
 	expanded_row_batch_query: &[BF],
@@ -82,29 +72,14 @@ pub fn construct_s_hat_u<
 mod test {
 	use std::iter::repeat_with;
 
-	use binius_field::{BinaryField128b, Field, Random};
+	use binius_field::{BinaryField128b, Random};
 	use rand::{SeedableRng, rngs::StdRng};
 
-	use super::{eq_ind_mle, eval_rs_eq, rs_eq_ind};
+	use crate::test_utils::index_to_hypercube_point;
+
+	use super::{eq_ind_partial_eval, eval_rs_eq, rs_eq_ind};
 
 	type BF = BinaryField128b;
-
-	fn hypercube_query<BF: Field + binius_field::ExtensionField<binius_field::BinaryField1b>>(
-		idx: usize,
-		query_len: usize,
-	) -> Vec<BF> {
-		let mut result = vec![];
-
-		for i in 0..query_len {
-			if idx & 1 << i == 0 {
-				result.push(BF::ZERO);
-			} else {
-				result.push(BF::ONE);
-			}
-		}
-
-		result
-	}
 
 	#[test]
 	fn consistent_with_tensor_alg() {
@@ -117,14 +92,15 @@ mod test {
 		let row_batching_challenges: Vec<_> =
 			repeat_with(|| BF::random(&mut rng)).take(7).collect();
 
-		let row_batching_expanded_query = eq_ind_mle(&row_batching_challenges);
+		let row_batching_expanded_query = eq_ind_partial_eval(&row_batching_challenges);
 
 		let mle = rs_eq_ind(&row_batching_challenges, &z_vals);
 
-		for hypercube_point in 0..1 << 3 {
+		let n_vars = 3;
+		for hypercube_point in 0..1 << n_vars {
 			let evaluated_at_pt = eval_rs_eq(
 				&z_vals,
-				&hypercube_query(hypercube_point, 3),
+				&index_to_hypercube_point(n_vars, hypercube_point),
 				row_batching_expanded_query.as_ref(),
 			);
 
