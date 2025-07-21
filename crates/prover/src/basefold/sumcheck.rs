@@ -125,7 +125,11 @@ impl<F: Field> SumcheckProver<F> for MultilinearSumcheckProver<F> {
 #[cfg(test)]
 pub mod test {
 	use binius_field::{BinaryField128b, Random};
+<<<<<<< HEAD
 	use binius_math::{multilinear::eq::eq_ind_partial_eval, test_utils::random_field_buffer};
+=======
+	use binius_math::multilinear::eq::eq_ind_partial_eval;
+>>>>>>> 4efdba6 (fmt)
 	use rand::{SeedableRng, rngs::StdRng};
 
 	use super::*;
