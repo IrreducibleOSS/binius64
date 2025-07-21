@@ -3,12 +3,12 @@ use binius_field::Field;
 // given two lagrange basis coefficients and the leading coefficient for a
 // univariate polynomial, compute the unique degree 2 polynomial intpolating
 // (0, y_0), (1, y_1), and evaluate at x
-pub fn evaluate_round_polynomial_at<BigField: Field>(
-	x: BigField,
-	round_msg: Vec<BigField>,
-) -> BigField {
-	let (x_0, y_0) = (BigField::ZERO, round_msg[0]);
-	let (x_1, y_1) = (BigField::ONE, round_msg[1]);
+pub fn evaluate_round_polynomial_at<F: Field>(
+	x: F,
+	round_msg: Vec<F>,
+) -> F {
+	let (x_0, y_0) = (F::ZERO, round_msg[0]);
+	let (x_1, y_1) = (F::ONE, round_msg[1]);
 	let y_leading_coeff = round_msg[2];
 
 	// lagrange basis polynomials
@@ -19,12 +19,12 @@ pub fn evaluate_round_polynomial_at<BigField: Field>(
 	l_0 * y_0 + l_1 * y_1 + poly_with_leading_coeff * y_leading_coeff
 }
 
-pub fn verify_sumcheck_round<BigField: Field>(
-	round_sum_claim: BigField,
-	expected_round_claim: BigField,
-	round_msg: Vec<BigField>,
-	sumcheck_challenge: BigField,
-) -> BigField {
+pub fn verify_sumcheck_round<F: Field>(
+	round_sum_claim: F,
+	expected_round_claim: F,
+	round_msg: Vec<F>,
+	sumcheck_challenge: F,
+) -> F {
 	// first two coefficients of round message should match the sum claim
 	// these are the evaluations of the univariate polynomial at 0, 1 and
 	// (even/odd sum of boolean hypercube evals)
