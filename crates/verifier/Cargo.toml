@@ -20,7 +20,6 @@ getset.workspace = true
 itertools.workspace = true
 sha2 = { workspace = true, features = ["compress"] }
 thiserror.workspace = true
-rand.workspace = true
 
 [dev-dependencies]
 assert_matches.workspace = true
