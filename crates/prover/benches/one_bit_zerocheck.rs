@@ -2,7 +2,6 @@ use binius_field::{
     AESTowerField8b, BinaryField128bPolyval, PackedBinaryField128x1b, PackedField, Random, AESTowerField128b,
 };
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
-use itertools::Itertools;
 use binius_prover::protocols::sumcheck::{
 	and_reduction::{
 		fold_lookups::precompute_fold_lookup,
@@ -11,57 +10,15 @@ use binius_prover::protocols::sumcheck::{
 		sumcheck_round_message::univariate_round_message,
 		univariate::{
 			delta::delta_poly,
-			ntt_lookup::{precompute_lookup, NTTLookup, ROWS_PER_HYPERCUBE_VERTEX, SKIPPED_VARS},
+			ntt_lookup::{precompute_lookup, SKIPPED_VARS},
 			subfield_isomorphism::SubfieldIsomorphismLookup,
-			univariate_poly::{GenericPo2UnivariatePoly, UnivariatePoly},
+			univariate_poly::UnivariatePoly,
 		},
-	}, common::SumcheckProver,
+	}, 
 };
 use rand::{SeedableRng, rngs::StdRng};
 use binius_math::{multilinear::eq::eq_ind_partial_eval, FieldBuffer};
-use binius_prover::protocols::sumcheck::and_reduction::zerocheck_prover::OblongZerocheckProver;
 use binius_prover::protocols::sumcheck::and_reduction::sumcheck_prover::multilinear_sumcheck;
-
-
-fn random_mlv(log_num_rows: usize, num_polys: usize) -> Vec<OneBitMultivariate> {
-    let mut rng = StdRng::from_seed([0; 32]);
-
-    let mut vec = Vec::with_capacity(num_polys);
-    for _ in 0..num_polys {
-        vec.push(
-            OneBitMultivariate {
-                log_num_rows,
-                packed_evals: (0..1 << log_num_rows).map(|_| PackedBinaryField128x1b::random(&mut rng)).collect(),
-            }
-        );
-    }
-
-    vec
-}
-
-fn setup() -> (usize, Vec<BinaryField128bPolyval>, [AESTowerField8b; 3], OneBitMultivariate, OneBitMultivariate, OneBitMultivariate, NTTLookup, SubfieldIsomorphismLookup<BinaryField128bPolyval>) {
-    let log_num_rows = 24;
-    let mut rng = StdRng::from_seed([0; 32]);
-
-    let big_field_zerocheck_challenges =
-        vec![BinaryField128bPolyval::random(&mut rng); (log_num_rows - SKIPPED_VARS - 3) + 1];
-
-    let small_field_zerocheck_challenges = [
-        AESTowerField8b::new(2),
-        AESTowerField8b::new(4),
-        AESTowerField8b::new(16),
-    ];
-
-    let random_mlvs = random_mlv(log_num_rows, 3);
-    let (first_mlv, second_mlv, third_mlv) = (random_mlvs[0].clone(), random_mlvs[1].clone(), random_mlvs[2].clone());
-
-    let onto_domain: Vec<_> = (64..128).map(AESTowerField8b::new).collect();
-    let iso_lookup: SubfieldIsomorphismLookup<BinaryField128bPolyval> = SubfieldIsomorphismLookup::new::<AESTowerField128b>();
-    let ntt_lookup = precompute_lookup(&onto_domain);
-
-    (log_num_rows, big_field_zerocheck_challenges, small_field_zerocheck_challenges, first_mlv, second_mlv, third_mlv, ntt_lookup, iso_lookup)
-}
-
 
 fn bench(c: &mut Criterion) {
     let log_num_rows = 24;
@@ -73,6 +30,7 @@ fn bench(c: &mut Criterion) {
         AESTowerField8b::new(4),
         AESTowerField8b::new(16),
     ];
+
     let first_mlv = OneBitMultivariate {
         log_num_rows,
         packed_evals: (0..1 << log_num_rows)
