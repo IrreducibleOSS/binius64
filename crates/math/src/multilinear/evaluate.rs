@@ -11,6 +11,57 @@ use crate::{
 	Error, FieldBuffer, inner_product::inner_product_par, multilinear::eq::eq_ind_partial_eval,
 };
 
+/// Evaluates a multilinear polynomial at a given point using sqrt(n) memory.
+///
+/// This method computes the evaluation by splitting the computation into two phases:
+/// 1. Expand an eq tensor for the first half of coordinates (or at least P::LOG_WIDTH)
+/// 2. Take inner products of evaluation chunks with the eq tensor to reduce the problem size
+/// 3. Evaluate the remaining coordinates using evaluate_inplace
+///
+/// This approach uses O(sqrt(2^n)) memory instead of O(2^n).
+///
+/// # Arguments
+/// * `evals` - A FieldBuffer containing the 2^n evaluations over the boolean hypercube
+/// * `point` - The n coordinates at which to evaluate the polynomial
+///
+/// # Returns
+/// The evaluation of the multilinear polynomial at the given point
+pub fn evaluate<F, P, Data>(evals: &FieldBuffer<P, Data>, point: &[F]) -> Result<F, Error>
+where
+	F: Field,
+	P: PackedField<Scalar = F>,
+	Data: Deref<Target = [P]>,
+{
+	if point.len() != evals.log_len() {
+		return Err(Error::IncorrectArgumentLength {
+			arg: "point".to_string(),
+			expected: evals.log_len(),
+		});
+	}
+
+	// Split coordinates: first half gets at least P::LOG_WIDTH coordinates
+	let first_half_len = (point.len() / 2).max(P::LOG_WIDTH);
+	let (first_coords, remaining_coords) = point.split_at(first_half_len);
+
+	// Generate eq tensor for first half of coordinates
+	let eq_tensor = eq_ind_partial_eval::<P>(first_coords);
+
+	// Calculate chunk size based on first half length
+	let log_chunk_size = first_half_len;
+
+	// Collect inner products of chunks into scalar values
+	let scalars = evals
+		.chunks(log_chunk_size)?
+		.map(|chunk| inner_product_par(&chunk, &eq_tensor))
+		.collect::<Vec<_>>();
+
+	// Create temporary buffer from collected scalar values
+	let temp_buffer = FieldBuffer::<P>::from_values(&scalars)?;
+
+	// Evaluate remaining coordinates using evaluate_inplace
+	evaluate_inplace(temp_buffer, remaining_coords)
+}
+
 /// Evaluates a multilinear polynomial at a given point using inner product with eq indicator.
 ///
 /// This method computes the evaluation by:
@@ -112,12 +163,14 @@ mod tests {
 		let buffer = random_field_buffer::<BinaryField128bGhash>(&mut rng, log_n);
 		let point = random_scalars::<BinaryField128bGhash>(&mut rng, log_n);
 
-		// Evaluate using both methods
+		// Evaluate using all three methods
 		let result_inner_product = evaluate_with_inner_product(&buffer, &point).unwrap();
 		let result_inplace = evaluate_inplace(buffer.clone(), &point).unwrap();
+		let result_sqrt_memory = evaluate(&buffer, &point).unwrap();
 
-		// Results should be equal
+		// All results should be equal
 		assert_eq!(result_inner_product, result_inplace);
+		assert_eq!(result_inner_product, result_sqrt_memory);
 	}
 
 	#[test]
