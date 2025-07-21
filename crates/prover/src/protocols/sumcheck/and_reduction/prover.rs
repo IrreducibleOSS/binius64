@@ -2,13 +2,7 @@ use std::vec;
 
 use binius_field::Field;
 use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval};
-<<<<<<< HEAD
-use binius_maybe_rayon::prelude::{
-	IndexedParallelIterator, IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator,
-};
-=======
 use binius_maybe_rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
->>>>>>> f4c3b1c (x86 fmt)
 use binius_verifier::protocols::sumcheck::RoundCoeffs;
 use rand::{SeedableRng, rngs::StdRng};
 use crate::protocols::sumcheck::{common::SumcheckProver, error::Error};
