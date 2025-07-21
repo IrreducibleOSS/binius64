@@ -1,5 +1,4 @@
 use binius_field::Field;
-use binius_math::{FieldBuffer, multilinear::eq::tensor_prod_eq_ind};
 
 // given two lagrange basis coefficients and the leading coefficient for a
 // univariate polynomial, compute the unique degree 2 polynomial intpolating
