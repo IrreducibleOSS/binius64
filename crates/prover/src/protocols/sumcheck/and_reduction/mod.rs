@@ -1,2 +1,10 @@
 pub mod prover;
+pub mod prover;
 pub mod univariate;
+pub mod sumcheck_prover;
+pub mod sumcheck_round_message;
+pub mod verifier;
+pub mod zerocheck_prover;
+pub mod mle_sumcheck_integration_test;
+pub mod fold_lookups;
+pub mod one_bit_multivariate;
