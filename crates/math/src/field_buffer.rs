@@ -9,6 +9,7 @@ use binius_field::{
 	PackedField,
 	packed::{get_packed_slice_unchecked, pack_slice, set_packed_slice_unchecked},
 };
+use binius_maybe_rayon::{prelude::*, slice::ParallelSlice};
 use bytemuck::zeroed_vec;
 
 use crate::Error;
@@ -176,6 +177,36 @@ impl<P: PackedField, Data: Deref<Target = [P]>> FieldBuffer<P, Data> {
 		let chunks = self
 			.values
 			.chunks(packed_chunk_size)
+			.map(move |chunk| FieldBuffer {
+				log_len,
+				values: FieldSliceData::Slice(chunk),
+			});
+
+		Ok(chunks)
+	}
+
+	/// Creates an iterator over chunks of size `2^log_chunk_size` in parallel.
+	///
+	/// # Throws
+	///
+	/// * [`Error::ArgumentRangeError`] if `log_chunk_size < P::LOG_WIDTH` or `log_chunk_size >
+	///   log_len`.
+	pub fn chunks_par(
+		&self,
+		log_chunk_size: usize,
+	) -> Result<impl IndexedParallelIterator<Item = FieldSlice<'_, P>>, Error> {
+		if log_chunk_size < P::LOG_WIDTH || log_chunk_size > self.log_len {
+			return Err(Error::ArgumentRangeError {
+				arg: "log_chunk_size".to_string(),
+				range: P::LOG_WIDTH..self.log_len + 1,
+			});
+		}
+
+		let log_len = log_chunk_size.min(self.log_len);
+		let packed_chunk_size = 1 << (log_chunk_size - P::LOG_WIDTH);
+		let chunks = self
+			.values
+			.par_chunks(packed_chunk_size)
 			.map(move |chunk| FieldBuffer {
 				log_len,
 				values: FieldSliceData::Slice(chunk),
@@ -632,6 +663,32 @@ mod tests {
 		// P::LOG_WIDTH = 2, so chunks(0) and chunks(1) should fail
 		assert!(buffer.chunks(0).is_err());
 		assert!(buffer.chunks(1).is_err());
+	}
+
+	#[test]
+	fn test_chunks_par() {
+		let values: Vec<F> = (0..16).map(F::new).collect();
+		let buffer = FieldBuffer::<P>::from_values(&values).unwrap();
+
+		// Split into 4 chunks of size 4
+		let chunks: Vec<_> = buffer.chunks_par(2).unwrap().collect();
+		assert_eq!(chunks.len(), 4);
+
+		for (chunk_idx, chunk) in chunks.into_iter().enumerate() {
+			assert_eq!(chunk.len(), 4);
+			for i in 0..4 {
+				let expected = F::new((chunk_idx * 4 + i) as u64);
+				assert_eq!(chunk.get(i).unwrap(), expected);
+			}
+		}
+
+		// Test invalid chunk size (too large)
+		assert!(buffer.chunks_par(5).is_err());
+
+		// Test invalid chunk size (too small - below P::LOG_WIDTH)
+		// P::LOG_WIDTH = 2, so chunks_par(0) and chunks_par(1) should fail
+		assert!(buffer.chunks_par(0).is_err());
+		assert!(buffer.chunks_par(1).is_err());
 	}
 
 	#[test]
