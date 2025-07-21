@@ -1,8 +1,10 @@
 /// Imul gate implements 64-bit × 64-bit → 128-bit unsigned multiplication.
 /// Uses the MulConstraint: X * Y = (HI << 64) | LO
-use super::{Gate, GateData};
 use crate::{
-	compiler::circuit,
+	compiler::{
+		circuit,
+		gate_graph::{Gate, GateData},
+	},
 	constraint_system::{ConstraintSystem, MulConstraint, ShiftedValueIndex},
 };
 

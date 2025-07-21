@@ -11,9 +11,11 @@
 ///
 /// The gate generates 1 AND constraint:
 /// - `(x ⊕ y) ∧ all-1 = 0`
-use super::{Gate, GateData};
 use crate::{
-	compiler::circuit,
+	compiler::{
+		circuit,
+		gate_graph::{Gate, GateData},
+	},
 	constraint_system::{AndConstraint, ConstraintSystem},
 };
 

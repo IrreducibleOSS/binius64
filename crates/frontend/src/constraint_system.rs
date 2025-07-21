@@ -5,6 +5,18 @@ use crate::word::Word;
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct ValueIndex(pub u32);
 
+impl ValueIndex {
+	/// The value index that is not considered to be valid.
+	pub const INVALID: ValueIndex = ValueIndex(u32::MAX);
+}
+
+// The most sensible default for a value index is to make it invalid.
+impl Default for ValueIndex {
+	fn default() -> Self {
+		Self::INVALID
+	}
+}
+
 /// A different variants of shifting a value.
 ///
 /// Note that there is no shift left arithmetic because it is redundant.

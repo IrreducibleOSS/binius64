@@ -25,9 +25,11 @@
 ///
 /// 1. **Carry generation constraint**: Ensures correct carry propagation
 /// 2. **Sum constraint**: Ensures the sum equals `a ^ b ^ (cout << 1) ^ cin_msb`
-use super::{Gate, GateData};
 use crate::{
-	compiler::circuit,
+	compiler::{
+		circuit,
+		gate_graph::{Gate, GateData},
+	},
 	constraint_system::{AndConstraint, ConstraintSystem, ShiftedValueIndex},
 };
 

@@ -15,9 +15,11 @@
 /// The gate generates 2 AND constraints:
 /// 1. Low byte extraction: `((word >> (8*j)) ⊕ z) ∧ 0xFF = 0`
 /// 2. High bits zeroing: `z ∧ 0xFFFFFFFFFFFFFF00 = 0`
-use super::{Gate, GateData};
 use crate::{
-	compiler::circuit,
+	compiler::{
+		circuit,
+		gate_graph::{Gate, GateData},
+	},
 	constraint_system::{AndConstraint, ConstraintSystem, ShiftedValueIndex},
 	word::Word,
 };

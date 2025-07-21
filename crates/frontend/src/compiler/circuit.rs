@@ -1,7 +1,10 @@
 use std::{error, fmt};
 
-use super::{Shared, Wire, WireKind, gate};
+use cranelift_entity::SecondaryMap;
+
+use super::{Shared, gate};
 use crate::{
+	compiler::gate_graph::{Wire, WireKind},
 	constraint_system::{ConstraintSystem, ValueIndex, ValueVec},
 	word::Word,
 };
@@ -73,13 +76,13 @@ impl<'a> std::ops::IndexMut<Wire> for WitnessFiller<'a> {
 
 pub struct Circuit {
 	shared: Shared,
-	wire_mapping: Vec<ValueIndex>,
+	wire_mapping: SecondaryMap<Wire, ValueIndex>,
 }
 
 impl Circuit {
 	/// Creates a new circuit with the given shared data and wire mapping. Only used during building
 	/// by the circuit builder.
-	pub(super) fn new(shared: Shared, wire_mapping: Vec<ValueIndex>) -> Self {
+	pub(super) fn new(shared: Shared, wire_mapping: SecondaryMap<Wire, ValueIndex>) -> Self {
 		Self {
 			shared,
 			wire_mapping,
@@ -89,14 +92,14 @@ impl Circuit {
 	/// For the given wire, returns its index in the witness vector.
 	#[inline(always)]
 	pub fn witness_index(&self, wire: Wire) -> ValueIndex {
-		self.wire_mapping[wire.0 as usize]
+		self.wire_mapping[wire]
 	}
 
 	pub fn new_witness_filler(&self) -> WitnessFiller<'_> {
 		WitnessFiller {
 			circuit: self,
 			value_vec: ValueVec::new(
-				self.shared.graph.const_pool.pool.len(),
+				self.shared.graph.n_const(),
 				self.shared.graph.n_inout,
 				self.shared.graph.n_witness,
 			),

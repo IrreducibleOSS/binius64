@@ -13,9 +13,11 @@
 /// The gate generates 2 AND constraints:
 /// 1. Carry propagation: `(x ⊕ (cout << 1)) ∧ (y ⊕ (cout << 1)) = cout ⊕ (cout << 1)`
 /// 2. Result masking: `(x ⊕ y ⊕ (cout << 1)) ∧ MASK_32 = z`
-use super::{Gate, GateData};
 use crate::{
-	compiler::circuit,
+	compiler::{
+		circuit,
+		gate_graph::{Gate, GateData},
+	},
 	constraint_system::{AndConstraint, ConstraintSystem, ShiftedValueIndex},
 };
 

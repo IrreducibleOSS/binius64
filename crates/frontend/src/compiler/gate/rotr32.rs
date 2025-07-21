@@ -17,9 +17,11 @@
 ///
 /// The gate generates 1 AND constraint:
 /// - `((x >> n) ⊕ (x << (32-n))) ∧ MASK_32 = z`
-use super::{Gate, GateData};
 use crate::{
-	compiler::circuit,
+	compiler::{
+		circuit,
+		gate_graph::{Gate, GateData},
+	},
 	constraint_system::{AndConstraint, ConstraintSystem, ShiftedValueIndex},
 };
 

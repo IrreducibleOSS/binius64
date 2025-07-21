@@ -1,62 +1,31 @@
 use std::{
 	cell::{RefCell, RefMut},
-	collections::HashMap,
 	rc::Rc,
 };
 
-use cranelift_entity::{PrimaryMap, SecondaryMap, entity_impl};
+use cranelift_entity::{PrimaryMap, SecondaryMap};
 
-use crate::{compiler::circuit::Circuit, constraint_system::ValueIndex, word::Word};
+use crate::{
+	compiler::{
+		circuit::Circuit,
+		gate_graph::{ConstPool, GateData, GateGraph, WireData, WireKind},
+	},
+	constraint_system::ValueIndex,
+	word::Word,
+};
 
 mod gate;
-use gate::{GateData, GateGraph, opcode::Opcode};
+use gate::Opcode;
 
 pub mod circuit;
+mod gate_graph;
 #[cfg(test)]
 mod tests;
 
-#[derive(Default)]
-pub struct ConstPool {
-	pool: HashMap<Word, Wire>,
-}
-
-impl ConstPool {
-	pub fn new() -> Self {
-		ConstPool::default()
-	}
-
-	pub fn get(&self, value: Word) -> Option<Wire> {
-		self.pool.get(&value).cloned()
-	}
-
-	pub fn insert(&mut self, word: Word, wire: Wire) {
-		let prev = self.pool.insert(word, wire);
-		assert!(prev.is_none());
-	}
-}
-
-/// A wire through which a value flows in and out of gates.
-///
-/// The difference from `ValueIndex` is that a wire is abstract. Some wires could be moved during
-/// compilation and some wires might be pruned altogether.
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-pub struct Wire(u32);
-entity_impl!(Wire);
-
-#[derive(Copy, Clone)]
-pub enum WireKind {
-	Constant(Word),
-	Inout,
-	Witness,
-}
-
-#[derive(Copy, Clone)]
-pub struct WireData {
-	pub kind: WireKind,
-}
+pub use gate_graph::Wire;
 
 pub(crate) struct Shared {
-	pub(crate) graph: gate::GateGraph,
+	pub(crate) graph: GateGraph,
 }
 
 /// # Clone
@@ -128,9 +97,9 @@ impl CircuitBuilder {
 		indexed_wires.sort_by_key(|(_, _, priority)| *priority);
 
 		// Create the mapping from Wire to sorted ValueIndex.
-		let mut wire_mapping = vec![ValueIndex(0); shared.graph.wires.len()];
+		let mut wire_mapping = SecondaryMap::new();
 		for (sorted_index, (wire, _, _)) in indexed_wires.iter().enumerate() {
-			wire_mapping[wire.0 as usize] = ValueIndex(sorted_index as u32);
+			wire_mapping[*wire] = ValueIndex(sorted_index as u32);
 		}
 
 		Circuit::new(shared, wire_mapping)

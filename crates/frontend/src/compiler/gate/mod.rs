@@ -1,10 +1,14 @@
-use cranelift_entity::{PrimaryMap, SecondaryMap, entity_impl};
-
-use super::{ConstPool, Wire, WireData};
-use crate::{compiler::circuit, constraint_system::ConstraintSystem};
+use crate::{
+	compiler::{
+		circuit,
+		gate_graph::{Gate, GateGraph},
+	},
+	constraint_system::ConstraintSystem,
+};
 
 pub mod opcode;
-use opcode::Opcode;
+
+pub use opcode::Opcode;
 
 pub mod assert_0;
 pub mod assert_band_0;
@@ -23,62 +27,6 @@ pub mod rotr32;
 pub mod shl;
 pub mod shr;
 pub mod shr32;
-
-/// Gate ID - identifies a gate in the graph
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Gate(u32);
-entity_impl!(Gate);
-
-/// Uniform structure for all gates
-pub struct GateData {
-	pub opcode: Opcode,
-	pub wires: Vec<Wire>,     // [inputs..., outputs...]
-	pub immediates: Vec<u32>, // Shift amounts, byte indices, etc.
-}
-
-impl GateData {
-	pub fn inputs(&self) -> &[Wire] {
-		let shape = self.opcode.shape();
-		&self.wires[..shape.n_in]
-	}
-
-	pub fn outputs(&self) -> &[Wire] {
-		let shape = self.opcode.shape();
-		&self.wires[shape.n_in..]
-	}
-
-	/// Ensures the gate has the right shape.
-	pub fn validate_shape(&self) {
-		assert_eq!(self.inputs().len(), self.opcode.shape().n_in);
-		assert_eq!(self.outputs().len(), self.opcode.shape().n_out);
-		assert_eq!(self.immediates.len(), self.opcode.shape().n_imm);
-	}
-}
-
-/// Gate graph replaces the current Shared struct
-pub struct GateGraph {
-	// Primary maps
-	pub gates: PrimaryMap<Gate, GateData>,
-	pub wires: PrimaryMap<Wire, WireData>,
-
-	// Secondary maps for optional data
-	pub assertion_names: SecondaryMap<Gate, String>,
-
-	// Other circuit data
-	pub const_pool: ConstPool,
-	pub n_witness: usize,
-	pub n_inout: usize,
-}
-
-impl GateGraph {
-	/// Runs a validation pass ensuring all the invariants hold.
-	pub fn validate(&self) {
-		// Every gate holds shape.
-		for gate in self.gates.values() {
-			gate.validate_shape();
-		}
-	}
-}
 
 pub fn constrain(
 	gate: Gate,
