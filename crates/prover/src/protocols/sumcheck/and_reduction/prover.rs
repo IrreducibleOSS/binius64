@@ -2,9 +2,12 @@ use std::vec;
 
 use binius_field::Field;
 use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval};
-use binius_maybe_rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
+use binius_maybe_rayon::prelude::{
+	IndexedParallelIterator, IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator,
+};
 use binius_verifier::protocols::sumcheck::RoundCoeffs;
 use rand::{SeedableRng, rngs::StdRng};
+
 use crate::protocols::sumcheck::{common::SumcheckProver, error::Error};
 
 #[derive(Debug, Clone)]
@@ -239,7 +242,7 @@ impl<F: Field> SumcheckProver<F> for AndReductionProver<F> {
 
 		// save round message for optimization
 		self.round_message = Some(RoundCoeffs(vec![g_of_zero, g_of_one, g_leading_coeff]));
-        
+
 		Ok(vec![self.round_message.clone().unwrap()])
 	}
 
