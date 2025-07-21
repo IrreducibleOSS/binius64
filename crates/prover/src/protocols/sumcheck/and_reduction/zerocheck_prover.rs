@@ -20,43 +20,9 @@ use crate::{
     protocols::sumcheck::and_reduction::univariate::ntt_lookup::precompute_lookup,
     protocols::sumcheck::and_reduction::one_bit_multivariate::OneBitMultivariate,
 };
-
-
-
 use crate::protocols::sumcheck::and_reduction::univariate::ntt_lookup::{ SKIPPED_VARS, ROWS_PER_HYPERCUBE_VERTEX};
+use binius_math::{FieldBuffer, Error, multilinear::eq::eq_ind_partial_eval};
 
-
-use binius_math::{FieldBuffer, Error, multilinear::eq::tensor_prod_eq_ind};
-
-
-#[derive(Debug)]
-pub struct BigFieldMultilinear<F: Field> {
-    pub n_vars: usize,
-    pub packed_evals: Vec<F>,
-}
-
-pub fn mle_to_field_buffer<F: Field>(mle: &BigFieldMultilinear<F>) -> Result<FieldBuffer<F>, Error> {
-    FieldBuffer::from_values(&mle.packed_evals)
-}
-
-pub fn field_buffer_to_mle<F: Field>(buf: FieldBuffer<F>) -> Result<BigFieldMultilinear<F>, Error> {
-    let mut values = vec![];
-    for i in 0..buf.len() {
-        values.push(buf.get(i).unwrap());
-    }
-    Ok(BigFieldMultilinear {
-        n_vars: buf.log_len(),
-        packed_evals: values,
-    })
-}
-
-
-pub fn eq_ind_mle<F: Field>(zerocheck_challenges: &[F]) -> FieldBuffer<F> {
-    let mut mle = FieldBuffer::<F>::zeros(zerocheck_challenges.len());
-    let _ = mle.set(0, F::ONE);
-    let _ = tensor_prod_eq_ind(0, &mut mle, zerocheck_challenges);
-    mle
-}
 
 pub struct OblongZerocheckProver<'a, FChallenge> 
 where FChallenge: Field{
@@ -83,7 +49,7 @@ where FChallenge: Field{
         univariate_zerocheck_challenge: FChallenge,
         subfield_iso_lookup: &'a SubfieldIsomorphismLookup<FChallenge>,
     ) -> Self {
-        let eq_ind_big_field_challenges = eq_ind_mle(&multilinear_big_field_zerocheck_challenges);
+        let eq_ind_big_field_challenges = eq_ind_partial_eval(&multilinear_big_field_zerocheck_challenges);
 
         let univariate_round_message = univariate_round_message(
             &first_col,
@@ -184,7 +150,7 @@ where FChallenge: Field{
         let mut sumcheck_prover = self.fold_and_send_reduced_prover(transcript.sample());
 
 
-        // // sumcheck
+        // sumcheck
         for _ in multilinear_zerocheck_challenges {
 
             let round_message = sumcheck_prover.execute().unwrap();
@@ -196,7 +162,7 @@ where FChallenge: Field{
             sumcheck_prover.fold(challenge).unwrap();
         }
 
-        
+        sumcheck_prover.finish().unwrap();
     }
 }
 
