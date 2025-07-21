@@ -9,41 +9,12 @@ use binius_verifier::protocols::sumcheck::RoundCoeffs;
 
 use crate::protocols::sumcheck::{common::SumcheckProver, error::Error};
 
-#[derive(Debug, Clone)]
-pub struct BigFieldMultilinear<F: Field> {
-	pub n_vars: usize,
-	pub packed_evals: Vec<F>,
-}
-
-pub fn mle_to_field_buffer<F: Field>(
-	mle: &BigFieldMultilinear<F>,
-) -> Result<FieldBuffer<F>, Error> {
-	Ok(FieldBuffer::from_values(&mle.packed_evals).unwrap())
-}
-
-pub fn field_buffer_to_mle<F: Field>(buf: FieldBuffer<F>) -> Result<BigFieldMultilinear<F>, Error> {
-	let mut values = vec![];
-	for i in 0..buf.len() {
-		values.push(buf.get(i).unwrap());
-	}
-	Ok(BigFieldMultilinear {
-		n_vars: buf.log_len(),
-		packed_evals: values,
-	})
-}
-
-pub enum FoldDirection {
-	LowToHigh,
-	HighToLow,
-}
-
 #[allow(unused)]
 pub struct AndReductionProver<F: Field> {
 	multilinears: Vec<FieldBuffer<F>>,
 	overall_claim: F,
 	log_n: usize,
 	zerocheck_challenges: Vec<F>,
-	fold_direction: FoldDirection,
 	round_message: Option<RoundCoeffs<F>>,
 	round_index: usize,
 	current_round_claim: F,
@@ -56,7 +27,6 @@ impl<F: Field> AndReductionProver<F> {
 		zerocheck_challenges: Vec<F>,
 		overall_claim: F,
 		log_n: usize,
-		fold_direction: FoldDirection,
 	) -> Self {
 		debug_assert_eq!(multilinears.len(), 3);
 
@@ -73,7 +43,6 @@ impl<F: Field> AndReductionProver<F> {
 			zerocheck_challenges,
 			current_round_claim: overall_claim,
 			eq_factor: F::ONE,
-			fold_direction,
 			round_message: None,
 			round_index: 0,
 		}
@@ -101,10 +70,7 @@ impl<F: Field> AndReductionProver<F> {
 	}
 
 	fn zerocheck_challenge_idx(&self) -> usize {
-		match self.fold_direction {
-			FoldDirection::LowToHigh => self.round_index,
-			FoldDirection::HighToLow => self.log_n - self.round_index - 1,
-		}
+		self.log_n - self.round_index - 1
 	}
 }
 
@@ -118,56 +84,16 @@ impl<F: Field> SumcheckProver<F> for AndReductionProver<F> {
 		let n = 1 << self.multilinears[0].log_len();
 		let n_half = n >> 1;
 
-		match self.fold_direction {
-			FoldDirection::LowToHigh => {
-				self.multilinears
-					.par_iter_mut()
-					.enumerate()
-					.for_each(|(i, multilinear)| {
-						if i < 3 {
-							for j in 0..n_half {
-								let (low_idx, high_idx) = (2 * j, 2 * j + 1);
-								let even = multilinear.get(low_idx).unwrap();
-								let odd = multilinear.get(high_idx).unwrap();
-								multilinear
-									.set(j, even + sumcheck_challenge * (odd - even))
-									.unwrap();
-							}
-						} else {
-							for j in 0..n_half {
-								let (low_idx, high_idx) = (2 * j, 2 * j + 1);
-								let even = multilinear.get(low_idx).unwrap();
-								let odd = multilinear.get(high_idx).unwrap();
-								multilinear.set(j, even + odd).unwrap();
-							}
-						}
+		for m in self.multilinears.iter_mut() {
+			let mut new_buf = bytemuck::zeroed_vec::<F>(n_half);
 
-						// ! replace w/ truncate method once available
-						let mut new = vec![];
-						for i in 0..n_half {
-							new.push(multilinear.get(i).unwrap());
-						}
+			new_buf.par_iter_mut().enumerate().for_each(|(j, elm)| {
+				let low_elm = m.get(j).unwrap();
+				let high_elm = m.get(j + n_half).unwrap();
+				*elm = low_elm + sumcheck_challenge * (high_elm - low_elm);
+			});
 
-						*multilinear = FieldBuffer::from_values(&new).unwrap();
-					});
-
-				// optimization, handle eq differently w/ cheeky factorization
-				self.eq_factor *=
-					self.zerocheck_challenges[self.round_index] + sumcheck_challenge + F::ONE;
-			}
-			FoldDirection::HighToLow => {
-				for m in self.multilinears.iter_mut() {
-					let mut new_buf = bytemuck::zeroed_vec::<F>(n_half);
-
-					new_buf.par_iter_mut().enumerate().for_each(|(j, elm)| {
-						let low_elm = m.get(j).unwrap();
-						let high_elm = m.get(j + n_half).unwrap();
-						*elm = low_elm + sumcheck_challenge * (high_elm - low_elm);
-					});
-
-					*m = FieldBuffer::from_values(&new_buf).unwrap();
-				}
-			}
+			*m = FieldBuffer::from_values(&new_buf).unwrap();
 		}
 
 		let zerocheck_challenge = self.zerocheck_challenges[self.zerocheck_challenge_idx()];
@@ -199,12 +125,6 @@ impl<F: Field> SumcheckProver<F> for AndReductionProver<F> {
 		let c = &self.multilinears[2];
 		let d = &self.multilinears[3];
 
-		// compute indices for either high to low or low to high
-		let compute_idx: fn((usize, usize)) -> (usize, usize) = match self.fold_direction {
-			FoldDirection::LowToHigh => |(j, _)| (2 * j, 2 * j + 1),
-			FoldDirection::HighToLow => |(j, n)| (j, n + j),
-		};
-
 		// chunk indices into 1024 chunks
 		let (mut g_of_zero, mut g_leading_coeff) = (0..n_half)
 			.into_par_iter()
@@ -214,7 +134,7 @@ impl<F: Field> SumcheckProver<F> for AndReductionProver<F> {
 				let mut acc_g_leading_coeff = F::ZERO;
 
 				for j in chunk {
-					let (low_idx, high_idx) = compute_idx((j, n_half));
+					let (low_idx, high_idx) = (j, j + n_half);
 
 					let a_lower = a.get(low_idx).expect("out of bounds");
 					let b_lower = b.get(low_idx).expect("out of bounds");
@@ -332,10 +252,7 @@ pub mod test {
 		for round_idx in 0..log_n {
 			let _span = tracing::debug_span!("multilinear sumcheck round").entered();
 
-			let challenge_idx = match prover.fold_direction {
-				FoldDirection::LowToHigh => round_idx,
-				FoldDirection::HighToLow => log_n - round_idx - 1,
-			};
+			let challenge_idx = log_n - round_idx - 1;
 
 			// verifier sends sumcheck challenge
 			let sumcheck_challenge = random_challenge();
@@ -382,7 +299,8 @@ pub mod test {
 
 	// runs sumcheck protocol for a 4 column composition polynomial (A * B - C) * eq_r
 	// tests both high to low and low to high fold directions
-	fn sumcheck_four_column(fold_direction: FoldDirection) {
+	#[test]
+	fn sumcheck_four_column() {
 		let mut rng = StdRng::from_seed([0; 32]);
 
 		let log_n = 5;
@@ -413,21 +331,10 @@ pub mod test {
 			zerocheck_challenges.clone(),
 			overall_claim,
 			log_n,
-			fold_direction,
 		);
 
 		// run sumcheck
 		multilinear_sumcheck(prover);
-	}
-
-	#[test]
-	fn test_and_reduction_sumcheck_high_to_low() {
-		sumcheck_four_column(FoldDirection::HighToLow);
-	}
-
-	#[test]
-	fn test_and_reduction_sumcheck_low_to_high() {
-		sumcheck_four_column(FoldDirection::LowToHigh);
 	}
 
 	#[test]
