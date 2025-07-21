@@ -8,9 +8,9 @@ use cranelift_entity::{PrimaryMap, SecondaryMap};
 use crate::{
 	compiler::{
 		circuit::Circuit,
-		gate_graph::{ConstPool, GateGraph, WireData, WireKind},
+		gate_graph::{ConstPool, GateGraph, WireKind},
 	},
-	constraint_system::ValueIndex,
+	constraint_system::{ValueIndex, ValueVecLayout},
 	word::Word,
 };
 
@@ -79,32 +79,60 @@ impl CircuitBuilder {
 		// 4. internal
 		//
 		// So we create a mapping between a `Wire` to the final `ValueIndex`.
-
-		// Create a vector of (Wire, WireData, priority) tuples and sort by priority.
-		let mut indexed_wires: Vec<(Wire, WireData, u8)> = shared
-			.graph
-			.wires
-			.iter()
-			.map(|(wire, &wire_data)| {
-				let priority = match wire_data.kind {
-					WireKind::Constant(_) => 0,
-					WireKind::Inout => 1,
-					WireKind::Witness => 2,
-					WireKind::Internal => 3,
-				};
-				(wire, wire_data, priority)
-			})
-			.collect();
-
-		indexed_wires.sort_by_key(|(_, _, priority)| *priority);
-
-		// Create the mapping from Wire to sorted ValueIndex.
 		let mut wire_mapping = SecondaryMap::new();
-		for (sorted_index, (wire, _, _)) in indexed_wires.iter().enumerate() {
-			wire_mapping[*wire] = ValueIndex(sorted_index as u32);
+		let total_wires = shared.graph.wires.len();
+		let mut w_const: Vec<Wire> = Vec::with_capacity(total_wires);
+		let mut w_inout: Vec<Wire> = Vec::with_capacity(total_wires);
+		let mut w_witness: Vec<Wire> = Vec::with_capacity(total_wires);
+		let mut w_internal: Vec<Wire> = Vec::with_capacity(total_wires);
+		for (wire, wire_data) in shared.graph.wires.iter() {
+			match wire_data.kind {
+				WireKind::Constant(_) => w_const.push(wire),
+				WireKind::Inout => w_inout.push(wire),
+				WireKind::Witness => w_witness.push(wire),
+				WireKind::Internal => w_internal.push(wire),
+			}
 		}
 
-		Circuit::new(shared, wire_mapping)
+		let n_const = w_const.len();
+		let n_inout = w_inout.len();
+		let n_witness = w_witness.len();
+		let n_internal = w_internal.len();
+
+		// First, allocate the indices for the public section of the value vec. The public section
+		// consists of constant wires followed by inout wires.
+		//
+		// Next, we align the current index to the next power of 2.
+		//
+		// Finally, allocate wires for witness values and internal wires.
+		let mut cur_index: u32 = 0;
+		for wire in w_const {
+			wire_mapping[wire] = ValueIndex(cur_index);
+			cur_index += 1;
+		}
+		let offset_inout = cur_index as usize;
+		for wire in w_inout {
+			wire_mapping[wire] = ValueIndex(cur_index);
+			cur_index += 1;
+		}
+		cur_index = cur_index.next_power_of_two();
+		let offset_witness = cur_index as usize;
+		for wire in w_witness.into_iter().chain(w_internal.into_iter()) {
+			wire_mapping[wire] = ValueIndex(cur_index);
+			cur_index += 1;
+		}
+		let total_len = cur_index as usize;
+		let value_vec_layout = ValueVecLayout {
+			n_const,
+			n_inout,
+			n_witness,
+			n_internal,
+			offset_inout,
+			offset_witness,
+			total_len,
+		};
+
+		Circuit::new(shared, value_vec_layout, wire_mapping)
 	}
 
 	pub fn subcircuit(&self, name: impl Into<String>) -> CircuitBuilder {

@@ -5,13 +5,14 @@ use super::*;
 use crate::{constraint_verifier::verify_constraints, word::Word};
 
 #[test]
-fn sort_wires() {
+fn wires_layout() {
 	// Create a circuit with wires in mixed order
 	let builder = CircuitBuilder::new();
 
 	// Add wires in a specific order to test sorting
 	let witness1 = builder.add_witness();
 	let const1 = builder.add_constant(Word(42));
+	let internal1 = builder.add_internal();
 	let inout1 = builder.add_inout();
 	let witness2 = builder.add_witness();
 	let _const2 = builder.add_constant(Word(100));
@@ -33,6 +34,7 @@ fn sort_wires() {
 	//     6. witness1,
 	//     7. witness2,
 	//     8. witness3
+	//     9. internal1
 	//
 
 	// Constants should come first - verify const1 is at position 0
@@ -44,12 +46,14 @@ fn sort_wires() {
 	// inout2 (Wire(5)) should be the second inout wire
 	let inout2_idx = circuit.witness_index(inout2);
 
-	// Witness wires should come last
+	// Witness wires should come after
 	let witness1_idx = circuit.witness_index(witness1);
 	let witness2_idx = circuit.witness_index(witness2);
 	let witness3_idx = circuit.witness_index(witness3);
 
-	// Verify ordering: all constants < all inouts < all witnesses
+	let internal1_idx = circuit.witness_index(internal1);
+
+	// Verify ordering: all constants < all inouts < all witnesses < all internal
 	assert!(inout1_idx.0 > circuit.witness_index(const1).0);
 	assert!(inout2_idx.0 > inout1_idx.0);
 	assert!(witness1_idx.0 > inout1_idx.0);
@@ -58,6 +62,7 @@ fn sort_wires() {
 	assert!(witness2_idx.0 > inout2_idx.0);
 	assert!(witness3_idx.0 > inout1_idx.0);
 	assert!(witness3_idx.0 > inout2_idx.0);
+	assert!(internal1_idx.0 > witness2_idx.0);
 
 	// Verify that witness wires maintain their relative order
 	assert!(witness2_idx.0 > witness1_idx.0);
@@ -65,6 +70,9 @@ fn sort_wires() {
 
 	// Verify that inout wires maintain their relative order
 	assert!(inout2_idx.0 > inout1_idx.0);
+
+	// Verify that witness start with a power-of-two index.
+	assert!(witness1_idx.0.is_power_of_two(), "witness values must start with a po2 index");
 }
 
 #[test]

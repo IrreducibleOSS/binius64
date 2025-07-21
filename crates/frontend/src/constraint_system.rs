@@ -123,19 +123,18 @@ pub struct MulConstraint {
 }
 
 pub struct ConstraintSystem {
+	pub value_vec_layout: ValueVecLayout,
 	pub constants: Vec<Word>,
-	pub n_inout: usize,
-	pub n_witness: usize,
 	pub and_constraints: Vec<AndConstraint>,
 	pub mul_constraints: Vec<MulConstraint>,
 }
 
 impl ConstraintSystem {
-	pub fn new(constants: Vec<Word>, n_inout: usize, n_witness: usize) -> Self {
+	pub fn new(constants: Vec<Word>, value_vec_layout: ValueVecLayout) -> Self {
+		assert_eq!(constants.len(), value_vec_layout.n_const);
 		ConstraintSystem {
 			constants,
-			n_inout,
-			n_witness,
+			value_vec_layout,
 			and_constraints: Vec::new(),
 			mul_constraints: Vec::new(),
 		}
@@ -159,17 +158,40 @@ impl ConstraintSystem {
 
 	/// The total length of the [`ValueVec`] expected by this constraint system.
 	pub fn value_vec_len(&self) -> usize {
-		value_vec_len(self.constants.len(), self.n_inout, self.n_witness)
+		self.value_vec_layout.total_len
 	}
 
 	/// Create a new [`ValueVec`] with the size expected by this constraint system.
 	pub fn new_value_vec(&self) -> ValueVec {
-		ValueVec::new(self.constants.len(), self.n_inout, self.n_witness)
+		ValueVec::new(self.value_vec_layout.clone())
 	}
 }
 
-pub fn value_vec_len(n_const: usize, n_inout: usize, n_witness: usize) -> usize {
-	(n_const + n_inout + n_witness).next_power_of_two()
+/// Description of a layout of the value vector for a particular circuit.
+#[derive(Clone, Debug)]
+pub struct ValueVecLayout {
+	/// The number of the constants declared by the circuit.
+	pub n_const: usize,
+	/// The number of the input output parameters declared by the circuit.
+	pub n_inout: usize,
+	/// The number of the witness parameters declared by the circuit.
+	pub n_witness: usize,
+	/// The number of the internal values declared by the circuit.
+	///
+	/// Those are outputs and intermediaries created by the gates.
+	pub n_internal: usize,
+
+	/// The offset at which `inout` parameters start.
+	pub offset_inout: usize,
+	/// The offset at which `witness` parameters start.
+	///
+	/// The public section of the value vec has the power-of-two size. By public section we mean
+	/// the constants and the inout values.
+	pub offset_witness: usize,
+	/// The total size of the value vec vector.
+	///
+	/// This must be a power-of-two.
+	pub total_len: usize,
 }
 
 /// The vector of values.
@@ -179,19 +201,15 @@ pub fn value_vec_len(n_const: usize, n_inout: usize, n_witness: usize) -> usize 
 /// The size of the value vec is always a power-of-two.
 #[derive(Clone, Debug)]
 pub struct ValueVec {
-	n_const: usize,
-	n_inout: usize,
-	n_witness: usize,
+	layout: ValueVecLayout,
 	data: Vec<Word>,
 }
 
 impl ValueVec {
-	pub fn new(n_const: usize, n_inout: usize, n_witness: usize) -> ValueVec {
-		let size = value_vec_len(n_const, n_inout, n_witness);
+	pub fn new(layout: ValueVecLayout) -> ValueVec {
+		let size = layout.total_len;
 		ValueVec {
-			n_const,
-			n_inout,
-			n_witness,
+			layout,
 			data: vec![Word::ZERO; size],
 		}
 	}
@@ -211,15 +229,15 @@ impl ValueVec {
 
 	/// Returns the inout portion of the values vector.
 	pub fn inout(&self) -> &[Word] {
-		let start = self.n_const;
-		let end = start + self.n_inout;
+		let start = self.layout.offset_inout;
+		let end = start + self.layout.n_inout;
 		&self.data[start..end]
 	}
 
 	/// Returns the witness portion of the values vector.
 	pub fn witness(&self) -> &[Word] {
-		let start = self.n_const + self.n_inout;
-		let end = start + self.n_witness;
+		let start = self.layout.offset_witness;
+		let end = start + self.layout.n_witness;
 		&self.data[start..end]
 	}
 

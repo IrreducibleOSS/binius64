@@ -5,7 +5,7 @@ use cranelift_entity::SecondaryMap;
 use super::{Shared, gate};
 use crate::{
 	compiler::gate_graph::{Wire, WireKind},
-	constraint_system::{ConstraintSystem, ValueIndex, ValueVec},
+	constraint_system::{ConstraintSystem, ValueIndex, ValueVec, ValueVecLayout},
 	word::Word,
 };
 
@@ -76,15 +76,21 @@ impl<'a> std::ops::IndexMut<Wire> for WitnessFiller<'a> {
 
 pub struct Circuit {
 	shared: Shared,
+	value_vec_layout: ValueVecLayout,
 	wire_mapping: SecondaryMap<Wire, ValueIndex>,
 }
 
 impl Circuit {
 	/// Creates a new circuit with the given shared data and wire mapping. Only used during building
 	/// by the circuit builder.
-	pub(super) fn new(shared: Shared, wire_mapping: SecondaryMap<Wire, ValueIndex>) -> Self {
+	pub(super) fn new(
+		shared: Shared,
+		value_vec_layout: ValueVecLayout,
+		wire_mapping: SecondaryMap<Wire, ValueIndex>,
+	) -> Self {
 		Self {
 			shared,
+			value_vec_layout,
 			wire_mapping,
 		}
 	}
@@ -98,11 +104,7 @@ impl Circuit {
 	pub fn new_witness_filler(&self) -> WitnessFiller<'_> {
 		WitnessFiller {
 			circuit: self,
-			value_vec: ValueVec::new(
-				self.shared.graph.n_const(),
-				self.shared.graph.n_inout,
-				self.shared.graph.n_witness,
-			),
+			value_vec: ValueVec::new(self.value_vec_layout.clone()),
 			assertion_failed_message_vec: Vec::new(),
 			assertion_failed_count: 0,
 			ignore_assertions: false,
@@ -159,8 +161,7 @@ impl Circuit {
 				.keys()
 				.cloned()
 				.collect::<Vec<_>>(),
-			self.shared.graph.n_inout,
-			self.shared.graph.n_witness,
+			self.value_vec_layout.clone(),
 		);
 		for (gate_id, _) in self.shared.graph.gates.iter() {
 			gate::constrain(gate_id, &self.shared.graph, self, &mut cs);

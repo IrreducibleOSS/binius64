@@ -228,9 +228,4 @@ impl GateGraph {
 		// Push and return the newly created gate.
 		self.gates.push(data)
 	}
-
-	/// Return the number of constants this graph defines.
-	pub fn n_const(&self) -> usize {
-		self.const_pool.pool.len()
-	}
 }
