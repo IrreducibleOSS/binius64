@@ -1,30 +1,24 @@
-// use crate::_prover::SumcheckProver;
-use crate::and_reduction::mle::BigFieldMultilinear;
 use binius_field::{BinaryField128bPolyval, Field, Random, ExtensionField, AESTowerField128b};
 use rand::{SeedableRng, rngs::StdRng};
 use std::vec;
 use binius_maybe_rayon::prelude::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator, IntoParallelRefIterator, ParallelSliceMut, IntoParallelIterator};
+use binius_verifier::protocols::sumcheck::RoundCoeffs;
 
-// use binius_math::multilinear::tensor_prod_eq_ind;
-pub trait SumcheckProver<F: Field> {
-    fn fold(&mut self, challenge: F);
+use crate::protocols::sumcheck::common::SumcheckProver;
 
-    fn round_message(&self) -> Vec<F>;
-
-    fn final_eval_claims(self) -> Vec<F>;
-}
+use crate::protocols::sumcheck::error::Error;
 
 
-pub fn eq_ind<F: Field, BF>(zerocheck_challenges: &[F]) -> BigFieldMultilinear<BF>
-where
-    BF: ExtensionField<F> + From<AESTowerField128b>,
-{
+use crate::protocols::sumcheck::and_reduction::mle::BigFieldMultilinear;
+
+
+pub fn eq_ind<F: Field>(zerocheck_challenges: &[F]) -> BigFieldMultilinear<F> {
     let mut mle = bytemuck::zeroed_vec(1 << zerocheck_challenges.len());
 
     let _span = tracing::debug_span!("eq ind").entered();
 
-    mle[0] = BF::ONE;
-    for (curr_log_len, challenge) in zerocheck_challenges.iter().rev().enumerate() {
+    mle[0] = F::ONE;
+    for (curr_log_len, challenge) in zerocheck_challenges.iter().enumerate() {
         let _span = tracing::debug_span!("compute eq_ind for curr log len").entered();
 
         let (mle_lower, mle_upper) = mle.split_at_mut(1 << curr_log_len);
@@ -45,64 +39,64 @@ where
     }
 }
 
-type BF = BinaryField128bPolyval;
 
-// enum for low to high and high to low indices
 pub enum FoldDirection {
     LowToHigh,
     HighToLow,
 }
-pub struct MultilinearSumcheckProver {
-    pub multilinears: Vec<BigFieldMultilinear<BF>>,
-    pub overall_claim: BF,
-    pub log_n: usize,
-
-    pub zerocheck_challenges: Vec<BF>,
-
-    pub final_eval_claims: Vec<BF>,
-    pub current_round_claim: BF,
-    pub eq_factor: BF,
-    pub fold_direction: FoldDirection,
+pub struct MultilinearSumcheckProver<F: Field> {
+    multilinears: Vec<BigFieldMultilinear<F>>,
+    overall_claim: F,
+    log_n: usize,
+    zerocheck_challenges: Vec<F>,
+    fold_direction: FoldDirection,
+    round_message: Option<RoundCoeffs<F>>,
+    round_index: usize,
+    current_round_claim: F,
+    eq_factor: F,
 }
 
-impl MultilinearSumcheckProver {
+impl<F: Field> MultilinearSumcheckProver<F> {
     pub fn new(
-        multilinears: Vec<BigFieldMultilinear<BF>>,
-        zerocheck_challenges: Vec<BF>,
-        overall_claim: BF,
+        multilinears: Vec<BigFieldMultilinear<F>>,
+        zerocheck_challenges: Vec<F>,
+        overall_claim: F,
         log_n: usize,
         fold_direction: FoldDirection,
     ) -> Self {
         debug_assert_eq!(multilinears.len(), 3);
 
         // compute eq indicator from zerocheck challenges, add to multilinears for folding
-        let eq_r: BigFieldMultilinear<BF> = eq_ind(&zerocheck_challenges);
+        let eq_r: BigFieldMultilinear<F> = eq_ind(&zerocheck_challenges);
         let mut multilinears = multilinears;
         multilinears.push(eq_r);
+
 
         Self {
             multilinears,
             overall_claim,
             log_n,
             zerocheck_challenges,
-            final_eval_claims: vec![],
             current_round_claim: overall_claim,
-            eq_factor: BF::ONE,
+            eq_factor: F::ONE,
             fold_direction,
+
+            round_message: None,
+            round_index: 0,
         }
     }
 
     // sums the composition of 4 multilinears (A * B - C) * D
     pub fn sum_composition(
-        a: &BigFieldMultilinear<BF>,
-        b: &BigFieldMultilinear<BF>,
-        c: &BigFieldMultilinear<BF>,
-        d: &BigFieldMultilinear<BF>,
-    ) -> BF {
+        a: &BigFieldMultilinear<F>,
+        b: &BigFieldMultilinear<F>,
+        c: &BigFieldMultilinear<F>,
+        d: &BigFieldMultilinear<F>,
+    ) -> F {
         let _span = tracing::debug_span!("sum composition (A * B - C) * eq_r").entered();
 
         let n = 1 << a.n_vars;
-        let mut sum = BF::ZERO;
+        let mut sum = F::ZERO;
         for i in 0..n {
             let a_i = a.packed_evals[i];
             let b_i = b.packed_evals[i];
@@ -115,96 +109,15 @@ impl MultilinearSumcheckProver {
         sum
     }
 
-    // sequential round message computation
-    fn round_msg_seq(&self) -> Vec<BF> {
-        let _span = tracing::debug_span!("round message sequential").entered();
-
-        let log_n = self.multilinears[0].n_vars;
-        let n = 1 << log_n;
-        let n_half = n >> 1;
-
-        // compute indices for either high to low or low to high
-        let compute_idx: fn((usize, usize)) -> (usize, usize) = match self.fold_direction {
-            FoldDirection::LowToHigh => |(j, _)| (2 * j, 2 * j + 1),
-            FoldDirection::HighToLow => |(j, n)| (j, n + j),
-        };
-
-        // compute g(0), and leading coeff of g(x)
-        let (mut g_of_zero, mut g_leading_coeff) = (BF::ZERO, BF::ZERO);
-        for j in 0..n_half {
-            let a = &self.multilinears[0].packed_evals;
-            let b = &self.multilinears[1].packed_evals;
-            let c = &self.multilinears[2].packed_evals;
-            let d = &self.multilinears[3].packed_evals;
-
-            let (lower_idx, upper_idx) = compute_idx((j, n_half));
-
-            let a_lower = a[lower_idx];
-            let b_lower = b[lower_idx];
-            let c_lower = c[lower_idx];
-            let d_lower = d[lower_idx];
-
-            let a_upper = a[upper_idx];
-            let b_upper = b[upper_idx];
-            let d_upper = d[upper_idx];
-
-            g_of_zero += (a_lower * b_lower - c_lower) * d_lower;
-
-            g_leading_coeff += (a_lower + a_upper) * (b_lower + b_upper) * (d_lower + d_upper);
-        }
-
-        g_of_zero *= self.eq_factor;
-        g_leading_coeff *= self.eq_factor;
-
-        // g(1) = current_round_claim - g(0)
-        let g_of_one = self.current_round_claim - g_of_zero;
-
-        // return round message
-        let mut round_msg = Vec::with_capacity(3);
-        round_msg.extend([g_of_zero, g_of_one, g_leading_coeff]);
-        round_msg
-    }
-
-    // sequential fold
-    fn fold_seq(&mut self, challenge: BF) {
-        let _span = tracing::debug_span!("fold inplace sequential").entered();
-
-        // compute indices for either high to low or low to high
-        let compute_idx: fn((usize, usize)) -> (usize, usize) = match self.fold_direction {
-            FoldDirection::LowToHigh => |(j, _)| (2 * j, 2 * j + 1),
-            FoldDirection::HighToLow => |(j, n)| (j, n + j),
-        };
-
-        let n = 1 << self.multilinears[0].n_vars;
-        let n_half = n >> 1;
-        for j in 0..n_half {
-            let (low_idx, high_idx) = compute_idx((j, n_half));
-
-            let a_even = self.multilinears[0].packed_evals[low_idx];
-            let b_even = self.multilinears[1].packed_evals[low_idx];
-            let c_even = self.multilinears[2].packed_evals[low_idx];
-            let d_even = self.multilinears[3].packed_evals[low_idx];
-
-            let a_odd = self.multilinears[0].packed_evals[high_idx];
-            let b_odd = self.multilinears[1].packed_evals[high_idx];
-            let c_odd = self.multilinears[2].packed_evals[high_idx];
-            let d_odd = self.multilinears[3].packed_evals[high_idx];
-
-            // (1 - r) * even + r * odd == even + r * (odd - even)
-            self.multilinears[0].packed_evals[j] = a_even + challenge * (a_odd - a_even);
-            self.multilinears[1].packed_evals[j] = b_even + challenge * (b_odd - b_even);
-            self.multilinears[2].packed_evals[j] = c_even + challenge * (c_odd - c_even);
-            self.multilinears[3].packed_evals[j] = d_even + d_odd;
-        }
-        // remove last 1 << n-1 elements from each multilinear
-        for i in 0..self.multilinears.len() {
-            self.multilinears[i].packed_evals.truncate(n >> 1);
-            self.multilinears[i].n_vars -= 1;
+    fn zerocheck_challenge_idx(&self) -> usize {
+        match self.fold_direction {
+            FoldDirection::LowToHigh => self.round_index,
+            FoldDirection::HighToLow => self.log_n - self.round_index - 1,
         }
     }
 
     // parallel round message computation
-    fn round_msg_par(&self) -> Vec<BF> {
+    fn round_msg_par(&self) -> Vec<F> {
         let _span = tracing::debug_span!("round message parallel").entered();
 
         let log_n = self.multilinears[0].n_vars;
@@ -229,8 +142,8 @@ impl MultilinearSumcheckProver {
             .map(|chunk| {
                 // let _span = tracing::debug_span!("high to low fold inplace parallel").entered();
 
-                let mut acc_g_of_zero = BF::ZERO;
-                let mut acc_g_leading_coeff = BF::ZERO;
+                let mut acc_g_of_zero = F::ZERO;
+                let mut acc_g_leading_coeff = F::ZERO;
 
                 for j in chunk {
                     let (low_idx, high_idx) = compute_idx((j, n_half));
@@ -252,7 +165,7 @@ impl MultilinearSumcheckProver {
                 (acc_g_of_zero, acc_g_leading_coeff)
             })
             .reduce(
-                || (BF::ZERO, BF::ZERO),
+                || (F::ZERO, F::ZERO),
                 |(sum0, sum1), (x0, x1)| (sum0 + x0, sum1 + x1),
             );
 
@@ -270,7 +183,7 @@ impl MultilinearSumcheckProver {
     }
 
     // parallel fold
-    fn fold_par(&mut self, challenge: BF) {
+    fn fold_par(&mut self, challenge: F) {
         let _span = tracing::debug_span!("fold inplace parallel").entered();
 
         let n = 1 << self.multilinears[0].n_vars;
@@ -305,6 +218,9 @@ impl MultilinearSumcheckProver {
                         multilinear.packed_evals.truncate(n_half);
                         multilinear.n_vars -= 1;
                     });
+
+                // optimization, handle eq differently w/ cheeky factorization
+                self.eq_factor *=  self.zerocheck_challenges[self.round_index] + challenge + F::ONE;
             }
             // Parallel fold safe better for high-to-low
             FoldDirection::HighToLow => {
@@ -339,37 +255,77 @@ impl MultilinearSumcheckProver {
     }
 }
 
-impl SumcheckProver<BF> for MultilinearSumcheckProver {
+impl<F: Field> SumcheckProver<F> for MultilinearSumcheckProver<F> {
+
+    fn n_vars(&self) -> usize {
+        self.multilinears[0].n_vars
+    }
+
     // folds challenge into multilinears
-    fn fold(&mut self, challenge: BF) {
-        self.fold_par(challenge);
-        // self.fold_seq(challenge);
+    fn fold(&mut self, sumcheck_challenge: F) -> Result<(), Error> {
+        self.fold_par(sumcheck_challenge);
+
+        let zerocheck_challenge = self.zerocheck_challenges[self.zerocheck_challenge_idx()];
+
+        let round_message = match self.round_message.clone() {
+            Some(round_message) => round_message,
+            None => todo!(), // error
+        };
+
+        self.current_round_claim = evaluate_round_polynomial_at(
+            sumcheck_challenge, 
+            zerocheck_challenge,
+            round_message.0.clone(),
+        );
+    
+        self.round_index += 1;
+
+        Ok(())
     }
 
     // computes univariate round message for the current round
-    fn round_message(&self) -> Vec<BF> {
-        self.round_msg_par()
-        // self.round_msg_seq()
+    fn execute(&mut self) -> Result<Vec<RoundCoeffs<F>>, Error> {
+        let round_msg = self.round_msg_par();
+
+        let round_coeffs = vec![RoundCoeffs {
+            0: vec![round_msg[0], round_msg[1], round_msg[2]],  
+        }];
+
+        self.round_message = Some(round_coeffs[0].clone());
+
+        Ok(round_coeffs)
     }
 
-    fn final_eval_claims(self) -> Vec<BF> {
-        self.final_eval_claims
+    fn finish(self) -> Result<Vec<F>, Error> {
+        debug_assert_eq!(self.multilinears[0].packed_evals.len(), 1);
+        debug_assert_eq!(self.multilinears[1].packed_evals.len(), 1);
+        debug_assert_eq!(self.multilinears[2].packed_evals.len(), 1);
+        debug_assert_eq!(self.multilinears[3].packed_evals.len(), 1);
+
+        println!("eq_factor: {:?}", self.eq_factor);
+        
+        Ok(vec![
+            self.multilinears[0].packed_evals[0],
+            self.multilinears[1].packed_evals[0],
+            self.multilinears[2].packed_evals[0],
+            self.multilinears[3].packed_evals[0] * self.eq_factor, 
+        ])
     }
 }
 
 // since it could let us abstract concepts like rng from the implementation
-fn random_challenge() -> BF {
+fn random_challenge<F: Field>() -> F {
     let mut rng = StdRng::from_seed([0; 32]);
-    BF::random(&mut rng)
+    F::random(&mut rng)
 }
 
 // given 4 lagrange basis coefficients for a univariate polynomial, compute
 // lagrange basis polynomials and evaluate at x the resulting polynomial
-fn evaluate_round_polynomial_at(x: BF, zerocheck_challenge: BF, round_msg: Vec<BF>) -> BF {
+fn evaluate_round_polynomial_at<F: Field>(x: F, zerocheck_challenge: F, round_msg: Vec<F>) -> F {
     let _span = tracing::debug_span!("evaluate round polynomial").entered();
 
-    let (x_0, y_0) = (BF::ZERO, round_msg[0]);
-    let (x_1, y_1) = (BF::ONE, round_msg[1]);
+    let (x_0, y_0) = (F::ZERO, round_msg[0]);
+    let (x_1, y_1) = (F::ONE, round_msg[1]);
 
     let leading_coeff = round_msg[2];
 
@@ -383,7 +339,7 @@ fn evaluate_round_polynomial_at(x: BF, zerocheck_challenge: BF, round_msg: Vec<B
     // meaning that the prover does not need to send this value explicitly, rather
     // the verifier can determine this evaluation by inference from the current
     // zerocheck challenge.
-    let (x_2, y_2) = (zerocheck_challenge + BF::ONE, BF::ZERO);
+    let (x_2, y_2) = (zerocheck_challenge + F::ONE, F::ZERO);
 
     // lagrange basis polynomials
     let l_0 = ((x - x_1) * (x - x_2)) * ((x_0 - x_1) * (x_0 - x_2)).invert().unwrap();
@@ -396,13 +352,12 @@ fn evaluate_round_polynomial_at(x: BF, zerocheck_challenge: BF, round_msg: Vec<B
 }
 
 // verifier checks for correctness of round message and claim
-pub fn verify_round(
-    round_sum_claim: BF,
-    expected_round_claim: BF,
-    round_msg: Vec<BF>,
-    sumcheck_challenge: BF,
-    zerocheck_challenge: BF,
-) -> BF {
+pub fn verify_round<F: Field>(
+    round_sum_claim: F,
+    round_msg: Vec<F>,
+    sumcheck_challenge: F,
+    zerocheck_challenge: F,
+) -> F {
     let _span = tracing::debug_span!("verify round").entered();
 
     // first two coefficients of round message should match the sum claim
@@ -410,22 +365,15 @@ pub fn verify_round(
     // (even/odd sum of boolean hypercube evals)
     assert_eq!(round_msg[0] + round_msg[1], round_sum_claim);
 
-    // When the verifier recieves the round message, it represents the coefficients
-    // of the current univariate, partially specialized composition polynomial. By
-    // evaluating this polynomial at the challenge, we determine what the honest
-    // prover will claim as the sum for the next round. This is because the when
-    // we fold the challenge into the multilinear, it is the same as partially
-    // specializing the current composition polynomial w/ the challenge point.
-    assert_eq!(expected_round_claim, round_sum_claim);
-
     // compute expected next round claim
-
     evaluate_round_polynomial_at(sumcheck_challenge, zerocheck_challenge, round_msg)
 }
 
 // runs sumcheck interactive protocol for multilinear composition (A * B - C) * eq_r
 // eq_r is the multilinear equality indicator for some vector of log_n zerocheck challenges
-pub fn multilinear_sumcheck(prover: &mut MultilinearSumcheckProver) -> (BF, Vec<BF>) {
+pub fn multilinear_sumcheck<F: Field>(
+    mut prover: MultilinearSumcheckProver<F>,
+) -> (F, Vec<F>) {
     let _span = tracing::debug_span!("multilinear_sumcheck").entered();
     let log_n = prover.log_n;
 
@@ -445,32 +393,22 @@ pub fn multilinear_sumcheck(prover: &mut MultilinearSumcheckProver) -> (BF, Vec<
         sumcheck_challenges.push(sumcheck_challenge);
 
         // prover computes round message
-        let round_msg = prover.round_message();
-        prover.eq_factor *=
-            prover.zerocheck_challenges[challenge_idx] + sumcheck_challenge + BF::ONE;
+        let round_msg = prover.execute().unwrap();
 
         // verifier checks round message against claim
         expected_next_round_claim = verify_round(
-            prover.current_round_claim,
             expected_next_round_claim,
-            round_msg.clone(),
+            round_msg[0].0.clone(),
             sumcheck_challenge,
-            prover.zerocheck_challenges[challenge_idx], // eq_ind expects zerocheck challenges in rev order
+            prover.zerocheck_challenges[challenge_idx], 
         );
 
-        // prover sets next round claim
-        prover.current_round_claim = evaluate_round_polynomial_at(
-            sumcheck_challenge,
-            prover.zerocheck_challenges[challenge_idx],
-            round_msg.clone(),
-        );
-
-        // prover folds challenge into multilinear
-        prover.fold(sumcheck_challenge);
-
-        // prover stores current eval claim for this round
-        prover.final_eval_claims.push(prover.current_round_claim);
+        let _ = prover.fold(sumcheck_challenge);
     }
+
+    let a = prover.finish().unwrap();
+    let out = ((a[0] * a[1]) - a[2]) * a[3];
+    assert_eq!(out, expected_next_round_claim);
 
     (expected_next_round_claim, sumcheck_challenges)
 }
@@ -478,8 +416,11 @@ pub fn multilinear_sumcheck(prover: &mut MultilinearSumcheckProver) -> (BF, Vec<
 #[cfg(test)]
 pub mod test {
     use super::*;
-    use crate::and_reduction::mle::mle_to_field_buffer;
-    use binius_field::AESTowerField128b;
+    use binius_field::{AESTowerField128b, BinaryField128bPolyval, Random};
+    use crate::protocols::sumcheck::and_reduction::mle::{mle_to_field_buffer, field_buffer_to_mle};
+
+    type BF = BinaryField128bPolyval;
+
 
     // generate multiple random multilinears of log_n variables
     pub fn random_multilinears(
@@ -506,8 +447,7 @@ pub mod test {
 
     // runs sumcheck protocol for a 4 column composition polynomial (A * B - C) * eq_r
     // tests both high to low and low to high fold directions
-    #[test]
-    fn test_sumcheck_four_column() {
+    fn sumcheck_four_column(fold_direction: FoldDirection) {
         let mut rng = StdRng::from_seed([0; 32]);
 
         let log_n = 5;
@@ -518,7 +458,6 @@ pub mod test {
             .map(|_| BinaryField128bPolyval::from(AESTowerField128b::random(&mut rng)))
             .collect::<Vec<BF>>();
 
-        for fold_direction in [FoldDirection::LowToHigh, FoldDirection::HighToLow] {
             let multilinears: Vec<BigFieldMultilinear<BF>> =
                 random_multilinears(num_multilinears, log_n);
 
@@ -526,7 +465,7 @@ pub mod test {
             let eq_r: BigFieldMultilinear<BF> = eq_ind(&zerocheck_challenges.clone());
 
             // compute overall sum claim for (A * B - C) * eq_r
-            let overall_claim = MultilinearSumcheckProver::sum_composition(
+            let overall_claim = MultilinearSumcheckProver::<BF>::sum_composition(
                 &multilinears[0],
                 &multilinears[1],
                 &multilinears[2],
@@ -543,11 +482,17 @@ pub mod test {
             );
 
             // run sumcheck
-            multilinear_sumcheck(&mut prover);
+        multilinear_sumcheck(prover);
+    }
 
-            // gather final eval claims
-            let _final_eval_claims = prover.final_eval_claims();
-        }
+    #[test]
+    fn test_and_reduction_sumcheck_high_to_low() {
+        sumcheck_four_column(FoldDirection::HighToLow);
+    }
+
+    #[test]
+    fn test_and_reduction_sumcheck_low_to_high() {
+        sumcheck_four_column(FoldDirection::LowToHigh);
     }
 
     #[test]
