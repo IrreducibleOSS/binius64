@@ -1,10 +1,12 @@
 use std::vec;
+
 use binius_field::Field;
 use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval};
 use binius_maybe_rayon::prelude::{
 	IndexedParallelIterator, IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator,
 };
 use binius_verifier::protocols::sumcheck::RoundCoeffs;
+
 use crate::protocols::sumcheck::{common::SumcheckProver, error::Error};
 
 #[derive(Debug, Clone)]
@@ -34,6 +36,8 @@ pub enum FoldDirection {
 	LowToHigh,
 	HighToLow,
 }
+
+#[allow(unused)]
 pub struct AndReductionProver<F: Field> {
 	multilinears: Vec<FieldBuffer<F>>,
 	overall_claim: F,
@@ -303,7 +307,6 @@ pub fn verify_round<F: Field>(
 	evaluate_round_polynomial_at(sumcheck_challenge, zerocheck_challenge, round_msg)
 }
 
-
 #[cfg(test)]
 pub mod test {
 	use binius_field::{BinaryField128bPolyval, Random};
@@ -311,7 +314,6 @@ pub mod test {
 	use super::*;
 	type BF = BinaryField128bPolyval;
 	use rand::{SeedableRng, rngs::StdRng};
-
 
 	fn random_challenge<F: Field>() -> F {
 		let mut rng = StdRng::from_seed([0; 32]);
