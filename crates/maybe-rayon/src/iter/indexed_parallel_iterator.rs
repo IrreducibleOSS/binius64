@@ -53,6 +53,15 @@ pub(crate) trait IndexedParallelIteratorInner: ParallelIteratorInner {
 	}
 
 	#[inline]
+	fn zip_eq<Z>(self, zip_op: Z) -> itertools::ZipEq<Self, Z::Iter>
+	where
+		Z: IntoParallelIterator,
+		Z::Iter: IndexedParallelIteratorInner,
+	{
+		Itertools::zip_eq(self, zip_op)
+	}
+
+	#[inline]
 	fn step_by(self, step: usize) -> impl IndexedParallelIteratorInner<Item = Self::Item>
 	where
 		Self: Sized,

@@ -38,11 +38,9 @@ where
 	DataA: Deref<Target = [P]>,
 	DataB: Deref<Target = [P]>,
 {
-	assert_eq!(a.len(), b.len()); // pre-condition
-
 	a.as_ref()
 		.par_iter()
-		.zip(b.as_ref().par_iter())
+		.zip_eq(b.as_ref().par_iter())
 		.map(|(&a_i, &b_i)| a_i * b_i)
 		.sum::<P>()
 		.into_iter()
