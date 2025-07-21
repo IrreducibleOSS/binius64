@@ -83,9 +83,13 @@ impl Word {
 
 	/// Performs 64-bit addition with carry input bit.
 	///
+	/// cin is a carry-in from the previous addition. Since it can only affect the LSB only, the cin
+	/// could be 1 if there is carry over, or 0 otherwise.
+	///
 	/// Returns (sum, carry_out) where ith carry_out bit is set to one if there is a carry out at
 	/// that bit position.
 	pub fn iadd_cin_cout(self, rhs: Word, cin: Word) -> (Word, Word) {
+		debug_assert!(cin == Word::ZERO || cin == Word::ONE, "cin must be 0 or 1");
 		let Word(lhs) = self;
 		let Word(rhs) = rhs;
 		let Word(cin) = cin;
