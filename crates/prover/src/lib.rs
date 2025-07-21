@@ -1,3 +1,4 @@
+pub mod basefold;
 mod error;
 mod formatting;
 pub mod fri;

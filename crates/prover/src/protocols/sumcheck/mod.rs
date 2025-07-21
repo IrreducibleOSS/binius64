@@ -2,4 +2,4 @@
 
 pub mod batch;
 pub mod common;
-mod error;
+pub mod error;
