@@ -11,7 +11,7 @@ use binius_field::{
     AESTowerField8b, BinaryField1b, BinaryField128bPolyval, ExtensionField, Field, PackedAESBinaryField16x8b,
     PackedBinaryField128x1b, PackedExtension, PackedField, packed::get_packed_slice,
 };
-use binius_math::FieldBuffer;
+use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval};
 use itertools::izip;
 use binius_maybe_rayon::prelude::{IntoParallelIterator, ParallelIterator, IntoParallelRefMutIterator};
 
@@ -19,29 +19,7 @@ use crate::protocols::sumcheck::and_reduction::univariate::ntt_lookup::{SKIPPED_
 
 use binius_maybe_rayon::iter::IndexedParallelIterator;
 
-pub fn eq_ind<F: Field>(zerocheck_challenges: &[F]) -> Vec<F> {
-    let mut mle = bytemuck::zeroed_vec(1 << zerocheck_challenges.len());
 
-    let _span = tracing::debug_span!("eq ind").entered();
-
-    mle[0] = F::ONE;
-    for (curr_log_len, challenge) in zerocheck_challenges.iter().enumerate() {
-        let _span = tracing::debug_span!("compute eq_ind for curr log len").entered();
-
-        let (mle_lower, mle_upper) = mle.split_at_mut(1 << curr_log_len);
-
-        mle_lower
-            .par_iter_mut()
-            .zip(mle_upper.par_iter_mut())
-            .for_each(|(low, up)| {
-                let multiplied = *low * *challenge;
-                *up = multiplied;
-                *low -= multiplied;
-            });
-    }
-
-    mle
-}
 
 
 // Sends evaluations of the 3*|D|-1 degree polynomial
@@ -87,9 +65,10 @@ where FChallenge: Field{
     );
 
     let small_field_zerocheck_challenges_tensor_expansion: Vec<PackedAESBinaryField16x8b> =
-        eq_ind(small_field_zerocheck_challenges)
+        eq_ind_partial_eval(small_field_zerocheck_challenges)
+            .as_ref()
             .into_iter()
-            .map(|item: AESTowerField8b| PackedAESBinaryField16x8b::broadcast(item))
+            .map(|item: &AESTowerField8b| PackedAESBinaryField16x8b::broadcast(*item))
             .collect();
 
     // Execute the NTTs at each hypercube vertex
@@ -239,7 +218,6 @@ pub fn sum_claim<BF: Field + From<BinaryField128bPolyval>>(
 mod test {
     use binius_field::{AESTowerField8b, BinaryField128bPolyval, PackedBinaryField128x1b, Random, AESTowerField128b, Field};
     use rand::{SeedableRng, rngs::StdRng};
-
     use crate::{
         protocols::sumcheck::and_reduction::fold_lookups::precompute_fold_lookup,
         protocols::sumcheck::and_reduction::one_bit_multivariate::OneBitMultivariate,
@@ -253,8 +231,6 @@ mod test {
     use super::univariate_round_message;
 
     use crate::protocols::sumcheck::and_reduction::univariate::ntt_lookup::{SKIPPED_VARS, ROWS_PER_HYPERCUBE_VERTEX};
-
-
     use binius_math::{FieldBuffer, multilinear::eq::tensor_prod_eq_ind};
     
 
