@@ -18,7 +18,7 @@
 use crate::{
 	compiler::{
 		circuit,
-		gate_graph::{Gate, GateData},
+		gate_graph::{Gate, GateData, GateParam},
 	},
 	constraint_system::{AndConstraint, ConstraintSystem, ShiftedValueIndex},
 	word::Word,
@@ -30,13 +30,19 @@ pub fn constrain(
 	circuit: &circuit::Circuit,
 	cs: &mut ConstraintSystem,
 ) {
-	let [word, mask_ff, mask_high56] = data.inputs() else {
+	let GateParam {
+		constants,
+		inputs,
+		outputs,
+		imm,
+		..
+	} = data.gate_param();
+	let [mask_ff, mask_high56] = constants else {
 		unreachable!()
 	};
-	let [z] = data.outputs() else { unreachable!() };
-	let [j] = data.immediates.as_slice() else {
-		unreachable!()
-	};
+	let [word] = inputs else { unreachable!() };
+	let [z] = outputs else { unreachable!() };
+	let [j] = imm else { unreachable!() };
 
 	let word_idx = circuit.witness_index(*word);
 	let z_idx = circuit.witness_index(*z);
@@ -60,13 +66,15 @@ pub fn constrain(
 }
 
 pub fn evaluate(_gate: Gate, data: &GateData, w: &mut circuit::WitnessFiller) {
-	let [word, _mask_ff, _mask_high56] = data.inputs() else {
-		unreachable!()
-	};
-	let [z] = data.outputs() else { unreachable!() };
-	let [j] = data.immediates.as_slice() else {
-		unreachable!()
-	};
+	let GateParam {
+		inputs,
+		outputs,
+		imm,
+		..
+	} = data.gate_param();
+	let [word] = inputs else { unreachable!() };
+	let [z] = outputs else { unreachable!() };
+	let [j] = imm else { unreachable!() };
 
 	let word_val = w[*word];
 	// Extract byte j from the word (shift right by 8*j bits and mask to get the byte)

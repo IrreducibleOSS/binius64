@@ -24,7 +24,7 @@
 use crate::{
 	compiler::{
 		circuit,
-		gate_graph::{Gate, GateData},
+		gate_graph::{Gate, GateData, GateParam},
 	},
 	constraint_system::{AndConstraint, ConstraintSystem, ShiftedValueIndex},
 	word::Word,
@@ -36,15 +36,17 @@ pub fn constrain(
 	circuit: &circuit::Circuit,
 	cs: &mut ConstraintSystem,
 ) {
-	let [x, y, all_1] = data.inputs() else {
+	let GateParam {
+		inputs,
+		outputs,
+		internal,
+		..
+	} = data.gate_param();
+	let [x, y, all_1] = inputs else {
 		unreachable!()
 	};
-	let [out_mask] = data.outputs() else {
-		unreachable!()
-	};
-	let [cout] = data.internals() else {
-		unreachable!()
-	};
+	let [out_mask] = outputs else { unreachable!() };
+	let [cout] = internal else { unreachable!() };
 
 	let x_idx = circuit.witness_index(*x);
 	let y_idx = circuit.witness_index(*y);
@@ -80,15 +82,17 @@ pub fn constrain(
 }
 
 pub fn evaluate(_gate: Gate, data: &GateData, w: &mut circuit::WitnessFiller) {
-	let [x, y, _all_1] = data.inputs() else {
+	let GateParam {
+		inputs,
+		outputs,
+		internal,
+		..
+	} = data.gate_param();
+	let [x, y, _all_1] = inputs else {
 		unreachable!()
 	};
-	let [out_mask] = data.outputs() else {
-		unreachable!()
-	};
-	let [cout] = data.internals() else {
-		unreachable!()
-	};
+	let [out_mask] = outputs else { unreachable!() };
+	let [cout] = internal else { unreachable!() };
 
 	let diff = w[*x] ^ w[*y];
 	let (_, cout_val) = Word::ALL_ONE.iadd_cin_cout(diff, Word::ZERO);

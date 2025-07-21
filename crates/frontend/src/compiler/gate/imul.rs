@@ -3,7 +3,7 @@
 use crate::{
 	compiler::{
 		circuit,
-		gate_graph::{Gate, GateData},
+		gate_graph::{Gate, GateData, GateParam},
 	},
 	constraint_system::{ConstraintSystem, MulConstraint, ShiftedValueIndex},
 };
@@ -14,12 +14,11 @@ pub fn constrain(
 	circuit: &circuit::Circuit,
 	cs: &mut ConstraintSystem,
 ) {
-	let [x, y] = data.inputs() else {
-		unreachable!()
-	};
-	let [hi, lo] = data.outputs() else {
-		unreachable!()
-	};
+	let GateParam {
+		inputs, outputs, ..
+	} = data.gate_param();
+	let [x, y] = inputs else { unreachable!() };
+	let [hi, lo] = outputs else { unreachable!() };
 
 	let x_idx = circuit.witness_index(*x);
 	let y_idx = circuit.witness_index(*y);
@@ -38,12 +37,11 @@ pub fn constrain(
 }
 
 pub fn evaluate(_gate: Gate, data: &GateData, w: &mut circuit::WitnessFiller) {
-	let [x, y] = data.inputs() else {
-		unreachable!()
-	};
-	let [hi, lo] = data.outputs() else {
-		unreachable!()
-	};
+	let GateParam {
+		inputs, outputs, ..
+	} = data.gate_param();
+	let [x, y] = inputs else { unreachable!() };
+	let [hi, lo] = outputs else { unreachable!() };
 
 	let (hi_val, lo_val) = w[*x].imul(w[*y]);
 	w[*hi] = hi_val;

@@ -13,7 +13,7 @@
 use crate::{
 	compiler::{
 		circuit,
-		gate_graph::{Gate, GateData},
+		gate_graph::{Gate, GateData, GateParam},
 	},
 	constraint_system::{AndConstraint, ConstraintSystem},
 	word::Word,
@@ -25,9 +25,8 @@ pub fn constrain(
 	circuit: &circuit::Circuit,
 	cs: &mut ConstraintSystem,
 ) {
-	let [x, y] = data.inputs() else {
-		unreachable!()
-	};
+	let GateParam { inputs, .. } = data.gate_param();
+	let [x, y] = inputs else { unreachable!() };
 
 	let x_idx = circuit.witness_index(*x);
 	let y_idx = circuit.witness_index(*y);
@@ -42,9 +41,8 @@ pub fn evaluate(
 	assertion_name: Option<&String>,
 	w: &mut circuit::WitnessFiller,
 ) {
-	let [x, y] = data.inputs() else {
-		unreachable!()
-	};
+	let GateParam { inputs, .. } = data.gate_param();
+	let [x, y] = inputs else { unreachable!() };
 
 	if (w[*x] & w[*y]) != Word::ZERO {
 		let name = assertion_name

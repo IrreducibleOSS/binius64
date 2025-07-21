@@ -28,7 +28,7 @@
 use crate::{
 	compiler::{
 		circuit,
-		gate_graph::{Gate, GateData},
+		gate_graph::{Gate, GateData, GateParam},
 	},
 	constraint_system::{AndConstraint, ConstraintSystem, ShiftedValueIndex},
 };
@@ -39,15 +39,15 @@ pub fn constrain(
 	circuit: &circuit::Circuit,
 	cs: &mut ConstraintSystem,
 ) {
-	let [a, b, cin, all_1] = data.inputs() else {
-		unreachable!()
-	};
-	let [sum] = data.outputs() else {
-		unreachable!()
-	};
-	let [cout] = data.internals() else {
-		unreachable!()
-	};
+	let GateParam {
+		constants,
+		inputs,
+		outputs,
+		..
+	} = data.gate_param();
+	let [all_1] = constants else { unreachable!() };
+	let [a, b, cin] = inputs else { unreachable!() };
+	let [sum, cout] = outputs else { unreachable!() };
 
 	let a_idx = circuit.witness_index(*a);
 	let b_idx = circuit.witness_index(*b);
@@ -84,15 +84,11 @@ pub fn constrain(
 }
 
 pub fn evaluate(_gate: Gate, data: &GateData, w: &mut circuit::WitnessFiller) {
-	let [a, b, cin, _all_1] = data.inputs() else {
-		unreachable!()
-	};
-	let [sum] = data.outputs() else {
-		unreachable!()
-	};
-	let [cout] = data.internals() else {
-		unreachable!()
-	};
+	let GateParam {
+		inputs, outputs, ..
+	} = data.gate_param();
+	let [a, b, cin] = inputs else { unreachable!() };
+	let [sum, cout] = outputs else { unreachable!() };
 
 	let a_val = w[*a];
 	let b_val = w[*b];

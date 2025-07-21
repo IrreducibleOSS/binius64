@@ -1,3 +1,5 @@
+use crate::word::Word;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Opcode {
 	// Bitwise operations
@@ -31,6 +33,7 @@ pub enum Opcode {
 }
 
 pub struct OpcodeShape {
+	pub const_in: &'static [Word],
 	pub n_in: usize,
 	pub n_out: usize,
 	pub n_internal: usize,
@@ -42,18 +45,21 @@ impl Opcode {
 		match self {
 			// Bitwise operations
 			Opcode::Band => OpcodeShape {
+				const_in: &[],
 				n_in: 2,
 				n_out: 1,
 				n_internal: 0,
 				n_imm: 0,
 			},
 			Opcode::Bxor => OpcodeShape {
-				n_in: 3,
+				const_in: &[Word::ALL_ONE],
+				n_in: 2,
 				n_out: 1,
 				n_internal: 0,
 				n_imm: 0,
 			},
 			Opcode::Bor => OpcodeShape {
+				const_in: &[],
 				n_in: 2,
 				n_out: 1,
 				n_internal: 0,
@@ -62,18 +68,21 @@ impl Opcode {
 
 			// Arithmetic
 			Opcode::IaddCinCout => OpcodeShape {
-				n_in: 4,
-				n_out: 1,
+				const_in: &[Word::ALL_ONE],
+				n_in: 3,
+				n_out: 2,
 				n_internal: 1,
 				n_imm: 0,
 			},
 			Opcode::Iadd32 => OpcodeShape {
-				n_in: 3,
+				const_in: &[Word::MASK_32],
+				n_in: 2,
 				n_out: 1,
 				n_imm: 0,
 				n_internal: 1,
 			},
 			Opcode::Imul => OpcodeShape {
+				const_in: &[],
 				n_in: 2,
 				n_out: 2,
 				n_internal: 0,
@@ -82,25 +91,29 @@ impl Opcode {
 
 			// Shifts
 			Opcode::Shr => OpcodeShape {
-				n_in: 2,
+				const_in: &[Word::ALL_ONE],
+				n_in: 1,
 				n_out: 1,
 				n_internal: 0,
 				n_imm: 1,
 			},
 			Opcode::Shl => OpcodeShape {
-				n_in: 2,
+				const_in: &[Word::ALL_ONE],
+				n_in: 1,
 				n_out: 1,
 				n_internal: 0,
 				n_imm: 1,
 			},
 			Opcode::Shr32 => OpcodeShape {
-				n_in: 2,
+				const_in: &[Word::MASK_32],
+				n_in: 1,
 				n_out: 1,
 				n_internal: 0,
 				n_imm: 1,
 			},
 			Opcode::Rotr32 => OpcodeShape {
-				n_in: 2,
+				const_in: &[Word::MASK_32],
+				n_in: 1,
 				n_out: 1,
 				n_internal: 0,
 				n_imm: 1,
@@ -108,12 +121,14 @@ impl Opcode {
 
 			// Comparisons
 			Opcode::IcmpUlt => OpcodeShape {
-				n_in: 3,
+				const_in: &[Word::ALL_ONE],
+				n_in: 2,
 				n_out: 1,
 				n_internal: 1,
 				n_imm: 0,
 			},
 			Opcode::IcmpEq => OpcodeShape {
+				const_in: &[],
 				n_in: 3,
 				n_out: 1,
 				n_internal: 1,
@@ -122,7 +137,8 @@ impl Opcode {
 
 			// Extraction
 			Opcode::ExtractByte => OpcodeShape {
-				n_in: 3,
+				const_in: &[Word(0xFF), Word(0xFFFFFFFFFFFFFF00u64)],
+				n_in: 1,
 				n_out: 1,
 				n_internal: 0,
 				n_imm: 1,
@@ -130,24 +146,28 @@ impl Opcode {
 
 			// Assertions (no outputs)
 			Opcode::AssertEq => OpcodeShape {
-				n_in: 3,
-				n_out: 0,
-				n_internal: 0,
-				n_imm: 0,
-			},
-			Opcode::Assert0 => OpcodeShape {
+				const_in: &[Word::ALL_ONE],
 				n_in: 2,
 				n_out: 0,
 				n_internal: 0,
 				n_imm: 0,
 			},
+			Opcode::Assert0 => OpcodeShape {
+				const_in: &[Word::ALL_ONE],
+				n_in: 1,
+				n_out: 0,
+				n_internal: 0,
+				n_imm: 0,
+			},
 			Opcode::AssertBand0 => OpcodeShape {
+				const_in: &[],
 				n_in: 2,
 				n_out: 0,
 				n_internal: 0,
 				n_imm: 0,
 			},
 			Opcode::AssertEqCond => OpcodeShape {
+				const_in: &[],
 				n_in: 3,
 				n_out: 0,
 				n_internal: 0,

@@ -13,7 +13,7 @@
 use crate::{
 	compiler::{
 		circuit,
-		gate_graph::{Gate, GateData},
+		gate_graph::{Gate, GateData, GateParam},
 	},
 	constraint_system::{AndConstraint, ConstraintSystem, ShiftedValueIndex},
 };
@@ -24,13 +24,17 @@ pub fn constrain(
 	circuit: &circuit::Circuit,
 	cs: &mut ConstraintSystem,
 ) {
-	let [x, mask32] = data.inputs() else {
-		unreachable!()
-	};
-	let [z] = data.outputs() else { unreachable!() };
-	let [n] = data.immediates.as_slice() else {
-		unreachable!()
-	};
+	let GateParam {
+		constants,
+		inputs,
+		outputs,
+		imm,
+		..
+	} = data.gate_param();
+	let [mask32] = constants else { unreachable!() };
+	let [x] = inputs else { unreachable!() };
+	let [z] = outputs else { unreachable!() };
+	let [n] = imm else { unreachable!() };
 
 	let x_idx = circuit.witness_index(*x);
 	let z_idx = circuit.witness_index(*z);
@@ -46,13 +50,15 @@ pub fn constrain(
 }
 
 pub fn evaluate(_gate: Gate, data: &GateData, w: &mut circuit::WitnessFiller) {
-	let [x, _mask32] = data.inputs() else {
-		unreachable!()
-	};
-	let [z] = data.outputs() else { unreachable!() };
-	let [n] = data.immediates.as_slice() else {
-		unreachable!()
-	};
+	let GateParam {
+		inputs,
+		outputs,
+		imm,
+		..
+	} = data.gate_param();
+	let [x] = inputs else { unreachable!() };
+	let [z] = outputs else { unreachable!() };
+	let [n] = imm else { unreachable!() };
 
 	let result = w[*x].shr_32(*n);
 	w[*z] = result;
