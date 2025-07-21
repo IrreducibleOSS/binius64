@@ -73,9 +73,8 @@ mod test {
 	use binius_field::{BinaryField128b, Random};
 	use rand::{SeedableRng, rngs::StdRng};
 
-	use crate::test_utils::index_to_hypercube_point;
-
 	use super::{eq_ind_partial_eval, eval_rs_eq, rs_eq_ind};
+	use crate::test_utils::index_to_hypercube_point;
 
 	type BF = BinaryField128b;
 
