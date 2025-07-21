@@ -198,21 +198,14 @@ impl<F: Field> SumcheckProver<F> for AndReductionProver<F> {
     // computes univariate round message for the current round
     fn execute(&mut self) -> Result<Vec<RoundCoeffs<F>>, Error> {
 
-        let mut multilinears = vec![
-            field_buffer_to_mle(self.multilinears[0].clone()).unwrap(),
-            field_buffer_to_mle(self.multilinears[1].clone()).unwrap(),
-            field_buffer_to_mle(self.multilinears[2].clone()).unwrap(),
-            field_buffer_to_mle(self.multilinears[3].clone()).unwrap(),
-        ];
-
         let log_n = self.multilinears[0].log_len();
         let n = 1 << log_n;
         let n_half = n >> 1;
 
-        let a = &multilinears[0].packed_evals;
-        let b = &multilinears[1].packed_evals;
-        let c = &multilinears[2].packed_evals;
-        let d = &multilinears[3].packed_evals;
+        let a = &self.multilinears[0];
+        let b = &self.multilinears[1];
+        let c = &self.multilinears[2];
+        let d = &self.multilinears[3];
 
         // compute indices for either high to low or low to high
         let compute_idx: fn((usize, usize)) -> (usize, usize) = match self.fold_direction {
@@ -225,22 +218,20 @@ impl<F: Field> SumcheckProver<F> for AndReductionProver<F> {
             .into_par_iter()
             .chunks(1024)
             .map(|chunk| {
-                // let _span = tracing::debug_span!("high to low fold inplace parallel").entered();
-
                 let mut acc_g_of_zero = F::ZERO;
                 let mut acc_g_leading_coeff = F::ZERO;
 
                 for j in chunk {
                     let (low_idx, high_idx) = compute_idx((j, n_half));
 
-                    let a_lower = a[low_idx];
-                    let b_lower = b[low_idx];
-                    let c_lower = c[low_idx];
-                    let d_lower = d[low_idx];
+                    let a_lower = a.get(low_idx).expect("out of bounds");
+                    let b_lower = b.get(low_idx).expect("out of bounds");
+                    let c_lower = c.get(low_idx).expect("out of bounds");
+                    let d_lower = d.get(low_idx).expect("out of bounds");
 
-                    let a_upper = a[high_idx];
-                    let b_upper = b[high_idx];
-                    let d_upper = d[high_idx];
+                    let a_upper = a.get(high_idx).expect("out of bounds");
+                    let b_upper = b.get(high_idx).expect("out of bounds");
+                    let d_upper = d.get(high_idx).expect("out of bounds");
 
                     acc_g_of_zero += (a_lower * b_lower - c_lower) * d_lower;
                     acc_g_leading_coeff +=
@@ -265,11 +256,6 @@ impl<F: Field> SumcheckProver<F> for AndReductionProver<F> {
         self.round_message = Some(
             RoundCoeffs {0: vec![g_of_zero, g_of_one, g_leading_coeff]}
         );
-
-        self.multilinears[0] = mle_to_field_buffer(&multilinears[0].clone()).unwrap();
-        self.multilinears[1] = mle_to_field_buffer(&multilinears[1].clone()).unwrap();
-        self.multilinears[2] = mle_to_field_buffer(&multilinears[2].clone()).unwrap();
-        self.multilinears[3] = mle_to_field_buffer(&multilinears[3].clone()).unwrap();
 
         Ok(vec![self.round_message.clone().unwrap()])
     }
