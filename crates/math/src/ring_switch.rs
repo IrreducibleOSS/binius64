@@ -35,27 +35,6 @@ where
 	rs_eq_mle
 }
 
-pub fn eval_rs_eq<BF: BinaryField + PackedExtension<B1>>(
-	z_vals: &[BF],
-	query: &[BF],
-	expanded_row_batch_query: &[BF],
-) -> BF {
-	let tensor_eval = iter::zip(z_vals, query).fold(
-		<TensorAlgebra<B1, BF>>::from_vertical(BF::ONE),
-		|eval, (&vert_i, &hztl_i)| {
-			// This formula is specific to characteristic 2 fields
-			// Here we know that $h v + (1 - h) (1 - v) = 1 + h + v$.
-			let vert_scaled = eval.clone().scale_vertical(vert_i);
-
-			let hztl_scaled = eval.clone().scale_horizontal(hztl_i);
-
-			eval + &vert_scaled + &hztl_scaled
-		},
-	);
-
-	tensor_eval.fold_vertical(expanded_row_batch_query)
-}
-
 /// Each s_hat_v is a partial evaluation of our 1- bit poly t at l-kappa variables
 /// We take the prover's claims s_hat_v for v in {0,..,2^kappa-1} and bit-slice them.
 /// These bit-sliced claims
@@ -78,34 +57,27 @@ mod test {
 
 	use binius_field::{BinaryField128b, Random};
 	use rand::{SeedableRng, rngs::StdRng};
+	use binius_math::multilinear::eq::{eq_ind, eq_ind_partial_eval};
 
-	use super::{eq_ind_partial_eval, eval_rs_eq, rs_eq_ind};
+	use super::rs_eq_ind;
 	use crate::test_utils::index_to_hypercube_point;
-
-	type BF = BinaryField128b;
 
 	#[test]
 	fn consistent_with_tensor_alg() {
 		let n_vars_big_field = 3;
 		let mut rng = StdRng::from_seed([0; 32]);
-		let z_vals: Vec<_> = repeat_with(|| BF::random(&mut rng))
+		let z_vals: Vec<_> = repeat_with(|| BinaryField128b::random(&mut rng))
 			.take(n_vars_big_field)
 			.collect();
 
 		let row_batching_challenges: Vec<_> =
-			repeat_with(|| BF::random(&mut rng)).take(7).collect();
-
-		let row_batching_expanded_query = eq_ind_partial_eval(&row_batching_challenges);
+			repeat_with(|| BinaryField128b::random(&mut rng)).take(7).collect();
 
 		let mle = rs_eq_ind(&row_batching_challenges, &z_vals);
 
 		let n_vars = 3;
 		for hypercube_point in 0..1 << n_vars {
-			let evaluated_at_pt = eval_rs_eq(
-				&z_vals,
-				&index_to_hypercube_point(n_vars, hypercube_point),
-				row_batching_expanded_query.as_ref(),
-			);
+			let evaluated_at_pt = eq_ind(&z_vals, &index_to_hypercube_point(n_vars, hypercube_point));
 
 			assert_eq!(mle.get(hypercube_point).unwrap(), evaluated_at_pt);
 		}
