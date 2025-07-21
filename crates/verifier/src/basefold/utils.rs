@@ -3,10 +3,7 @@ use binius_field::Field;
 // given two lagrange basis coefficients and the leading coefficient for a
 // univariate polynomial, compute the unique degree 2 polynomial intpolating
 // (0, y_0), (1, y_1), and evaluate at x
-pub fn evaluate_round_polynomial_at<F: Field>(
-	x: F,
-	round_msg: Vec<F>,
-) -> F {
+pub fn evaluate_round_polynomial_at<F: Field>(x: F, round_msg: Vec<F>) -> F {
 	let (x_0, y_0) = (F::ZERO, round_msg[0]);
 	let (x_1, y_1) = (F::ONE, round_msg[1]);
 	let y_leading_coeff = round_msg[2];
