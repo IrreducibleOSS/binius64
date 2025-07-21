@@ -1,13 +1,10 @@
 use std::vec;
-
 use binius_field::Field;
 use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval};
 use binius_maybe_rayon::prelude::{
 	IndexedParallelIterator, IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator,
 };
 use binius_verifier::protocols::sumcheck::RoundCoeffs;
-use rand::{SeedableRng, rngs::StdRng};
-
 use crate::protocols::sumcheck::{common::SumcheckProver, error::Error};
 
 #[derive(Debug, Clone)]
@@ -256,12 +253,6 @@ impl<F: Field> SumcheckProver<F> for AndReductionProver<F> {
 	}
 }
 
-// since it could let us abstract concepts like rng from the implementation
-fn random_challenge<F: Field>() -> F {
-	let mut rng = StdRng::from_seed([0; 32]);
-	F::random(&mut rng)
-}
-
 // given 4 lagrange basis coefficients for a univariate polynomial, compute
 // lagrange basis polynomials and evaluate at x the resulting polynomial
 fn evaluate_round_polynomial_at<F: Field>(x: F, zerocheck_challenge: F, round_msg: Vec<F>) -> F {
@@ -312,47 +303,6 @@ pub fn verify_round<F: Field>(
 	evaluate_round_polynomial_at(sumcheck_challenge, zerocheck_challenge, round_msg)
 }
 
-// runs sumcheck interactive protocol for multilinear composition (A * B - C) * eq_r
-// eq_r is the multilinear equality indicator for some vector of log_n zerocheck challenges
-pub fn multilinear_sumcheck<F: Field>(mut prover: AndReductionProver<F>) -> (F, Vec<F>) {
-	let _span = tracing::debug_span!("multilinear_sumcheck").entered();
-	let log_n = prover.log_n;
-
-	let mut expected_next_round_claim = prover.overall_claim;
-	let mut sumcheck_challenges = Vec::with_capacity(log_n);
-
-	for round_idx in 0..log_n {
-		let _span = tracing::debug_span!("multilinear sumcheck round").entered();
-
-		let challenge_idx = match prover.fold_direction {
-			FoldDirection::LowToHigh => round_idx,
-			FoldDirection::HighToLow => log_n - round_idx - 1,
-		};
-
-		// verifier sends sumcheck challenge
-		let sumcheck_challenge = random_challenge();
-		sumcheck_challenges.push(sumcheck_challenge);
-
-		// prover computes round message
-		let round_msg = prover.execute().unwrap();
-
-		// verifier checks round message against claim
-		expected_next_round_claim = verify_round(
-			expected_next_round_claim,
-			round_msg[0].0.clone(),
-			sumcheck_challenge,
-			prover.zerocheck_challenges[challenge_idx],
-		);
-
-		let _ = prover.fold(sumcheck_challenge);
-	}
-
-	let a = prover.finish().unwrap();
-	let out = ((a[0] * a[1]) - a[2]) * a[3];
-	assert_eq!(out, expected_next_round_claim);
-
-	(expected_next_round_claim, sumcheck_challenges)
-}
 
 #[cfg(test)]
 pub mod test {
@@ -360,6 +310,55 @@ pub mod test {
 
 	use super::*;
 	type BF = BinaryField128bPolyval;
+	use rand::{SeedableRng, rngs::StdRng};
+
+
+	fn random_challenge<F: Field>() -> F {
+		let mut rng = StdRng::from_seed([0; 32]);
+		F::random(&mut rng)
+	}
+
+	// runs sumcheck interactive protocol for multilinear composition (A * B - C) * eq_r
+	// eq_r is the multilinear equality indicator for some vector of log_n zerocheck challenges
+	pub fn multilinear_sumcheck<F: Field>(mut prover: AndReductionProver<F>) -> (F, Vec<F>) {
+		let _span = tracing::debug_span!("multilinear_sumcheck").entered();
+		let log_n = prover.log_n;
+
+		let mut expected_next_round_claim = prover.overall_claim;
+		let mut sumcheck_challenges = Vec::with_capacity(log_n);
+
+		for round_idx in 0..log_n {
+			let _span = tracing::debug_span!("multilinear sumcheck round").entered();
+
+			let challenge_idx = match prover.fold_direction {
+				FoldDirection::LowToHigh => round_idx,
+				FoldDirection::HighToLow => log_n - round_idx - 1,
+			};
+
+			// verifier sends sumcheck challenge
+			let sumcheck_challenge = random_challenge();
+			sumcheck_challenges.push(sumcheck_challenge);
+
+			// prover computes round message
+			let round_msg = prover.execute().unwrap();
+
+			// verifier checks round message against claim
+			expected_next_round_claim = verify_round(
+				expected_next_round_claim,
+				round_msg[0].0.clone(),
+				sumcheck_challenge,
+				prover.zerocheck_challenges[challenge_idx],
+			);
+
+			let _ = prover.fold(sumcheck_challenge);
+		}
+
+		let a = prover.finish().unwrap();
+		let out = ((a[0] * a[1]) - a[2]) * a[3];
+		assert_eq!(out, expected_next_round_claim);
+
+		(expected_next_round_claim, sumcheck_challenges)
+	}
 
 	// generate multiple random multilinears of log_n variables
 	pub fn random_field_buffer(num_multilinears: usize, log_n: usize) -> Vec<FieldBuffer<BF>> {
