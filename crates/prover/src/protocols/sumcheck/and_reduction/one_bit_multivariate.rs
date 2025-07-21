@@ -3,7 +3,7 @@ use binius_field::{
 	PackedBinaryField128x1b, PackedExtension, PackedField, packed::iter_packed_slice_with_offset,
 };
 use binius_math::{Error, FieldBuffer};
-use binius_maybe_rayon::prelude::{
+use binius_utils::rayon::prelude::{
 	IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator,
 };
 
