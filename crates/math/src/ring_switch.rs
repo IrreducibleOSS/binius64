@@ -54,8 +54,12 @@ pub fn eval_rs_eq<BF: BinaryField + PackedExtension<B1>>(
 	tensor_eval.fold_vertical(expanded_row_batch_query)
 }
 
-// basis decompose/recombine list of big field elements across opposite dimension
-pub fn construct_s_hat_u<
+/// Each s_hat_v is a partial evaluation of our 1- bit poly t at l-kappa variables
+/// We take the prover's claims s_hat_v for v in {0,..,2^kappa-1} and bit-slice them.
+/// These bit-sliced claims
+/// are called s_hat_u for u in {0,..,2^kappa-1}, and are computed by both the prover and verifier.
+/// After this, the prover proves the correctness of the s_hat_u values WRT t with a sumcheck
+pub fn construct_bitsliced_claims<
 	SmallField: Field,
 	BigField: Field + ExtensionField<SmallField> + PackedExtension<SmallField>,
 >(
