@@ -6,18 +6,20 @@ use std::{
 };
 
 use binius_field::{
-	PackedField,
-	packed::{get_packed_slice_unchecked, pack_slice, set_packed_slice_unchecked},
+	Field, PackedField,
+	packed::{get_packed_slice_unchecked, set_packed_slice_unchecked},
 };
 use binius_maybe_rayon::{prelude::*, slice::ParallelSlice};
+use binius_utils::checked_arithmetics::{checked_log_2, strict_log_2};
 use bytemuck::zeroed_vec;
 
 use crate::Error;
 
 /// A power-of-two-sized buffer containing field elements, stored in packed fields.
 ///
-/// This struct maintains an invariant: `self.values.len() == 1 <<
-/// self.log_len.saturating_sub(P::LOG_WIDTH)`.
+/// This struct maintains a set of invariants:
+///  1) `values.len()` is a power of two
+///  2) `values.len() >= 1 << log_len.saturating_sub(P::LOG_WIDTH)`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldBuffer<P: PackedField, Data: Deref<Target = [P]> = Box<[P]>> {
 	/// log2 the number over elements in the buffer.
@@ -33,12 +35,43 @@ impl<P: PackedField> FieldBuffer<P> {
 	///
 	/// * `PowerOfTwoLengthRequired` if the number of values is not a power of two.
 	pub fn from_values(values: &[P::Scalar]) -> Result<Self, Error> {
+		let Some(log_len) = strict_log_2(values.len()) else {
+			return Err(Error::PowerOfTwoLengthRequired);
+		};
+
+		Self::from_values_truncated(values, log_len)
+	}
+
+	/// Create a new FieldBuffer from a vector of values.
+	///
+	/// Capacity `log_cap` is bumped to at least `P::LOG_WIDTH`.
+	///
+	/// # Throws
+	///
+	/// * `PowerOfTwoLengthRequired` if the number of values is not a power of two.
+	/// * `IncorrectArgumentLength` if the number of values exceeds `1 << log_cap`.
+	pub fn from_values_truncated(values: &[P::Scalar], log_cap: usize) -> Result<Self, Error> {
 		if !values.len().is_power_of_two() {
 			return Err(Error::PowerOfTwoLengthRequired);
 		}
 
 		let log_len = values.len().ilog2() as usize;
-		let packed_values = pack_slice(values);
+		if log_len > log_cap {
+			return Err(Error::IncorrectArgumentLength {
+				arg: "values".to_string(),
+				expected: 1 << log_cap,
+			});
+		}
+
+		let packed_cap = 1 << log_cap.saturating_sub(P::LOG_WIDTH);
+		let mut packed_values = Vec::with_capacity(packed_cap);
+		packed_values.extend(
+			values
+				.chunks(P::WIDTH)
+				.map(|chunk| P::from_scalars(chunk.iter().copied())),
+		);
+		packed_values.resize(packed_cap, P::zero());
+
 		Ok(Self {
 			log_len,
 			values: packed_values.into_boxed_slice(),
@@ -47,9 +80,22 @@ impl<P: PackedField> FieldBuffer<P> {
 
 	/// Create a new [`FieldBuffer`] of zeros with the given log_len.
 	pub fn zeros(log_len: usize) -> Self {
-		let packed_len = 1 << log_len.saturating_sub(P::LOG_WIDTH);
+		Self::zeros_truncated(log_len, log_len).expect("log_len == log_cap")
+	}
+
+	/// Create a new [`FieldBuffer`] of zeros with the given log_len and capacity log_cap.
+	///
+	/// Capacity `log_cap` is bumped to at least `P::LOG_WIDTH`.
+	pub fn zeros_truncated(log_len: usize, log_cap: usize) -> Result<Self, Error> {
+		if log_len > log_cap {
+			return Err(Error::IncorrectArgumentLength {
+				arg: "log_len".to_string(),
+				expected: log_cap,
+			});
+		}
+		let packed_len = 1 << log_cap.saturating_sub(P::LOG_WIDTH);
 		let values = zeroed_vec(packed_len).into_boxed_slice();
-		Self { log_len, values }
+		Ok(Self { log_len, values })
 	}
 }
 
@@ -59,7 +105,8 @@ impl<P: PackedField, Data: Deref<Target = [P]>> FieldBuffer<P, Data> {
 	///
 	/// # Throws
 	///
-	/// * `PowerOfTwoLengthRequired` if the implied number of field elements is not a power of two.
+	/// * `IncorrectArgumentLength` if the number of field elements does not fit the `values.len()`
+	///   exactly.
 	pub fn new(log_len: usize, values: Data) -> Result<Self, Error> {
 		let expected_packed_len = 1 << log_len.saturating_sub(P::LOG_WIDTH);
 		if values.len() != expected_packed_len {
@@ -68,7 +115,39 @@ impl<P: PackedField, Data: Deref<Target = [P]>> FieldBuffer<P, Data> {
 				expected: expected_packed_len,
 			});
 		}
+		Self::new_truncated(log_len, values)
+	}
+
+	/// Create a new FieldBuffer from a slice of packed values.
+	///
+	/// # Throws
+	///
+	/// * `IncorrectArgumentLength` if the number of field elements does not fit into the `values`.
+	/// * `PowerOfTwoLengthRequired` if the `values.len()` is not a power of two.
+	pub fn new_truncated(log_len: usize, values: Data) -> Result<Self, Error> {
+		let min_packed_len = 1 << log_len.saturating_sub(P::LOG_WIDTH);
+		if values.len() < min_packed_len {
+			return Err(Error::IncorrectArgumentLength {
+				arg: "values".to_string(),
+				expected: min_packed_len,
+			});
+		}
+
+		if !values.len().is_power_of_two() {
+			return Err(Error::PowerOfTwoLengthRequired);
+		}
+
 		Ok(Self { log_len, values })
+	}
+
+	/// Returns log2 the number of field elements that the underlying collection may take.
+	pub fn log_cap(&self) -> usize {
+		checked_log_2(self.values.len()) + P::LOG_WIDTH
+	}
+
+	/// Returns the number of field elements that the underlying collection may take.
+	pub fn cap(&self) -> usize {
+		1 << self.log_cap()
 	}
 
 	/// Returns log2 the number of field elements.
@@ -142,10 +221,9 @@ impl<P: PackedField, Data: Deref<Target = [P]>> FieldBuffer<P, Data> {
 			let packed_log_chunks = P::LOG_WIDTH - log_chunk_size;
 			let packed = self.values[chunk_index >> packed_log_chunks];
 			let chunk_subindex = chunk_index & ((1 << packed_log_chunks) - 1);
-			let mut chunk = P::zero();
-			for i in 0..1 << log_chunk_size {
-				chunk.set(i, packed.get(chunk_subindex << log_chunk_size | i));
-			}
+			let chunk = P::from_scalars(
+				(0..1 << log_chunk_size).map(|i| packed.get(chunk_subindex << log_chunk_size | i)),
+			);
 			FieldSliceData::Single(chunk)
 		};
 
@@ -172,13 +250,14 @@ impl<P: PackedField, Data: Deref<Target = [P]>> FieldBuffer<P, Data> {
 			});
 		}
 
-		let log_len = log_chunk_size.min(self.log_len);
+		let chunk_count = 1 << (self.log_len - log_chunk_size);
 		let packed_chunk_size = 1 << (log_chunk_size - P::LOG_WIDTH);
 		let chunks = self
 			.values
 			.chunks(packed_chunk_size)
+			.take(chunk_count)
 			.map(move |chunk| FieldBuffer {
-				log_len,
+				log_len: log_chunk_size,
 				values: FieldSliceData::Slice(chunk),
 			});
 
@@ -229,7 +308,6 @@ impl<P: PackedField, Data: Deref<Target = [P]>> FieldBuffer<P, Data> {
 		let (first, second) = if new_log_len < P::LOG_WIDTH {
 			// The result will be two Single variants
 			// We have exactly one packed element that needs to be split
-			debug_assert_eq!(self.values.len(), 1);
 			let packed = self.values[0];
 			let zeros = P::default();
 
@@ -247,8 +325,9 @@ impl<P: PackedField, Data: Deref<Target = [P]>> FieldBuffer<P, Data> {
 			(first, second)
 		} else {
 			// Split the packed values slice in half
-			let mid = self.values.len() / 2;
-			let (first_half, second_half) = self.values.split_at(mid);
+			let half_len = 1 << (new_log_len - P::LOG_WIDTH);
+			let (first_half, second_half) = self.values.split_at(half_len);
+			let second_half = &second_half[..half_len];
 
 			let first = FieldBuffer {
 				log_len: new_log_len,
@@ -294,6 +373,48 @@ impl<P: PackedField, Data: DerefMut<Target = [P]>> FieldBuffer<P, Data> {
 		Ok(())
 	}
 
+	/// Truncates a field buffer to a shorter length.
+	///
+	/// If `new_log_len` is not less than current `log_len()`, this has no effect.
+	pub fn truncate(&mut self, new_log_len: usize) {
+		self.log_len = self.log_len.min(new_log_len);
+	}
+
+	/// Zero extends a field buffer to a longer length.
+	///
+	/// If `new_log_len` is not greater than current `log_len()`, this has no effect.
+	///
+	/// # Throws
+	/// * `Error::IncorrectArgumentLength` if the zero extended size exceeds underlying capacity.
+	pub fn zero_extend(&mut self, new_log_len: usize) -> Result<(), Error> {
+		if new_log_len <= self.log_len {
+			return Ok(());
+		}
+
+		if new_log_len > self.log_cap() {
+			return Err(Error::IncorrectArgumentLength {
+				arg: "new_log_len".to_string(),
+				expected: self.log_cap(),
+			});
+		}
+
+		if self.log_len < P::LOG_WIDTH {
+			for i in 1 << self.log_len..(1 << new_log_len).min(P::WIDTH) {
+				self.values
+					.first_mut()
+					.expect("values.len() >= 1")
+					.set(i, P::Scalar::ZERO);
+			}
+		}
+
+		let packed_start = 1 << self.log_len.saturating_sub(P::LOG_WIDTH);
+		let packed_end = 1 << new_log_len.saturating_sub(P::LOG_WIDTH);
+		self.values[packed_start..packed_end].fill(P::zero());
+
+		self.log_len = new_log_len;
+		Ok(())
+	}
+
 	/// Split the buffer into mutable chunks of size `2^log_chunk_size`.
 	///
 	/// # Throws
@@ -311,13 +432,14 @@ impl<P: PackedField, Data: DerefMut<Target = [P]>> FieldBuffer<P, Data> {
 			});
 		}
 
-		let log_len = log_chunk_size.min(self.log_len);
+		let chunk_count = 1 << (self.log_len - log_chunk_size);
 		let packed_chunk_size = 1 << log_chunk_size.saturating_sub(P::LOG_WIDTH);
 		let chunks = self
 			.values
 			.chunks_mut(packed_chunk_size)
+			.take(chunk_count)
 			.map(move |chunk| FieldBuffer {
-				log_len,
+				log_len: log_chunk_size,
 				values: FieldSliceDataMut::Slice(chunk),
 			});
 
@@ -344,9 +466,6 @@ impl<P: PackedField, Data: DerefMut<Target = [P]>> FieldBuffer<P, Data> {
 		let new_log_len = self.log_len - 1;
 
 		if new_log_len < P::LOG_WIDTH {
-			// We need to split a single packed element
-			debug_assert_eq!(self.values.len(), 1);
-
 			// Extract the values using interleave
 			let packed = self.values[0];
 			let zeros = P::default();
@@ -377,16 +496,17 @@ impl<P: PackedField, Data: DerefMut<Target = [P]>> FieldBuffer<P, Data> {
 			Ok(result)
 		} else {
 			// Normal case: split the packed values slice in half
-			let mid = self.values.len() / 2;
-			let (first_slice, second_slice) = self.values.split_at_mut(mid);
+			let half_len = 1 << (new_log_len - P::LOG_WIDTH);
+			let (first_half, second_half) = self.values.split_at_mut(half_len);
+			let second_half = &mut second_half[..half_len];
 
 			let mut first = FieldBuffer {
 				log_len: new_log_len,
-				values: FieldSliceDataMut::Slice(first_slice),
+				values: FieldSliceDataMut::Slice(first_half),
 			};
 			let mut second = FieldBuffer {
 				log_len: new_log_len,
-				values: FieldSliceDataMut::Slice(second_slice),
+				values: FieldSliceDataMut::Slice(second_half),
 			};
 
 			Ok(f(&mut first, &mut second))
@@ -411,9 +531,6 @@ impl<P: PackedField, Data: DerefMut<Target = [P]>> FieldBuffer<P, Data> {
 
 		let new_log_len = self.log_len - 1;
 		if new_log_len < P::LOG_WIDTH {
-			// We need to split a single packed element
-			debug_assert_eq!(self.values.len(), 1);
-
 			// Extract the values using interleave
 			let packed = self.values[0];
 			let zeros = P::default();
@@ -427,8 +544,9 @@ impl<P: PackedField, Data: DerefMut<Target = [P]>> FieldBuffer<P, Data> {
 			}))
 		} else {
 			// Normal case: split the packed values slice in half
-			let mid = self.values.len() / 2;
-			let (lo_half, hi_half) = self.values.split_at_mut(mid);
+			let half_len = 1 << (new_log_len - P::LOG_WIDTH);
+			let (lo_half, hi_half) = self.values.split_at_mut(half_len);
+			let hi_half = &mut hi_half[..half_len];
 
 			Ok(FieldBufferSplitMut(FieldBufferSplitMutInner::Slices {
 				log_len: new_log_len,
@@ -441,13 +559,13 @@ impl<P: PackedField, Data: DerefMut<Target = [P]>> FieldBuffer<P, Data> {
 
 impl<P: PackedField, Data: Deref<Target = [P]>> AsRef<[P]> for FieldBuffer<P, Data> {
 	fn as_ref(&self) -> &[P] {
-		&self.values
+		&self.values[..1 << self.log_len.saturating_sub(P::LOG_WIDTH)]
 	}
 }
 
 impl<P: PackedField, Data: DerefMut<Target = [P]>> AsMut<[P]> for FieldBuffer<P, Data> {
 	fn as_mut(&mut self) -> &mut [P] {
-		&mut self.values
+		&mut self.values[..1 << self.log_len.saturating_sub(P::LOG_WIDTH)]
 	}
 }
 
@@ -838,16 +956,18 @@ mod tests {
 
 	#[test]
 	fn test_to_ref_to_mut() {
-		let mut buffer = FieldBuffer::<P>::zeros(3);
+		let mut buffer = FieldBuffer::<P>::zeros_truncated(3, 5).unwrap();
 
 		// Test to_ref
 		let slice_ref = buffer.to_ref();
 		assert_eq!(slice_ref.len(), buffer.len());
 		assert_eq!(slice_ref.log_len(), buffer.log_len());
+		assert_eq!(slice_ref.as_ref().len(), 1 << slice_ref.log_len().saturating_sub(P::LOG_WIDTH));
 
 		// Test to_mut
 		let mut slice_mut = buffer.to_mut();
 		slice_mut.set(0, F::new(123)).unwrap();
+		assert_eq!(slice_mut.as_mut().len(), 1 << slice_mut.log_len().saturating_sub(P::LOG_WIDTH));
 		assert_eq!(buffer.get(0).unwrap(), F::new(123));
 	}
 
@@ -855,7 +975,8 @@ mod tests {
 	fn test_split_half() {
 		// Test with buffer size > P::WIDTH (multiple packed elements)
 		let values: Vec<F> = (0..16).map(F::new).collect();
-		let buffer = FieldBuffer::<P>::from_values(&values).unwrap();
+		// Leave spare capacity for 32 elements
+		let buffer = FieldBuffer::<P>::from_values_truncated(&values, 5).unwrap();
 
 		let (first, second) = buffer.split_half().unwrap();
 		assert_eq!(first.len(), 8);
@@ -869,8 +990,9 @@ mod tests {
 
 		// Test with buffer size = P::WIDTH (single packed element)
 		// P::LOG_WIDTH = 2, so P::WIDTH = 4
+		// Note that underlying collection has two packed fields.
 		let values: Vec<F> = (0..4).map(F::new).collect();
-		let buffer = FieldBuffer::<P>::from_values(&values).unwrap();
+		let buffer = FieldBuffer::<P>::from_values_truncated(&values, 3).unwrap();
 
 		let (first, second) = buffer.split_half().unwrap();
 		assert_eq!(first.len(), 2);
@@ -894,7 +1016,7 @@ mod tests {
 
 		// Test with buffer size = 2 (less than P::WIDTH)
 		let values: Vec<F> = vec![F::new(10), F::new(20)];
-		let buffer = FieldBuffer::<P>::from_values(&values).unwrap();
+		let buffer = FieldBuffer::<P>::from_values_truncated(&values, 3).unwrap();
 
 		let (first, second) = buffer.split_half().unwrap();
 		assert_eq!(first.len(), 1);
@@ -924,7 +1046,7 @@ mod tests {
 	#[test]
 	fn test_split_half_mut() {
 		// Test with buffer size > P::WIDTH (multiple packed elements)
-		let mut buffer = FieldBuffer::<P>::zeros(4); // 16 elements
+		let mut buffer = FieldBuffer::<P>::zeros_truncated(4, 5).unwrap(); // 16 elements, 32 element capacity
 
 		// Fill with test data
 		for i in 0..16 {
@@ -952,7 +1074,7 @@ mod tests {
 
 		// Test with buffer size = P::WIDTH (single packed element)
 		// P::LOG_WIDTH = 2, so a buffer with log_len = 2 (4 elements) can now be split
-		let mut buffer = FieldBuffer::<P>::zeros(2); // 4 elements
+		let mut buffer = FieldBuffer::<P>::zeros_truncated(2, 4).unwrap(); // 4 elements, 16 element capacity
 
 		// Fill with test data
 		for i in 0..4 {
@@ -979,7 +1101,7 @@ mod tests {
 		assert_eq!(buffer.get(3).unwrap(), F::new(201));
 
 		// Test with buffer size = 2
-		let mut buffer = FieldBuffer::<P>::zeros(1); // 2 elements
+		let mut buffer = FieldBuffer::<P>::zeros_truncated(1, 4).unwrap(); // 2 elements, 16 element capacity
 
 		buffer.set(0, F::new(10)).unwrap();
 		buffer.set(1, F::new(20)).unwrap();
@@ -1004,6 +1126,22 @@ mod tests {
 
 		let result = buffer.split_half_mut(|_, _| {});
 		assert!(matches!(result, Err(Error::CannotSplit)));
+	}
+
+	#[test]
+	fn test_zero_extend() {
+		let log_len = 10;
+		let nonzero_scalars = (0..1 << log_len).map(|i| F::new(i + 1)).collect::<Vec<_>>();
+		let mut buffer = FieldBuffer::<P>::from_values(&nonzero_scalars).unwrap();
+		buffer.truncate(0);
+
+		for i in 0..log_len {
+			buffer.zero_extend(i + 1).unwrap();
+
+			for j in 1 << i..1 << (i + 1) {
+				assert!(buffer.get(j).unwrap().is_zero());
+			}
+		}
 	}
 
 	#[test]

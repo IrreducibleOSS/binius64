@@ -58,7 +58,7 @@ pub(crate) trait IndexedParallelIteratorInner: ParallelIteratorInner {
 		Z: IntoParallelIterator,
 		Z::Iter: IndexedParallelIteratorInner,
 	{
-		Itertools::zip_eq(self, zip_op)
+		itertools::Itertools::zip_eq(self, zip_op)
 	}
 
 	#[inline]

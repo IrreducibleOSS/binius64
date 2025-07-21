@@ -12,38 +12,27 @@ use crate::{Error, FieldBuffer};
 /// Each scalar of the result requires one multiplication to compute. Multilinear evaluations
 /// occupy a prefix of the field buffer; scalars after the truncated length are zeroed out.
 pub fn fold_highest_var_inplace<P: PackedField, Data: DerefMut<Target = [P]>>(
-	log_n_values: usize,
 	values: &mut FieldBuffer<P, Data>,
 	scalar: P::Scalar,
 ) -> Result<(), Error> {
-	if log_n_values > values.log_len() {
-		return Err(Error::IncorrectArgumentLength {
-			arg: "values".to_string(),
-			expected: 1 << log_n_values,
-		});
-	}
-
-	if values.log_len() > log_n_values {
-		return values
-			.split_half_mut(|lo, _| fold_highest_var_inplace(log_n_values, lo, scalar))?;
-	}
-
 	let broadcast_scalar = P::broadcast(scalar);
 	values.split_half_mut(|lo, hi| {
 		(lo.as_mut(), hi.as_mut())
 			.into_par_iter()
 			.for_each(|(zero, one)| {
 				*zero += broadcast_scalar * (*one - *zero);
-				*one = P::zero();
 			});
-	})
+	})?;
+
+	values.truncate(values.log_len() - 1);
+	Ok(())
 }
 
 #[cfg(test)]
 mod tests {
 	use std::iter;
 
-	use binius_field::{Field, PackedBinaryField4x32b};
+	use binius_field::PackedBinaryField4x32b;
 	use rand::prelude::*;
 
 	use super::*;
@@ -68,11 +57,10 @@ mod tests {
 			.iter()
 			.sum();
 
-		for (prefix, &scalar) in point.iter().enumerate().rev() {
-			fold_highest_var_inplace(prefix + 1, &mut multilinear, scalar).unwrap();
+		for &scalar in point.iter().rev() {
+			fold_highest_var_inplace(&mut multilinear, scalar).unwrap();
 		}
 
-		assert!((1..1 << n_vars).all(|i| multilinear.get(i).unwrap() == F::ZERO));
 		assert_eq!(multilinear.get(0).unwrap(), eval);
 	}
 }

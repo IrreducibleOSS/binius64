@@ -30,46 +30,35 @@ use crate::{Error, FieldBuffer};
 /// hypercube where
 /// * $g(x_0, \ldots, x_{n+k-1}) = f(x_0, \ldots, x_{n-1}) * eq(x_n, \ldots, x_{n+k-1}, r)$
 pub fn tensor_prod_eq_ind<P: PackedField, Data: DerefMut<Target = [P]>>(
-	log_n_values: usize,
 	values: &mut FieldBuffer<P, Data>,
 	extra_query_coordinates: &[P::Scalar],
 ) -> Result<(), Error> {
-	let new_n_vars = log_n_values + extra_query_coordinates.len();
-	let expected_len = 1 << new_n_vars;
+	let new_log_len = values.log_len() + extra_query_coordinates.len();
 
-	if values.len() < expected_len {
+	if values.log_cap() < new_log_len {
 		return Err(Error::IncorrectArgumentLength {
-			arg: "packed_values".to_string(),
-			expected: expected_len,
+			arg: "values.log_cap()".to_string(),
+			expected: new_log_len,
 		});
 	}
-	if values.len() > expected_len {
+
+	for &r_i in extra_query_coordinates {
+		let packed_r_i = P::broadcast(r_i);
+
+		values.zero_extend(values.log_len() + 1)?;
 		let mut split = values
 			.split_half_mut_no_closure()
-			.expect("values.len() > expected_len => values.len() >= 2");
-		let (mut lo, _) = split.halves();
-		return tensor_prod_eq_ind(log_n_values, &mut lo, extra_query_coordinates);
+			.expect("doubled by zero_extend()");
+		let (mut lo, mut hi) = split.halves();
+
+		(lo.as_mut(), hi.as_mut())
+			.into_par_iter()
+			.for_each(|(lo_i, hi_i)| {
+				let prod = (*lo_i) * packed_r_i;
+				*lo_i -= prod;
+				*hi_i = prod;
+			});
 	}
-
-	let Some((&r_i, remaining_coordinates)) = extra_query_coordinates.split_last() else {
-		return Ok(());
-	};
-
-	let mut split = values.split_half_mut_no_closure().expect(
-		"extra_query_coordinates.len() > 0; expected_len > 1; values.len() == expected_len",
-	);
-	let (mut lo, mut hi) = split.halves();
-	tensor_prod_eq_ind(log_n_values, &mut lo, remaining_coordinates)?;
-
-	let packed_r_i = P::broadcast(r_i);
-
-	(lo.as_mut(), hi.as_mut())
-		.into_par_iter()
-		.for_each(|(lo_i, hi_i)| {
-			let prod = (*lo_i) * packed_r_i;
-			*lo_i -= prod;
-			*hi_i = prod;
-		});
 
 	Ok(())
 }
@@ -93,11 +82,11 @@ pub fn eq_ind_partial_eval<P: PackedField>(point: &[P::Scalar]) -> FieldBuffer<P
 	// The buffer needs to have the correct size: 2^max(point.len(), P::LOG_WIDTH) elements
 	// but since tensor_prod_eq_ind starts with log_n_values=0, we need the final size
 	let log_size = point.len();
-	let mut buffer = FieldBuffer::zeros(log_size);
+	let mut buffer = FieldBuffer::zeros_truncated(0, log_size).expect("log_size >= 0");
 	buffer
 		.set(0, P::Scalar::ONE)
-		.expect("buffer has length at least 1");
-	tensor_prod_eq_ind(0, &mut buffer, point).expect("buffer is allocated with the correct length");
+		.expect("buffer has length exactly 1");
+	tensor_prod_eq_ind(&mut buffer, point).expect("buffer is allocated with the correct length");
 	buffer
 }
 
@@ -108,48 +97,29 @@ pub fn eq_ind_partial_eval<P: PackedField>(point: &[P::Scalar]) -> FieldBuffer<P
 /// field buffer "halves" inplace. The equality indicator expansion occupies a prefix of
 /// the field buffer; scalars after the truncated length are zeroed out.
 pub fn eq_ind_truncate_low_inplace<P: PackedField, Data: DerefMut<Target = [P]>>(
-	log_n_values: usize,
 	values: &mut FieldBuffer<P, Data>,
-	truncated_log_n_values: usize,
+	truncated_log_len: usize,
 ) -> Result<(), Error> {
-	if log_n_values > values.log_len() {
-		return Err(Error::IncorrectArgumentLength {
-			arg: "values".to_string(),
-			expected: 1 << log_n_values,
-		});
-	}
-
-	if truncated_log_n_values > log_n_values {
+	if truncated_log_len > values.log_len() {
 		return Err(Error::ArgumentRangeError {
-			arg: "truncated_log_n_values".to_string(),
-			range: 0..log_n_values + 1,
+			arg: "truncated_log_len".to_string(),
+			range: 0..values.log_len() + 1,
 		});
 	}
 
-	if values.log_len() > log_n_values {
-		return values.split_half_mut(|lo, _| {
-			eq_ind_truncate_low_inplace(log_n_values, lo, truncated_log_n_values)
+	for log_len in (truncated_log_len..values.log_len()).rev() {
+		values.split_half_mut(|lo, hi| {
+			(lo.as_mut(), hi.as_ref())
+				.into_par_iter()
+				.for_each(|(zero, one)| {
+					*zero += *one;
+				});
 		})?;
+
+		values.truncate(log_len);
 	}
 
-	if values.log_len() == truncated_log_n_values {
-		return Ok(());
-	}
-
-	values.split_half_mut(|lo, hi| -> Result<(), Error> {
-		(lo.as_mut(), hi.as_mut())
-			.into_par_iter()
-			.for_each(|(zero, one)| {
-				*zero += *one;
-				*one = P::zero();
-			});
-
-		if lo.len() > truncated_log_n_values {
-			eq_ind_truncate_low_inplace(log_n_values - 1, lo, truncated_log_n_values)?;
-		}
-
-		Ok(())
-	})?
+	Ok(())
 }
 
 /// Evaluates the 2-variate multilinear which indicates the equality condition over the hypercube.
@@ -209,10 +179,10 @@ mod tests {
 		let v0 = F::from(1);
 		let v1 = F::from(2);
 		let query = vec![v0, v1];
-		// log_n_values = 0, query.len() = 2, so total log_len = 2
-		let mut result = FieldBuffer::zeros(query.len());
+		// log_len = 0, query.len() = 2, so total log_cap = 2
+		let mut result = FieldBuffer::zeros_truncated(0, query.len()).unwrap();
 		result.set(0, F::ONE).unwrap();
-		tensor_prod_eq_ind(0, &mut result, &query).unwrap();
+		tensor_prod_eq_ind(&mut result, &query).unwrap();
 		let result_vec: Vec<F> = P::iter_slice(result.as_ref()).collect();
 		assert_eq!(
 			result_vec,
@@ -232,23 +202,20 @@ mod tests {
 		let exps = 4;
 		let max_n_vars = exps * (exps + 1) / 2;
 		let mut coords = Vec::with_capacity(max_n_vars);
-		let mut eq_expansion = FieldBuffer::zeros(max_n_vars);
+		let mut eq_expansion = FieldBuffer::zeros_truncated(0, max_n_vars).unwrap();
 		eq_expansion.set(0, F::ONE).unwrap();
 
 		for extra_count in 1..=exps {
 			let extra = random_scalars(&mut rng, extra_count);
 
-			tensor_prod_eq_ind::<P, _>(coords.len(), &mut eq_expansion, &extra).unwrap();
+			tensor_prod_eq_ind::<P, _>(&mut eq_expansion, &extra).unwrap();
 			coords.extend(&extra);
 
-			for i in 0..1 << max_n_vars {
+			assert_eq!(eq_expansion.log_len(), coords.len());
+			for i in 0..eq_expansion.len() {
 				let v = eq_expansion.get(i).unwrap();
-				if i >= 1 << coords.len() {
-					assert_eq!(v, F::ZERO);
-				} else {
-					let hypercube_point = index_to_hypercube_point(coords.len(), i);
-					assert_eq!(v, eq_ind(&hypercube_point, &coords));
-				}
+				let hypercube_point = index_to_hypercube_point(coords.len(), i);
+				assert_eq!(v, eq_ind(&hypercube_point, &coords));
 			}
 		}
 	}
@@ -351,11 +318,12 @@ mod tests {
 
 		for reduction in (0..=reds).rev() {
 			let truncated_log_n_values = log_n_values - reduction;
-			eq_ind_truncate_low_inplace(log_n_values, &mut eq_ind, truncated_log_n_values).unwrap();
+			eq_ind_truncate_low_inplace(&mut eq_ind, truncated_log_n_values).unwrap();
 
 			let eq_ind_ref = eq_ind_partial_eval::<P>(&point[..truncated_log_n_values]);
-			for i in 0..1 << n_vars {
-				assert_eq!(eq_ind.get(i).unwrap(), eq_ind_ref.get(i).unwrap_or_default());
+			assert_eq!(eq_ind_ref.len(), eq_ind.len());
+			for i in 0..eq_ind.len() {
+				assert_eq!(eq_ind.get(i).unwrap(), eq_ind_ref.get(i).unwrap());
 			}
 
 			log_n_values = truncated_log_n_values;
