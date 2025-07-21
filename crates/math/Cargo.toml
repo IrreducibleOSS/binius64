@@ -36,11 +36,7 @@ rayon = ["binius-utils/rayon"]
 bench = false
 
 [[bench]]
-name = "additive_ntt"
-harness = false
-
-[[bench]]
-name = "large_transform"
+name = "ntt"
 harness = false
 
 [[bench]]
