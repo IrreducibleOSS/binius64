@@ -2,7 +2,7 @@ use std::vec;
 
 use binius_field::Field;
 use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval};
-use binius_maybe_rayon::prelude::{
+use binius_utils::rayon::prelude::{
 	IndexedParallelIterator, IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator,
 	ParallelSliceMut,
 };

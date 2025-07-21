@@ -4,7 +4,7 @@ use binius_field::{
 	packed::get_packed_slice,
 };
 use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval};
-use binius_maybe_rayon::{prelude::{IntoParallelIterator, ParallelIterator},};
+use binius_utils::rayon::{prelude::{IntoParallelIterator, ParallelIterator},};
 use itertools::izip;
 
 use crate::protocols::sumcheck::and_reduction::{
@@ -228,7 +228,7 @@ mod test {
 		packed::get_packed_slice,
 	};
 	use binius_math::{multilinear::eq::eq_ind_partial_eval};
-	use binius_maybe_rayon::{
+	use binius_utils::rayon::{
 		iter::IndexedParallelIterator,
 		prelude::{IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
 	};
