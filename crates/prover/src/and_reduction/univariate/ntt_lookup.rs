@@ -5,7 +5,7 @@ use binius_field::{
 	PackedField, packed::set_packed_slice,
 };
 
-use crate::and_reduction::univariate::univariate_lagrange::{
+use binius_verifier::and_reduction::univariate::univariate_lagrange::{
 	lexicographic_lagrange_denominator, lexicographic_lagrange_numerators_8b,
 };
 

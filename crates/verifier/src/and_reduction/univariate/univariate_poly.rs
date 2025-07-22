@@ -48,8 +48,6 @@ impl UnivariatePoly<AESTowerField8b, BinaryField128bPolyval>
 	}
 
 	fn evaluate_at_challenge(&self, challenge: BinaryField128bPolyval) -> BinaryField128bPolyval {
-		let _span = tracing::debug_span!("evaluate_at_challenge").entered();
-
 		let evals_of_lagrange_basis_vectors_not_yet_divide_by_denominator =
 			lexicographic_lagrange_numerators_polyval(
 				self.degree_lt(),
@@ -92,8 +90,6 @@ impl<F: Field> UnivariatePoly<F, F> for GenericPo2UnivariatePoly<'_, F, F> {
 	}
 
 	fn evaluate_at_challenge(&self, challenge: F) -> F {
-		let _span = tracing::debug_span!("evaluate_at_challenge").entered();
-
 		let evals_of_lagrange_basis_vectors_not_yet_divide_by_denominator =
 			lexicographic_lagrange_numerators_polyval(
 				self.degree_lt(),

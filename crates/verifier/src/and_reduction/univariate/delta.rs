@@ -13,8 +13,6 @@ pub fn delta_poly<'a, F: Field>(
 	log_degree_lt: usize,
 	iso_lookup: &'a SubfieldIsomorphismLookup<F>,
 ) -> GenericPo2UnivariatePoly<'a, F, F> {
-	let _span = tracing::debug_span!("delta_poly").entered();
-
 	let mut univariate_lagrange_coeffs = lexicographic_lagrange_numerators_polyval(
 		1 << log_degree_lt,
 		zerocheck_challenge,
