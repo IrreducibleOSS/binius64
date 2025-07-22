@@ -107,9 +107,9 @@ where
 
 	// By verifying FRI, the verifier checks that c == t(r'_0, ..., r'_{\ell-1})
 	// note that the prover is claiming that the final_message is [c]
-	let mut verifier_challenger = transcript;
+	let verifier_challenger = transcript;
 	let final_fri_oracle = fri_verifier
-		.verify(&mut verifier_challenger)
+		.verify(verifier_challenger)
 		.expect("failed to verify FRI");
 
 	Ok((final_fri_oracle, expected_sumcheck_round_claim, basefold_challenges))
@@ -125,5 +125,5 @@ pub fn verify_final_basefold_assertion<F: Field>(
 	evaluation_point: &[F],
 	basefold_challenges: &[F],
 ) -> bool {
-	fri_final_oracle * eq_ind(&evaluation_point, &basefold_challenges) == sumcheck_final_claim
+	fri_final_oracle * eq_ind(evaluation_point, basefold_challenges) == sumcheck_final_claim
 }
