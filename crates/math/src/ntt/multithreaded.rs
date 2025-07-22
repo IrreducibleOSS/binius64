@@ -16,7 +16,7 @@ use crate::BinarySubspace;
 
 /// Implementation of `AdditiveNTT` that performs the computation multithreaded.
 #[derive(Debug)]
-pub struct MultiThreadedNTT<F: BinaryField, TA = OnTheFlyTwiddleAccess<F, Vec<F>>> {
+pub struct MultiThreadedNTT<F, TA = OnTheFlyTwiddleAccess<F, Vec<F>>> {
 	single_threaded: SingleThreadedNTT<F, TA>,
 	log_max_threads: usize,
 }
