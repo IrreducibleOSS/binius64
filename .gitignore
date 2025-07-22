@@ -4,4 +4,5 @@ profile.json
 Cargo.lock
 CLAUDE.local.md
 /.idea/
+/.vscode/
 **/.DS_Store

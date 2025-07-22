@@ -1,18 +1,18 @@
+// Copyright 2025 Irreducible Inc.
+
 use binius_field::{Field, PackedBinaryField2x128b, PackedField};
 use binius_math::test_utils::random_field_buffer;
 
 type P = PackedBinaryField2x128b;
-use binius_transcript::{ProverTranscript, fiat_shamir::HasherChallenger};
-use blake2::Blake2b;
-use digest::consts::U32;
-type Blake2b256 = Blake2b<U32>;
-use binius_verifier::protocols::shift_arg::verify;
+use binius_transcript::ProverTranscript;
+use binius_verifier::{config::StdChallenger, protocols::shift_arg::verify};
 use itertools::izip;
+use rand::{SeedableRng, rngs::StdRng};
 
 use super::prove::{GMultilinears, MultilinearTriplet};
 
 fn generate_random_multilinear_triplet<P: PackedField>() -> MultilinearTriplet<P> {
-	let mut rng = rand::rng();
+	let mut rng = StdRng::seed_from_u64(0);
 	let log_len = 12;
 
 	MultilinearTriplet {
@@ -37,7 +37,7 @@ fn prove_and_verify() {
 		c: generate_random_multilinear_triplet::<P>(),
 	};
 
-	let mut prover_transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::default();
+	let mut prover_transcript = ProverTranscript::<StdChallenger>::default();
 
 	let compute_claim = |h_triplet: &MultilinearTriplet<P>, g_triplet: &MultilinearTriplet<P>| {
 		let left = compute_sum(h_triplet.logical_left.as_ref(), g_triplet.logical_left.as_ref());

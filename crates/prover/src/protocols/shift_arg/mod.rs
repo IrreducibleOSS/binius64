@@ -1,3 +1,5 @@
+// Copyright 2025 Irreducible Inc.
+
 mod error;
 mod prove;
 

@@ -2,7 +2,11 @@
 
 impl Error {
 	pub fn from_transcript_read(error: binius_transcript::Error) -> Self {
-		Error::TranscriptError(error)
+		Error::Transcript(error)
+	}
+
+	pub fn from_sumcheck_verify(error: crate::protocols::sumcheck::Error) -> Self {
+		Error::Sumcheck(error)
 	}
 }
 
@@ -11,5 +15,7 @@ pub enum Error {
 	#[error("composition claim mismatch")]
 	CompositionClaimMismatch,
 	#[error("transcript error")]
-	TranscriptError(#[from] binius_transcript::Error),
+	Transcript(#[from] binius_transcript::Error),
+	#[error("sumcheck error")]
+	Sumcheck(#[from] crate::protocols::sumcheck::Error),
 }

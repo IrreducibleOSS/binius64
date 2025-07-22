@@ -1,3 +1,5 @@
+// Copyright 2025 Irreducible Inc.
+
 use binius_field::{Field, PackedField};
 use binius_math::{FieldBuffer, univariate::evaluate_univariate};
 use binius_transcript::{
@@ -5,11 +7,11 @@ use binius_transcript::{
 	fiat_shamir::{CanSample, Challenger},
 };
 use binius_verifier::protocols::{shift_arg::verify::Phase1Output, sumcheck::common::RoundCoeffs};
-use itertools::{Itertools, izip};
+use itertools::izip;
 
 use super::error::Error;
 use crate::protocols::sumcheck::{
-	bivariate_product_sum::BivariateProductProver, common::SumcheckProver,
+	bivariate_product::BivariateProductSumcheckProver, common::SumcheckProver,
 };
 
 // every field buffer is of log_len 12
@@ -72,6 +74,18 @@ fn check_multilnear_triplet_lengths<P: PackedField>(triplet: &MultilinearTriplet
 	assert_eq!(triplet.arithmetic_right.log_len(), 12);
 }
 
+fn compute_bivariate_product_sum<F: Field, P: PackedField<Scalar = F>>(
+	left: &[P],
+	right: &[P],
+) -> F {
+	izip!(left, right)
+		.fold(P::default(), |acc, (&left, &right)| acc + left * right)
+		.iter()
+		.sum()
+}
+
+/// Reduces the three claims at the start of the shift reduction
+/// to a Phase1Output by proving the sumcheck in the first phase.
 pub fn prove<F: Field, P: PackedField<Scalar = F>, C: Challenger>(
 	g_multilinears: GMultilinears<P>,
 	h_multilinear_triplet: MultilinearTriplet<P>,
@@ -81,29 +95,72 @@ pub fn prove<F: Field, P: PackedField<Scalar = F>, C: Challenger>(
 	transcript: &mut ProverTranscript<C>,
 ) -> Result<Phase1Output<F>, Error> {
 	let lambda = transcript.sample();
+	let starting_sum = evaluate_univariate(&[a_claim, b_claim, c_claim], lambda);
 
 	let g_multilinear_triplet = compute_g_multilinear_tripet(g_multilinears, lambda);
-	let claim = evaluate_univariate(&[a_claim, b_claim, c_claim], lambda);
 
 	check_multilnear_triplet_lengths(&g_multilinear_triplet);
 	check_multilnear_triplet_lengths(&h_multilinear_triplet);
 
-	let n_vars = 12;
+	fn make_prover<P: PackedField>(
+		left: FieldBuffer<P>,
+		right: FieldBuffer<P>,
+		sum: P::Scalar,
+	) -> Result<BivariateProductSumcheckProver<P>, Error> {
+		BivariateProductSumcheckProver::new([left, right], sum).map_err(Error::from_sumcheck_new)
+	}
 
-	let multilinear_pairs = vec![
-		(g_multilinear_triplet.logical_left, h_multilinear_triplet.logical_left),
-		(g_multilinear_triplet.logical_right, h_multilinear_triplet.logical_right),
-		(g_multilinear_triplet.arithmetic_right, h_multilinear_triplet.arithmetic_right),
+	// logical left
+	let logical_left_sum = compute_bivariate_product_sum(
+		g_multilinear_triplet.logical_left.as_ref(),
+		h_multilinear_triplet.logical_left.as_ref(),
+	);
+
+	let logical_left_prover = make_prover(
+		g_multilinear_triplet.logical_left,
+		h_multilinear_triplet.logical_left,
+		logical_left_sum,
+	)?;
+
+	// logical right
+	let logical_right_sum = compute_bivariate_product_sum(
+		g_multilinear_triplet.logical_right.as_ref(),
+		h_multilinear_triplet.logical_right.as_ref(),
+	);
+
+	let logical_right_prover = make_prover(
+		g_multilinear_triplet.logical_right,
+		h_multilinear_triplet.logical_right,
+		logical_right_sum,
+	)?;
+
+	// arithmetic right
+	let arithmetic_right_sum = starting_sum - logical_left_sum - logical_right_sum;
+
+	let arithmetic_right_prover = make_prover(
+		g_multilinear_triplet.arithmetic_right,
+		h_multilinear_triplet.arithmetic_right,
+		arithmetic_right_sum,
+	)?;
+
+	let mut provers = vec![
+		logical_left_prover,
+		logical_right_prover,
+		arithmetic_right_prover,
 	];
 
-	let mut prover = BivariateProductProver::new(n_vars, multilinear_pairs, claim)
-		.map_err(Error::from_sumcheck_new)?;
+	let n_vars = 12;
 
 	let mut challenges = Vec::with_capacity(n_vars);
-	for _ in 0..n_vars {
-		let round_coeffs_vec = prover.execute().map_err(Error::from_sumcheck_execute)?;
 
-		let summed_round_coeffs: RoundCoeffs<F> = round_coeffs_vec
+	for _ in 0..n_vars {
+		let mut all_round_coeffs = Vec::new();
+
+		for prover in &mut provers {
+			all_round_coeffs.extend(prover.execute().map_err(Error::from_sumcheck_execute)?);
+		}
+
+		let summed_round_coeffs = all_round_coeffs
 			.into_iter()
 			.rfold(RoundCoeffs::default(), |acc, coeffs| acc + &coeffs);
 
@@ -116,7 +173,9 @@ pub fn prove<F: Field, P: PackedField<Scalar = F>, C: Challenger>(
 		let challenge = transcript.sample();
 		challenges.push(challenge);
 
-		prover.fold(challenge).map_err(Error::from_sumcheck_fold)?;
+		for prover in &mut provers {
+			prover.fold(challenge).map_err(Error::from_sumcheck_fold)?;
+		}
 	}
 
 	challenges.reverse();
@@ -124,16 +183,20 @@ pub fn prove<F: Field, P: PackedField<Scalar = F>, C: Challenger>(
 	let s_challenges = challenges.split_off(6);
 	let j_challenges = challenges;
 
-	let evals: Vec<F> = prover.finish().map_err(Error::from_sumcheck_finish)?;
+	let multilinear_evals: Vec<Vec<F>> = provers
+		.into_iter()
+		.map(|prover| prover.finish().map_err(Error::from_sumcheck_finish))
+		.collect::<Result<Vec<_>, _>>()?;
 
 	let mut writer = transcript.message();
 
-	let claim = evals
+	let claim = multilinear_evals
 		.into_iter()
-		.tuples()
-		.map(|(h_eval, g_eval): (F, F)| {
-			// for now to check consistency with verifier, write multilinear evals to transcript
-			// when phase 2 is implemented this will be removed
+		.map(|prover_evals: Vec<F>| {
+			assert_eq!(prover_evals.len(), 2);
+			let h_eval = prover_evals[0];
+			let g_eval = prover_evals[1];
+
 			writer.write_scalar_slice(&[h_eval, g_eval]);
 
 			h_eval * g_eval
