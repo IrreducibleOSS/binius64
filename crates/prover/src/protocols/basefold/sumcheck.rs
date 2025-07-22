@@ -5,9 +5,10 @@ use binius_utils::rayon::{
 	prelude::{IndexedParallelIterator, IntoParallelRefMutIterator},
 	slice::ParallelSlice,
 };
-use binius_verifier::protocols::sumcheck::RoundCoeffs;
+use binius_verifier::protocols::{
+	basefold::utils::evaluate_round_polynomial_at, sumcheck::RoundCoeffs,
+};
 
-use super::utils::evaluate_round_polynomial_at;
 use crate::protocols::sumcheck::{Error, common::SumcheckProver};
 
 /// Exposes a round-by-round interface to prove the sum of A(X) * B(X) for
@@ -125,10 +126,10 @@ impl<F: Field> SumcheckProver<F> for MultilinearSumcheckProver<F> {
 pub mod test {
 	use binius_field::{BinaryField128b, Random};
 	use binius_math::{multilinear::eq::eq_ind_partial_eval, test_utils::random_field_buffer};
+	use binius_verifier::protocols::basefold::utils::verify_sumcheck_round;
 	use rand::{SeedableRng, rngs::StdRng};
 
 	use super::*;
-	use crate::basefold::utils::verify_sumcheck_round;
 
 	type F = BinaryField128b;
 
