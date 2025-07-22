@@ -32,25 +32,13 @@ pub fn random_scalars<F: Field>(mut rng: impl RngCore, n: usize) -> Vec<F> {
 ///
 /// Vector containing `2^log_n` random field elements
 pub fn random_field_buffer<P: PackedField>(mut rng: impl RngCore, log_n: usize) -> FieldBuffer<P> {
-	let mut buffer = FieldBuffer::<P>::new(
+	FieldBuffer::<P>::new(
 		log_n,
 		repeat_with(|| P::random(&mut rng))
 			.take(1 << log_n.saturating_sub(P::LOG_WIDTH))
 			.collect(),
 	)
-	.expect("correct number of packed elements are generated");
-
-	if log_n < P::LOG_WIDTH {
-		let packed = buffer
-			.as_mut()
-			.first_mut()
-			.expect("buffer.as_mut().len() == 1");
-		for i in 1 << log_n..P::WIDTH {
-			packed.set(i, P::Scalar::ZERO);
-		}
-	}
-
-	buffer
+	.expect("correct number of packed elements are generated")
 }
 
 /// Converts an index to a hypercube point representation.
