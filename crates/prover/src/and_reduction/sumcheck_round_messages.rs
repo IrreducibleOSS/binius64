@@ -1,6 +1,6 @@
 use binius_field::{
-	AESTowerField8b, BinaryField1b, BinaryField128bPolyval, Field, PackedAESBinaryField16x8b,
-	PackedBinaryField128x1b, PackedExtension, PackedField, packed::get_packed_slice,
+	AESTowerField8b, BinaryField1b, Field, PackedAESBinaryField16x8b, PackedExtension, PackedField,
+	packed::get_packed_slice,
 };
 use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval};
 use binius_utils::rayon::prelude::{IntoParallelIterator, ParallelIterator};
@@ -14,7 +14,6 @@ use binius_verifier::and_reduction::{
 		subfield_isomorphism::SubfieldIsomorphismLookup,
 	},
 };
-use itertools::izip;
 
 use super::{univariate::ntt_lookup::NTTLookup, utils::multivariate::OneBitMultivariate};
 
