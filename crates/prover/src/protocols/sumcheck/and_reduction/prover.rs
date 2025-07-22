@@ -48,27 +48,6 @@ impl<F: Field> AndReductionProver<F> {
 		}
 	}
 
-	// sums the composition of 4 multilinears (A * B - C) * D
-	pub fn sum_composition(
-		a: &FieldBuffer<F>,
-		b: &FieldBuffer<F>,
-		c: &FieldBuffer<F>,
-		d: &FieldBuffer<F>,
-	) -> Result<F, Error> {
-		let n = 1 << a.log_len();
-		let mut sum = F::ZERO;
-		for i in 0..n {
-			let a_i = a.get(i)?;
-			let b_i = b.get(i)?;
-			let c_i = c.get(i)?;
-			let d_i = d.get(i)?;
-
-			sum += (a_i * b_i - c_i) * d_i;
-		}
-
-		Ok(sum)
-	}
-
 	fn zerocheck_challenge_idx(&self) -> usize {
 		self.log_n - self.round_index - 1
 	}
@@ -116,43 +95,25 @@ impl<F: Field> SumcheckProver<F> for AndReductionProver<F> {
 
 	// computes univariate round message for the current round
 	fn execute(&mut self) -> Result<Vec<RoundCoeffs<F>>, Error> {
-		let log_n = self.multilinears[0].log_len();
-		let n = 1 << log_n;
-		let n_half = n >> 1;
 
-		let a = &self.multilinears[0];
-		let b = &self.multilinears[1];
-		let c = &self.multilinears[2];
-		let d = &self.multilinears[3];
+		let (a_low, a_high) = &self.multilinears[0].split_half()?;
+		let (b_low, b_high) = &self.multilinears[1].split_half()?;
+		let (c_low, _) = &self.multilinears[2].split_half()?;
+		let (d_low, d_high) = &self.multilinears[3].split_half()?;
 
-		// chunk indices into 1024 chunks
-		let (mut g_of_zero, mut g_leading_coeff) = (0..n_half)
-			.into_par_iter()
-			.chunks(1024)
-			.map(|chunk| {
-				let mut acc_g_of_zero = F::ZERO;
-				let mut acc_g_leading_coeff = F::ZERO;
+		let (mut g_of_zero, mut g_leading_coeff) = (
+			   a_low.as_ref(), b_low.as_ref(), c_low.as_ref(), d_low.as_ref(),
+			   a_high.as_ref(), b_high.as_ref(), d_high.as_ref()
+		   	)
+		   .into_par_iter()
+		   .map(|(a_low, b_low, c_low, d_low, a_high, b_high, d_high)| {
+			   
+			   let g_of_zero = (*a_low * *b_low - *c_low) * *d_low;
+			   let g_leading_coeff = (*a_low + *a_high) * (*b_low + *b_high) * (*d_low + *d_high);
 
-				for j in chunk {
-					let (low_idx, high_idx) = (j, j + n_half);
-
-					let a_lower = a.get(low_idx).expect("out of bounds");
-					let b_lower = b.get(low_idx).expect("out of bounds");
-					let c_lower = c.get(low_idx).expect("out of bounds");
-					let d_lower = d.get(low_idx).expect("out of bounds");
-
-					let a_upper = a.get(high_idx).expect("out of bounds");
-					let b_upper = b.get(high_idx).expect("out of bounds");
-					let d_upper = d.get(high_idx).expect("out of bounds");
-
-					acc_g_of_zero += (a_lower * b_lower - c_lower) * d_lower;
-					acc_g_leading_coeff +=
-						(a_lower + a_upper) * (b_lower + b_upper) * (d_lower + d_upper);
-				}
-
-				(acc_g_of_zero, acc_g_leading_coeff)
-			})
-			.reduce(|| (F::ZERO, F::ZERO), |(sum0, sum1), (x0, x1)| (sum0 + x0, sum1 + x1));
+			   (g_of_zero, g_leading_coeff)
+		   })
+		   .reduce(|| (F::ZERO, F::ZERO), |(sum0, sum1), (x0, x1)| (sum0 + x0, sum1 + x1));
 
 		// multiply by eq_factor
 		g_of_zero *= self.eq_factor;
@@ -240,6 +201,28 @@ pub mod test {
 		F::random(&mut rng)
 	}
 
+
+	// sums the composition of 4 multilinears (A * B - C) * D
+	pub fn sum_composition<F: Field>(
+		a: &FieldBuffer<F>,
+		b: &FieldBuffer<F>,
+		c: &FieldBuffer<F>,
+		d: &FieldBuffer<F>,
+	) -> Result<F, Error> {
+		let n = 1 << a.log_len();
+		let mut sum = F::ZERO;
+		for i in 0..n {
+			let a_i = a.get(i)?;
+			let b_i = b.get(i)?;
+			let c_i = c.get(i)?;
+			let d_i = d.get(i)?;
+
+			sum += (a_i * b_i - c_i) * d_i;
+		}
+
+		Ok(sum)
+	}
+
 	// runs sumcheck interactive protocol for multilinear composition (A * B - C) * eq_r
 	// eq_r is the multilinear equality indicator for some vector of log_n zerocheck challenges
 	pub fn multilinear_sumcheck<F: Field>(mut prover: AndReductionProver<F>) -> (F, Vec<F>) {
@@ -317,7 +300,7 @@ pub mod test {
 		let eq_r: FieldBuffer<BF> = eq_ind_partial_eval(&zerocheck_challenges.clone());
 
 		// compute overall sum claim for (A * B - C) * eq_r
-		let overall_claim = AndReductionProver::<BF>::sum_composition(
+		let overall_claim = sum_composition(
 			&multilinears[0],
 			&multilinears[1],
 			&multilinears[2],
@@ -346,7 +329,7 @@ pub mod test {
 
 		let multilinears: Vec<FieldBuffer<BF>> = random_field_buffer(num_multilinears, log_n);
 
-		let overall_sum = AndReductionProver::sum_composition(
+		let overall_sum = sum_composition(
 			&multilinears[0],
 			&multilinears[1],
 			&multilinears[2],
