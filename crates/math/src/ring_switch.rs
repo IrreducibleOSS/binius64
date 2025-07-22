@@ -7,23 +7,23 @@ use binius_utils::rayon::prelude::{
 
 use crate::{FieldBuffer, multilinear::eq::eq_ind_partial_eval, tensor_algebra::TensorAlgebra};
 
-pub fn rs_eq_ind<BF>(batching_challenges: &[BF], z_vals: &[BF]) -> FieldBuffer<BF>
+pub fn rs_eq_ind<P>(batching_challenges: &[P], z_vals: &[P]) -> FieldBuffer<P>
 where
-	BF: BinaryField + PackedExtension<B1> + PackedField<Scalar = BF>,
+	P: BinaryField + PackedExtension<B1> + PackedField<Scalar = P>,
 {
 	// MLE-random-linear-combination of bit-slices of the eq_ind for z_vals
 	let z_vals_eq_ind = eq_ind_partial_eval(z_vals);
 
-	let row_batching_query = eq_ind_partial_eval::<BF>(batching_challenges);
+	let row_batching_query = eq_ind_partial_eval::<P>(batching_challenges);
 
-	let mut rs_eq_mle = FieldBuffer::<BF>::zeros(z_vals.len());
+	let mut rs_eq_mle = FieldBuffer::<P>::zeros(z_vals.len());
 
 	rs_eq_mle
 		.as_mut()
 		.par_iter_mut()
 		.zip(z_vals_eq_ind.as_ref().par_iter())
 		.for_each(|(rs_eq_val, eq_val)| {
-			for (index, bit) in <BF as ExtensionField<B1>>::into_iter_bases(*eq_val).enumerate() {
+			for (index, bit) in <P as ExtensionField<B1>>::into_iter_bases(*eq_val).enumerate() {
 				if bit == B1::ONE {
 					*rs_eq_val += row_batching_query.as_ref()[index];
 				}
