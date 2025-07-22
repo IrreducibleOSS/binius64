@@ -1,7 +1,7 @@
 use binius_field::{BinaryField, ExtensionField, Field, PackedExtension, PackedField, TowerField};
 use binius_math::{
 	multilinear::eq::eq_ind_partial_eval,
-	ring_switch::{construct_bitsliced_claims, eval_rs_eq},
+	ring_switch::construct_bitsliced_claims,
 };
 use binius_transcript::{
 	VerifierTranscript,
@@ -14,6 +14,34 @@ use super::utils::{KAPPA, compute_expected_sumcheck_claim, compute_mle_eq_sum};
 use crate::{
 	basefold::verifier::BaseFoldVerifier, fields::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme,
 };
+
+
+// ! This had a replacement in monbijou already?
+use std::iter;
+use binius_field::BinaryField1b;
+use binius_math::tensor_algebra::TensorAlgebra;
+pub fn eval_rs_eq<F>(
+	z_vals: &[F], query: &[F], expanded_row_batch_query: &[F]
+) -> F
+where
+F: Field
+	+ BinaryField
+	+ PackedField<Scalar = F>
+	+ ExtensionField<BinaryField1b>
+	+ TowerField
+	+ PackedExtension<BinaryField1b>,
+{
+    let tensor_eval = iter::zip(z_vals, query).fold(
+        <TensorAlgebra<BinaryField1b, F>>::from_vertical(F::ONE),
+        |eval, (&vert_i, &hztl_i)| {
+            let vert_scaled = eval.clone().scale_vertical(vert_i);
+            let hztl_scaled = eval.clone().scale_horizontal(hztl_i);
+            eval + &vert_scaled + &hztl_scaled
+        },
+    );
+
+    tensor_eval.fold_vertical(expanded_row_batch_query)
+}
 
 pub struct OneBitPCSVerifier {}
 
@@ -79,10 +107,11 @@ impl OneBitPCSVerifier {
 
 		// Final Basefold Verification
 		let (_, eval_point_high) = eval_point.split_at(KAPPA);
+
 		let rs_eq_at_basefold_challenges_verifier = eval_rs_eq(
 			eval_point_high,
 			&basefold_challenges,
-			eq_ind_partial_eval(&batching_scalars).as_ref(),
+			eq_ind_partial_eval(&batching_scalars).as_ref()
 		);
 
 		assert_eq!(fri_final_value * rs_eq_at_basefold_challenges_verifier, sumcheck_final_claim);
