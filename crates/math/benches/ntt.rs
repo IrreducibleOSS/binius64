@@ -1,8 +1,11 @@
-use std::{env::VarError, iter::repeat_with};
+use std::iter::repeat_with;
 
 use binius_field::{BinaryField, PackedField};
 use binius_math::ntt::{AdditiveNTT, NTTShape, SingleThreadedNTT};
-use binius_utils::rayon::{ThreadPool, ThreadPoolBuilder};
+use binius_utils::{
+	env::boolean_env_flag_set,
+	rayon::{ThreadPool, ThreadPoolBuilder},
+};
 use criterion::{
 	BenchmarkGroup, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main,
 	measurement::WallTime,
@@ -100,12 +103,11 @@ fn bench_ntts<F, P>(
 }
 
 /// Calls `bench_ntts` with a fixed `PackedField` but different parameters.
-fn bench_params<F, P>(c: &mut Criterion, packed_field_name: &str)
+fn bench_params<F, P>(c: &mut Criterion, packed_field_name: &str, throughput_var: ThroughputVariant)
 where
 	F: BinaryField,
 	P: PackedField<Scalar = F>,
 {
-	let throughput_var = determine_throughput_variant();
 	let mut group = c.benchmark_group(packed_field_name);
 	let mut rng = rand::rng();
 
@@ -122,7 +124,7 @@ where
 			if log_d >= 24 {
 				group.sample_size(10);
 			} else if log_d >= 20 {
-				group.sample_size(50);
+				group.sample_size(40);
 			}
 
 			bench_ntts(&mut group, throughput_var, &thread_pool, num_threads, &mut data, 0, 0, 0);
@@ -135,12 +137,14 @@ where
 
 /// Calls `bench_params` with different fields.
 fn bench_fields(c: &mut Criterion) {
-	bench_params::<_, binius_field::PackedBinaryPolyval1x128b>(c, "1xPolyv");
-	bench_params::<_, binius_field::PackedBinaryPolyval2x128b>(c, "2xPolyv");
-	bench_params::<_, binius_field::PackedBinaryPolyval4x128b>(c, "4xPolyv");
-	bench_params::<_, binius_field::PackedBinaryGhash1x128b>(c, "1xGhash");
-	bench_params::<_, binius_field::PackedBinaryGhash2x128b>(c, "2xGhash");
-	bench_params::<_, binius_field::PackedBinaryGhash4x128b>(c, "4xGhash");
+	let throughput_var = determine_throughput_variant();
+
+	bench_params::<_, binius_field::PackedBinaryPolyval1x128b>(c, "1xPolyv", throughput_var);
+	bench_params::<_, binius_field::PackedBinaryPolyval2x128b>(c, "2xPolyv", throughput_var);
+	bench_params::<_, binius_field::PackedBinaryPolyval4x128b>(c, "4xPolyv", throughput_var);
+	bench_params::<_, binius_field::PackedBinaryGhash1x128b>(c, "1xGhash", throughput_var);
+	bench_params::<_, binius_field::PackedBinaryGhash2x128b>(c, "2xGhash", throughput_var);
+	bench_params::<_, binius_field::PackedBinaryGhash4x128b>(c, "4xGhash", throughput_var);
 }
 
 /// Gives the number of raw field multiplications that are done for an NTT with specific parameters.
@@ -159,27 +163,15 @@ fn num_muls(shape: NTTShape, skip_rounds: usize) -> u64 {
 fn determine_throughput_variant() -> ThroughputVariant {
 	const VAR_NAME: &str = "NTT_MUL_THROUGHPUT";
 
-	match std::env::var(VAR_NAME) {
-		Ok(val) => {
-			if val == "1" || val.to_lowercase() == "true" {
-				println!("Found {VAR_NAME}={val} - using MULTIPLICATION throughput");
-				ThroughputVariant::Multiplication
-			} else {
-				println!("Found {VAR_NAME}={val} - using STANDARD throughput");
-				ThroughputVariant::Standard
-			}
-		}
-		Err(err) => match err {
-			VarError::NotPresent => {
-				println!(
-					"NOTE: If you want to use multiplication throughput instead of normal throughput, use {VAR_NAME}=1"
-				);
-				ThroughputVariant::Standard
-			}
-			VarError::NotUnicode(_) => {
-				panic!("Found non-unicode data in environment variable {VAR_NAME}");
-			}
-		},
+	if boolean_env_flag_set(VAR_NAME) {
+		println!("{VAR_NAME} is activated - using *multiplication* throughput");
+		ThroughputVariant::Multiplication
+	} else {
+		println!("{VAR_NAME} is NOT activated - using *standard* throughput");
+		println!(
+			"NOTE: Use {VAR_NAME}=1 to see multiplication throughput instead of normal throughput"
+		);
+		ThroughputVariant::Standard
 	}
 }
 
