@@ -17,8 +17,20 @@ pub trait Underlier: Sized + Clone + Copy + Debug {
 	/// Performs bitwise AND operation.
 	fn and(a: Self, b: Self) -> Self;
 
+	/// Performs AND assignment operation.
+	#[inline]
+	fn and_assign(&mut self, other: Self) {
+		*self = Self::and(*self, other);
+	}
+
 	/// Performs bitwise XOR operation.
 	fn xor(a: Self, b: Self) -> Self;
+
+	/// Performs XOR assignment operation.
+	#[inline]
+	fn xor_assign(&mut self, other: Self) {
+		*self = Self::xor(*self, other);
+	}
 
 	/// Returns the zero value for this underlier type.
 	fn zero() -> Self;
@@ -28,6 +40,42 @@ pub trait Underlier: Sized + Clone + Copy + Debug {
 
 	/// Generates a random value of this underlier type using the provided rng.
 	fn random(rng: impl RngCore) -> Self;
+}
+
+impl<U: Underlier, const N: usize> Underlier for [U; N] {
+	const BITS: usize = U::BITS * N;
+
+	#[inline]
+	fn and(a: Self, b: Self) -> Self {
+		let mut result = a;
+		for i in 0..N {
+			result[i] = U::and(a[i], b[i]);
+		}
+		result
+	}
+
+	#[inline]
+	fn xor(a: Self, b: Self) -> Self {
+		let mut result = a;
+		for i in 0..N {
+			result[i] = U::xor(a[i], b[i]);
+		}
+		result
+	}
+
+	#[inline]
+	fn zero() -> Self {
+		std::array::from_fn(|_| U::zero())
+	}
+
+	#[inline]
+	fn is_equal(a: Self, b: Self) -> bool {
+		a.iter().zip(b.iter()).all(|(x, y)| U::is_equal(*x, *y))
+	}
+
+	fn random(mut rng: impl RngCore) -> Self {
+		std::array::from_fn(|_| U::random(&mut rng))
+	}
 }
 
 /// An [`Underlier`] that can represent a packed vector of smaller underlier values.

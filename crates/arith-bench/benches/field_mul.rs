@@ -25,18 +25,17 @@ fn run_google_mul_benchmark<U, R>(
 	mul_fn: impl Fn(U, U) -> U,
 	rng: &mut R,
 	element_bits: usize,
-	underlier_bits: usize,
 ) where
 	U: Underlier,
 	R: Rng,
 {
-	const N: usize = 100;
+	const N: usize = 64;
 
 	let x = U::random(rng);
 	let mut y = [U::zero(); N];
 
 	// Calculate throughput based on elements per underlier
-	let elements_per_underlier = underlier_bits / element_bits;
+	let elements_per_underlier = U::BITS / element_bits;
 	group.throughput(Throughput::Elements(
 		((N + N * N * (N + 1) + N) * elements_per_underlier) as u64,
 	));
@@ -75,7 +74,6 @@ fn run_mul_benchmark<T, R>(
 	mul_fn: impl Fn(T, T) -> T,
 	mut rng: R,
 	element_bits: usize,
-	underlier_bits: usize,
 ) where
 	T: Underlier,
 	R: Rng,
@@ -91,7 +89,7 @@ fn run_mul_benchmark<T, R>(
 	let mut batch: [T; BATCH_SIZE] = array::from_fn(|_| T::random(&mut rng));
 
 	// Calculate throughput based on elements per underlier
-	let elements_per_underlier = underlier_bits / element_bits;
+	let elements_per_underlier = T::BITS / element_bits;
 	group.throughput(Throughput::Elements((BATCH_SIZE * N_PASSES * elements_per_underlier) as u64));
 
 	group.bench_function(name, |b| {
@@ -116,27 +114,13 @@ fn bench_rijndael(c: &mut Criterion) {
 	// Benchmark __m128i
 	#[cfg(all(target_feature = "gfni", target_feature = "sse2"))]
 	{
-		run_mul_benchmark(
-			&mut group,
-			"mul_gfni::<__m128i>",
-			mul_gfni::<__m128i>,
-			&mut rng,
-			8,
-			__m128i::BITS,
-		);
+		run_mul_benchmark(&mut group, "mul_gfni::<__m128i>", mul_gfni::<__m128i>, &mut rng, 8);
 	}
 
 	// Benchmark __m256i
 	#[cfg(all(target_feature = "gfni", target_feature = "avx"))]
 	{
-		run_mul_benchmark(
-			&mut group,
-			"mul_gfni::<__m256i>",
-			mul_gfni::<__m256i>,
-			&mut rng,
-			8,
-			__m256i::BITS,
-		);
+		run_mul_benchmark(&mut group, "mul_gfni::<__m256i>", mul_gfni::<__m256i>, &mut rng, 8);
 	}
 
 	group.finish();
@@ -152,26 +136,12 @@ fn bench_polyval(c: &mut Criterion) {
 	let mut group = c.benchmark_group("polyval");
 
 	// Benchmark u128
-	run_mul_benchmark(
-		&mut group,
-		"soft64::mul",
-		polyval::soft64::mul,
-		&mut rng,
-		128,
-		u128::BITS as usize,
-	);
+	run_mul_benchmark(&mut group, "soft64::mul", polyval::soft64::mul, &mut rng, 128);
 
 	// Benchmark __m128i
 	#[cfg(all(target_feature = "pclmulqdq", target_feature = "sse2"))]
 	{
-		run_mul_benchmark(
-			&mut group,
-			"mul_clmul::<__m128i>",
-			mul_clmul::<__m128i>,
-			&mut rng,
-			128,
-			__m128i::BITS,
-		);
+		run_mul_benchmark(&mut group, "mul_clmul::<__m128i>", mul_clmul::<__m128i>, &mut rng, 128);
 	}
 
 	// Benchmark __m256i
@@ -181,14 +151,7 @@ fn bench_polyval(c: &mut Criterion) {
 		target_feature = "sse2"
 	))]
 	{
-		run_mul_benchmark(
-			&mut group,
-			"mul_clmul::<__m256i>",
-			mul_clmul::<__m256i>,
-			&mut rng,
-			128,
-			__m256i::BITS,
-		);
+		run_mul_benchmark(&mut group, "mul_clmul::<__m256i>", mul_clmul::<__m256i>, &mut rng, 128);
 	}
 
 	// Benchmark uint64x2_t (AARCH64 NEON)
@@ -204,7 +167,6 @@ fn bench_polyval(c: &mut Criterion) {
 			mul_clmul::<uint64x2_t>,
 			&mut rng,
 			128,
-			uint64x2_t::BITS,
 		);
 	}
 
@@ -221,25 +183,27 @@ fn bench_ghash(c: &mut Criterion) {
 	let mut group = c.benchmark_group("ghash");
 
 	// Benchmark u128
-	run_mul_benchmark(
-		&mut group,
-		"soft64::mul",
-		ghash::soft64::mul,
-		&mut rng,
-		128,
-		u128::BITS as usize,
-	);
+	run_mul_benchmark(&mut group, "soft64::mul", ghash::soft64::mul, &mut rng, 128);
 
 	// Benchmark __m128i
 	#[cfg(all(target_feature = "pclmulqdq", target_feature = "sse2"))]
 	{
+		run_mul_benchmark(&mut group, "mul_clmul::<__m128i>", mul_clmul::<__m128i>, &mut rng, 128);
+
 		run_mul_benchmark(
 			&mut group,
-			"mul_clmul::<__m128i>",
-			mul_clmul::<__m128i>,
+			"bit_sliced::mul_naive::<__m128i>",
+			ghash::bit_sliced::mul_naive::<__m128i>,
 			&mut rng,
 			128,
-			__m128i::BITS,
+		);
+
+		run_mul_benchmark(
+			&mut group,
+			"bit_sliced::mul_katatsuba::<__m128i>",
+			ghash::bit_sliced::mul_katatsuba::<__m128i>,
+			&mut rng,
+			128,
 		);
 	}
 
@@ -250,14 +214,7 @@ fn bench_ghash(c: &mut Criterion) {
 		target_feature = "sse2"
 	))]
 	{
-		run_mul_benchmark(
-			&mut group,
-			"mul_clmul::<__m256i>",
-			mul_clmul::<__m256i>,
-			&mut rng,
-			128,
-			__m256i::BITS,
-		);
+		run_mul_benchmark(&mut group, "mul_clmul::<__m256i>", mul_clmul::<__m256i>, &mut rng, 128);
 	}
 
 	// Benchmark uint64x2_t (AARCH64 NEON)
@@ -273,9 +230,41 @@ fn bench_ghash(c: &mut Criterion) {
 			mul_clmul::<uint64x2_t>,
 			&mut rng,
 			128,
-			uint64x2_t::BITS,
+		);
+
+		run_mul_benchmark(
+			&mut group,
+			"bit_sliced::mul_naive::<uint64x2_t>",
+			ghash::bit_sliced::mul_naive::<uint64x2_t>,
+			&mut rng,
+			128,
+		);
+
+		run_mul_benchmark(
+			&mut group,
+			"bit_sliced::mul_katatsuba::<uint64x2_t>",
+			ghash::bit_sliced::mul_katatsuba::<uint64x2_t>,
+			&mut rng,
+			128,
 		);
 	}
+
+	// Benchmark bit-sliced GHASH
+	run_mul_benchmark(
+		&mut group,
+		"bit_sliced::mul_naive::<u64>",
+		ghash::bit_sliced::mul_naive::<u64>,
+		&mut rng,
+		128,
+	);
+
+	run_mul_benchmark(
+		&mut group,
+		"bit_sliced::mul_katatsuba::<u64>",
+		ghash::bit_sliced::mul_katatsuba::<u64>,
+		&mut rng,
+		128,
+	);
 
 	group.finish();
 
@@ -290,7 +279,6 @@ fn bench_ghash(c: &mut Criterion) {
 			mul_clmul::<__m128i>,
 			&mut rng,
 			128,
-			__m128i::BITS,
 		);
 	}
 
@@ -307,7 +295,6 @@ fn bench_ghash(c: &mut Criterion) {
 			mul_clmul::<__m256i>,
 			&mut rng,
 			128,
-			__m256i::BITS,
 		);
 	}
 
@@ -324,7 +311,6 @@ fn bench_ghash(c: &mut Criterion) {
 			mul_clmul::<uint64x2_t>,
 			&mut rng,
 			128,
-			uint64x2_t::BITS,
 		);
 	}
 
@@ -343,14 +329,7 @@ fn bench_monbijou(c: &mut Criterion) {
 	// Benchmark __m128i
 	#[cfg(all(target_feature = "pclmulqdq", target_feature = "sse2"))]
 	{
-		run_mul_benchmark(
-			&mut group,
-			"mul_clmul::<__m128i>",
-			mul_clmul::<__m128i>,
-			&mut rng,
-			64,
-			__m128i::BITS,
-		);
+		run_mul_benchmark(&mut group, "mul_clmul::<__m128i>", mul_clmul::<__m128i>, &mut rng, 64);
 	}
 
 	// Benchmark __m256i
@@ -360,14 +339,7 @@ fn bench_monbijou(c: &mut Criterion) {
 		target_feature = "sse2"
 	))]
 	{
-		run_mul_benchmark(
-			&mut group,
-			"mul_clmul::<__m256i>",
-			mul_clmul::<__m256i>,
-			&mut rng,
-			64,
-			__m256i::BITS,
-		);
+		run_mul_benchmark(&mut group, "mul_clmul::<__m256i>", mul_clmul::<__m256i>, &mut rng, 64);
 	}
 
 	// Benchmark uint64x2_t (AARCH64 NEON)
@@ -383,7 +355,6 @@ fn bench_monbijou(c: &mut Criterion) {
 			mul_clmul::<uint64x2_t>,
 			&mut rng,
 			64,
-			uint64x2_t::BITS,
 		);
 	}
 
@@ -408,7 +379,6 @@ fn bench_monbijou_128b(c: &mut Criterion) {
 			mul_128b_clmul::<__m128i>,
 			&mut rng,
 			128,
-			__m128i::BITS,
 		);
 	}
 
@@ -425,7 +395,6 @@ fn bench_monbijou_128b(c: &mut Criterion) {
 			mul_128b_clmul::<__m256i>,
 			&mut rng,
 			128,
-			__m256i::BITS,
 		);
 	}
 
@@ -442,7 +411,6 @@ fn bench_monbijou_128b(c: &mut Criterion) {
 			mul_128b_clmul::<uint64x2_t>,
 			&mut rng,
 			128,
-			uint64x2_t::BITS,
 		);
 	}
 
