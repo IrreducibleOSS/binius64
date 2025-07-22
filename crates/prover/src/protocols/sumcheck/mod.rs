@@ -5,6 +5,8 @@ pub mod bivariate_mle;
 pub mod bivariate_product;
 pub mod common;
 mod error;
+mod prove;
 mod round_evals;
 
-pub use error::Error;
+pub use error::*;
+pub use prove::*;

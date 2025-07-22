@@ -4,6 +4,9 @@ use binius_math::Error as MathError;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
+	/// Error indicating invalid arguments were passed to a sumcheck function.
+	#[error("invalid arguments: {0}")]
+	ArgumentError(String),
 	#[error("multilinears do not have equal number of variables")]
 	MultilinearSizeMismatch,
 	#[error("number of eval claims does not match the number of multilinears")]

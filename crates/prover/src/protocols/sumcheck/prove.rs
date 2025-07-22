@@ -1,0 +1,98 @@
+//! Prover implementation for the sumcheck protocol.
+//!
+//! This module provides functionality for executing the sumcheck proving protocol,
+//! which allows a prover to convince a verifier that a claimed sum over a multivariate
+//! polynomial is correct through an interactive proof protocol.
+
+use binius_field::Field;
+use binius_transcript::{
+	ProverTranscript,
+	fiat_shamir::{CanSample, Challenger},
+};
+
+use super::{common::SumcheckProver, error::Error};
+
+/// Executes the sumcheck proving protocol for a single multivariate polynomial.
+///
+/// This function drives the interactive sumcheck protocol, where the prover convinces
+/// a verifier that a claimed sum over a multivariate polynomial is correct. The protocol
+/// proceeds in rounds, with one round per variable in the polynomial.
+///
+/// # Arguments
+///
+/// * `prover` - An implementation of [`SumcheckProver`] that computes the polynomial evaluations
+///   for each round. The prover must evaluate exactly one composition polynomial per round.
+/// * `transcript` - The Fiat-Shamir transcript used to generate non-interactive challenges and
+///   record prover messages.
+///
+/// # Returns
+///
+/// Returns [`ProveSingleOutput`] containing:
+/// - `multilinear_evals`: Final evaluations of the multilinear polynomials at the challenge point
+/// - `challenges`: The verifier challenges used in each round
+///
+/// # Errors
+///
+/// - [`Error::ArgumentError`] if the prover returns more than one composition polynomial from its
+///   `execute()` method
+/// - Any error propagated from the underlying prover implementation
+///
+/// # Protocol Flow
+///
+/// For each of the `n_vars` rounds:
+/// 1. The prover computes univariate polynomial coefficients via `execute()`
+/// 2. These coefficients are written to the transcript
+/// 3. A challenge is sampled from the transcript
+/// 4. The prover folds the polynomial with this challenge via `fold()`
+///
+/// After all rounds, `finish()` is called to obtain the final multilinear evaluations.
+pub fn prove_single<F: Field, Challenger_: Challenger>(
+	mut prover: impl SumcheckProver<F>,
+	transcript: &mut ProverTranscript<Challenger_>,
+) -> Result<ProveSingleOutput<F>, Error> {
+	let n_vars = prover.n_vars();
+	let mut challenges = Vec::with_capacity(n_vars);
+
+	for _ in 0..n_vars {
+		let mut round_coeffs_vec = prover.execute()?;
+		if round_coeffs_vec.len() != 1 {
+			return Err(Error::ArgumentError(format!(
+				"function expects prover to evaluate one composition, but it returned {} from \
+				execute()",
+				round_coeffs_vec.len()
+			)));
+		}
+		let round_coeffs = round_coeffs_vec.pop().expect("round_coeffs_vec.len() == 1");
+
+		transcript
+			.message()
+			.write_slice(round_coeffs.truncate().coeffs());
+
+		let challenge = transcript.sample();
+		challenges.push(challenge);
+		prover.fold(challenge)?;
+	}
+
+	let multilinear_evals = prover.finish()?;
+	Ok(ProveSingleOutput {
+		multilinear_evals,
+		challenges,
+	})
+}
+
+/// Output of the sumcheck proving protocol for a single multivariate polynomial.
+///
+/// Contains the final evaluations and challenges generated during the interactive
+/// protocol execution.
+pub struct ProveSingleOutput<F: Field> {
+	/// Evaluations of the multilinear polynomials at the challenge point.
+	///
+	/// After the sumcheck protocol completes, these are the values of each multilinear
+	/// polynomial evaluated at the point formed by all verifier challenges.
+	pub multilinear_evals: Vec<F>,
+	/// Verifier challenges for each round of the sumcheck protocol.
+	///
+	/// One challenge is generated per variable in the multivariate polynomial,
+	/// with challenges\[i\] corresponding to the i-th round of the protocol.
+	pub challenges: Vec<F>,
+}

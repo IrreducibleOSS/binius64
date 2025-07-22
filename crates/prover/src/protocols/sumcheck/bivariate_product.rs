@@ -148,3 +148,93 @@ fn calculate_round_coeffs_from_evals<F: Field>(y_0: F, y_1: F, y_inf: F) -> Roun
 	let c_1 = y_1 - c_0 - c_2;
 	RoundCoeffs(vec![c_0, c_1, c_2])
 }
+
+#[cfg(test)]
+mod tests {
+	use binius_field::arch::{OptimalB128, OptimalPackedB128};
+	use binius_math::{
+		inner_product::inner_product_par, multilinear::evaluate::evaluate,
+		test_utils::random_field_buffer,
+	};
+	use binius_transcript::ProverTranscript;
+	use binius_verifier::{config::StdChallenger, protocols::sumcheck::verify};
+	use rand::{SeedableRng, prelude::StdRng};
+
+	use super::*;
+	use crate::protocols::sumcheck::prove::prove_single;
+
+	#[test]
+	fn test_bivariate_product_sumcheck() {
+		type F = OptimalB128;
+		type P = OptimalPackedB128;
+
+		let n_vars = 8;
+		let mut rng = StdRng::seed_from_u64(0);
+
+		// Generate two random multilinear polynomials
+		let multilinear_a = random_field_buffer::<P>(&mut rng, n_vars);
+		let multilinear_b = random_field_buffer::<P>(&mut rng, n_vars);
+
+		// Compute the expected sum: sum_{x in {0,1}^n} A(x) * B(x)
+		let expected_sum = inner_product_par(&multilinear_a, &multilinear_b);
+
+		// Create the prover
+		let prover = BivariateProductSumcheckProver::new(
+			[multilinear_a.clone(), multilinear_b.clone()],
+			expected_sum,
+		)
+		.unwrap();
+
+		// Run the proving protocol
+		let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
+		let output = prove_single(prover, &mut prover_transcript).unwrap();
+
+		// Write the multilinear evaluations to the transcript
+		prover_transcript
+			.message()
+			.write_slice(&output.multilinear_evals);
+
+		// Convert to verifier transcript and run verification
+		let mut verifier_transcript = prover_transcript.into_verifier();
+		let sumcheck_output = verify::<F, _>(
+			n_vars,
+			2, // degree 2 for bivariate product
+			expected_sum,
+			&mut verifier_transcript,
+		)
+		.unwrap();
+
+		// Read the multilinear evaluations from the transcript
+		let multilinear_evals: Vec<F> = verifier_transcript.message().read_vec(2).unwrap();
+
+		// Check that the product of the evaluations equals the reduced evaluation
+		assert_eq!(
+			multilinear_evals[0] * multilinear_evals[1],
+			sumcheck_output.eval,
+			"Product of multilinear evaluations should equal the reduced evaluation"
+		);
+
+		// Check that the original multilinears evaluate to the claimed values at the challenge
+		// point The prover binds variables from high to low, but evaluate expects them from low
+		// to high
+		let mut eval_point = sumcheck_output.challenges.clone();
+		eval_point.reverse();
+		let eval_a = evaluate(&multilinear_a, &eval_point).unwrap();
+		let eval_b = evaluate(&multilinear_b, &eval_point).unwrap();
+
+		assert_eq!(
+			eval_a, multilinear_evals[0],
+			"Multilinear A should evaluate to the first claimed evaluation"
+		);
+		assert_eq!(
+			eval_b, multilinear_evals[1],
+			"Multilinear B should evaluate to the second claimed evaluation"
+		);
+
+		// Also verify the challenges match what the prover saw
+		assert_eq!(
+			output.challenges, sumcheck_output.challenges,
+			"Prover and verifier challenges should match"
+		);
+	}
+}
