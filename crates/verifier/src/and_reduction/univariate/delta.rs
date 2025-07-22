@@ -32,10 +32,10 @@ pub fn delta_poly<'a, F: Field>(
 mod tests {
 	use binius_field::{AESTowerField8b, AESTowerField128b, BinaryField128bPolyval, Field};
 
-	use crate::and_reduction::{univariate::{
-		delta::delta_poly,
-		univariate_poly::UnivariatePoly,
-	}, utils::subfield_isomorphism::SubfieldIsomorphismLookup};
+	use crate::and_reduction::{
+		univariate::{delta::delta_poly, univariate_poly::UnivariatePoly},
+		utils::subfield_isomorphism::SubfieldIsomorphismLookup,
+	};
 
 	#[test]
 	fn delta_satisfies_definition() {
