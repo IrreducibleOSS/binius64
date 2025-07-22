@@ -117,7 +117,7 @@ where
 			bench_ntts(&mut group, &thread_pool, num_threads, &mut data, 0, 0, 0);
 			bench_ntts(&mut group, &thread_pool, num_threads, &mut data, 4, 0, 0);
 			bench_ntts(&mut group, &thread_pool, num_threads, &mut data, 0, 4, 0);
-			// bench_ntts(&mut group, &mut data, 0, 0, 4);
+			bench_ntts(&mut group, &thread_pool, num_threads, &mut data, 0, 0, 4);
 		}
 	}
 }
