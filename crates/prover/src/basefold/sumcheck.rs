@@ -126,12 +126,12 @@ impl<F: Field> SumcheckProver<F> for MultilinearSumcheckProver<F> {
 pub mod test {
 	use binius_field::{BinaryField128b, Random};
 	use binius_math::{multilinear::eq::eq_ind_partial_eval, test_utils::random_field_buffer};
-	use rand::{SeedableRng, rngs::StdRng};
-
-	use super::*;
 	use binius_verifier::{
 		basefold::utils::verify_sumcheck_round, protocols::sumcheck::RoundCoeffs,
 	};
+	use rand::{SeedableRng, rngs::StdRng};
+
+	use super::*;
 	type F = BinaryField128b;
 
 	fn random_challenge() -> F {
