@@ -8,7 +8,7 @@ use binius_utils::rayon::{
 use binius_verifier::protocols::sumcheck::RoundCoeffs;
 
 use super::utils::evaluate_round_polynomial_at;
-use crate::protocols::sumcheck::{common::SumcheckProver, error::Error};
+use crate::protocols::sumcheck::{Error, common::SumcheckProver};
 
 /// Exposes a round-by-round interface to prove the sum of A(X) * B(X) for
 /// some multilinears A and B over all hypercube points X
