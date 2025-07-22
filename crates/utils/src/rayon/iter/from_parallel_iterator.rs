@@ -1,8 +1,7 @@
 // Copyright 2025 Irreducible Inc.
 // The code is initially based on `maybe-rayon` crate, https://github.com/shssoichiro/maybe-rayon
 
-use super::IntoParallelIterator;
-use crate::iter::parallel_iterator::ParallelIterator;
+use super::{IntoParallelIterator, parallel_iterator::ParallelIterator};
 
 pub trait FromParallelIterator<T> {
 	fn from_par_iter<I>(par_iter: I) -> Self

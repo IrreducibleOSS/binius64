@@ -1,7 +1,7 @@
 // Copyright 2025 Irreducible Inc.
 // The code is initially based on `maybe-rayon` crate, https://github.com/shssoichiro/maybe-rayon
 
-use crate::iter::{IndexedParallelIteratorInner, ParallelWrapper};
+use crate::rayon::iter::{IndexedParallelIteratorInner, ParallelWrapper};
 
 pub trait ParallelSliceMut<T: Sync> {
 	fn as_parallel_slice_mut(&mut self) -> &mut [T];
