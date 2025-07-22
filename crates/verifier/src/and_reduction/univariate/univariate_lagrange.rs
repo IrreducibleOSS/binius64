@@ -1,6 +1,6 @@
 use binius_field::{AESTowerField8b, Field};
 
-use crate::and_reduction::univariate::subfield_isomorphism::SubfieldIsomorphismLookup;
+use crate::and_reduction::utils::subfield_isomorphism::SubfieldIsomorphismLookup;
 
 fn products_excluding_one_element<F: Field>(input: &[F]) -> Vec<F> {
 	let mut results = vec![F::ONE; input.len()];

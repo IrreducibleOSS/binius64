@@ -2,13 +2,12 @@ use binius_field::{
 	AESTowerField8b, BinaryField128bPolyval, Field, arithmetic_traits::InvertOrZero,
 };
 
-use crate::and_reduction::univariate::{
-	subfield_isomorphism::SubfieldIsomorphismLookup,
+use crate::and_reduction::{univariate::{
 	univariate_lagrange::{
 		lexicographic_lagrange_denominator, lexicographic_lagrange_numerators_8b,
 		lexicographic_lagrange_numerators_polyval,
 	},
-};
+}, utils::subfield_isomorphism::SubfieldIsomorphismLookup};
 
 pub trait UnivariatePoly<FCoeffs: Field, FChallenge: Field> {
 	fn iter_coeffs(&self) -> impl Iterator<Item = &FCoeffs>;
@@ -121,9 +120,8 @@ mod test {
 	use binius_field::{AESTowerField8b, AESTowerField128b, BinaryField128bPolyval, PackedField};
 
 	use super::GenericPo2UnivariatePoly;
-	use crate::{and_reduction::univariate::{
-		subfield_isomorphism::SubfieldIsomorphismLookup, univariate_poly::UnivariatePoly,
-	}};
+	use crate::{and_reduction::{univariate::{univariate_poly::UnivariatePoly,
+	}, utils::subfield_isomorphism::SubfieldIsomorphismLookup}};
 
 	#[test]
 	fn univariate_po2_sanity_check() {

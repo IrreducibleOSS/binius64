@@ -5,16 +5,11 @@ use binius_field::{
 	PackedField, packed::set_packed_slice,
 };
 
-use binius_verifier::and_reduction::univariate::univariate_lagrange::{
+use binius_verifier::and_reduction::{univariate::univariate_lagrange::{
 	lexicographic_lagrange_denominator, lexicographic_lagrange_numerators_8b,
-};
+}, utils::constants::{ROWS_PER_HYPERCUBE_VERTEX, SKIPPED_VARS}};
 
 pub type NTTLookup = Vec<Vec<Vec<PackedAESBinaryField16x8b>>>;
-
-// 4,5,6 supported but 6 is optimal
-pub const SKIPPED_VARS: usize = 6;
-
-pub const ROWS_PER_HYPERCUBE_VERTEX: usize = 1 << SKIPPED_VARS;
 
 // first index is the idx of the 8 bit chunk that we're in
 // second index is the bit string
