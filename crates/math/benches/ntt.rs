@@ -126,6 +126,10 @@ where
 fn bench_fields(c: &mut Criterion<WallTimeMulThroughput>) {
 	bench_params::<_, binius_field::PackedBinaryPolyval1x128b>(c, "1xPolyv");
 	bench_params::<_, binius_field::PackedBinaryPolyval2x128b>(c, "2xPolyv");
+	bench_params::<_, binius_field::PackedBinaryPolyval4x128b>(c, "4xPolyv");
+	bench_params::<_, binius_field::PackedBinaryGhash1x128b>(c, "1xGhash");
+	bench_params::<_, binius_field::PackedBinaryGhash2x128b>(c, "2xGhash");
+	bench_params::<_, binius_field::PackedBinaryGhash4x128b>(c, "4xGhash");
 }
 
 /// Gives the number of raw field multiplications that are done for an NTT with specific parameters.
