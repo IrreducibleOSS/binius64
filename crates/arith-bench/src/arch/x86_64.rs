@@ -789,7 +789,8 @@ mod tests {
 		fn test_m128i_ghash_mul_identity_proptest(
 			a in arb_m128i()
 		) {
-			test_mul_identity(a, GHASH_ONE, ghash_mul, "GHASH");
+
+			test_mul_identity(a, ONE, ghash_mul, "GHASH");
 		}
 
 		#[test]
@@ -827,7 +828,7 @@ mod tests {
 		fn test_m256i_ghash_mul_identity_proptest(
 			a in arb_m256i()
 		) {
-			test_mul_identity(a, GHASH_ONE, ghash_mul, "GHASH");
+			test_mul_identity(a, ONE, ghash_mul, "GHASH");
 		}
 
 		#[test]

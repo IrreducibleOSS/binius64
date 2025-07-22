@@ -76,7 +76,7 @@ impl Eq for M128 {}
 
 impl PartialOrd for M128 {
 	fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-		u128::from(*self).partial_cmp(&u128::from(*other))
+		Some(self.cmp(other))
 	}
 }
 
