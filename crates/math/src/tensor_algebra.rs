@@ -21,40 +21,40 @@ use binius_field::{
 ///
 /// [DP24]: <https://eprint.iacr.org/2024/504>
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TensorAlgebra<F, FE>
+pub struct TensorAlgebra<F, P>
 where
 	F: Field,
-	FE: ExtensionField<F>,
+	P: ExtensionField<F>,
 {
-	pub elems: Vec<FE>,
+	pub elems: Vec<P>,
 	_marker: PhantomData<F>,
 }
 
-impl<F, FE> Default for TensorAlgebra<F, FE>
+impl<F, P> Default for TensorAlgebra<F, P>
 where
 	F: Field,
-	FE: ExtensionField<F>,
+	P: ExtensionField<F>,
 {
 	fn default() -> Self {
 		Self {
-			elems: vec![FE::default(); FE::DEGREE],
+			elems: vec![P::default(); P::DEGREE],
 			_marker: PhantomData,
 		}
 	}
 }
 
-impl<F, FE> TensorAlgebra<F, FE>
+impl<F, P> TensorAlgebra<F, P>
 where
 	F: Field,
-	FE: ExtensionField<F>,
+	P: ExtensionField<F>,
 {
 	/// Constructs an element from a vector of vertical subring elements.
 	///
 	/// ## Preconditions
 	///
 	/// * `elems` must have length `FE::DEGREE`, otherwise this will pad or truncate.
-	pub fn new(mut elems: Vec<FE>) -> Self {
-		elems.resize(FE::DEGREE, FE::ZERO);
+	pub fn new(mut elems: Vec<P>) -> Self {
+		elems.resize(P::DEGREE, P::ZERO);
 		Self {
 			elems,
 			_marker: PhantomData,
@@ -63,28 +63,28 @@ where
 
 	/// Returns $\kappa$, the base-2 logarithm of the extension degree.
 	pub const fn kappa() -> usize {
-		FE::LOG_DEGREE
+		P::LOG_DEGREE
 	}
 
 	/// Returns the byte size of an element.
 	pub const fn byte_size() -> usize {
-		mem::size_of::<FE>() << Self::kappa()
+		mem::size_of::<P>() << Self::kappa()
 	}
 
 	/// Returns the multiplicative identity element, one.
 	pub fn one() -> Self {
 		let mut one = Self::default();
-		one.elems[0] = FE::ONE;
+		one.elems[0] = P::ONE;
 		one
 	}
 
 	/// Returns a slice of the vertical subfield elements composing the tensor algebra element.
-	pub fn vertical_elems(&self) -> &[FE] {
+	pub fn vertical_elems(&self) -> &[P] {
 		&self.elems
 	}
 
 	/// Tensor product of a vertical subring element and a horizontal subring element.
-	pub fn tensor(vertical: FE, horizontal: FE) -> Self {
+	pub fn tensor(vertical: P, horizontal: P) -> Self {
 		let elems = horizontal
 			.iter_bases()
 			.map(|base| vertical * base)
@@ -96,8 +96,8 @@ where
 	}
 
 	/// Constructs a [`TensorAlgebra`] in the vertical subring.
-	pub fn from_vertical(x: FE) -> Self {
-		let mut elems = vec![FE::ZERO; FE::DEGREE];
+	pub fn from_vertical(x: P) -> Self {
+		let mut elems = vec![P::ZERO; P::DEGREE];
 		elems[0] = x;
 		Self {
 			elems,
@@ -106,16 +106,16 @@ where
 	}
 
 	/// If the algebra element lives in the vertical subring, this returns it as a field element.
-	pub fn try_extract_vertical(&self) -> Option<FE> {
+	pub fn try_extract_vertical(&self) -> Option<P> {
 		self.elems
 			.iter()
 			.skip(1)
-			.all(|&elem| elem == FE::ZERO)
+			.all(|&elem| elem == P::ZERO)
 			.then_some(self.elems[0])
 	}
 
 	/// Multiply by an element from the vertical subring.
-	pub fn scale_vertical(mut self, scalar: FE) -> Self {
+	pub fn scale_vertical(mut self, scalar: P) -> Self {
 		for elem_i in &mut self.elems {
 			*elem_i *= scalar;
 		}
@@ -123,13 +123,13 @@ where
 	}
 }
 
-impl<F: Field, FE: ExtensionField<F> + PackedExtension<F>> TensorAlgebra<F, FE> {
+impl<F: Field, P: ExtensionField<F> + PackedExtension<F>> TensorAlgebra<F, P> {
 	/// Multiply by an element from the vertical subring.
 	///
 	/// Internally, this performs a transpose, vertical scaling, then transpose sequence. If
 	/// multiple horizontal scaling operations are required and performance is a concern, it may be
 	/// better for the caller to do the transposes directly and amortize their cost.
-	pub fn scale_horizontal(self, scalar: FE) -> Self {
+	pub fn scale_horizontal(self, scalar: P) -> Self {
 		self.transpose().scale_vertical(scalar).transpose()
 	}
 
@@ -137,7 +137,7 @@ impl<F: Field, FE: ExtensionField<F> + PackedExtension<F>> TensorAlgebra<F, FE> 
 	///
 	/// A transpose flips the vertical and horizontal subring elements.
 	pub fn transpose(mut self) -> Self {
-		square_transpose(Self::kappa(), FE::cast_bases_mut(&mut self.elems))
+		square_transpose(Self::kappa(), P::cast_bases_mut(&mut self.elems))
 			.expect("transpose dimensions are square by struct invariant");
 		self
 	}
@@ -147,15 +147,15 @@ impl<F: Field, FE: ExtensionField<F> + PackedExtension<F>> TensorAlgebra<F, FE> 
 	/// ## Preconditions
 	///
 	/// * `coeffs` must have length $2^\kappa$
-	pub fn fold_vertical(self, coeffs: &[FE]) -> FE {
-		inner_product_unchecked::<FE, _>(self.transpose().elems, coeffs.iter().copied())
+	pub fn fold_vertical(self, coeffs: &[P]) -> P {
+		inner_product_unchecked::<P, _>(self.transpose().elems, coeffs.iter().copied())
 	}
 }
 
-impl<F, FE> Add<&Self> for TensorAlgebra<F, FE>
+impl<F, P> Add<&Self> for TensorAlgebra<F, P>
 where
 	F: Field,
-	FE: ExtensionField<F>,
+	P: ExtensionField<F>,
 {
 	type Output = Self;
 
@@ -165,10 +165,10 @@ where
 	}
 }
 
-impl<F, FE> Sub<&Self> for TensorAlgebra<F, FE>
+impl<F, P> Sub<&Self> for TensorAlgebra<F, P>
 where
 	F: Field,
-	FE: ExtensionField<F>,
+	P: ExtensionField<F>,
 {
 	type Output = Self;
 
@@ -178,10 +178,10 @@ where
 	}
 }
 
-impl<F, FE> AddAssign<&Self> for TensorAlgebra<F, FE>
+impl<F, P> AddAssign<&Self> for TensorAlgebra<F, P>
 where
 	F: Field,
-	FE: ExtensionField<F>,
+	P: ExtensionField<F>,
 {
 	fn add_assign(&mut self, rhs: &Self) {
 		for (self_i, rhs_i) in self.elems.iter_mut().zip(rhs.elems.iter()) {
@@ -190,10 +190,10 @@ where
 	}
 }
 
-impl<F, FE> SubAssign<&Self> for TensorAlgebra<F, FE>
+impl<F, P> SubAssign<&Self> for TensorAlgebra<F, P>
 where
 	F: Field,
-	FE: ExtensionField<F>,
+	P: ExtensionField<F>,
 {
 	fn sub_assign(&mut self, rhs: &Self) {
 		for (self_i, rhs_i) in self.elems.iter_mut().zip(rhs.elems.iter()) {
@@ -202,10 +202,10 @@ where
 	}
 }
 
-impl<'a, F, FE> Sum<&'a Self> for TensorAlgebra<F, FE>
+impl<'a, F, P> Sum<&'a Self> for TensorAlgebra<F, P>
 where
 	F: Field,
-	FE: ExtensionField<F>,
+	P: ExtensionField<F>,
 {
 	fn sum<I: Iterator<Item = &'a Self>>(iter: I) -> Self {
 		iter.fold(Self::default(), |sum, item| sum + item)
@@ -222,12 +222,12 @@ mod tests {
 	#[test]
 	fn test_tensor_product() {
 		type F = BinaryField8b;
-		type FE = BinaryField128b;
+		type P = BinaryField128b;
 
 		let mut rng = StdRng::seed_from_u64(0);
 
-		let vert = FE::random(&mut rng);
-		let hztl = FE::random(&mut rng);
+		let vert = P::random(&mut rng);
+		let hztl = P::random(&mut rng);
 
 		let expected = TensorAlgebra::<F, _>::from_vertical(vert).scale_horizontal(hztl);
 		assert_eq!(TensorAlgebra::tensor(vert, hztl), expected);
@@ -236,16 +236,16 @@ mod tests {
 	#[test]
 	fn test_try_extract_vertical() {
 		type F = BinaryField8b;
-		type FE = BinaryField128b;
+		type P = BinaryField128b;
 
 		let mut rng = StdRng::seed_from_u64(0);
 
-		let vert = FE::random(&mut rng);
+		let vert = P::random(&mut rng);
 		let elem = TensorAlgebra::<F, _>::from_vertical(vert);
 		assert_eq!(elem.try_extract_vertical(), Some(vert));
 
 		// Scale horizontally by an extension element, and we should no longer be vertical.
-		let hztl = FE::new(1111);
+		let hztl = P::new(1111);
 		let elem = elem.scale_horizontal(hztl);
 		assert_eq!(elem.try_extract_vertical(), None);
 
@@ -255,7 +255,7 @@ mod tests {
 		assert_eq!(elem.try_extract_vertical(), Some(vert));
 
 		// If we scale horizontally by an F element, we should remain in the vertical subring.
-		let hztl_subfield = FE::from(F::new(7));
+		let hztl_subfield = P::from(F::new(7));
 		let elem = elem.scale_horizontal(hztl_subfield);
 		assert_eq!(elem.try_extract_vertical(), Some(vert * hztl_subfield));
 	}
