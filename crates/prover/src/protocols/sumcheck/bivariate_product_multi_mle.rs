@@ -5,43 +5,28 @@
 use std::cmp::max;
 
 use binius_field::{Field, PackedField};
-use binius_math::{
-	FieldBuffer,
-	multilinear::{
-		eq::{eq_ind_partial_eval, eq_ind_truncate_low_inplace, eq_one_var},
-		fold::fold_highest_var_inplace,
-	},
-};
+use binius_math::{FieldBuffer, multilinear::fold::fold_highest_var_inplace};
 use binius_utils::rayon::prelude::*;
 use binius_verifier::protocols::sumcheck::RoundCoeffs;
 use itertools::{Itertools, izip};
 
-use super::{
-	common::SumcheckProver,
-	error::Error,
-	round_evals::{RoundEvals2, round_coeffs_by_eq},
-};
-
-type FieldBufferPair<P> = (FieldBuffer<P>, FieldBuffer<P>);
+use super::{common::SumcheckProver, error::Error, gruen34::Gruen34, round_evals::RoundEvals2};
 
 enum RoundCoeffsOrSums<F: Field> {
 	Coeffs(Vec<RoundCoeffs<F>>),
 	Sums(Vec<F>),
 }
 
-pub struct BivariateMlecheckProver<P: PackedField> {
+pub struct BivariateProductMultiMlecheckProver<P: PackedField> {
 	n_vars: usize,
-	n_rounds_remaining: usize,
 	multilinears: Vec<FieldBuffer<P>>,
 	last_coeffs_or_sums: RoundCoeffsOrSums<P::Scalar>,
-	eval_point: Vec<P::Scalar>,
-	eq_expansion: FieldBuffer<P>,
-	eq_prefix_eval: P::Scalar,
+	gruen34: Gruen34<P>,
 }
 
-impl<F: Field, P: PackedField<Scalar = F>> BivariateMlecheckProver<P> {
+impl<F: Field, P: PackedField<Scalar = F>> BivariateProductMultiMlecheckProver<P> {
 	pub fn new(
-		multilinears: Vec<FieldBufferPair<P>>,
+		multilinears: Vec<[FieldBuffer<P>; 2]>,
 		eval_point: &[F],
 		eval_claims: &[F],
 	) -> Result<Self, Error> {
@@ -49,7 +34,7 @@ impl<F: Field, P: PackedField<Scalar = F>> BivariateMlecheckProver<P> {
 
 		if multilinears
 			.iter()
-			.flat_map(|(l, r)| [l, r])
+			.flatten()
 			.any(|multilinear| multilinear.log_len() != n_vars)
 		{
 			return Err(Error::MultilinearSizeMismatch);
@@ -59,26 +44,25 @@ impl<F: Field, P: PackedField<Scalar = F>> BivariateMlecheckProver<P> {
 			return Err(Error::EvalClaimsNumberMismatch);
 		}
 
-		let multilinears = multilinears
-			.into_iter()
-			.flat_map(|(l, r)| [l, r])
-			.collect_vec();
-		let eq_expansion = eq_ind_partial_eval(&eval_point[..n_vars.saturating_sub(1)]);
+		let multilinears = multilinears.into_iter().flatten().collect_vec();
 		let last_coeffs_or_sums = RoundCoeffsOrSums::Sums(eval_claims.to_vec());
+
+		let gruen34 = Gruen34::new(eval_point);
 
 		Ok(Self {
 			n_vars,
-			n_rounds_remaining: n_vars,
 			multilinears,
 			last_coeffs_or_sums,
-			eval_point: eval_point.to_vec(),
-			eq_expansion,
-			eq_prefix_eval: F::ONE,
+			gruen34,
 		})
+	}
+
+	fn n_vars_remaining(&self) -> usize {
+		self.gruen34.n_vars_remaining()
 	}
 }
 
-impl<F, P> SumcheckProver<F> for BivariateMlecheckProver<P>
+impl<F, P> SumcheckProver<F> for BivariateProductMultiMlecheckProver<P>
 where
 	F: Field,
 	P: PackedField<Scalar = F>,
@@ -88,44 +72,45 @@ where
 	}
 
 	fn execute(&mut self) -> Result<Vec<RoundCoeffs<F>>, Error> {
-		if self.n_rounds_remaining == 0 {
-			return Err(Error::ExpectedFinish);
-		}
-
 		let RoundCoeffsOrSums::Sums(sums) = &self.last_coeffs_or_sums else {
 			return Err(Error::ExpectedFold);
 		};
 
-		const MAX_CHUNK_VARS: usize = 12;
-		let chunk_vars = max(MAX_CHUNK_VARS, P::LOG_WIDTH).min(self.n_rounds_remaining - 1);
+		assert!(self.n_vars_remaining() > 0);
 
-		let packed_prime_evals = (0..1 << (self.n_rounds_remaining - 1 - chunk_vars))
+		const MAX_CHUNK_VARS: usize = 12;
+		let chunk_vars = max(MAX_CHUNK_VARS, P::LOG_WIDTH).min(self.n_vars_remaining() - 1);
+
+		let packed_prime_evals = (0..1 << (self.n_vars_remaining() - 1 - chunk_vars))
 			.into_par_iter()
 			.try_fold(
 				|| vec![RoundEvals2::default(); sums.len()],
 				|mut packed_prime_evals: Vec<RoundEvals2<P>>, chunk_index| -> Result<_, Error> {
-					let eq = self.eq_expansion.chunk(chunk_vars, chunk_index)?;
+					let eq = self.gruen34.eq_expansion().chunk(chunk_vars, chunk_index)?;
 
-					for (round_evals, (l, r)) in
+					for (round_evals, (evals_a, evals_b)) in
 						izip!(&mut packed_prime_evals, self.multilinears.iter().tuples())
 					{
-						let (l_zero, l_one) = l.split_half()?;
-						let (r_zero, r_one) = r.split_half()?;
+						let (evals_a_0, evals_a_1) = evals_a.split_half()?;
+						let (evals_b_0, evals_b_1) = evals_b.split_half()?;
 
-						let l_zero = l_zero.chunk(chunk_vars, chunk_index)?;
-						let r_zero = r_zero.chunk(chunk_vars, chunk_index)?;
-						let l_one = l_one.chunk(chunk_vars, chunk_index)?;
-						let r_one = r_one.chunk(chunk_vars, chunk_index)?;
+						let evals_a_0 = evals_a_0.chunk(chunk_vars, chunk_index)?;
+						let evals_b_0 = evals_b_0.chunk(chunk_vars, chunk_index)?;
+						let evals_a_1 = evals_a_1.chunk(chunk_vars, chunk_index)?;
+						let evals_b_1 = evals_b_1.chunk(chunk_vars, chunk_index)?;
 
-						for (&eq, &l_zero, &r_zero, &l_one, &r_one) in izip!(
+						for (&eq, &evals_a_0_i, &evals_b_0_i, &evals_a_1_i, &evals_b_1_i) in izip!(
 							eq.as_ref(),
-							l_zero.as_ref(),
-							r_zero.as_ref(),
-							l_one.as_ref(),
-							r_one.as_ref()
+							evals_a_0.as_ref(),
+							evals_b_0.as_ref(),
+							evals_a_1.as_ref(),
+							evals_b_1.as_ref()
 						) {
-							round_evals.one += eq * l_one * r_one;
-							round_evals.inf += eq * (l_zero + l_one) * (r_zero + r_one);
+							let evals_a_inf_i = evals_a_0_i + evals_a_1_i;
+							let evals_b_inf_i = evals_b_0_i + evals_b_1_i;
+
+							round_evals.y_1 += eq * evals_a_1_i * evals_b_1_i;
+							round_evals.y_inf += eq * evals_a_inf_i * evals_b_inf_i;
 						}
 					}
 
@@ -137,33 +122,20 @@ where
 				|lhs, rhs| Ok(izip!(lhs, rhs).map(|(l, r)| l + &r).collect()),
 			)?;
 
-		let prime_evals = packed_prime_evals
-			.into_iter()
-			.map(|evals| evals.sum_scalars(self.n_rounds_remaining - 1));
-
-		let alpha = self.eval_point[self.n_rounds_remaining - 1];
-
-		let prime_coeffs = izip!(sums, prime_evals)
-			.map(|(&sum, evals)| evals.interpolate(sum, alpha))
-			.collect_vec();
-
-		let round_coeffs = prime_coeffs
-			.iter()
-			.map(|prime| round_coeffs_by_eq(prime, alpha) * self.eq_prefix_eval)
-			.collect();
+		let (prime_coeffs, round_coeffs) = izip!(sums, packed_prime_evals)
+			.map(|(&sum, evals)| self.gruen34.interpolate2(sum, evals.sum_scalars()))
+			.unzip::<_, _, Vec<_>, Vec<_>>();
 
 		self.last_coeffs_or_sums = RoundCoeffsOrSums::Coeffs(prime_coeffs);
 		Ok(round_coeffs)
 	}
 
 	fn fold(&mut self, challenge: F) -> Result<(), Error> {
-		if self.n_rounds_remaining == 0 {
-			return Err(Error::ExpectedFinish);
-		}
-
 		let RoundCoeffsOrSums::Coeffs(prime_coeffs) = &self.last_coeffs_or_sums else {
 			return Err(Error::ExpectedExecute);
 		};
+
+		assert!(self.n_vars_remaining() > 0);
 
 		let sums = prime_coeffs
 			.iter()
@@ -174,21 +146,13 @@ where
 			fold_highest_var_inplace(multilinear, challenge)?;
 		}
 
-		if self.n_rounds_remaining > 1 {
-			debug_assert_eq!(self.eq_expansion.log_len(), self.n_rounds_remaining - 1);
-			eq_ind_truncate_low_inplace(&mut self.eq_expansion, self.n_rounds_remaining - 2)?;
-		}
-
-		let alpha = self.eval_point[self.n_rounds_remaining - 1];
-		self.eq_prefix_eval *= eq_one_var(challenge, alpha);
-
+		self.gruen34.fold(challenge)?;
 		self.last_coeffs_or_sums = RoundCoeffsOrSums::Sums(sums);
-		self.n_rounds_remaining -= 1;
 		Ok(())
 	}
 
 	fn finish(self) -> Result<Vec<F>, Error> {
-		if self.n_rounds_remaining > 0 {
+		if self.n_vars_remaining() > 0 {
 			let error = match self.last_coeffs_or_sums {
 				RoundCoeffsOrSums::Coeffs(_) => Error::ExpectedFold,
 				RoundCoeffsOrSums::Sums(_) => Error::ExpectedExecute,
@@ -212,12 +176,18 @@ mod tests {
 	use std::iter::repeat_with;
 
 	use binius_field::PackedBinaryField8x16b;
-	use binius_math::test_utils::random_scalars;
+	use binius_math::{
+		multilinear::{eq::eq_ind_partial_eval, evaluate::evaluate_inplace},
+		test_utils::{random_field_buffer, random_scalars},
+	};
 	use rand::{SeedableRng, rngs::StdRng};
 
 	use super::*;
 
-	fn test_bivariate_mlecheck_consistency_helper<F: Field, P: PackedField<Scalar = F>>(
+	fn test_bivariate_product_multi_mlecheck_consistency_helper<
+		F: Field,
+		P: PackedField<Scalar = F>,
+	>(
 		n_vars: usize,
 		n_pairs: usize,
 	) {
@@ -232,36 +202,36 @@ mod tests {
 		let eval_point = random_scalars::<F>(&mut rng, n_vars);
 
 		// A copy of 2 * n_pairs + 1 multilinears for reference logic
-		let mut folded_multilinears = repeat_with(|| {
-			let scalars = random_scalars::<F>(&mut rng, 1 << n_vars);
-			FieldBuffer::<P>::from_values(&scalars).unwrap()
-		})
-		.take(n_pairs * 2)
-		.collect_vec();
+		let mut folded_multilinears = repeat_with(|| random_field_buffer::<P>(&mut rng, n_vars))
+			.take(n_pairs * 2)
+			.collect_vec();
 
 		// Witness copy for the prover
-		let multilinears = folded_multilinears.iter().cloned().tuples().collect_vec();
+		let (pairs, remainder) = folded_multilinears.as_chunks::<2>();
+		assert_eq!(remainder.len(), 0);
+
+		let multilinears = pairs.iter().cloned().collect_vec();
 
 		// Compute MLE of the product
-		let eq_ind = eq_ind_partial_eval::<P>(&eval_point);
 		let eval_claims = multilinears
 			.iter()
-			.map(|(l, r)| {
-				izip!(eq_ind.as_ref(), l.as_ref(), r.as_ref())
-					.map(|(&eq, &l, &r)| eq * l * r)
-					.sum::<P>()
-					.iter()
-					.sum::<F>()
+			.map(|[l, r]| {
+				let product = itertools::zip_eq(l.as_ref(), r.as_ref())
+					.map(|(&l, &r)| l * r)
+					.collect_vec();
+				let product_buffer = FieldBuffer::new(n_vars, product).unwrap();
+				evaluate_inplace(product_buffer, &eval_point).unwrap()
 			})
 			.collect_vec();
 
 		let mut prover =
-			BivariateMlecheckProver::new(multilinears, &eval_point, &eval_claims).unwrap();
+			BivariateProductMultiMlecheckProver::new(multilinears, &eval_point, &eval_claims)
+				.unwrap();
 
 		// Append eq indicator at the end
-		folded_multilinears.push(eq_ind);
+		folded_multilinears.push(eq_ind_partial_eval(&eval_point));
 
-		for n_rounds_remaining in (1..=n_vars).rev() {
+		for n_vars_remaining in (1..=n_vars).rev() {
 			// Round polynomials from the prover
 			let coeffs = prover.execute().unwrap();
 
@@ -271,10 +241,9 @@ mod tests {
 				let lerps = folded_multilinears
 					.iter()
 					.map(|multilinear| {
-						let prefix = multilinear.chunk(n_rounds_remaining, 0).unwrap();
-						let (zero, one) = prefix.split_half().unwrap();
-						izip!(zero.as_ref(), one.as_ref())
-							.map(|(&zero, &one)| zero + (one - zero) * sample_broadcast)
+						let (evals_0, evals_1) = multilinear.split_half().unwrap();
+						izip!(evals_0.as_ref(), evals_1.as_ref())
+							.map(|(&eval_0, &eval_1)| eval_0 + (eval_1 - eval_0) * sample_broadcast)
 							.collect_vec()
 					})
 					.collect_vec();
@@ -288,6 +257,7 @@ mod tests {
 						.map(|(&eq, &l, &r)| eq * l * r)
 						.sum::<P>()
 						.iter()
+						.take(1 << n_vars_remaining)
 						.sum::<F>();
 					assert_eq!(eval, coeffs.evaluate(sample));
 				}
@@ -306,13 +276,11 @@ mod tests {
 	}
 
 	#[test]
-	fn test_bivariate_mlecheck_consistency() {
-		for n_vars in 0..=7 {
-			for n_pairs in 0..=3 {
-				test_bivariate_mlecheck_consistency_helper::<_, PackedBinaryField8x16b>(
-					n_vars, n_pairs,
-				);
-			}
+	fn test_bivariate_product_multi_mlecheck_consistency() {
+		for (n_vars, n_pairs) in [(0, 0), (0, 4), (1, 5), (7, 1), (3, 3)] {
+			test_bivariate_product_multi_mlecheck_consistency_helper::<_, PackedBinaryField8x16b>(
+				n_vars, n_pairs,
+			);
 		}
 	}
 }

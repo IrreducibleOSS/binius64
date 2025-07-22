@@ -11,6 +11,8 @@ pub enum Error {
 	MultilinearSizeMismatch,
 	#[error("number of eval claims does not match the number of multilinears")]
 	EvalClaimsNumberMismatch,
+	#[error("the length of evaluation point does not match the size of the multilinears")]
+	EvalPointLengthMismatch,
 	#[error("batched provers should have the same number of rounds")]
 	ProverRoundCountMismatch,
 	#[error("expected execute() call")]

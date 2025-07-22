@@ -1,49 +1,62 @@
+// Copyright 2023-2025 Irreducible Inc.
+
+#![allow(dead_code)]
+
 use binius_field::{Field, PackedField};
 use binius_math::{FieldBuffer, multilinear::fold::fold_highest_var_inplace};
 use binius_utils::rayon::prelude::*;
 use binius_verifier::protocols::sumcheck::RoundCoeffs;
 
-use crate::protocols::sumcheck::{common::SumcheckProver, error::Error, round_evals::RoundEvals2};
+use super::{common::SumcheckProver, error::Error, gruen34::Gruen34, round_evals::RoundEvals2};
 
-/// A [`SumcheckProver`] implementation for a composite defined as the product of two multilinears.
-///
-/// This prover binds variables in high-to-low index order.
-///
-/// ## Invariants
-///
-/// - The length of the two multilinears is always equal
-#[derive(Debug)]
-pub struct BivariateProductSumcheckProver<P: PackedField> {
-	n_vars: usize,
-	multilinears: [FieldBuffer<P>; 2],
-	last_coeffs_or_sum: RoundCoeffsOrSum<P::Scalar>,
+enum RoundCoeffsOrSum<F: Field> {
+	Coeffs(RoundCoeffs<F>),
+	Sum(F),
 }
 
-impl<F: Field, P: PackedField<Scalar = F>> BivariateProductSumcheckProver<P> {
-	/// Constructs a prover, given the multilinear polynomial evaluations and the sum over the
-	/// boolean hypercube of their product.
-	pub fn new(multilinears: [FieldBuffer<P>; 2], sum: F) -> Result<Self, Error> {
+pub struct BivariateProductMlecheckProver<P: PackedField> {
+	multilinears: [FieldBuffer<P>; 2],
+	last_coeffs_or_sum: RoundCoeffsOrSum<P::Scalar>,
+	gruen34: Gruen34<P>,
+}
+
+impl<F: Field, P: PackedField<Scalar = F>> BivariateProductMlecheckProver<P> {
+	pub fn new(
+		multilinears: [FieldBuffer<P>; 2],
+		eval_point: &[F],
+		eval_claim: F,
+	) -> Result<Self, Error> {
 		if multilinears[0].log_len() != multilinears[1].log_len() {
 			return Err(Error::MultilinearSizeMismatch);
 		}
 
-		let n_vars = multilinears[0].log_len();
+		if multilinears[0].log_len() != eval_point.len() {
+			return Err(Error::EvalPointLengthMismatch);
+		}
+
+		let last_coeffs_or_sum = RoundCoeffsOrSum::Sum(eval_claim);
+
+		let gruen34 = Gruen34::new(eval_point);
+
 		Ok(Self {
-			n_vars,
 			multilinears,
-			last_coeffs_or_sum: RoundCoeffsOrSum::Sum(sum),
+			last_coeffs_or_sum,
+			gruen34,
 		})
 	}
 
-	/// Returns the number of variables remaining to be bound.
 	fn n_vars_remaining(&self) -> usize {
-		self.multilinears[0].log_len()
+		self.gruen34.n_vars_remaining()
 	}
 }
 
-impl<F: Field, P: PackedField<Scalar = F>> SumcheckProver<F> for BivariateProductSumcheckProver<P> {
+impl<F, P> SumcheckProver<F> for BivariateProductMlecheckProver<P>
+where
+	F: Field,
+	P: PackedField<Scalar = F>,
+{
 	fn n_vars(&self) -> usize {
-		self.n_vars
+		self.gruen34.n_vars()
 	}
 
 	fn execute(&mut self) -> Result<Vec<RoundCoeffs<F>>, Error> {
@@ -57,44 +70,57 @@ impl<F: Field, P: PackedField<Scalar = F>> SumcheckProver<F> for BivariateProduc
 		let n_vars_remaining = self.n_vars_remaining();
 		assert!(n_vars_remaining > 0);
 
+		let eq_expansion = self.gruen34.eq_expansion();
 		let (evals_a_0, evals_a_1) = self.multilinears[0].split_half()?;
 		let (evals_b_0, evals_b_1) = self.multilinears[1].split_half()?;
 
 		// Compute F(1) and F(∞) where F = ∑_{v ∈ B} A(v || X) B(v || X)
-		let round_evals =
-			(evals_a_0.as_ref(), evals_a_1.as_ref(), evals_b_0.as_ref(), evals_b_1.as_ref())
-				.into_par_iter()
-				.map(|(&evals_a_0_i, &evals_a_1_i, &evals_b_0_i, &evals_b_1_i)| {
-					// Evaluate M(∞) = M(0) + M(1)
-					let evals_a_inf_i = evals_a_0_i + evals_a_1_i;
-					let evals_b_inf_i = evals_b_0_i + evals_b_1_i;
+		let packed_prime_evals = (
+			eq_expansion.as_ref(),
+			evals_a_0.as_ref(),
+			evals_a_1.as_ref(),
+			evals_b_0.as_ref(),
+			evals_b_1.as_ref(),
+		)
+			.into_par_iter()
+			.map(|(&eq_i, &evals_a_0_i, &evals_a_1_i, &evals_b_0_i, &evals_b_1_i)| {
+				// Evaluate M(∞) = M(0) + M(1)
+				let evals_a_inf_i = evals_a_0_i + evals_a_1_i;
+				let evals_b_inf_i = evals_b_0_i + evals_b_1_i;
 
-					let prod_1_i = evals_a_1_i * evals_b_1_i;
-					let prod_inf_i = evals_a_inf_i * evals_b_inf_i;
+				let prod_1_i = eq_i * evals_a_1_i * evals_b_1_i;
+				let prod_inf_i = eq_i * evals_a_inf_i * evals_b_inf_i;
 
-					RoundEvals2 {
-						y_1: prod_1_i,
-						y_inf: prod_inf_i,
-					}
-				})
-				.reduce(RoundEvals2::default, |lhs, rhs| lhs + &rhs);
+				RoundEvals2 {
+					y_1: prod_1_i,
+					y_inf: prod_inf_i,
+				}
+			})
+			.reduce(RoundEvals2::default, |lhs, rhs| lhs + &rhs);
 
-		let round_coeffs = round_evals.sum_scalars().interpolate(*last_sum);
-		self.last_coeffs_or_sum = RoundCoeffsOrSum::Coeffs(round_coeffs.clone());
+		let (prime_coeffs, round_coeffs) = self
+			.gruen34
+			.interpolate2(*last_sum, packed_prime_evals.sum_scalars());
+
+		self.last_coeffs_or_sum = RoundCoeffsOrSum::Coeffs(prime_coeffs);
 		Ok(vec![round_coeffs])
 	}
 
 	fn fold(&mut self, challenge: F) -> Result<(), Error> {
-		let RoundCoeffsOrSum::Coeffs(last_coeffs) = self.last_coeffs_or_sum.clone() else {
+		let RoundCoeffsOrSum::Coeffs(prime_coeffs) = &self.last_coeffs_or_sum else {
 			return Err(Error::ExpectedExecute);
 		};
 
-		for multilin in &mut self.multilinears {
-			fold_highest_var_inplace(multilin, challenge)?;
+		assert!(self.n_vars_remaining() > 0);
+
+		let sum = prime_coeffs.evaluate(challenge);
+
+		for multilinear in &mut self.multilinears {
+			fold_highest_var_inplace(multilinear, challenge)?;
 		}
 
-		let round_sum = last_coeffs.evaluate(challenge);
-		self.last_coeffs_or_sum = RoundCoeffsOrSum::Sum(round_sum);
+		self.gruen34.fold(challenge)?;
+		self.last_coeffs_or_sum = RoundCoeffsOrSum::Sum(sum);
 		Ok(())
 	}
 
@@ -104,46 +130,37 @@ impl<F: Field, P: PackedField<Scalar = F>> SumcheckProver<F> for BivariateProduc
 				RoundCoeffsOrSum::Coeffs(_) => Error::ExpectedFold,
 				RoundCoeffsOrSum::Sum(_) => Error::ExpectedExecute,
 			};
+
 			return Err(error);
 		}
 
 		let multilinear_evals = self
 			.multilinears
 			.into_iter()
-			.map(|multilinear| {
-				multilinear.get(0).expect(
-					"multilinear.log_len() == n_vars_remaining; \
-				 	n_vars_remaining == 0; \
-				 	multilinear.len() == 1",
-				)
-			})
+			.map(|multilinear| multilinear.get(0).expect("multilinear.len() == 1"))
 			.collect();
+
 		Ok(multilinear_evals)
 	}
-}
-
-#[derive(Debug, Clone)]
-enum RoundCoeffsOrSum<F: Field> {
-	Coeffs(RoundCoeffs<F>),
-	Sum(F),
 }
 
 #[cfg(test)]
 mod tests {
 	use binius_field::arch::{OptimalB128, OptimalPackedB128};
 	use binius_math::{
-		inner_product::inner_product_par, multilinear::evaluate::evaluate,
-		test_utils::random_field_buffer,
+		multilinear::{eq::eq_ind, evaluate::evaluate},
+		test_utils::{random_field_buffer, random_scalars},
 	};
 	use binius_transcript::ProverTranscript;
 	use binius_verifier::{config::StdChallenger, protocols::sumcheck::verify};
+	use itertools::{self, Itertools};
 	use rand::{SeedableRng, prelude::StdRng};
 
 	use super::*;
 	use crate::protocols::sumcheck::prove::prove_single;
 
 	#[test]
-	fn test_bivariate_product_sumcheck() {
+	fn test_bivariate_product_mlecheck() {
 		type F = OptimalB128;
 		type P = OptimalPackedB128;
 
@@ -154,13 +171,20 @@ mod tests {
 		let multilinear_a = random_field_buffer::<P>(&mut rng, n_vars);
 		let multilinear_b = random_field_buffer::<P>(&mut rng, n_vars);
 
-		// Compute the expected sum: sum_{x in {0,1}^n} A(x) * B(x)
-		let expected_sum = inner_product_par(&multilinear_a, &multilinear_b);
+		// Compute product multilinear
+		let product = itertools::zip_eq(multilinear_a.as_ref(), multilinear_b.as_ref())
+			.map(|(&l, &r)| l * r)
+			.collect_vec();
+		let product_buffer = FieldBuffer::new(n_vars, product).unwrap();
+
+		let eval_point = random_scalars::<F>(&mut rng, n_vars);
+		let eval_claim = evaluate(&product_buffer, &eval_point).unwrap();
 
 		// Create the prover
-		let prover = BivariateProductSumcheckProver::new(
+		let prover = BivariateProductMlecheckProver::new(
 			[multilinear_a.clone(), multilinear_b.clone()],
-			expected_sum,
+			&eval_point,
+			eval_claim,
 		)
 		.unwrap();
 
@@ -177,18 +201,24 @@ mod tests {
 		let mut verifier_transcript = prover_transcript.into_verifier();
 		let sumcheck_output = verify::<F, _>(
 			n_vars,
-			2, // degree 2 for bivariate product
-			expected_sum,
+			3, // degree 3 for trivariate product (bivariate by equality indicator)
+			eval_claim,
 			&mut verifier_transcript,
 		)
 		.unwrap();
 
+		let mut reduced_eval_point = sumcheck_output.challenges.clone();
+		reduced_eval_point.reverse();
+
 		// Read the multilinear evaluations from the transcript
 		let multilinear_evals: Vec<F> = verifier_transcript.message().read_vec(2).unwrap();
 
+		// Evaluate the equality indicator
+		let eq_ind_eval = eq_ind(&eval_point, &reduced_eval_point);
+
 		// Check that the product of the evaluations equals the reduced evaluation
 		assert_eq!(
-			multilinear_evals[0] * multilinear_evals[1],
+			multilinear_evals[0] * multilinear_evals[1] * eq_ind_eval,
 			sumcheck_output.eval,
 			"Product of multilinear evaluations should equal the reduced evaluation"
 		);
@@ -196,10 +226,8 @@ mod tests {
 		// Check that the original multilinears evaluate to the claimed values at the challenge
 		// point The prover binds variables from high to low, but evaluate expects them from low
 		// to high
-		let mut eval_point = sumcheck_output.challenges.clone();
-		eval_point.reverse();
-		let eval_a = evaluate(&multilinear_a, &eval_point).unwrap();
-		let eval_b = evaluate(&multilinear_b, &eval_point).unwrap();
+		let eval_a = evaluate(&multilinear_a, &reduced_eval_point).unwrap();
+		let eval_b = evaluate(&multilinear_b, &reduced_eval_point).unwrap();
 
 		assert_eq!(
 			eval_a, multilinear_evals[0],

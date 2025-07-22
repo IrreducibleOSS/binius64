@@ -7,23 +7,28 @@ use binius_verifier::protocols::sumcheck::RoundCoeffs;
 
 #[derive(Clone, Debug, Default)]
 pub struct RoundEvals2<P: PackedField> {
-	pub one: P,
-	pub inf: P,
+	pub y_1: P,
+	pub y_inf: P,
 }
 
 impl<P: PackedField> RoundEvals2<P> {
-	pub fn sum_scalars(self, log_len: usize) -> RoundEvals2<P::Scalar> {
+	pub fn sum_scalars(self) -> RoundEvals2<P::Scalar> {
 		RoundEvals2 {
-			one: self.one.iter().take(1 << log_len).sum(),
-			inf: self.inf.iter().take(1 << log_len).sum(),
+			y_1: self.y_1.iter().sum(),
+			y_inf: self.y_inf.iter().sum(),
 		}
 	}
 }
 
 impl<F: Field> RoundEvals2<F> {
-	pub fn interpolate(self, sum: F, alpha: F) -> RoundCoeffs<F> {
-		let zero = (sum - self.one * alpha) * (F::ONE - alpha).invert_or_zero();
-		RoundCoeffs(vec![zero, self.one - zero - self.inf, self.inf])
+	pub fn interpolate(self, sum: F) -> RoundCoeffs<F> {
+		let y_0 = sum - self.y_1;
+		calculate_round_coeffs_from_evals_2(y_0, self.y_1, self.y_inf)
+	}
+
+	pub fn interpolate_eq(self, sum: F, alpha: F) -> RoundCoeffs<F> {
+		let y_0 = (sum - self.y_1 * alpha) * (F::ONE - alpha).invert_or_zero();
+		calculate_round_coeffs_from_evals_2(y_0, self.y_1, self.y_inf)
 	}
 }
 
@@ -31,10 +36,27 @@ impl<P: PackedField> Add<&Self> for RoundEvals2<P> {
 	type Output = Self;
 
 	fn add(mut self, rhs: &Self) -> Self::Output {
-		self.one += rhs.one;
-		self.inf += rhs.inf;
+		self.y_1 += rhs.y_1;
+		self.y_inf += rhs.y_inf;
 		self
 	}
+}
+
+/// Computes the coefficients of a degree 2 polynomial interpolating three points: (0, y_0),
+/// (1, y_1), and (infinity, y_inf). The evaluation of a polynomial at infinity is defined as the
+/// limit of P(X)/X^n as X approaches infinity, which equals the leading coefficient. This is the
+/// Karatsuba trick.
+fn calculate_round_coeffs_from_evals_2<F: Field>(y_0: F, y_1: F, y_inf: F) -> RoundCoeffs<F> {
+	// For a polynomial P(X) = c_2 x² + c_1 x + c_0:
+	//
+	// P(0) =                  c_0
+	// P(1) = c_2    + c_1   + c_0
+	// P(∞) = c_2
+
+	let c_0 = y_0;
+	let c_2 = y_inf;
+	let c_1 = y_1 - c_0 - c_2;
+	RoundCoeffs(vec![c_0, c_1, c_2])
 }
 
 pub fn round_coeffs_by_eq<F: Field>(prime: &RoundCoeffs<F>, alpha: F) -> RoundCoeffs<F> {

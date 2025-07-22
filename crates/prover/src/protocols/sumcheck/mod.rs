@@ -1,10 +1,12 @@
 // Copyright 2023-2025 Irreducible Inc.
 
 pub mod batch;
-pub mod bivariate_mle;
 pub mod bivariate_product;
+pub mod bivariate_product_mle;
+pub mod bivariate_product_multi_mle;
 pub mod common;
 mod error;
+mod gruen34;
 mod prove;
 mod round_evals;
 
