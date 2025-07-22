@@ -323,7 +323,7 @@ mod tests {
 		fn test_uint64x2_t_ghash_mul_identity_proptest(
 			a in arb_uint64x2_t()
 		) {
-			test_mul_identity(a, GHASH_ONE, ghash_mul, "GHASH");
+			test_mul_identity(a, ONE, ghash_mul, "GHASH");
 		}
 
 		#[test]

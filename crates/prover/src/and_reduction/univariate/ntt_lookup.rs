@@ -5,7 +5,7 @@ use binius_field::{
 	PackedField, packed::set_packed_slice,
 };
 
-use crate::protocols::sumcheck::and_reduction::univariate::univariate_lagrange::{
+use crate::and_reduction::univariate::univariate_lagrange::{
 	lexicographic_lagrange_denominator, lexicographic_lagrange_numerators_8b,
 };
 
@@ -105,7 +105,7 @@ mod test {
 	};
 
 	use super::ROWS_PER_HYPERCUBE_VERTEX;
-	use crate::protocols::sumcheck::and_reduction::univariate::ntt_lookup::precompute_lookup;
+	use crate::and_reduction::univariate::ntt_lookup::precompute_lookup;
 
 	#[test]
 	fn assert_accurate_ntt_on_well_known_poly() {

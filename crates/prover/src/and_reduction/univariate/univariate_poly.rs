@@ -2,7 +2,7 @@ use binius_field::{
 	AESTowerField8b, BinaryField128bPolyval, Field, arithmetic_traits::InvertOrZero,
 };
 
-use crate::protocols::sumcheck::and_reduction::univariate::{
+use crate::and_reduction::univariate::{
 	subfield_isomorphism::SubfieldIsomorphismLookup,
 	univariate_lagrange::{
 		lexicographic_lagrange_denominator, lexicographic_lagrange_numerators_8b,
@@ -125,9 +125,9 @@ mod test {
 	use binius_field::{AESTowerField8b, AESTowerField128b, BinaryField128bPolyval, PackedField};
 
 	use super::GenericPo2UnivariatePoly;
-	use crate::protocols::sumcheck::and_reduction::univariate::{
+	use crate::{and_reduction::univariate::{
 		subfield_isomorphism::SubfieldIsomorphismLookup, univariate_poly::UnivariatePoly,
-	};
+	}};
 
 	#[test]
 	fn univariate_po2_sanity_check() {

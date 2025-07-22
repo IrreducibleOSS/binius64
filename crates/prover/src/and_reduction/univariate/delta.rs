@@ -6,7 +6,7 @@ use super::{
 	},
 	univariate_poly::GenericPo2UnivariatePoly,
 };
-use crate::protocols::sumcheck::and_reduction::univariate::subfield_isomorphism::SubfieldIsomorphismLookup;
+use crate::and_reduction::univariate::subfield_isomorphism::SubfieldIsomorphismLookup;
 
 pub fn delta_poly<'a, F: Field>(
 	zerocheck_challenge: F,
@@ -34,7 +34,7 @@ pub fn delta_poly<'a, F: Field>(
 mod tests {
 	use binius_field::{AESTowerField8b, AESTowerField128b, BinaryField128bPolyval, Field};
 
-	use crate::protocols::sumcheck::and_reduction::univariate::{
+	use crate::and_reduction::univariate::{
 		delta::delta_poly, subfield_isomorphism::SubfieldIsomorphismLookup,
 		univariate_poly::UnivariatePoly,
 	};
