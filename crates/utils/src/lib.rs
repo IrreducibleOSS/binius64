@@ -14,6 +14,16 @@ pub mod serialization;
 pub mod sorting;
 pub mod sparse_index;
 pub mod strided_array;
+pub mod platform_diagnostics;
 
 pub use bytes;
 pub use serialization::{DeserializeBytes, SerializationError, SerializeBytes};
+
+// Re-export for convenience
+pub use platform_diagnostics::PlatformDiagnostics;
+
+/// Run platform diagnostics and print the report
+pub fn show_platform_diagnostics() {
+    let diag = PlatformDiagnostics::gather();
+    diag.print();
+}

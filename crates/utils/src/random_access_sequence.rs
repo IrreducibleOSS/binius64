@@ -173,7 +173,6 @@ impl<T: Copy, Inner: RandomAccessSequenceMut<T>> RandomAccessSequenceMut<T>
 mod tests {
 	use std::fmt::Debug;
 
-	use rand::{Rng, SeedableRng, rngs::StdRng};
 
 	use super::*;
 
@@ -212,8 +211,12 @@ mod tests {
 
 	#[test]
 	fn check_slice_mut() {
-		let mut rng = StdRng::seed_from_u64(0);
-		let mut random = || -> usize { rng.random::<u64>() as usize };
+		// Simple deterministic pseudo-random generator for testing
+		let mut seed = 0u64;
+		let mut random = || -> usize {
+			seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+			seed as usize
+		};
 
 		let mut slice: &mut [usize] = &mut [];
 
@@ -234,8 +237,12 @@ mod tests {
 
 	#[test]
 	fn test_subrange_mut() {
-		let mut rng = StdRng::seed_from_u64(0);
-		let mut random = || -> usize { rng.random::<u64>() as usize };
+		// Simple deterministic pseudo-random generator for testing
+		let mut seed = 0u64;
+		let mut random = || -> usize {
+			seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+			seed as usize
+		};
 
 		let mut slice: &mut [usize] = &mut [1, 2, 3, 4, 5];
 		let values = slice[1..4].to_vec();

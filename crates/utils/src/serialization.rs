@@ -326,16 +326,16 @@ pub fn assert_enough_data_for(read_buf: &impl Buf, size: usize) -> Result<(), Se
 #[cfg(test)]
 mod tests {
 	use generic_array::typenum::U32;
-	use rand::{RngCore, SeedableRng, rngs::StdRng};
 
 	use super::*;
 
 	#[test]
 	fn test_generic_array_serialize_deserialize() {
-		let mut rng = StdRng::seed_from_u64(0);
-
+		// Initialize with deterministic test data
 		let mut data = GenericArray::<u8, U32>::default();
-		rng.fill_bytes(&mut data);
+		for (i, byte) in data.iter_mut().enumerate() {
+			*byte = (i * 13 + 7) as u8; // Simple deterministic pattern
+		}
 
 		let mut buf = Vec::new();
 		data.serialize(&mut buf).unwrap();
