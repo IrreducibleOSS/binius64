@@ -35,3 +35,11 @@ rand = { workspace = true, features = ["std_rng"] }
 [[bench]]
 name = "binary_merkle_tree"
 harness = false
+
+[[bench]]
+name = "sumcheck"
+harness = false
+
+[features]
+default = ["rayon"]
+rayon = ["binius-utils/rayon"]
