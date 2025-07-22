@@ -9,6 +9,23 @@ use binius_verifier::protocols::sumcheck::RoundCoeffs;
 
 use crate::protocols::sumcheck::{common::SumcheckProver, error::Error};
 
+/// Prover for the AND reduction sumcheck protocol.
+///
+/// This prover implements a sumcheck protocol for proving the sum of a multilinear
+/// polynomial composition of the form `(A * B - C) * D`, where A, B, C are witness
+/// multilinears and D is the equality indicator polynomial `eq_r`.
+///
+/// The protocol reduces the verification of the sum to checking a single evaluation
+/// of the composed polynomial at a random point chosen by the verifier through
+/// interactive challenges.
+///
+/// # Protocol Overview
+///
+/// The prover engages in `log_n` rounds of interaction with the verifier:
+/// 1. In each round, the prover sends a univariate polynomial's evaluations
+/// 2. The verifier checks consistency and sends back a challenge
+/// 3. The prover "folds" the multilinears using the challenge
+/// 4. After all rounds, the claim is reduced to a single point evaluation
 #[allow(unused)]
 pub struct AndReductionProver<F: Field> {
 	multilinears: Vec<FieldBuffer<F>>,
@@ -22,6 +39,18 @@ pub struct AndReductionProver<F: Field> {
 }
 
 impl<F: Field> AndReductionProver<F> {
+	/// Creates a new AND reduction sumcheck prover.
+	///
+	/// # Arguments
+	///
+	/// * `multilinears` - The witness multilinears [A, B, C] for the composition (A * B - C)
+	/// * `zerocheck_challenges` - Challenges from the zerocheck protocol used to construct eq_r
+	/// * `overall_claim` - The claimed sum of (A * B - C) * eq_r over the boolean hypercube
+	/// * `log_n` - The number of variables in the multilinear polynomials
+	///
+	/// # Panics
+	///
+	/// Panics in debug mode if `multilinears.len() != 3`
 	pub fn new(
 		multilinears: Vec<FieldBuffer<F>>,
 		zerocheck_challenges: Vec<F>,
@@ -48,17 +77,36 @@ impl<F: Field> AndReductionProver<F> {
 		}
 	}
 
+	/// Returns the index of the current zerocheck challenge to use.
 	fn zerocheck_challenge_idx(&self) -> usize {
 		self.log_n - self.round_index - 1
+	}
+
+	/// Returns the current round's claim value.
+	pub fn current_round_claim(&self) -> F {
+		self.current_round_claim
 	}
 }
 
 impl<F: Field> SumcheckProver<F> for AndReductionProver<F> {
+	/// Returns the number of variables in the multilinear polynomials.
 	fn n_vars(&self) -> usize {
 		self.multilinears[0].log_len()
 	}
 
-	// folds challenge into multilinears
+	/// Folds the multilinear polynomials using the sumcheck challenge.
+	///
+	/// This method performs the key step in the sumcheck protocol where the prover
+	/// "folds" the multilinear polynomials by fixing one variable to the challenge
+	/// value, effectively reducing the problem size by half.
+	///
+	/// # Arguments
+	///
+	/// * `sumcheck_challenge` - The challenge value from the verifier for this round
+	///
+	/// # Returns
+	///
+	/// Returns `Ok(())` on success, or an error if the round message is missing
 	fn fold(&mut self, sumcheck_challenge: F) -> Result<(), Error> {
 		let n = 1 << self.multilinears[0].log_len();
 		let n_half = n >> 1;
@@ -79,7 +127,7 @@ impl<F: Field> SumcheckProver<F> for AndReductionProver<F> {
 
 		let round_message = match self.round_message.clone() {
 			Some(round_message) => round_message,
-			None => todo!(), // error
+			None => return Err(Error::ExpectedExecute),
 		};
 
 		self.current_round_claim = evaluate_round_polynomial_at(
@@ -93,27 +141,38 @@ impl<F: Field> SumcheckProver<F> for AndReductionProver<F> {
 		Ok(())
 	}
 
-	// computes univariate round message for the current round
+	/// Computes the univariate polynomial coefficients for the current round.
+	///
+	/// This method evaluates the composition polynomial (A * B - C) * D at the
+	/// points needed to construct the univariate polynomial that the verifier
+	/// will use to check consistency.
+	///
+	/// # Returns
+	///
+	/// Returns a vector containing the round coefficients: [g(0), g(1), leading_coefficient]
 	fn execute(&mut self) -> Result<Vec<RoundCoeffs<F>>, Error> {
-
 		let (a_low, a_high) = &self.multilinears[0].split_half()?;
 		let (b_low, b_high) = &self.multilinears[1].split_half()?;
 		let (c_low, _) = &self.multilinears[2].split_half()?;
 		let (d_low, d_high) = &self.multilinears[3].split_half()?;
 
 		let (mut g_of_zero, mut g_leading_coeff) = (
-			   a_low.as_ref(), b_low.as_ref(), c_low.as_ref(), d_low.as_ref(),
-			   a_high.as_ref(), b_high.as_ref(), d_high.as_ref()
-		   	)
-		   .into_par_iter()
-		   .map(|(a_low, b_low, c_low, d_low, a_high, b_high, d_high)| {
-			   
-			   let g_of_zero = (*a_low * *b_low - *c_low) * *d_low;
-			   let g_leading_coeff = (*a_low + *a_high) * (*b_low + *b_high) * (*d_low + *d_high);
+			a_low.as_ref(),
+			b_low.as_ref(),
+			c_low.as_ref(),
+			d_low.as_ref(),
+			a_high.as_ref(),
+			b_high.as_ref(),
+			d_high.as_ref(),
+		)
+			.into_par_iter()
+			.map(|(a_low, b_low, c_low, d_low, a_high, b_high, d_high)| {
+				let g_of_zero = (*a_low * *b_low - *c_low) * *d_low;
+				let g_leading_coeff = (*a_low + *a_high) * (*b_low + *b_high) * (*d_low + *d_high);
 
-			   (g_of_zero, g_leading_coeff)
-		   })
-		   .reduce(|| (F::ZERO, F::ZERO), |(sum0, sum1), (x0, x1)| (sum0 + x0, sum1 + x1));
+				(g_of_zero, g_leading_coeff)
+			})
+			.reduce(|| (F::ZERO, F::ZERO), |(sum0, sum1), (x0, x1)| (sum0 + x0, sum1 + x1));
 
 		// multiply by eq_factor
 		g_of_zero *= self.eq_factor;
@@ -138,8 +197,11 @@ impl<F: Field> SumcheckProver<F> for AndReductionProver<F> {
 	}
 }
 
-// given 4 lagrange basis coefficients for a univariate polynomial, compute
-// lagrange basis polynomials and evaluate at x the resulting polynomial
+/// Evaluates a univariate polynomial at a given point from coordinates lagrange basis.
+///
+/// This function computes the value of the univariate polynomial at a given point
+/// using the Lagrange basis polynomials. It uses a leading coefficient optimization
+/// to avoid sending all three univariate polynomial coefficients.
 fn evaluate_round_polynomial_at<F: Field>(x: F, zerocheck_challenge: F, round_msg: Vec<F>) -> F {
 	let _span = tracing::debug_span!("evaluate round polynomial").entered();
 
@@ -170,7 +232,10 @@ fn evaluate_round_polynomial_at<F: Field>(x: F, zerocheck_challenge: F, round_ms
 	l_0 * y_0 + l_1 * y_1 + l_2 * y_2 + vanishing_poly * leading_coeff
 }
 
-// verifier checks for correctness of round message and claim
+/// Verifies the correctness of the round message and claim.
+///
+/// This function checks that the round message is consistent with the sum claim
+/// and that the univariate polynomial is correctly constructed.
 pub fn verify_round<F: Field>(
 	round_sum_claim: F,
 	round_msg: Vec<F>,
@@ -201,7 +266,6 @@ pub mod test {
 		F::random(&mut rng)
 	}
 
-
 	// sums the composition of 4 multilinears (A * B - C) * D
 	pub fn sum_composition<F: Field>(
 		a: &FieldBuffer<F>,
@@ -223,8 +287,15 @@ pub mod test {
 		Ok(sum)
 	}
 
-	// runs sumcheck interactive protocol for multilinear composition (A * B - C) * eq_r
-	// eq_r is the multilinear equality indicator for some vector of log_n zerocheck challenges
+	/// Drives the sumcheck interactive protocol for the multilinear composition (A * B - C) * eq_r.
+	///
+	/// This function runs the sumcheck interactive protocol for the multilinear composition
+	/// (A * B - C) * eq_r, where eq_r is the multilinear equality indicator for some vector
+	/// of log_n zerocheck challenges.
+	///
+	/// # Returns
+	///
+	/// Returns a tuple containing the expected next round claim and the sumcheck challenges
 	pub fn multilinear_sumcheck<F: Field>(mut prover: AndReductionProver<F>) -> (F, Vec<F>) {
 		let _span = tracing::debug_span!("multilinear_sumcheck").entered();
 		let log_n = prover.log_n;
@@ -280,10 +351,10 @@ pub mod test {
 		multilinears
 	}
 
-	// runs sumcheck protocol for a 4 column composition polynomial (A * B - C) * eq_r
-	// tests both high to low and low to high fold directions
+	/// Sets up and runs the sumcheck protocol for a 4 column composition polynomial (A * B - C) *
+	/// eq_r
 	#[test]
-	fn sumcheck_four_column() {
+	fn test_sumcheck() {
 		let mut rng = StdRng::from_seed([0; 32]);
 
 		let log_n = 5;
@@ -300,13 +371,8 @@ pub mod test {
 		let eq_r: FieldBuffer<BF> = eq_ind_partial_eval(&zerocheck_challenges.clone());
 
 		// compute overall sum claim for (A * B - C) * eq_r
-		let overall_claim = sum_composition(
-			&multilinears[0],
-			&multilinears[1],
-			&multilinears[2],
-			&eq_r,
-		)
-		.unwrap();
+		let overall_claim =
+			sum_composition(&multilinears[0], &multilinears[1], &multilinears[2], &eq_r).unwrap();
 
 		// create multilinear sumcheck prover
 		let prover = AndReductionProver::new(
@@ -329,13 +395,9 @@ pub mod test {
 
 		let multilinears: Vec<FieldBuffer<BF>> = random_field_buffer(num_multilinears, log_n);
 
-		let overall_sum = sum_composition(
-			&multilinears[0],
-			&multilinears[1],
-			&multilinears[2],
-			&multilinears[3],
-		)
-		.unwrap();
+		let overall_sum =
+			sum_composition(&multilinears[0], &multilinears[1], &multilinears[2], &multilinears[3])
+				.unwrap();
 
 		// produce g(0), g(1) by summing over evals where first var is 0, 1
 		let mut g_of_zero = BF::ZERO;
