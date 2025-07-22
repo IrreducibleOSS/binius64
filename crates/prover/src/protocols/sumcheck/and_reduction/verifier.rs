@@ -1,27 +1,16 @@
-use binius_field::{
-	AESTowerField8b, AESTowerField128b, BinaryField128bPolyval, Field,
-	arithmetic_traits::TaggedInvertOrZero,
-};
+use binius_field::{AESTowerField8b, Field};
 use binius_transcript::{
 	VerifierTranscript,
 	fiat_shamir::{CanSample, Challenger},
 };
 
-use crate::protocols::sumcheck::and_reduction::univariate::univariate_poly::GenericPo2UnivariatePoly;
-// use crate::{utils::{constants::{ROWS_PER_HYPERCUBE_VERTEX, SKIPPED_VARS},
-// subfield_isomorphism_lookup::SubfieldIsomorphismLookup}, univariate::{delta::delta_poly,
-// univariate_poly::{UnivariatePoly, GenericPo2UnivariatePoly}},
-// multilinear_sumcheck::multilinear_sumcheck::verify_round};
 use crate::protocols::sumcheck::and_reduction::{
-	fold_lookups::precompute_fold_lookup,
-	one_bit_multivariate::OneBitMultivariate,
 	sumcheck_prover::verify_round,
-	sumcheck_round_message::sum_claim,
 	univariate::{
 		delta::delta_poly,
-		ntt_lookup::{ROWS_PER_HYPERCUBE_VERTEX, SKIPPED_VARS, precompute_lookup},
+		ntt_lookup::{ROWS_PER_HYPERCUBE_VERTEX, SKIPPED_VARS},
 		subfield_isomorphism::SubfieldIsomorphismLookup,
-		univariate_poly::UnivariatePoly,
+		univariate_poly::{GenericPo2UnivariatePoly, UnivariatePoly},
 	},
 };
 
@@ -67,9 +56,7 @@ impl OblongZerocheckVerifier {
 
 		let mut sumcheck_challenges = vec![];
 
-		for (i, this_round_zerocheck_challenge) in
-			multilinear_zerocheck_challenges.iter().enumerate()
-		{
+		for this_round_zerocheck_challenge in multilinear_zerocheck_challenges.iter() {
 			let round_message: Vec<F> = transcript.message().read_scalar_slice(3).unwrap();
 
 			let challenge: F = transcript.sample();
@@ -91,15 +78,17 @@ impl OblongZerocheckVerifier {
 #[cfg(test)]
 mod test {
 	use binius_field::{
-		AESTowerField8b, AESTowerField128b, BinaryField128bPolyval, Field, PackedBinaryField128x1b,
-		Random,
+		AESTowerField8b, AESTowerField128b, BinaryField128bPolyval, PackedBinaryField128x1b, Random,
 	};
 	use binius_transcript::ProverTranscript;
 	use binius_verifier::config::StdChallenger;
 	use rand::{SeedableRng, rngs::StdRng};
 
 	use super::*;
-	use crate::protocols::sumcheck::and_reduction::zerocheck_prover::OblongZerocheckProver;
+	use crate::protocols::sumcheck::and_reduction::{
+		one_bit_multivariate::OneBitMultivariate, univariate::ntt_lookup::precompute_lookup,
+		zerocheck_prover::OblongZerocheckProver,
+	};
 
 	#[test]
 	fn test_transcript_prover_runs() {

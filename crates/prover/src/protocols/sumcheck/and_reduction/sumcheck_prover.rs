@@ -4,7 +4,6 @@ use binius_field::Field;
 use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval};
 use binius_utils::rayon::prelude::{
 	IndexedParallelIterator, IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator,
-	ParallelSliceMut,
 };
 use binius_verifier::protocols::sumcheck::RoundCoeffs;
 use rand::{SeedableRng, rngs::StdRng};
@@ -128,7 +127,7 @@ impl<F: Field> SumcheckProver<F> for AndReductionMultilinearSumcheckProver<F> {
 						*multilinear = FieldBuffer::from_values(&new).unwrap();
 					});
 
-				// optimzation, handle eq differently w/ cheeky factorization
+				// optimization, handle eq differently w/ cheeky factorization
 				self.eq_factor *=
 					self.zerocheck_challenges[self.round_index] + sumcheck_challenge + F::ONE;
 			}
@@ -403,7 +402,7 @@ pub mod test {
 		.unwrap();
 
 		// create multilinear sumcheck prover
-		let mut prover = AndReductionMultilinearSumcheckProver::new(
+		let prover = AndReductionMultilinearSumcheckProver::new(
 			multilinears,
 			zerocheck_challenges.clone(),
 			overall_claim,

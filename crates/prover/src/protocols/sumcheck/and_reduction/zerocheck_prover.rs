@@ -1,10 +1,11 @@
 use binius_field::{AESTowerField8b, Field};
-use binius_math::{multilinear::eq::eq_ind_partial_eval};
+use binius_math::multilinear::eq::eq_ind_partial_eval;
 use binius_transcript::{
 	ProverTranscript,
 	fiat_shamir::{CanSample, Challenger},
 };
 use itertools::Itertools;
+
 use crate::protocols::sumcheck::{
 	and_reduction::{
 		fold_lookups::precompute_fold_lookup,
@@ -164,12 +165,15 @@ where
 
 #[cfg(test)]
 mod test {
-	use binius_field::{AESTowerField8b, AESTowerField128b, BinaryField128bPolyval, Field, PackedBinaryField128x1b, Random};
+	use binius_field::{
+		AESTowerField8b, AESTowerField128b, BinaryField128bPolyval, Field, PackedBinaryField128x1b,
+		Random,
+	};
 	use binius_transcript::ProverTranscript;
 	use binius_verifier::config::StdChallenger;
 	use rand::{SeedableRng, rngs::StdRng};
-	use super::{OblongZerocheckProver};
 
+	use super::OblongZerocheckProver;
 	use crate::protocols::sumcheck::{
 		and_reduction::{
 			one_bit_multivariate::OneBitMultivariate,
@@ -177,7 +181,7 @@ mod test {
 				delta::delta_poly,
 				ntt_lookup::{ROWS_PER_HYPERCUBE_VERTEX, SKIPPED_VARS, precompute_lookup},
 				subfield_isomorphism::SubfieldIsomorphismLookup,
-				univariate_poly::{UnivariatePoly},
+				univariate_poly::UnivariatePoly,
 			},
 		},
 		common::SumcheckProver,
@@ -188,12 +192,12 @@ mod test {
 
 		let mut vec = Vec::with_capacity(num_polys);
 		for _ in 0..num_polys {
-			vec.push(
-				OneBitMultivariate {
-					log_num_rows,
-					packed_evals: (0..1 << log_num_rows).map(|_| PackedBinaryField128x1b::random(&mut rng)).collect(),
-				}
-			);
+			vec.push(OneBitMultivariate {
+				log_num_rows,
+				packed_evals: (0..1 << log_num_rows)
+					.map(|_| PackedBinaryField128x1b::random(&mut rng))
+					.collect(),
+			});
 		}
 
 		vec
@@ -214,7 +218,8 @@ mod test {
 		];
 
 		let mlvs = random_mlv(log_num_rows, 3);
-		let (first_mlv, second_mlv, third_mlv) = (mlvs[0].clone(), mlvs[1].clone(), mlvs[2].clone());
+		let (first_mlv, second_mlv, third_mlv) =
+			(mlvs[0].clone(), mlvs[1].clone(), mlvs[2].clone());
 
 		let onto_domain: Vec<_> = (ROWS_PER_HYPERCUBE_VERTEX..2 * ROWS_PER_HYPERCUBE_VERTEX)
 			.map(|x| AESTowerField8b::new(x as u8))
@@ -243,7 +248,6 @@ mod test {
 			.iter_coeffs()
 			.take(ROWS_PER_HYPERCUBE_VERTEX);
 
-		
 		assert_eq!(
 			prover_poly_terms_on_oblong_hypercube.sum::<BinaryField128bPolyval>(),
 			BinaryField128bPolyval::ZERO
@@ -282,7 +286,8 @@ mod test {
 		];
 
 		let mlvs = random_mlv(log_num_rows, 3);
-		let (first_mlv, second_mlv, third_mlv) = (mlvs[0].clone(), mlvs[1].clone(), mlvs[2].clone());
+		let (first_mlv, second_mlv, third_mlv) =
+			(mlvs[0].clone(), mlvs[1].clone(), mlvs[2].clone());
 
 		let onto_domain: Vec<_> = (ROWS_PER_HYPERCUBE_VERTEX..2 * ROWS_PER_HYPERCUBE_VERTEX)
 			.map(|x| AESTowerField8b::new(x as u8))

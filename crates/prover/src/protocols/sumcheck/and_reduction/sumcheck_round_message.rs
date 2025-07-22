@@ -1,11 +1,11 @@
 use binius_field::{
-	AESTowerField8b, BinaryField1b, BinaryField128bPolyval, Field,
-	PackedAESBinaryField16x8b, PackedExtension, PackedField,
-	packed::get_packed_slice,
+	AESTowerField8b, BinaryField1b, BinaryField128bPolyval, Field, PackedAESBinaryField16x8b,
+	PackedExtension, PackedField, packed::get_packed_slice,
 };
 use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval};
-use binius_utils::rayon::{prelude::{IntoParallelIterator, ParallelIterator},};
+use binius_utils::rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use itertools::izip;
+
 use crate::protocols::sumcheck::and_reduction::{
 	one_bit_multivariate::OneBitMultivariate,
 	univariate::{
@@ -42,10 +42,13 @@ where
 	let num_vars_on_hypercube = log_num_rows - SKIPPED_VARS;
 
 	let mut pre_delta_prover_message = vec![FChallenge::ZERO; HOT_LOOP_NTT_POINTS];
-	
-	let col_1_bytes = <PackedAESBinaryField16x8b as PackedExtension<Bit>>::cast_exts(&first_col.packed_evals);
-	let col_2_bytes = <PackedAESBinaryField16x8b as PackedExtension<Bit>>::cast_exts(&second_col.packed_evals);
-	let col_3_bytes = <PackedAESBinaryField16x8b as PackedExtension<Bit>>::cast_exts(&third_col.packed_evals);
+
+	let col_1_bytes =
+		<PackedAESBinaryField16x8b as PackedExtension<Bit>>::cast_exts(&first_col.packed_evals);
+	let col_2_bytes =
+		<PackedAESBinaryField16x8b as PackedExtension<Bit>>::cast_exts(&second_col.packed_evals);
+	let col_3_bytes =
+		<PackedAESBinaryField16x8b as PackedExtension<Bit>>::cast_exts(&third_col.packed_evals);
 
 	let eq_ind_small: Vec<PackedAESBinaryField16x8b> =
 		eq_ind_partial_eval(small_field_zerocheck_challenges)
@@ -58,11 +61,9 @@ where
 	let pre_delta_prover_message_extension_domain = (0..1 << (num_vars_on_hypercube - 3))
 		.into_par_iter()
 		.map(|subcube_idx| {
-			
 			let mut summed_ntt = [PackedAESBinaryField16x8b::zero(); NTT_DOMAIN_SIZE];
 
 			for point_idx_within_subcube in 0..1 << 3 {
-
 				let hypercube_point_idx = subcube_idx << 3 | point_idx_within_subcube;
 				let byte_offset = hypercube_point_idx * BYTES_PER_HYPERCUBE_VERTEX;
 
@@ -90,7 +91,8 @@ where
 			let mut result = [FChallenge::ZERO; ROWS_PER_HYPERCUBE_VERTEX];
 
 			for (i, val) in result.iter_mut().enumerate() {
-				*val = eq_weight * subfield_iso_lookup.lookup_8b_value(get_packed_slice(&summed_ntt, i));
+				*val = eq_weight
+					* subfield_iso_lookup.lookup_8b_value(get_packed_slice(&summed_ntt, i));
 			}
 
 			result
@@ -108,14 +110,16 @@ where
 	pre_delta_prover_message[ROWS_PER_HYPERCUBE_VERTEX..2 * ROWS_PER_HYPERCUBE_VERTEX]
 		.copy_from_slice(&pre_delta_prover_message_extension_domain);
 
-	let pre_delta_poly = GenericPo2UnivariatePoly::new(pre_delta_prover_message, subfield_iso_lookup);
+	let pre_delta_poly =
+		GenericPo2UnivariatePoly::new(pre_delta_prover_message, subfield_iso_lookup);
 
 	let delta = delta_poly(univariate_zerocheck_challenge, SKIPPED_VARS, subfield_iso_lookup);
 
 	let final_evals = (0..PROVER_MESSAGE_NUM_POINTS)
 		.map(|i| {
 			let point = subfield_iso_lookup.lookup_8b_value(AESTowerField8b::new(i as u8));
-			pre_delta_poly.evaluate_at_subfield_point(point) * delta.evaluate_at_subfield_point(point)
+			pre_delta_poly.evaluate_at_subfield_point(point)
+				* delta.evaluate_at_subfield_point(point)
 		})
 		.collect();
 
@@ -139,8 +143,9 @@ mod test {
 	use binius_field::{
 		AESTowerField8b, AESTowerField128b, BinaryField128bPolyval, PackedBinaryField128x1b, Random,
 	};
-	use binius_math::{multilinear::eq::eq_ind_partial_eval};
+	use binius_math::multilinear::eq::eq_ind_partial_eval;
 	use rand::{SeedableRng, rngs::StdRng};
+
 	use super::univariate_round_message;
 	use crate::protocols::sumcheck::and_reduction::{
 		fold_lookups::precompute_fold_lookup,
@@ -153,7 +158,7 @@ mod test {
 			univariate_poly::UnivariatePoly,
 		},
 	};
-	
+
 	fn random_one_bit_multivariate(log_num_rows: usize) -> OneBitMultivariate {
 		let mut rng = StdRng::from_seed([0; 32]);
 		OneBitMultivariate {
@@ -163,7 +168,7 @@ mod test {
 				.collect(),
 		}
 	}
-	
+
 	#[test]
 	fn test_first_round_message_matches_next_round_sum_claim() {
 		let log_num_rows = 10;

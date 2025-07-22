@@ -1,12 +1,12 @@
 use binius_field::{
-	arithmetic_traits::InvertOrZero, BinaryField1b, ExtensionField, Field,
-	PackedAESBinaryField16x8b, PackedBinaryField128x1b, PackedExtension, 
-	packed::iter_packed_slice_with_offset,
+	BinaryField1b, ExtensionField, Field, PackedAESBinaryField16x8b, PackedBinaryField128x1b,
+	PackedExtension, arithmetic_traits::InvertOrZero, packed::iter_packed_slice_with_offset,
 };
 use binius_math::FieldBuffer;
 use binius_utils::rayon::prelude::{
 	IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator,
 };
+
 use crate::protocols::sumcheck::and_reduction::{
 	fold_lookups::FoldLookup,
 	univariate::{
@@ -42,9 +42,8 @@ impl OneBitMultivariate {
 			iso_lookup,
 		);
 
-		let denom_inv = iso_lookup.lookup_8b_value(
-			lexicographic_lagrange_denominator(SKIPPED_VARS).invert_or_zero()
-		);
+		let denom_inv = iso_lookup
+			.lookup_8b_value(lexicographic_lagrange_denominator(SKIPPED_VARS).invert_or_zero());
 
 		multilin.as_mut().par_iter_mut().enumerate().for_each(
 			|(group_idx, hyprecube_vertex_val)| {
@@ -74,8 +73,11 @@ impl OneBitMultivariate {
 				&self.packed_evals,
 			);
 
-		multilin.as_mut().par_iter_mut().enumerate().for_each(
-			|(group_idx, vertex_val)| {
+		multilin
+			.as_mut()
+			.par_iter_mut()
+			.enumerate()
+			.for_each(|(group_idx, vertex_val)| {
 				let bytes = iter_packed_slice_with_offset(
 					packed_evals_as_bytes,
 					group_idx * ROWS_PER_HYPERCUBE_VERTEX / 8,
@@ -86,8 +88,7 @@ impl OneBitMultivariate {
 					.enumerate()
 					.map(|(idx, byte)| lookup[idx][Into::<u8>::into(byte) as usize])
 					.sum();
-			},
-		);
+			});
 		multilin
 	}
 }
