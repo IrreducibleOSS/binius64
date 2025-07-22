@@ -45,6 +45,7 @@ where
 	/// The main arguments needed are multilinear, transparent multilinear, and the claim.
 	/// The rest of the arguments are parameters related to FRI and Sumcheck that are
 	/// bound in some way by lifetimes outside of this function.
+	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		multilinear: FieldBuffer<F>,
 		transparent_multilinear: FieldBuffer<F>,
