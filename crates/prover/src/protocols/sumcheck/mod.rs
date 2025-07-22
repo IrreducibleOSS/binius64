@@ -2,6 +2,7 @@
 
 pub mod batch;
 pub mod bivariate_mle;
+pub mod bivariate_product;
 pub mod common;
 mod error;
 mod round_evals;
