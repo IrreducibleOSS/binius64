@@ -16,7 +16,7 @@ pub type NTTLookup = Vec<Vec<Vec<PackedAESBinaryField16x8b>>>;
 // first index is the idx of the 8 bit chunk that we're in
 // second index is the bit string
 //
-// ASSUME: Each lagrange basis vector thats being ntt'ed has size 64
+// ASSUME: Each lagrange basis vector thats being ntt'ed has size 2^SKIPPED_VARS
 // ASSUME: Lagrange basis domain is simply AESTowerField8b(0..64)
 pub fn precompute_lookup(onto_domain: &[AESTowerField8b]) -> NTTLookup {
 	let _span = tracing::debug_span!("precompute_lookup").entered();
@@ -37,7 +37,7 @@ pub fn precompute_lookup(onto_domain: &[AESTowerField8b]) -> NTTLookup {
 
 	let mut eval_point_basis_point_to_numerator =
 		vec![vec![AESTowerField8b::ZERO; lagrange_basis_domain.len()]; onto_domain.len()];
-	let denominator = lexicographic_lagrange_denominator(SKIPPED_VARS);
+	let denominator: AESTowerField8b = lexicographic_lagrange_denominator(SKIPPED_VARS);
 
 	let inverse_denominator = denominator.invert_or_zero();
 	for (eval_point_idx, eval_point) in onto_domain.iter().enumerate() {
