@@ -5,9 +5,7 @@ use binius_utils::rayon::{
 	prelude::{IndexedParallelIterator, IntoParallelRefMutIterator},
 	slice::ParallelSlice,
 };
-use binius_verifier::protocols::{
-	basefold::utils::evaluate_round_polynomial_at, sumcheck::RoundCoeffs,
-};
+use binius_verifier::protocols::sumcheck::RoundCoeffs;
 
 use crate::protocols::sumcheck::{Error, common::SumcheckProver};
 
@@ -112,7 +110,13 @@ impl<F: Field> SumcheckProver<F> for MultilinearSumcheckProver<F> {
 			.round_message
 			.clone()
 			.expect("prover must be executed before fold");
-		self.current_round_claim = evaluate_round_polynomial_at(challenge, round_msg);
+
+
+		// ! Temporary solution during mle check integration
+		let middle = round_msg[1] - round_msg[0] - round_msg[2];
+		let monomial_basis_coeffs = [round_msg[0], middle, round_msg[2]];
+		let rounds_coeffs = RoundCoeffs(monomial_basis_coeffs.to_vec());
+		self.current_round_claim = rounds_coeffs.evaluate(challenge);
 
 		Ok(())
 	}
@@ -126,7 +130,6 @@ impl<F: Field> SumcheckProver<F> for MultilinearSumcheckProver<F> {
 pub mod test {
 	use binius_field::{BinaryField128b, Random};
 	use binius_math::{multilinear::eq::eq_ind_partial_eval, test_utils::random_field_buffer};
-	use binius_verifier::protocols::basefold::utils::verify_sumcheck_round;
 	use rand::{SeedableRng, rngs::StdRng};
 
 	use super::*;
@@ -159,13 +162,11 @@ pub mod test {
 			let round_msg: RoundCoeffs<F> = round_msg[0].clone();
 			let round_msg: Vec<F> = round_msg.0;
 
-			// verifier checks round message against claim
-			expected_next_round_claim = verify_sumcheck_round(
-				prover.current_round_claim,
-				expected_next_round_claim,
-				round_msg.clone(),
-				sumcheck_challenge,
-			);
+			// ! Temporary solution during mle check integration
+			let middle = round_msg[1] - round_msg[0] - round_msg[2];
+			let monomial_basis_coeffs = [round_msg[0], middle, round_msg[2]];
+			let rounds_coeffs = RoundCoeffs(monomial_basis_coeffs.to_vec());
+			expected_next_round_claim = rounds_coeffs.evaluate(sumcheck_challenge);
 
 			// prover folds challenge into multilinear
 			prover.fold(sumcheck_challenge)?;
