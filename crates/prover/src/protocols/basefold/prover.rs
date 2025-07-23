@@ -211,6 +211,7 @@ mod test {
 		evaluation_point: Vec<F>,
 		evaluation_claim: F,
 	) -> Result<(), Box<dyn std::error::Error>> {
+
 		let n_vars = multilinear.log_len();
 
 		let eval_point_eq = eq_ind_partial_eval(&evaluation_point);
