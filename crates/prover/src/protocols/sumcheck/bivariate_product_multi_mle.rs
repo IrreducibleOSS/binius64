@@ -56,10 +56,6 @@ impl<F: Field, P: PackedField<Scalar = F>> BivariateProductMultiMlecheckProver<P
 			gruen34,
 		})
 	}
-
-	fn n_vars_remaining(&self) -> usize {
-		self.gruen34.n_vars_remaining()
-	}
 }
 
 impl<F, P> SumcheckProver<F> for BivariateProductMultiMlecheckProver<P>
@@ -68,7 +64,7 @@ where
 	P: PackedField<Scalar = F>,
 {
 	fn n_vars(&self) -> usize {
-		self.n_vars
+		self.gruen34.n_vars_remaining()
 	}
 
 	fn execute(&mut self) -> Result<Vec<RoundCoeffs<F>>, Error> {
@@ -76,12 +72,12 @@ where
 			return Err(Error::ExpectedFold);
 		};
 
-		assert!(self.n_vars_remaining() > 0);
+		assert!(self.n_vars() > 0);
 
 		const MAX_CHUNK_VARS: usize = 12;
-		let chunk_vars = max(MAX_CHUNK_VARS, P::LOG_WIDTH).min(self.n_vars_remaining() - 1);
+		let chunk_vars = max(MAX_CHUNK_VARS, P::LOG_WIDTH).min(self.n_vars() - 1);
 
-		let packed_prime_evals = (0..1 << (self.n_vars_remaining() - 1 - chunk_vars))
+		let packed_prime_evals = (0..1 << (self.n_vars() - 1 - chunk_vars))
 			.into_par_iter()
 			.try_fold(
 				|| vec![RoundEvals2::default(); sums.len()],
@@ -135,7 +131,7 @@ where
 			return Err(Error::ExpectedExecute);
 		};
 
-		assert!(self.n_vars_remaining() > 0);
+		assert!(self.n_vars() > 0);
 
 		let sums = prime_coeffs
 			.iter()
@@ -152,7 +148,7 @@ where
 	}
 
 	fn finish(self) -> Result<Vec<F>, Error> {
-		if self.n_vars_remaining() > 0 {
+		if self.n_vars() > 0 {
 			let error = match self.last_coeffs_or_sums {
 				RoundCoeffsOrSums::Coeffs(_) => Error::ExpectedFold,
 				RoundCoeffsOrSums::Sums(_) => Error::ExpectedExecute,

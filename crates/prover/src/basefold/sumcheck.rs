@@ -14,16 +14,16 @@ use crate::protocols::sumcheck::{Error, common::SumcheckProver};
 /// some multilinears A and B over all hypercube points X
 pub struct MultilinearSumcheckProver<F: Field> {
 	multilinears: [FieldBuffer<F>; 2],
-	log_n: usize,
 	current_round_claim: F,
 	round_message: Option<Vec<F>>,
 }
 
 impl<F: Field> MultilinearSumcheckProver<F> {
 	pub fn new(multilinears: [FieldBuffer<F>; 2], overall_claim: F, log_n: usize) -> Self {
+		assert_eq!(multilinears[0].log_len(), log_n);
+		assert_eq!(multilinears[1].log_len(), log_n);
 		Self {
 			multilinears,
-			log_n,
 			current_round_claim: overall_claim,
 			round_message: None,
 		}
@@ -61,7 +61,7 @@ fn fold_low_to_high<F: Field>(
 
 impl<F: Field> SumcheckProver<F> for MultilinearSumcheckProver<F> {
 	fn n_vars(&self) -> usize {
-		self.log_n
+		self.multilinears[0].log_len()
 	}
 
 	fn execute(&mut self) -> Result<Vec<RoundCoeffs<F>>, Error> {
@@ -142,7 +142,7 @@ pub mod test {
 	pub fn sumcheck_interactive_protocol(
 		prover: &mut MultilinearSumcheckProver<F>,
 	) -> Result<(F, Vec<F>), Error> {
-		let log_n = prover.log_n;
+		let log_n = prover.n_vars();
 
 		let mut expected_next_round_claim =
 			prover.execute().unwrap()[0].0[0] + prover.execute().unwrap()[0].0[1];

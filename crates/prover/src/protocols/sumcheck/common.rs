@@ -27,7 +27,10 @@ use super::error::Error;
 ///
 /// [Gruen24]: <https://eprint.iacr.org/2024/108>
 pub trait SumcheckProver<F: Field> {
-	/// The number of variables in the multivariate polynomial.
+	/// The number of variables in the remaining multivariate polynomial.
+	///
+	/// The number of variables decrements after each [`Self::fold`] call, as that binds one free
+	/// variable with a concrete challenge.
 	fn n_vars(&self) -> usize;
 
 	/// Computes the prover messages for this round as a univariate polynomial.

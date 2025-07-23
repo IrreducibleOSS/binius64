@@ -35,10 +35,6 @@ impl<F: Field, P: PackedField<Scalar = F>> Gruen34<P> {
 		&self.eq_expansion
 	}
 
-	pub fn n_vars(&self) -> usize {
-		self.eval_point.len()
-	}
-
 	pub fn n_vars_remaining(&self) -> usize {
 		self.n_vars_remaining
 	}

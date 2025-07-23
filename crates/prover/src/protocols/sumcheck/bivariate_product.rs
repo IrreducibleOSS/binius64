@@ -14,7 +14,6 @@ use crate::protocols::sumcheck::{common::SumcheckProver, error::Error, round_eva
 /// - The length of the two multilinears is always equal
 #[derive(Debug)]
 pub struct BivariateProductSumcheckProver<P: PackedField> {
-	n_vars: usize,
 	multilinears: [FieldBuffer<P>; 2],
 	last_coeffs_or_sum: RoundCoeffsOrSum<P::Scalar>,
 }
@@ -27,23 +26,16 @@ impl<F: Field, P: PackedField<Scalar = F>> BivariateProductSumcheckProver<P> {
 			return Err(Error::MultilinearSizeMismatch);
 		}
 
-		let n_vars = multilinears[0].log_len();
 		Ok(Self {
-			n_vars,
 			multilinears,
 			last_coeffs_or_sum: RoundCoeffsOrSum::Sum(sum),
 		})
-	}
-
-	/// Returns the number of variables remaining to be bound.
-	fn n_vars_remaining(&self) -> usize {
-		self.multilinears[0].log_len()
 	}
 }
 
 impl<F: Field, P: PackedField<Scalar = F>> SumcheckProver<F> for BivariateProductSumcheckProver<P> {
 	fn n_vars(&self) -> usize {
-		self.n_vars
+		self.multilinears[0].log_len()
 	}
 
 	fn execute(&mut self) -> Result<Vec<RoundCoeffs<F>>, Error> {
@@ -54,7 +46,7 @@ impl<F: Field, P: PackedField<Scalar = F>> SumcheckProver<F> for BivariateProduc
 		// Multilinear inputs are the same length by invariant
 		debug_assert_eq!(self.multilinears[0].len(), self.multilinears[1].len());
 
-		let n_vars_remaining = self.n_vars_remaining();
+		let n_vars_remaining = self.n_vars();
 		assert!(n_vars_remaining > 0);
 
 		let (evals_a_0, evals_a_1) = self.multilinears[0].split_half()?;
@@ -99,7 +91,7 @@ impl<F: Field, P: PackedField<Scalar = F>> SumcheckProver<F> for BivariateProduc
 	}
 
 	fn finish(self) -> Result<Vec<F>, Error> {
-		if self.n_vars_remaining() > 0 {
+		if self.n_vars() > 0 {
 			let error = match self.last_coeffs_or_sum {
 				RoundCoeffsOrSum::Coeffs(_) => Error::ExpectedFold,
 				RoundCoeffsOrSum::Sum(_) => Error::ExpectedExecute,
@@ -112,8 +104,8 @@ impl<F: Field, P: PackedField<Scalar = F>> SumcheckProver<F> for BivariateProduc
 			.into_iter()
 			.map(|multilinear| {
 				multilinear.get(0).expect(
-					"multilinear.log_len() == n_vars_remaining; \
-				 	n_vars_remaining == 0; \
+					"multilinear.log_len() == n_vars; \
+				 	n_vars == 0; \
 				 	multilinear.len() == 1",
 				)
 			})

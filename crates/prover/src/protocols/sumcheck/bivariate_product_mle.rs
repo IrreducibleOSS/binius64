@@ -39,10 +39,6 @@ impl<F: Field, P: PackedField<Scalar = F>> BivariateProductMlecheckProver<P> {
 			gruen34,
 		})
 	}
-
-	fn n_vars_remaining(&self) -> usize {
-		self.gruen34.n_vars_remaining()
-	}
 }
 
 impl<F, P> SumcheckProver<F> for BivariateProductMlecheckProver<P>
@@ -51,7 +47,7 @@ where
 	P: PackedField<Scalar = F>,
 {
 	fn n_vars(&self) -> usize {
-		self.gruen34.n_vars()
+		self.gruen34.n_vars_remaining()
 	}
 
 	fn execute(&mut self) -> Result<Vec<RoundCoeffs<F>>, Error> {
@@ -62,7 +58,7 @@ where
 		// Multilinear inputs are the same length by invariant
 		debug_assert_eq!(self.multilinears[0].len(), self.multilinears[1].len());
 
-		let n_vars_remaining = self.n_vars_remaining();
+		let n_vars_remaining = self.n_vars();
 		assert!(n_vars_remaining > 0);
 
 		let eq_expansion = self.gruen34.eq_expansion();
@@ -106,7 +102,7 @@ where
 			return Err(Error::ExpectedExecute);
 		};
 
-		assert!(self.n_vars_remaining() > 0);
+		assert!(self.n_vars() > 0);
 
 		let sum = prime_coeffs.evaluate(challenge);
 
@@ -120,7 +116,7 @@ where
 	}
 
 	fn finish(self) -> Result<Vec<F>, Error> {
-		if self.n_vars_remaining() > 0 {
+		if self.n_vars() > 0 {
 			let error = match self.last_coeffs_or_eval {
 				RoundCoeffsOrEval::Coeffs(_) => Error::ExpectedFold,
 				RoundCoeffsOrEval::Eval(_) => Error::ExpectedExecute,
