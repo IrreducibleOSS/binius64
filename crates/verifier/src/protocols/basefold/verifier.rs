@@ -47,13 +47,13 @@ where
 	VCS: MerkleTreeScheme<F, Digest: DeserializeBytes>,
 {
 	// retrieve the challenges and further commitments from the transcript
-	let mut basefold_challenges: Vec<F> = Vec::with_capacity(fri_params.n_fold_rounds());
+	let mut basefold_challenges = Vec::with_capacity(fri_params.n_fold_rounds());
 
 	// infer sumcheck claim from transcript
 	let verifier_computed_sumcheck_claim = evaluation_claim;
 
 	// rounds the prover is expected to have committed at
-	let commit_rounds: Vec<bool> = is_fri_commit_round(fri_params.fold_arities(), n_vars);
+	let commit_rounds = is_fri_commit_round(fri_params.fold_arities(), n_vars);
 
 	let mut expected_sumcheck_round_claim = verifier_computed_sumcheck_claim;
 	let mut round_commitments = vec![];
