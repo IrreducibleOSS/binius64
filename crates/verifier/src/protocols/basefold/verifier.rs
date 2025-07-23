@@ -62,8 +62,7 @@ where
 	for commit_round in commit_rounds.iter() {
 		let round_msg = transcript
 			.message()
-			.read_scalar_slice::<F>(3)
-			.expect("incorrect transcript order");
+			.read_scalar_slice::<F>(3)?;
 
 		let basefold_challenge = transcript.sample();
 
