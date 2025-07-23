@@ -1,6 +1,59 @@
 use binius_field::Field;
+use binius_transcript::{
+	VerifierTranscript,
+	fiat_shamir::{CanSample, Challenger},
+};
 
-use crate::protocols::sumcheck::RoundCoeffs;
+use crate::protocols::sumcheck::{self, RoundCoeffs, SumcheckOutput};
+
+/// An MLE-check protocol is an interactive protocol similar to sumcheck, but with modifications
+/// introduced in [Gruen24], Section 3.
+///
+/// The prover in an MLE-check argues a that for some $n$-variate polynomial
+/// $F(X_0, \ldots, X_{n-1})$ (which is not necessarily multilinear), for a given point
+/// $(z_0, \ldots, z_{n-1})$ and claimed value $s$, that
+///
+/// $$
+/// s = \sum_{v \in B_n} F(v) \cdot eq(v, z)
+/// $$
+///
+/// Unless $F$ is indeed multilinear, $s \ne F(z)$ necessarily. While the prover and verifier could
+/// engage in a standard sumcheck protocol to reduce this claim, it is concretely more efficient to
+/// use the optimized protocol from [Gruen24], which we call an "MLE-check".
+///
+/// [Gruen24]: <https://eprint.iacr.org/2024/108>
+///
+/// ## Arguments
+///
+/// * `n_vars` - The number of variables in the multivariate polynomial
+/// * `degree` - The degree of the univariate polynomial in each round
+/// * `eval` - The claimed multilinear-extension evaluation of the multivariate polynomial
+/// * `transcript` - The transcript containing the prover's messages and randomness for challenges
+///
+/// ## Returns
+///
+/// Returns a `Result` containing the `SumcheckOutput` with the reduced evaluation and challenge
+/// point, or an error if verification fails.
+pub fn verify<F: Field, Challenger_: Challenger>(
+	point: &[F],
+	degree: usize,
+	mut eval: F,
+	transcript: &mut VerifierTranscript<Challenger_>,
+) -> Result<SumcheckOutput<F>, sumcheck::Error> {
+	let n_vars = point.len();
+
+	let mut challenges = Vec::with_capacity(n_vars);
+	for &z_i in point.iter().rev() {
+		let round_proof = RoundProof(RoundCoeffs(transcript.message().read_vec(degree)?));
+		let challenge = transcript.sample();
+
+		let round_coeffs = round_proof.recover(eval, z_i);
+		eval = round_coeffs.evaluate(challenge);
+		challenges.push(challenge);
+	}
+
+	Ok(SumcheckOutput { eval, challenges })
+}
 
 /// An MLE-check round proof is a univariate polynomial in monomial basis with the coefficient of
 /// the lowest-degree term truncated off.
@@ -9,8 +62,8 @@ use crate::protocols::sumcheck::RoundCoeffs;
 /// points 0 and 1, the low-degree term coefficient can be easily recovered. Truncating the
 /// coefficient off saves a small amount of proof data.
 ///
-/// This is an analogous struct to [`crate::protocols::sumcheck::RoundProof`], except that we
-/// truncate the low-degree coefficient instead of the high-degree coefficient.
+/// This is an analogous struct to [`sumcheck::RoundProof`], except that we truncate the low-degree
+/// coefficient instead of the high-degree coefficient.
 ///
 /// In a sumcheck protocol, the verifier has a claimed sum $s$ and the round polynomial $R(X)$ must
 /// satisfy $R(0) + R(1) = s$. In an MLE-check protocol, the verifier has a claimed coordinate

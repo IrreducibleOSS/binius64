@@ -80,18 +80,7 @@ where
 
 /// A prover for the MLE-check variant of the sumcheck protocol.
 ///
-/// An MLE-check protocol is an interactive protocol similar to sumcheck, but with modifications
-/// introduced in [Gruen24], Section 3. The prover in this case wants to argue a claim that for
-/// some $n$-variate polynomial $F(X_0, \ldots, X_{n-1})$ (which is not necessarily multilinear),
-/// for a given point $(z_0, \ldots, z_{n-1})$ and claimed value $s$, that
-///
-/// $$
-/// s = \sum_{v \in B_n} F(v) \cdot eq(v, z)
-/// $$
-///
-/// Unless $F$ is indeed multilinear, $s \ne F(z)$ necessarily. While the prover and verifier could
-/// engage in a standard sumcheck protocol to reduce this claim, it is concretely more efficient to
-/// use the optimized protocol from [Gruen24], which we call an "MLE-check".
+/// See [`binius_verifier::protocols::mlecheck::verify`] for context on the protocol.
 ///
 /// This trait inherits from [`SumcheckProver`] since it shares the same type-level interface
 /// and protocol execution pattern. However, `MleCheckProver` instances provide different
