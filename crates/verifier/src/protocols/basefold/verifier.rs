@@ -39,7 +39,7 @@ pub fn verify_transcript<F, FA, VCS, TranscriptChallenger>(
 	fri_params: &FRIParams<F, FA>,
 	vcs: &VCS,
 	n_vars: usize,
-) -> Result<(F, F, Vec<F>), String>
+) -> Result<(F, F, Vec<F>), Box<dyn std::error::Error>>
 where
 	F: Field + BinaryField + ExtensionField<FA> + TowerField,
 	FA: BinaryField,
@@ -63,7 +63,7 @@ where
 		let round_msg = transcript
 			.message()
 			.read_scalar_slice::<F>(3)
-			.expect("failed to read round message");
+			.expect("incorrect transcript order");
 
 		let basefold_challenge = transcript.sample();
 
@@ -81,12 +81,7 @@ where
 
 		// retrieve commitment depending on current round FRI folding arity
 		if *commit_round {
-			round_commitments.push(
-				transcript
-					.message()
-					.read()
-					.expect("failed to read commitment"),
-			);
+			round_commitments.push(transcript.message().read()?);
 		}
 	}
 
@@ -97,15 +92,12 @@ where
 		&codeword_commitment,
 		&round_commitments,
 		&basefold_challenges,
-	)
-	.expect("failed to create FRI verifier");
+	)?;
 
 	// By verifying FRI, the verifier checks that c == t(r'_0, ..., r'_{\ell-1})
 	// note that the prover is claiming that the final_message is [c]
 	let verifier_challenger = transcript;
-	let final_fri_oracle = fri_verifier
-		.verify(verifier_challenger)
-		.expect("failed to verify FRI");
+	let final_fri_oracle = fri_verifier.verify(verifier_challenger)?;
 
 	Ok((final_fri_oracle, expected_sumcheck_round_claim, basefold_challenges))
 }
