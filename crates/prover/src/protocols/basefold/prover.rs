@@ -82,8 +82,7 @@ where
 		let log_n = multilinear.log_len();
 
 		let fri_folder =
-			FRIFolder::new(fri_params, ntt, merkle_prover, committed_codeword, committed)
-				.expect("failed to create FRI folder");
+			FRIFolder::new(fri_params, ntt, merkle_prover, committed_codeword, committed)?;
 
 		let sumcheck_composition = [multilinear, transparent_multilinear];
 
@@ -144,7 +143,7 @@ where
 
 			let challenge = transcript.sample();
 
-			let next_round_commitment = self.fold(challenge).expect("fold round execution failed");
+			let next_round_commitment = self.fold(challenge)?;
 
 			// prover writes commitment to transcript
 			match next_round_commitment {
@@ -176,8 +175,9 @@ where
 
 #[cfg(test)]
 mod test {
+	use binius_field::Field;
 	use binius_math::{
-		ReedSolomonCode,
+		FieldBuffer, ReedSolomonCode,
 		inner_product::inner_product_packed,
 		multilinear::eq::eq_ind_partial_eval,
 		ntt::SingleThreadedNTT,
@@ -205,41 +205,35 @@ mod test {
 
 	pub type F = B128;
 
-	#[test]
-	fn test_basefold() {
-		let mut rng = StdRng::from_seed([0; 32]);
-
-		let n_vars = 8;
-
-		// Prover claims a multilinear polynomial, eval point, and evaluation
-		let multilinear = random_field_buffer::<F>(&mut rng, n_vars);
-		let evaluation_point = random_scalars(&mut rng, n_vars);
+	// test utility for driving basefold protocol prove and verify with transcript
+	fn run_basefold_prove_and_verify(
+		multilinear: FieldBuffer<F>,
+		evaluation_point: Vec<F>,
+		evaluation_claim: F,
+	) -> Result<(), Box<dyn std::error::Error>> {
+		let n_vars = multilinear.log_len();
 
 		let eval_point_eq = eq_ind_partial_eval(&evaluation_point);
-		let evaluation_claim = inner_product_packed(&multilinear, &eval_point_eq);
 
 		// setup prover...
 		let merkle_prover =
 			BinaryMerkleTreeProver::<F, StdDigest, _>::new(StdCompression::default());
 
 		// encode the multilinear
-		let rs_code = ReedSolomonCode::<FA>::new(multilinear.log_len(), LOG_INV_RATE)
-			.expect("failed to create Reed-Solomon code");
+		let rs_code = ReedSolomonCode::<FA>::new(multilinear.log_len(), LOG_INV_RATE)?;
 
 		let fri_log_batch_size = 0;
 		let fri_arities = vec![2, 1];
-		let fri_params = FRIParams::new(rs_code, fri_log_batch_size, fri_arities, NUM_TEST_QUERIES)
-			.expect("failed to create FRI params");
+		let fri_params = FRIParams::new(rs_code, fri_log_batch_size, fri_arities, NUM_TEST_QUERIES)?;
 
 		let ntt =
-			SingleThreadedNTT::new(fri_params.rs_code().log_len()).expect("failed to create NTT");
+			SingleThreadedNTT::new(fri_params.rs_code().log_len())?;
 
 		let CommitOutput {
 			commitment: codeword_commitment,
 			committed: codeword_committed,
 			codeword,
-		} = fri::commit_interleaved(&fri_params, &ntt, &merkle_prover, multilinear.to_ref())
-			.expect("failed to commit codeword");
+		} = fri::commit_interleaved(&fri_params, &ntt, &merkle_prover, multilinear.to_ref())?;
 
 		// commit codeword in prover transcript
 		let mut prover_challenger = ProverTranscript::new(StdChallenger::default());
@@ -255,13 +249,10 @@ mod test {
 			&merkle_prover,
 			&ntt,
 			&fri_params,
-		)
-		.expect("failed to create basefold prover");
+		)?;
 
 		// prove non-interactively
-		prover
-			.prove_with_transcript(&mut prover_challenger)
-			.expect("failed to prove");
+		prover.prove_with_transcript(&mut prover_challenger)?;
 
 		// convert the finalized prover transcript into a verifier transcript
 		let mut verifier_challenger = prover_challenger.into_verifier();
@@ -269,8 +260,7 @@ mod test {
 		// verifier retrieves the codeword commitment from the transcript
 		let verifier_codeword_commitment = verifier_challenger
 			.message()
-			.read()
-			.expect("failed to read commitment");
+			.read()?;
 
 		// Verifier checks the provided transcript
 		let (fri_oracle, sumcheck_claim, basefold_challenges) = verify_transcript(
@@ -280,18 +270,60 @@ mod test {
 			&fri_params,
 			merkle_prover.scheme(),
 			n_vars,
-		)
-		.expect("failed to verify transcript");
+		)?;
 
 		// Verify final basefold assertion
-		assert!(
-			verify_final_basefold_assertion(
+		if !verify_final_basefold_assertion(
 				fri_oracle,
 				sumcheck_claim,
 				&evaluation_point,
 				&basefold_challenges,
-			),
-			"Final basefold assertion failed"
-		);
+			)
+		{
+			return Err("Final basefold assertion failed".into());
+		}
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_basefold_valid_proof() {
+		let mut rng = StdRng::from_seed([0; 32]);
+
+		let n_vars = 8;
+
+		// Prover claims a multilinear polynomial, eval point, and evaluation
+		let multilinear = random_field_buffer::<F>(&mut rng, n_vars);
+		let evaluation_point = random_scalars(&mut rng, n_vars);
+
+		let eval_point_eq = eq_ind_partial_eval(&evaluation_point);
+		let evaluation_claim = inner_product_packed(&multilinear, &eval_point_eq);
+
+		match run_basefold_prove_and_verify(multilinear, evaluation_point, evaluation_claim) {
+			Ok(()) => {}
+			Err(_) => panic!("expected valid proof"),
+		}
+	}
+
+	#[test]
+	fn test_basefold_invalid_proof() {
+		let mut rng = StdRng::from_seed([0; 32]);
+
+		let n_vars = 8;
+
+		// Prover claims a multilinear polynomial, eval point, and evaluation
+		let multilinear = random_field_buffer::<F>(&mut rng, n_vars);
+		let evaluation_point = random_scalars(&mut rng, n_vars);
+
+		let eval_point_eq = eq_ind_partial_eval(&evaluation_point);
+
+		// dubiously modified claim
+		let mut evaluation_claim = inner_product_packed(&multilinear, &eval_point_eq);
+		evaluation_claim += F::ONE;
+
+		match run_basefold_prove_and_verify(multilinear, evaluation_point, evaluation_claim) {
+			Ok(()) => panic!("expected error"),
+			Err(_) => {}
+		}
 	}
 }
