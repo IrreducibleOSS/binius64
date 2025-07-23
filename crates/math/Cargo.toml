@@ -8,8 +8,8 @@ authors.workspace = true
 workspace = true
 
 [dependencies]
-binius-field = { path = "../field", default-features = false }
-binius-utils = { path = "../utils", default-features = false }
+binius-field = { path = "../field" }
+binius-utils = { path = "../utils" }
 bytemuck.workspace = true
 getset.workspace = true
 itertools.workspace = true
@@ -41,4 +41,8 @@ harness = false
 
 [[bench]]
 name = "multilinear_evaluate"
+harness = false
+
+[[bench]]
+name = "ntt_cache_demonstration"
 harness = false
