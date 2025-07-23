@@ -1,0 +1,32 @@
+{
+  "machine_info": {
+    "hostname": "Mac.fritz.box",
+    "platform": "darwin",
+    "cpu_count": 12,
+    "total_memory_gb": 32.0,
+    "rust_version": "rustc 1.90.0-nightly (f26e58023 2025-06-30)",
+    "timestamp": "2025-07-23T20:46:48.985332"
+  },
+  "configurations": [
+    {
+      "name": "cargo build -p binius-field",
+      "command": "cargo build -p binius-field",
+      "env_vars": {},
+      "runs": 1,
+      "successful_runs": 1,
+      "avg_duration_seconds": 7.721300840377808,
+      "avg_memory_mb": 1131.96875,
+      "max_memory_mb": 1131.96875,
+      "individual_runs": [
+        {
+          "success": true,
+          "duration_seconds": 7.721300840377808,
+          "max_memory_mb": 1131.96875,
+          "returncode": 0,
+          "stdout": "",
+          "stderr": "   Compiling proc-macro2 v1.0.95\n   Compiling unicode-ident v1.0.18\n   Compiling autocfg v1.5.0\n   Compiling version_check v0.9.5\n   Compiling typenum v1.18.0\n   Compiling thiserror v2.0.12\n   Compiling syn v1.0.109\n   Compiling either v1.15.0\n   Compiling binius-utils v0.1.0 (/Users/jad_irred/repos/irred/monbijou/crates/utils)\n   Compiling once_cell v1.21.3\n   Compiling pin-project-lite v0.2.16\n   Compiling bytes v1.10.1\n   Compiling cfg-if v1.0.1\n   Compiling convert_case v0.4.0\n   Compiling tracing-core v0.1.34\n   Compiling rand_core v0.9.3\n   Compiling itertools v0.14.0\n   Compiling generic-array v0.14.7\n   Compiling strength_reduce v0.2.4\n   Compiling num-traits v0.2.19\n   Compiling rand v0.9.1\n   Compiling seq-macro v0.3.6\n   Compiling subtle v2.6.1\n   Compiling quote v1.0.40\n   Compiling syn v2.0.104\nwarning: binius-utils@0.1.0: Platform Build Configuration:\nwarning: binius-utils@0.1.0:   Target: aarch64-apple-darwin\nwarning: binius-utils@0.1.0:   Host: aarch64-apple-darwin\nwarning: binius-utils@0.1.0:   RUSTFLAGS:\nwarning: binius-utils@0.1.0:   Features detected: 34\n   Compiling num-integer v0.1.46\n   Compiling trait-set v0.3.0\n   Compiling transpose v0.2.3\n   Compiling thiserror-impl v2.0.12\n   Compiling bytemuck_derive v1.9.3\n   Compiling tracing-attributes v0.1.30\n   Compiling auto_impl v1.3.0\n   Compiling derive_more v0.99.20\n   Compiling tracing v0.1.41\n   Compiling bytemuck v1.23.1\n   Compiling binius-field v0.1.0 (/Users/jad_irred/repos/irred/monbijou/crates/field)\n    Finished `dev` profile [unoptimized + debuginfo] target(s) in 7.59s\n"
+        }
+      ]
+    }
+  ]
+}
