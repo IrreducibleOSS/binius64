@@ -11,7 +11,7 @@ pub trait UnivariatePoly<FChallenge: Field> {
 }
 
 /// This is a univariate polynomial in lagrange basis with the evaluation points being field
-/// elements in lexicographic order forming an F2-subspace of FDomain. 
+/// elements in lexicographic order forming an F2-subspace of FDomain.
 /// The polynomial with lagrange coefficients in FChallenge isomorphic to
 /// those of this polynomial can also be queried using methods on this struct
 pub struct GenericPo2UnivariatePoly<F: Field + From<FDomain>, FDomain: Field> {
@@ -20,9 +20,7 @@ pub struct GenericPo2UnivariatePoly<F: Field + From<FDomain>, FDomain: Field> {
 	_marker: PhantomData<FDomain>,
 }
 
-impl<FCoeffs: Field + From<FDomain>, FDomain: Field>
-	GenericPo2UnivariatePoly<FCoeffs, FDomain>
-{
+impl<FCoeffs: Field + From<FDomain>, FDomain: Field> GenericPo2UnivariatePoly<FCoeffs, FDomain> {
 	pub fn new(univariate_lagrange_coeffs: Vec<FCoeffs>) -> Self {
 		let degree_lt = univariate_lagrange_coeffs.len();
 		Self {
