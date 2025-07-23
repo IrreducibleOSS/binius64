@@ -2,7 +2,13 @@ use std::collections::HashMap;
 
 use cranelift_entity::{PrimaryMap, SecondaryMap, entity_impl};
 
-use crate::{compiler::gate::opcode::Opcode, word::Word};
+use crate::{
+	compiler::{
+		gate::opcode::Opcode,
+		pathspec::{PathSpec, PathSpecTree},
+	},
+	word::Word,
+};
 
 #[derive(Default)]
 pub struct ConstPool {
@@ -124,10 +130,10 @@ pub struct GateGraph {
 	pub gates: PrimaryMap<Gate, GateData>,
 	pub wires: PrimaryMap<Wire, WireData>,
 
-	// Secondary maps for optional data
-	pub assertion_names: SecondaryMap<Gate, String>,
+	pub path_spec_tree: PathSpecTree,
+	pub gate_origin: SecondaryMap<Gate, PathSpec>,
+	pub assertion_names: SecondaryMap<Gate, PathSpec>,
 
-	// Other circuit data
 	pub const_pool: ConstPool,
 	pub n_witness: usize,
 	pub n_inout: usize,
@@ -178,22 +184,24 @@ impl GateGraph {
 	/// Emits a gate with the given opcode, inputs and outputs.
 	pub fn emit_gate(
 		&mut self,
+		gate_origin: PathSpec,
 		opcode: Opcode,
 		inputs: impl IntoIterator<Item = Wire>,
 		outputs: impl IntoIterator<Item = Wire>,
 	) -> Gate {
-		self.emit_gate_internal(opcode, inputs, outputs, &[])
+		self.emit_gate_internal(gate_origin, opcode, inputs, outputs, &[])
 	}
 
 	/// Emits a gate with the given opcode, inputs, outputs and a single immediate argument.
 	pub fn emit_gate_imm(
 		&mut self,
+		gate_origin: PathSpec,
 		opcode: Opcode,
 		inputs: impl IntoIterator<Item = Wire>,
 		outputs: impl IntoIterator<Item = Wire>,
 		imm32: u32,
 	) -> Gate {
-		self.emit_gate_internal(opcode, inputs, outputs, &[imm32])
+		self.emit_gate_internal(gate_origin, opcode, inputs, outputs, &[imm32])
 	}
 
 	/// Creates a gate inline with the given opcode's shape parametrized with the inputs, outputs
@@ -202,6 +210,7 @@ impl GateGraph {
 	/// Panics if the resulting opcode shape is not valid.
 	fn emit_gate_internal(
 		&mut self,
+		gate_origin: PathSpec,
 		opcode: Opcode,
 		inputs: impl IntoIterator<Item = Wire>,
 		outputs: impl IntoIterator<Item = Wire>,
@@ -225,7 +234,10 @@ impl GateGraph {
 		};
 		data.validate_shape();
 
-		// Push and return the newly created gate.
-		self.gates.push(data)
+		let gate = self.gates.push(data);
+
+		self.gate_origin[gate] = gate_origin;
+
+		gate
 	}
 }

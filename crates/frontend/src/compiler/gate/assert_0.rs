@@ -15,6 +15,7 @@ use crate::{
 		circuit,
 		gate::opcode::OpcodeShape,
 		gate_graph::{Gate, GateData, GateParam},
+		pathspec::PathSpec,
 	},
 	constraint_system::{AndConstraint, ConstraintSystem},
 	word::Word,
@@ -52,16 +53,13 @@ pub fn constrain(
 pub fn evaluate(
 	_gate: Gate,
 	data: &GateData,
-	assertion_name: Option<&String>,
+	assertion_path: PathSpec,
 	w: &mut circuit::WitnessFiller,
 ) {
 	let GateParam { inputs, .. } = data.gate_param();
 	let [x] = inputs else { unreachable!() };
 
 	if w[*x] != Word::ZERO {
-		let name = assertion_name
-			.map(|s| s.as_str())
-			.unwrap_or("<unnamed assertion>");
-		w.flag_assertion_failed(|w| format!("{} failed: {:?} != 0", name, w[*x]));
+		w.flag_assertion_failed(assertion_path, |w| format!("{:?} != 0", w[*x]));
 	}
 }

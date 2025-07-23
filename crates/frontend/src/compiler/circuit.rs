@@ -4,7 +4,10 @@ use cranelift_entity::SecondaryMap;
 
 use super::{Shared, gate};
 use crate::{
-	compiler::gate_graph::{Wire, WireKind},
+	compiler::{
+		gate_graph::{Wire, WireKind},
+		pathspec::PathSpec,
+	},
 	constraint_system::{ConstraintSystem, ValueIndex, ValueVec, ValueVecLayout},
 	word::Word,
 };
@@ -39,19 +42,24 @@ pub struct WitnessFiller<'a> {
 	pub(crate) circuit: &'a Circuit,
 	pub(crate) value_vec: ValueVec,
 	pub(crate) ignore_assertions: bool,
-	pub(crate) assertion_failed_message_vec: Vec<String>,
+	pub(crate) assertion_failed_message_vec: Vec<(PathSpec, String)>,
 	pub(crate) assertion_failed_count: usize,
 }
 
 impl<'a> WitnessFiller<'a> {
-	pub fn flag_assertion_failed(&mut self, condition: impl FnOnce(&mut Self) -> String) {
+	pub fn flag_assertion_failed(
+		&mut self,
+		path_spec: PathSpec,
+		condition: impl FnOnce(&mut Self) -> String,
+	) {
 		if self.ignore_assertions {
 			return;
 		}
 		self.assertion_failed_count += 1;
 		if self.assertion_failed_message_vec.len() < MAX_ASSERTION_MESSAGES {
 			let assertion_message = condition(self);
-			self.assertion_failed_message_vec.push(assertion_message);
+			self.assertion_failed_message_vec
+				.push((path_spec, assertion_message));
 		}
 	}
 
@@ -142,8 +150,22 @@ impl Circuit {
 		}
 
 		if !w.ignore_assertions && w.assertion_failed_count > 0 {
+			// There were some assertions, we should resolve the assertion locations.
 			return Err(PopulateError {
-				messages: w.assertion_failed_message_vec.clone(),
+				messages: w
+					.assertion_failed_message_vec
+					.iter()
+					.map(|(path_spec, message)| {
+						let mut full_assertion_msg = String::with_capacity(message.len() + 128);
+						self.shared
+							.graph
+							.path_spec_tree
+							.stringify(*path_spec, &mut full_assertion_msg);
+						full_assertion_msg.push_str(" failed: ");
+						full_assertion_msg.push_str(message);
+						full_assertion_msg
+					})
+					.collect(),
 				total_count: w.assertion_failed_count,
 			});
 		}

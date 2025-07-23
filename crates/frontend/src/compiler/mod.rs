@@ -9,6 +9,7 @@ use crate::{
 	compiler::{
 		circuit::Circuit,
 		gate_graph::{ConstPool, GateGraph, WireKind},
+		pathspec::{PathSpec, PathSpecTree},
 	},
 	constraint_system::{ValueIndex, ValueVecLayout},
 	word::Word,
@@ -19,6 +20,7 @@ use gate::Opcode;
 
 pub mod circuit;
 mod gate_graph;
+mod pathspec;
 #[cfg(test)]
 mod tests;
 
@@ -33,20 +35,25 @@ pub(crate) struct Shared {
 /// This is a light-weight reference. Cloning is cheap.
 #[derive(Clone)]
 pub struct CircuitBuilder {
-	name: String,
+	/// Current path at which this circuit builder is positioned.
+	current_path: PathSpec,
 	shared: Rc<RefCell<Option<Shared>>>,
 }
 
 impl Default for CircuitBuilder {
 	fn default() -> Self {
+		let path_spec_tree = PathSpecTree::new();
+		let root = path_spec_tree.root();
 		CircuitBuilder {
-			name: String::new(),
+			current_path: root,
 			shared: Rc::new(RefCell::new(Some(Shared {
 				graph: GateGraph {
 					gates: PrimaryMap::new(),
 					wires: PrimaryMap::new(),
-					assertion_names: SecondaryMap::new(),
+					assertion_names: SecondaryMap::with_default(root),
+					gate_origin: SecondaryMap::with_default(root),
 					const_pool: ConstPool::new(),
+					path_spec_tree,
 					n_witness: 0,
 					n_inout: 0,
 				},
@@ -136,19 +143,18 @@ impl CircuitBuilder {
 	}
 
 	pub fn subcircuit(&self, name: impl Into<String>) -> CircuitBuilder {
-		let name = name.into();
+		let nested_path = self
+			.graph_mut()
+			.path_spec_tree
+			.extend(self.current_path, name);
 		CircuitBuilder {
-			name: format!("{}.{name}", self.name),
+			current_path: nested_path,
 			shared: self.shared.clone(),
 		}
 	}
 
 	fn graph_mut(&self) -> RefMut<'_, GateGraph> {
 		RefMut::map(self.shared.borrow_mut(), |shared| &mut shared.as_mut().unwrap().graph)
-	}
-
-	fn namespaced(&self, name: String) -> String {
-		format!("{}.{name}", self.name)
 	}
 
 	/// Creates a wire from a 64-bit word.
@@ -216,14 +222,14 @@ impl CircuitBuilder {
 	pub fn band(&self, x: Wire, y: Wire) -> Wire {
 		let z = self.add_internal();
 		let mut graph = self.graph_mut();
-		graph.emit_gate(Opcode::Band, [x, y], [z]);
+		graph.emit_gate(self.current_path, Opcode::Band, [x, y], [z]);
 		z
 	}
 
 	pub fn bxor(&self, a: Wire, b: Wire) -> Wire {
 		let z = self.add_internal();
 		let mut graph = self.graph_mut();
-		graph.emit_gate(Opcode::Bxor, [a, b], [z]);
+		graph.emit_gate(self.current_path, Opcode::Bxor, [a, b], [z]);
 		z
 	}
 
@@ -236,14 +242,14 @@ impl CircuitBuilder {
 	pub fn bor(&self, a: Wire, b: Wire) -> Wire {
 		let z = self.add_internal();
 		let mut graph = self.graph_mut();
-		graph.emit_gate(Opcode::Bor, [a, b], [z]);
+		graph.emit_gate(self.current_path, Opcode::Bor, [a, b], [z]);
 		z
 	}
 
 	pub fn iadd_32(&self, a: Wire, b: Wire) -> Wire {
 		let z = self.add_internal();
 		let mut graph = self.graph_mut();
-		graph.emit_gate(Opcode::Iadd32, [a, b], [z]);
+		graph.emit_gate(self.current_path, Opcode::Iadd32, [a, b], [z]);
 		z
 	}
 
@@ -261,7 +267,7 @@ impl CircuitBuilder {
 		let sum = self.add_internal();
 		let cout = self.add_internal();
 		let mut graph = self.graph_mut();
-		graph.emit_gate(Opcode::IaddCinCout, [a, b, cin], [sum, cout]);
+		graph.emit_gate(self.current_path, Opcode::IaddCinCout, [a, b, cin], [sum, cout]);
 		(sum, cout)
 	}
 
@@ -269,7 +275,7 @@ impl CircuitBuilder {
 		assert!(n < 32, "rotate amount n={n} out of range");
 		let z = self.add_internal();
 		let mut graph = self.graph_mut();
-		graph.emit_gate_imm(Opcode::Rotr32, [x], [z], n);
+		graph.emit_gate_imm(self.current_path, Opcode::Rotr32, [x], [z], n);
 		z
 	}
 
@@ -277,7 +283,7 @@ impl CircuitBuilder {
 		assert!(n < 32, "shift amount n={n} out of range");
 		let z = self.add_internal();
 		let mut graph = self.graph_mut();
-		graph.emit_gate_imm(Opcode::Shr32, [x], [z], n);
+		graph.emit_gate_imm(self.current_path, Opcode::Shr32, [x], [z], n);
 		z
 	}
 
@@ -294,7 +300,7 @@ impl CircuitBuilder {
 		assert!(n < 64, "shift amount n={n} out of range");
 		let z = self.add_internal();
 		let mut graph = self.graph_mut();
-		graph.emit_gate_imm(Opcode::Shl, [a], [z], n);
+		graph.emit_gate_imm(self.current_path, Opcode::Shl, [a], [z], n);
 		z
 	}
 
@@ -311,7 +317,7 @@ impl CircuitBuilder {
 		assert!(n < 64, "shift amount n={n} out of range");
 		let z = self.add_internal();
 		let mut graph = self.graph_mut();
-		graph.emit_gate_imm(Opcode::Shr, [a], [z], n);
+		graph.emit_gate_imm(self.current_path, Opcode::Shr, [a], [z], n);
 		z
 	}
 
@@ -327,9 +333,9 @@ impl CircuitBuilder {
 	/// 1 AND constraint.
 	pub fn assert_eq(&self, name: impl Into<String>, x: Wire, y: Wire) {
 		let mut graph = self.graph_mut();
-		let gate = graph.emit_gate(Opcode::AssertEq, [x, y], []);
-		let name = self.namespaced(name.into());
-		graph.assertion_names[gate] = name;
+		let gate = graph.emit_gate(self.current_path, Opcode::AssertEq, [x, y], []);
+		let path_spec = graph.path_spec_tree.extend(self.current_path, name);
+		graph.assertion_names[gate] = path_spec;
 	}
 
 	/// Vector equality assertion.
@@ -353,9 +359,9 @@ impl CircuitBuilder {
 	/// This is more efficient than using assert_eq with a zero constant.
 	pub fn assert_0(&self, name: impl Into<String>, x: Wire) {
 		let mut graph = self.graph_mut();
-		let gate = graph.emit_gate(Opcode::Assert0, [x], []);
-		let name = self.namespaced(name.into());
-		graph.assertion_names[gate] = name;
+		let gate = graph.emit_gate(self.current_path, Opcode::Assert0, [x], []);
+		let path_spec = graph.path_spec_tree.extend(self.current_path, name);
+		graph.assertion_names[gate] = path_spec;
 	}
 
 	/// Bitwise AND assertion with constant equals zero.
@@ -372,9 +378,9 @@ impl CircuitBuilder {
 	pub fn assert_band_0(&self, name: impl Into<String>, x: Wire, c: Word) {
 		let c = self.add_constant(c);
 		let mut graph = self.graph_mut();
-		let gate = graph.emit_gate(Opcode::AssertBand0, [x, c], []);
-		let name = self.namespaced(name.into());
-		graph.assertion_names[gate] = name;
+		let gate = graph.emit_gate(self.current_path, Opcode::AssertBand0, [x, c], []);
+		let path_spec = graph.path_spec_tree.extend(self.current_path, name);
+		graph.assertion_names[gate] = path_spec;
 	}
 
 	/// 64-bit × 64-bit → 128-bit unsigned multiplication.
@@ -383,7 +389,7 @@ impl CircuitBuilder {
 		let hi = self.add_internal();
 		let lo = self.add_internal();
 		let mut graph = self.graph_mut();
-		graph.emit_gate(Opcode::Imul, [a, b], [hi, lo]);
+		graph.emit_gate(self.current_path, Opcode::Imul, [a, b], [hi, lo]);
 		(hi, lo)
 	}
 
@@ -403,9 +409,9 @@ impl CircuitBuilder {
 	/// 1 AND constraint.
 	pub fn assert_eq_cond(&self, name: impl Into<String>, x: Wire, y: Wire, mask: Wire) {
 		let mut graph = self.graph_mut();
-		let gate = graph.emit_gate(Opcode::AssertEqCond, [x, y, mask], []);
-		let name = self.namespaced(name.into());
-		graph.assertion_names[gate] = name;
+		let gate = graph.emit_gate(self.current_path, Opcode::AssertEqCond, [x, y, mask], []);
+		let path_spec = graph.path_spec_tree.extend(self.current_path, name);
+		graph.assertion_names[gate] = path_spec;
 	}
 
 	/// Unsigned less-than comparison.
@@ -422,7 +428,7 @@ impl CircuitBuilder {
 	pub fn icmp_ult(&self, x: Wire, y: Wire) -> Wire {
 		let out_mask = self.add_internal();
 		let mut graph = self.graph_mut();
-		graph.emit_gate(Opcode::IcmpUlt, [x, y], [out_mask]);
+		graph.emit_gate(self.current_path, Opcode::IcmpUlt, [x, y], [out_mask]);
 		out_mask
 	}
 
@@ -441,7 +447,7 @@ impl CircuitBuilder {
 		let out_mask = self.add_witness();
 		let all_1 = self.add_constant(Word::ALL_ONE);
 		let mut graph = self.graph_mut();
-		graph.emit_gate(Opcode::IcmpEq, [x, y, all_1], [out_mask]);
+		graph.emit_gate(self.current_path, Opcode::IcmpEq, [x, y, all_1], [out_mask]);
 		out_mask
 	}
 
@@ -462,7 +468,7 @@ impl CircuitBuilder {
 		assert!(j < 8, "byte index j={j} out of range");
 		let z = self.add_internal();
 		let mut graph = self.graph_mut();
-		graph.emit_gate_imm(Opcode::ExtractByte, [word], [z], j);
+		graph.emit_gate_imm(self.current_path, Opcode::ExtractByte, [word], [z], j);
 		z
 	}
 }

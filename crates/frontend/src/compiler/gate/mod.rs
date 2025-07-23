@@ -58,7 +58,7 @@ pub fn constrain(
 
 pub fn evaluate(gate: Gate, graph: &GateGraph, w: &mut circuit::WitnessFiller) {
 	let data = &graph.gates[gate];
-	let assertion_name = graph.assertion_names.get(gate);
+	let assertion_path = graph.assertion_names[gate];
 
 	match data.opcode {
 		Opcode::Band => band::evaluate(gate, data, w),
@@ -68,11 +68,11 @@ pub fn evaluate(gate: Gate, graph: &GateGraph, w: &mut circuit::WitnessFiller) {
 		Opcode::Iadd32 => iadd32::evaluate(gate, data, w),
 		Opcode::Shr32 => shr32::evaluate(gate, data, w),
 		Opcode::Rotr32 => rotr32::evaluate(gate, data, w),
-		Opcode::AssertEq => assert_eq::evaluate(gate, data, assertion_name, w),
-		Opcode::Assert0 => assert_0::evaluate(gate, data, assertion_name, w),
-		Opcode::AssertBand0 => assert_band_0::evaluate(gate, data, assertion_name, w),
+		Opcode::AssertEq => assert_eq::evaluate(gate, data, assertion_path, w),
+		Opcode::Assert0 => assert_0::evaluate(gate, data, assertion_path, w),
+		Opcode::AssertBand0 => assert_band_0::evaluate(gate, data, assertion_path, w),
 		Opcode::Imul => imul::evaluate(gate, data, w),
-		Opcode::AssertEqCond => assert_eq_cond::evaluate(gate, data, assertion_name, w),
+		Opcode::AssertEqCond => assert_eq_cond::evaluate(gate, data, assertion_path, w),
 		Opcode::IcmpUlt => icmp_ult::evaluate(gate, data, w),
 		Opcode::IcmpEq => icmp_eq::evaluate(gate, data, w),
 		Opcode::ExtractByte => extract_byte::evaluate(gate, data, w),
