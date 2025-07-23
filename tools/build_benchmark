@@ -1,0 +1,5 @@
+#!/bin/bash
+# Wrapper for build_benchmark.py with automatic venv management
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "$SCRIPT_DIR/run_tool.sh" "$SCRIPT_DIR/build_benchmark.py" "$SCRIPT_DIR/requirements/build_benchmark_reqs.txt" "$@"
