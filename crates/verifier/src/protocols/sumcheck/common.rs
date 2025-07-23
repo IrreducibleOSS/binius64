@@ -1,6 +1,6 @@
 // Copyright 2023-2025 Irreducible Inc.
 
-use std::ops::{Add, AddAssign, Mul, MulAssign};
+use std::ops::{Add, AddAssign, Index, Mul, MulAssign};
 
 use binius_field::Field;
 
@@ -64,6 +64,14 @@ impl<F: Field> MulAssign<F> for RoundCoeffs<F> {
 		for coeff in &mut self.0 {
 			*coeff *= rhs;
 		}
+	}
+}
+
+impl<F: Field> Index<usize> for RoundCoeffs<F> {
+	type Output = F;
+
+	fn index(&self, index: usize) -> &F {
+		&self.0[index]
 	}
 }
 

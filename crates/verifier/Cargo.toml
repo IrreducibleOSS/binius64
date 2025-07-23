@@ -23,3 +23,5 @@ thiserror.workspace = true
 
 [dev-dependencies]
 assert_matches.workspace = true
+binius-math = { path = "../math", features = ["test-utils"] }
+rand = { workspace = true, features = ["std_rng"] }
