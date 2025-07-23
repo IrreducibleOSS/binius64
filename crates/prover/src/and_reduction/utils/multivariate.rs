@@ -1,6 +1,6 @@
 use binius_field::{
-	BinaryField1b, ExtensionField, Field, PackedAESBinaryField16x8b, PackedBinaryField128x1b,
-	PackedExtension, PackedField, packed::iter_packed_slice_with_offset,
+	BinaryField, BinaryField1b, Field, PackedAESBinaryField16x8b, PackedBinaryField128x1b,
+	PackedExtension, packed::iter_packed_slice_with_offset,
 };
 use binius_math::FieldBuffer;
 use binius_utils::rayon::prelude::{
@@ -10,10 +10,7 @@ use binius_verifier::and_reduction::{
 	univariate::univariate_lagrange::{
 		lexicographic_lagrange_denominator, lexicographic_lagrange_numerators_polyval,
 	},
-	utils::{
-		constants::{ROWS_PER_HYPERCUBE_VERTEX, SKIPPED_VARS},
-		subfield_isomorphism::SubfieldIsomorphismLookup,
-	},
+	utils::constants::{ROWS_PER_HYPERCUBE_VERTEX, SKIPPED_VARS},
 };
 
 use crate::and_reduction::fold_lookup::FoldLookup;
@@ -27,27 +24,23 @@ pub struct OneBitMultivariate {
 
 impl OneBitMultivariate {
 	#[allow(clippy::modulo_one)]
-	pub fn fold_naive<F>(
-		&self,
-		challenge: F,
-		iso_lookup: &SubfieldIsomorphismLookup<F>,
-	) -> FieldBuffer<F>
+	pub fn fold_naive<FDomain, F>(&self, challenge: F) -> FieldBuffer<F>
 	where
-		F: ExtensionField<BinaryField1b> + Field,
+		F: BinaryField + Field + From<FDomain>,
+		FDomain: From<u8> + Field,
 	{
 		let _span = tracing::debug_span!("fold_naive").entered();
 
 		let new_n_vars = self.log_num_rows - SKIPPED_VARS;
 		let mut multilin = FieldBuffer::zeros(new_n_vars);
 
-		let numerators = lexicographic_lagrange_numerators_polyval(
+		let numerators = lexicographic_lagrange_numerators_polyval::<FDomain, F>(
 			ROWS_PER_HYPERCUBE_VERTEX,
 			challenge,
-			iso_lookup,
 		);
 
-		let denominator = lexicographic_lagrange_denominator(SKIPPED_VARS);
-		let inverse_denominator = iso_lookup.lookup_8b_value(denominator.invert_or_zero());
+		let denominator: FDomain = lexicographic_lagrange_denominator(SKIPPED_VARS);
+		let inverse_denominator = F::from(denominator.invert_or_zero());
 		let lagrange_basis_vectors: Vec<_> = numerators
 			.iter()
 			.map(|n| *n * inverse_denominator)
@@ -109,12 +102,8 @@ impl OneBitMultivariate {
 
 #[cfg(test)]
 mod test {
-	use binius_field::{
-		AESTowerField128b, BinaryField128bPolyval, PackedBinaryField128x1b, Random,
-	};
-	use binius_verifier::and_reduction::utils::{
-		constants::SKIPPED_VARS, subfield_isomorphism::SubfieldIsomorphismLookup,
-	};
+	use binius_field::{AESTowerField8b, PackedBinaryField128x1b, Random};
+	use binius_verifier::{and_reduction::utils::constants::SKIPPED_VARS, fields::B128};
 	use rand::{SeedableRng, rngs::StdRng};
 
 	use super::OneBitMultivariate;
@@ -131,23 +120,16 @@ mod test {
 				.collect(),
 		};
 
-		let challenge = BinaryField128bPolyval::random(&mut rng);
+		let challenge = B128::random(&mut rng);
 
-		let iso_lookup = SubfieldIsomorphismLookup::new::<AESTowerField128b>();
+		let lookup = precompute_fold_lookup::<AESTowerField8b, B128>(challenge);
 
-		let fp_lookup = precompute_fold_lookup(challenge, &iso_lookup);
+		let folded_naive = mlv.fold_naive::<AESTowerField8b, B128>(challenge);
 
-		let polyval_lookup = precompute_fold_lookup(challenge, &iso_lookup);
-
-		let folded_naive = mlv.fold_naive(challenge, &iso_lookup);
-
-		let fp_folded_smart = mlv.fold(&fp_lookup);
-
-		let polyval_folded_smart = mlv.fold(&polyval_lookup);
+		let folded_smart = mlv.fold(&lookup);
 
 		for i in 0..1 << (log_num_rows - SKIPPED_VARS) {
-			assert_eq!(polyval_folded_smart.as_ref()[i], fp_folded_smart.as_ref()[i]);
-			assert_eq!(folded_naive.as_ref()[i], fp_folded_smart.as_ref()[i]);
+			assert_eq!(folded_naive.as_ref()[i], folded_smart.as_ref()[i]);
 		}
 	}
 }

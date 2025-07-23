@@ -1,32 +1,29 @@
-use binius_field::{Field, arithmetic_traits::InvertOrZero};
+use binius_field::Field;
 use binius_verifier::and_reduction::{
 	univariate::univariate_lagrange::{
 		lexicographic_lagrange_denominator, lexicographic_lagrange_numerators_polyval,
 	},
-	utils::{
-		constants::{ROWS_PER_HYPERCUBE_VERTEX, SKIPPED_VARS},
-		subfield_isomorphism::SubfieldIsomorphismLookup,
-	},
+	utils::constants::{ROWS_PER_HYPERCUBE_VERTEX, SKIPPED_VARS},
 };
 
 pub type FoldLookup<F> = Vec<Vec<F>>;
 
-pub fn precompute_fold_lookup<F>(
-	challenge: F,
-	iso_lookup: &SubfieldIsomorphismLookup<F>,
-) -> FoldLookup<F>
+pub fn precompute_fold_lookup<FDomain, F>(challenge: F) -> FoldLookup<F>
 where
-	F: Field,
+	F: Field + From<FDomain>,
+	FDomain: From<u8> + Field,
 {
 	let _span = tracing::debug_span!("precompute_fold_lookup").entered();
 
 	let mut lookup_table = vec![vec![F::ZERO; 1 << 8]; ROWS_PER_HYPERCUBE_VERTEX / 8];
 
-	let numerators =
-		lexicographic_lagrange_numerators_polyval(ROWS_PER_HYPERCUBE_VERTEX, challenge, iso_lookup);
+	let numerators = lexicographic_lagrange_numerators_polyval::<FDomain, F>(
+		ROWS_PER_HYPERCUBE_VERTEX,
+		challenge,
+	);
 
-	let denominator_inv = iso_lookup
-		.lookup_8b_value(lexicographic_lagrange_denominator(SKIPPED_VARS).invert_or_zero());
+	let denominator_inv =
+		F::from(lexicographic_lagrange_denominator::<FDomain>(SKIPPED_VARS).invert_or_zero());
 
 	let lagrange_coeffs: Vec<_> = numerators
 		.into_iter()
