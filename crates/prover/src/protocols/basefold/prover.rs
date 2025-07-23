@@ -7,7 +7,9 @@ use binius_transcript::{
 	fiat_shamir::{CanSample, Challenger},
 };
 use binius_utils::SerializeBytes;
-use binius_verifier::{fri::FRIParams, merkle_tree::MerkleTreeScheme};
+use binius_verifier::{
+	fri::FRIParams, merkle_tree::MerkleTreeScheme, protocols::sumcheck::RoundCoeffs,
+};
 
 use crate::{
 	fri,
@@ -102,8 +104,8 @@ where
 	///
 	/// ## Returns
 	///  * the sumcheck round message
-	pub fn execute(&mut self) -> Result<Vec<F>, Box<dyn std::error::Error>> {
-		Ok(self.sumcheck_prover.execute()?[0].0.clone())
+	pub fn execute(&mut self) -> Result<RoundCoeffs<F>, Box<dyn std::error::Error>> {
+		Ok(self.sumcheck_prover.execute()?[0].clone())
 	}
 
 	/// Folds both the sumcheck multilinear and its codeword.
@@ -138,7 +140,7 @@ where
 		for _ in 0..self.log_n {
 			let round_msg = self.execute()?;
 
-			transcript.message().write_scalar_slice(&round_msg);
+			transcript.message().write_scalar_slice(&round_msg.0);
 
 			let challenge = transcript.sample();
 
@@ -187,7 +189,7 @@ mod test {
 		fields::B128,
 		fri::FRIParams,
 		hash::{StdCompression, StdDigest},
-		protocols::basefold::verifier::verify_transcript,
+		protocols::basefold::verifier::{verify_final_basefold_assertion, verify_transcript},
 	};
 	use rand::{SeedableRng, rngs::StdRng};
 
@@ -271,7 +273,7 @@ mod test {
 			.expect("failed to read commitment");
 
 		// Verifier checks the provided transcript
-		verify_transcript(
+		let (fri_oracle, sumcheck_claim, basefold_challenges) = verify_transcript(
 			verifier_codeword_commitment,
 			&mut verifier_challenger,
 			evaluation_claim,
@@ -280,5 +282,16 @@ mod test {
 			n_vars,
 		)
 		.expect("failed to verify transcript");
+
+		// Verify final basefold assertion
+		assert!(
+			verify_final_basefold_assertion(
+				fri_oracle,
+				sumcheck_claim,
+				&evaluation_point,
+				&basefold_challenges,
+			),
+			"Final basefold assertion failed"
+		);
 	}
 }

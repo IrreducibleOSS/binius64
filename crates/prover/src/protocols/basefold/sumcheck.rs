@@ -14,7 +14,7 @@ use crate::protocols::sumcheck::{Error, common::SumcheckProver};
 pub struct MultilinearSumcheckProver<F: Field> {
 	multilinears: [FieldBuffer<F>; 2],
 	current_round_claim: F,
-	round_message: Option<Vec<F>>,
+	round_message: Option<RoundCoeffs<F>>,
 }
 
 impl<F: Field> MultilinearSumcheckProver<F> {
@@ -82,23 +82,39 @@ impl<F: Field> SumcheckProver<F> for MultilinearSumcheckProver<F> {
 		// - g_of_zero: sum over even indices (last bit = 0)
 		// - g_of_one: sum over odd indices (last bit = 1)
 
-		let (g_of_one, g_leading) = (0..n_half)
+		let (g_of_zero, g_of_one) = (0..n_half)
 			.into_par_iter()
 			.map(|i| {
+				let even = get_and_multiply(2 * i);
 				let odd = get_and_multiply(2 * i + 1);
-
-				let cross = (a.get(2 * i).expect("out of bounds")
-					+ a.get(2 * i + 1).expect("out of bounds"))
-					* (b.get(2 * i).expect("out of bounds")
-						+ b.get(2 * i + 1).expect("out of bounds"));
-				(odd, cross)
+				(even, odd)
 			})
-			.reduce(|| (F::ZERO, F::ZERO), |(o1, c1), (o2, c2)| (o1 + o2, c1 + c2));
+			.reduce(|| (F::ZERO, F::ZERO), |(e1, o1), (e2, o2)| (e1 + e2, o1 + o2));
 
-		let g_of_zero = self.current_round_claim - g_of_one;
+		// For product of multilinears, the degree-2 coefficient is:
+		// sum_i (a_{i,0} - a_{i,1})(b_{i,0} - b_{i,1})
+		let g_leading = (0..n_half)
+			.into_par_iter()
+			.map(|i| {
+				let a_diff =
+					a.get(2 * i).expect("out of bounds") - a.get(2 * i + 1).expect("out of bounds");
+				let b_diff =
+					b.get(2 * i).expect("out of bounds") - b.get(2 * i + 1).expect("out of bounds");
+				a_diff * b_diff
+			})
+			.reduce(|| F::ZERO, |acc, x| acc + x);
 
-		self.round_message = Some(vec![g_of_zero, g_of_one, g_leading]);
-		Ok(vec![RoundCoeffs::<F>(vec![g_of_zero, g_of_one, g_leading])])
+		// Convert to monomial basis coefficients [a_0, a_1, a_2]
+		// where g(X) = a_0 + a_1*X + a_2*X^2
+		// We have: g(0) = a_0, g(1) = a_0 + a_1 + a_2
+		// So: a_0 = g(0), a_2 = g_leading, a_1 = g(1) - g(0) - g_leading
+		let a_0 = g_of_zero;
+		let a_2 = g_leading;
+		let a_1 = g_of_one - g_of_zero - g_leading;
+
+		let round_coeffs = RoundCoeffs::<F>(vec![a_0, a_1, a_2]);
+		self.round_message = Some(round_coeffs.clone());
+		Ok(vec![round_coeffs])
 	}
 
 	fn fold(&mut self, challenge: F) -> Result<(), Error> {
@@ -111,12 +127,7 @@ impl<F: Field> SumcheckProver<F> for MultilinearSumcheckProver<F> {
 			.clone()
 			.expect("prover must be executed before fold");
 
-
-		// ! Temporary solution during mle check integration
-		let middle = round_msg[1] - round_msg[0] - round_msg[2];
-		let monomial_basis_coeffs = [round_msg[0], middle, round_msg[2]];
-		let rounds_coeffs = RoundCoeffs(monomial_basis_coeffs.to_vec());
-		self.current_round_claim = rounds_coeffs.evaluate(challenge);
+		self.current_round_claim = round_msg.evaluate(challenge);
 
 		Ok(())
 	}
@@ -148,25 +159,25 @@ pub mod test {
 	) -> Result<(F, Vec<F>), Error> {
 		let log_n = prover.n_vars();
 
-		let mut expected_next_round_claim =
-			prover.execute().unwrap()[0].0[0] + prover.execute().unwrap()[0].0[1];
+		// The initial claim is already set in the prover
+		let mut expected_next_round_claim = prover.current_round_claim;
 		let mut sumcheck_challenges = Vec::with_capacity(log_n);
 
 		for _ in 0..log_n {
+			// prover computes round message
+			let round_msg = prover.execute()?;
+			let round_coeffs = &round_msg[0];
+
+			// Verify sumcheck constraint (what the verifier would do)
+			let sum_check = round_coeffs.evaluate(F::ZERO) + round_coeffs.evaluate(F::ONE);
+			assert_eq!(sum_check, expected_next_round_claim, "Sumcheck constraint failed");
+
 			// verifier sends sumcheck challenge
 			let sumcheck_challenge = random_challenge();
 			sumcheck_challenges.push(sumcheck_challenge);
 
-			// prover computes round message
-			let round_msg: Vec<RoundCoeffs<F>> = prover.execute()?;
-			let round_msg: RoundCoeffs<F> = round_msg[0].clone();
-			let round_msg: Vec<F> = round_msg.0;
-
-			// ! Temporary solution during mle check integration
-			let middle = round_msg[1] - round_msg[0] - round_msg[2];
-			let monomial_basis_coeffs = [round_msg[0], middle, round_msg[2]];
-			let rounds_coeffs = RoundCoeffs(monomial_basis_coeffs.to_vec());
-			expected_next_round_claim = rounds_coeffs.evaluate(sumcheck_challenge);
+			// Update next expected claim
+			expected_next_round_claim = round_coeffs.evaluate(sumcheck_challenge);
 
 			// prover folds challenge into multilinear
 			prover.fold(sumcheck_challenge)?;
