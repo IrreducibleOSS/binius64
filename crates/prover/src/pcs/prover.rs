@@ -10,44 +10,45 @@ use binius_transcript::{
 use binius_utils::SerializeBytes;
 use binius_verifier::{fields::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme};
 use itertools::Itertools;
+
 use crate::{
 	merkle_tree::MerkleTreeProver, protocols::basefold::prover::BaseFoldProver,
 	ring_switch::prover::rs_eq_ind,
 };
 
+// Small field, in our case this is B1.
+type F = B1;
+
 /// Ring switched PCS prover for non interactive proofs of small field (1 bit) multilinears.
-/// 
+///
 /// Combines ring switching and basefold to prove a small field multilinear at a large field
 /// evaluation point.
-pub struct OneBitPCSProver<F>
+pub struct OneBitPCSProver<FE>
 where
-	F: TowerField + From<u128> + PackedExtension<B1>,
+	FE: TowerField + From<u128> + PackedExtension<F>,
 {
-	pub small_field_evaluation_claim: F,
-	pub evaluation_claim: F,
-	pub evaluation_point: Vec<F>,
-	pub packed_mle: FieldBuffer<F>,
+	pub small_field_evaluation_claim: FE,
+	pub evaluation_claim: FE,
+	pub evaluation_point: Vec<FE>,
+	pub packed_mle: FieldBuffer<FE>,
 }
 
-impl<F> OneBitPCSProver<F>
+impl<FE> OneBitPCSProver<FE>
 where
-	F: TowerField + From<u128> + PackedExtension<B1> + PackedField<Scalar = F>,
+	FE: TowerField + From<u128> + PackedExtension<F> + PackedField<Scalar = FE>,
 {
 	/// Create a new ring switched PCS prover.
-	/// 
+	///
 	/// ## Arguments
-	/// 
+	///
 	/// * `packed_mle` - the packed multilinear polynomial
 	/// * `evaluation_claim` - the evaluation claim of the small field multilinear
 	/// * `evaluation_point` - the evaluation point of the small field multilinear
-	/// 
 	pub fn new(
-		packed_mle: FieldBuffer<F>,
-		evaluation_claim: F,
-		evaluation_point: Vec<F>,
+		packed_mle: FieldBuffer<FE>,
+		evaluation_claim: FE,
+		evaluation_point: Vec<FE>,
 	) -> Result<Self, Box<dyn std::error::Error>> {
-
-
 		Ok(Self {
 			small_field_evaluation_claim: evaluation_claim,
 			evaluation_claim,
@@ -57,38 +58,33 @@ where
 	}
 
 	/// Prove the ring switched PCS with a transcript.
-	/// 
+	///
 	/// The prover begins by performing the ring switching phase of the proof, establishing
 	/// completeness. Then, the large field pcs (basefold) is invoked to establish soundness.
-	/// 
+	///
 	/// ## Arguments
-	/// 
+	///
 	/// * `transcript` - the transcript of the prover's proof
 	/// * `ntt` - the NTT for the FRI parameters
 	/// * `merkle_prover` - the merkle tree prover
 	/// * `fri_params` - the FRI parameters
 	/// * `committed_codeword` - the committed codeword
 	/// * `committed` - the committed merkle tree
-	/// 
 	pub fn prove_with_transcript<'a, TranscriptChallenger, FA, NTT, MerkleProver, VCS>(
 		self,
 		transcript: &mut ProverTranscript<TranscriptChallenger>,
 		ntt: &'a NTT,
 		merkle_prover: &'a MerkleProver,
-		fri_params: &'a FRIParams<F, FA>,
-		committed_codeword: &'a [F],
+		fri_params: &'a FRIParams<FE, FA>,
+		committed_codeword: &'a [FE],
 		committed: &'a MerkleProver::Committed,
 	) where
 		TranscriptChallenger: Challenger,
-		F: TowerField
-			+ ExtensionField<FA>
-			+ From<u128>
-			+ PackedExtension<B1>
-			+ PackedField<Scalar = F>,
+		FE: TowerField + ExtensionField<FA> + From<u128> + PackedExtension<F>,
 		FA: BinaryField,
 		NTT: AdditiveNTT<FA> + Sync,
-		MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
-		VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
+		MerkleProver: MerkleTreeProver<FE, Scheme = VCS>,
+		VCS: MerkleTreeScheme<FE, Digest: SerializeBytes>,
 	{
 		// partial evals of packed mle at high degree vars
 		let s_hat_v = Self::initialize_proof(&self.packed_mle, &self.evaluation_point);
@@ -96,20 +92,20 @@ where
 		transcript.message().write_scalar_slice(&s_hat_v);
 
 		// basis decompose/recombine s_hat_v across opposite dimension
-		let s_hat_u: Vec<F> = <TensorAlgebra<B1, F>>::new(s_hat_v).transpose().elems;
+		let s_hat_u: Vec<FE> = <TensorAlgebra<F, FE>>::new(s_hat_v).transpose().elems;
 
 		// sample batching scalars
-		let r_double_prime: Vec<F> = prover_samples_batching_scalars(transcript);
+		let r_double_prime: Vec<FE> = prover_samples_batching_scalars(transcript);
 
 		let eq_r_double_prime = eq_ind_partial_eval(&r_double_prime);
 
 		// compute sumcheck claim on s_hat_u * eq_r_double_prime composition
-		let computed_sumcheck_claim = inner_product::<F>(
+		let computed_sumcheck_claim = inner_product::<FE>(
 			s_hat_u,
 			eq_r_double_prime
 				.as_ref()
 				.into_iter()
-				.map(|x: &F| x.clone()),
+				.map(|x: &FE| x.clone()),
 		);
 
 		// setup basefold prover
@@ -130,37 +126,33 @@ where
 	}
 
 	/// Initializes the proof by computing the initial message to the verifier.
-	/// 
-	/// Initializes the proof by computing the initial message, which is the partial 
+	///
+	/// Initializes the proof by computing the initial message, which is the partial
 	/// eval of the high variables of the packed multilinear at the evaluation point.
-	/// 
+	///
 	/// ## Arguments
-	/// 
+	///
 	/// * `packed_mle` - the packed multilinear polynomial
 	/// * `evaluation_point` - the evaluation point of the small field multilinear
-	/// 
+	///
 	/// ## Returns
-	/// 
+	///
 	/// * `s_hat_v` - the initial message to the verifier
-	/// 
-	fn initialize_proof(
-		packed_mle: &FieldBuffer<F>,
-		evaluation_point: &[F],
-	) -> Vec<F> {
+	fn initialize_proof(packed_mle: &FieldBuffer<FE>, evaluation_point: &[FE]) -> Vec<FE> {
 		// split eval point into low and high variables
-		let (_, eval_point_high) = evaluation_point.split_at(F::LOG_DEGREE);
+		let (_, eval_point_high) = evaluation_point.split_at(FE::LOG_DEGREE);
 
 		// Lift the packed multilinear to the large field
-		let small_field_mle = <F as PackedExtension<B1>>::cast_bases(packed_mle.as_ref());
+		let small_field_mle = <FE as PackedExtension<F>>::cast_bases(packed_mle.as_ref());
 
-		let eq_at_high = eq_ind_partial_eval::<F>(eval_point_high);
+		let eq_at_high = eq_ind_partial_eval::<FE>(eval_point_high);
 
-		let mut s_hat_v = vec![F::ZERO; 1 << F::LOG_DEGREE];
+		let mut s_hat_v = vec![FE::ZERO; 1 << FE::LOG_DEGREE];
 
 		for (packed_elem, eq_at_high_value) in small_field_mle.iter().zip(eq_at_high.as_ref()) {
 			packed_elem.iter().enumerate().for_each(
 				|(low_vars_subcube_idx, bit_in_packed_field)| {
-					if bit_in_packed_field == B1::ONE {
+					if bit_in_packed_field == F::ONE {
 						s_hat_v[low_vars_subcube_idx] += *eq_at_high_value;
 					}
 				},
@@ -171,12 +163,13 @@ where
 	}
 
 	/// Initializes the basefold prover.
-	/// 
+	///
 	/// Initializes the basefold prover by first computing the ring switch equality indicator.
-	/// Then, it creates a new basefold prover with the sumcheck composition [s_hat_u * eq_r_double_prime]
-	/// 
+	/// Then, it creates a new basefold prover with the sumcheck composition [s_hat_u *
+	/// eq_r_double_prime]
+	///
 	/// ## Arguments
-	/// 
+	///
 	/// * `r_double_prime` - the batching scalars
 	/// * `ntt` - the NTT for the FRI parameters
 	/// * `merkle_prover` - the merkle tree prover
@@ -184,33 +177,33 @@ where
 	/// * `committed_codeword` - the committed codeword
 	/// * `committed` - the committed merkle tree
 	/// * `basefold_sumcheck_claim` - the sumcheck claim for the basefold prover
-	/// 
+	///
 	/// ## Returns
-	/// 
+	///
 	/// * `basefold_prover` - the basefold prover
-	/// 
 	#[allow(clippy::too_many_arguments)]
 	pub fn setup_for_fri_sumcheck<'a, FA, NTT, MerkleProver, VCS>(
 		self,
-		r_double_prime: &[F],
+		r_double_prime: &[FE],
 		ntt: &'a NTT,
 		merkle_prover: &'a MerkleProver,
-		fri_params: &'a FRIParams<F, FA>,
-		committed_codeword: &'a [F],
+		fri_params: &'a FRIParams<FE, FA>,
+		committed_codeword: &'a [FE],
 		committed: &'a MerkleProver::Committed,
-		basefold_sumcheck_claim: F,
-	) -> BaseFoldProver<'a, F, FA, NTT, MerkleProver, VCS>
+		basefold_sumcheck_claim: FE,
+	) -> BaseFoldProver<'a, FE, FA, NTT, MerkleProver, VCS>
 	where
-		F: TowerField + ExtensionField<FA> + From<u128> + PackedExtension<B1>,
+		FE: TowerField + ExtensionField<FA> + From<u128> + PackedExtension<F>,
 		FA: BinaryField,
 		NTT: AdditiveNTT<FA> + Sync,
-		MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
-		VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
+		MerkleProver: MerkleTreeProver<FE, Scheme = VCS>,
+		VCS: MerkleTreeScheme<FE, Digest: SerializeBytes>,
 	{
-		let (_, eval_point_high) = self.evaluation_point.split_at(<F as ExtensionField<B1>>::LOG_DEGREE);
+		let (_, eval_point_high) = self
+			.evaluation_point
+			.split_at(<FE as ExtensionField<B1>>::LOG_DEGREE);
 
-		let rs_eq_ind: FieldBuffer<F> =
-			rs_eq_ind::<B1, F>(r_double_prime, eval_point_high);
+		let rs_eq_ind: FieldBuffer<FE> = rs_eq_ind::<B1, FE>(r_double_prime, eval_point_high);
 
 		BaseFoldProver::new(
 			self.packed_mle,
@@ -227,9 +220,9 @@ where
 }
 
 /// Samples batching scalars from the prover's mutable transcript.
-/// 
+///
 /// ## Arguments
-/// 
+///
 /// * `transcript` - mutable transcript of the prover's proof
 pub fn prover_samples_batching_scalars<F: Field + TowerField, TranscriptChallenger: Challenger>(
 	transcript: &mut ProverTranscript<TranscriptChallenger>,
@@ -241,15 +234,10 @@ pub fn prover_samples_batching_scalars<F: Field + TowerField, TranscriptChalleng
 
 #[cfg(test)]
 mod test {
-	use super::OneBitPCSProver;
-
-	use binius_field::{ExtensionField, Field, Random};
+	use binius_field::{ExtensionField, Field};
 	use binius_math::{
-		inner_product::inner_product,
-		FieldBuffer, 
-		ReedSolomonCode, 
-		multilinear::eq::eq_ind_partial_eval, 
-		ntt::SingleThreadedNTT,
+		FieldBuffer, ReedSolomonCode, inner_product::inner_product,
+		multilinear::eq::eq_ind_partial_eval, ntt::SingleThreadedNTT, test_utils::random_scalars,
 	};
 	use binius_transcript::ProverTranscript;
 	use binius_verifier::{
@@ -261,33 +249,30 @@ mod test {
 	};
 	use itertools::Itertools;
 	use rand::{SeedableRng, rngs::StdRng};
+
+	use super::OneBitPCSProver;
 	use crate::{
 		fri::{self, CommitOutput},
 		merkle_tree::prover::BinaryMerkleTreeProver,
 	};
 
-	pub fn large_field_mle_to_small_field_mle<
-		SmallField: Field,
-		BigField: Field + ExtensionField<SmallField>,
-	>(
-		large_field_mle: &[BigField],
-	) -> Vec<SmallField> {
+	pub fn large_field_mle_to_small_field_mle<F, FE>(large_field_mle: &[FE]) -> Vec<F>
+	where
+		F: Field,
+		FE: Field + ExtensionField<F>,
+	{
 		large_field_mle
 			.iter()
-			.flat_map(|elm| ExtensionField::<SmallField>::iter_bases(elm))
+			.flat_map(|elm| ExtensionField::<F>::iter_bases(elm))
 			.collect()
 	}
 
-	pub fn lift_small_to_large_field<
-		SmallField: Field,
-		BigField: Field + ExtensionField<SmallField>,
-	>(
-		small_field_elms: &[SmallField],
-	) -> Vec<BigField> {
-		small_field_elms
-			.iter()
-			.map(|&elm| BigField::from(elm))
-			.collect()
+	pub fn lift_small_to_large_field<F, FE>(small_field_elms: &[F]) -> Vec<FE>
+	where
+		F: Field,
+		FE: Field + ExtensionField<F>,
+	{
+		small_field_elms.iter().map(|&elm| FE::from(elm)).collect()
 	}
 
 	#[test]
@@ -299,7 +284,7 @@ mod test {
 
 		const LOG_INV_RATE: usize = 1;
 		const NUM_TEST_QUERIES: usize = 3;
-	
+
 		type FA = B128;
 
 		let big_field_n_vars = n_vars - <B128 as ExtensionField<B1>>::LOG_DEGREE;
@@ -307,9 +292,7 @@ mod test {
 		// prover has a small field polynomial he is interested in proving an eval claim about:
 		// He wishes to evaluated the small field multilinear t at the vector of large field
 		// elements r.
-		let packed_mle = (0..1 << big_field_n_vars)
-			.map(|_| B128::random(&mut rng))
-			.collect_vec();
+		let packed_mle = random_scalars::<B128>(&mut rng, 1 << big_field_n_vars);
 
 		let lifted_small_field_mle =
 			lift_small_to_large_field(&large_field_mle_to_small_field_mle::<B1, B128>(&packed_mle));
@@ -334,6 +317,7 @@ mod test {
 		// Commit packed mle codeword to transcript
 		let ntt = SingleThreadedNTT::new(fri_params.rs_code().log_len())
 			.expect("failed to create single-threaded NTT");
+
 		let CommitOutput {
 			commitment: codeword_commitment,
 			committed: codeword_committed,
@@ -346,13 +330,17 @@ mod test {
 		prover_challenger.message().write(&codeword_commitment);
 
 		// random evaluation point
-		let evaluation_point = (0..n_vars).map(|_| B128::random(&mut rng)).collect_vec();
+		let evaluation_point = random_scalars::<B128>(&mut rng, n_vars);
 
 		// evaluate small field multilinear at the evaluation point
 		// It is assumed the prover and verifier already know the evaluation claim
 		let evaluation_claim = inner_product::<B128>(
 			lifted_small_field_mle,
-			eq_ind_partial_eval(&evaluation_point).as_ref().into_iter().map(|x: &B128| *x).collect_vec()
+			eq_ind_partial_eval(&evaluation_point)
+				.as_ref()
+				.into_iter()
+				.map(|x: &B128| *x)
+				.collect_vec(),
 		);
 
 		// Instantiate ring switch pcs
@@ -372,6 +360,7 @@ mod test {
 
 		// convert the finalized prover transcript into a verifier transcript
 		let mut verifier_challenger = prover_challenger.into_verifier();
+
 		// retrieve the initial commitment from the transcript
 		let codeword_commitment = verifier_challenger
 			.message()
