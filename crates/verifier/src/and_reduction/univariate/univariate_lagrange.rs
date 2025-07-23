@@ -16,29 +16,29 @@ fn products_excluding_one_element<F: Field>(input: &[F]) -> Vec<F> {
 	results
 }
 
-pub fn lexicographic_lagrange_denominator(log_basis_size: usize) -> AESTowerField8b {
+pub fn lexicographic_lagrange_denominator<FNTTDomain: Field + From<u8>>(log_basis_size: usize) -> FNTTDomain {
 	(1..=((1 << log_basis_size) - 1) as u8)
-		.map(AESTowerField8b::new)
-		.product::<AESTowerField8b>()
+		.map(FNTTDomain::from)
+		.product::<FNTTDomain>()
 }
 
-pub fn lexicographic_lagrange_numerators_polyval<F: Field + From<AESTowerField8b>>(
+pub fn lexicographic_lagrange_numerators_polyval<FNTTDomain: Field + From<u8>,FChallenge: Field + From<FNTTDomain>>(
 	basis_size: usize,
-	eval_point: F,
-) -> Vec<F> {
+	eval_point: FChallenge,
+) -> Vec<FChallenge> {
 	let basis_point_differences: Vec<_> = (0..=(basis_size - 1) as u8)
-		.map(|i| eval_point - F::from(AESTowerField8b::new(i)))
+		.map(|i| eval_point - FChallenge::from(FNTTDomain::from(i)))
 		.collect();
 
 	products_excluding_one_element(&basis_point_differences)
 }
 
-pub fn lexicographic_lagrange_numerators_8b(
+pub fn lexicographic_lagrange_numerators_8b<F: Field+From<u8>>(
 	basis_size: usize,
-	eval_point: AESTowerField8b,
-) -> Vec<AESTowerField8b> {
+	eval_point: F,
+) -> Vec<F> {
 	let basis_point_differences: Vec<_> = (0..basis_size as u8)
-		.map(|i| eval_point - AESTowerField8b::new(i))
+		.map(|i| eval_point - F::from(i))
 		.collect();
 	products_excluding_one_element(&basis_point_differences)
 }
