@@ -23,22 +23,20 @@ pub trait UnivariatePoly<FCoeffs: Field, FChallenge: Field> {
 /// This is a univariate polynomial in lagrange basis with the evaluation points being field
 /// elements in lexicographic order. The polynomial with coefficients in FChallenge isomorphic to
 /// those of this polynomial can also be queried using methods on this struct
-pub struct GenericPo2UnivariatePoly<'a, F: Field, FChallenge: Field> {
+pub struct GenericPo2UnivariatePoly<F: Field> {
 	univariate_lagrange_coeffs: Vec<F>,
 	log_degree_lt: usize,
-	lookup_table: &'a SubfieldIsomorphismLookup<FChallenge>,
 }
 
-impl<'a, F: Field, FChallenge: Field> GenericPo2UnivariatePoly<'a, F, FChallenge> {
+impl<'a, F: Field> GenericPo2UnivariatePoly<F>
+{
 	pub fn new(
 		univariate_lagrange_coeffs: Vec<F>,
-		iso_lookup: &'a SubfieldIsomorphismLookup<FChallenge>,
 	) -> Self {
 		let degree_lt = univariate_lagrange_coeffs.len();
 		Self {
 			univariate_lagrange_coeffs,
 			log_degree_lt: degree_lt.trailing_zeros() as usize,
-			lookup_table: iso_lookup,
 		}
 	}
 
@@ -57,7 +55,7 @@ impl<'a, F: Field, FChallenge: Field> GenericPo2UnivariatePoly<'a, F, FChallenge
 }
 
 impl UnivariatePoly<AESTowerField8b, BinaryField128bPolyval>
-	for GenericPo2UnivariatePoly<'_, AESTowerField8b, BinaryField128bPolyval>
+	for GenericPo2UnivariatePoly<AESTowerField8b>
 {
 	fn iter_coeffs(&self) -> impl Iterator<Item = &AESTowerField8b> {
 		self.univariate_lagrange_coeffs.iter()
@@ -68,7 +66,6 @@ impl UnivariatePoly<AESTowerField8b, BinaryField128bPolyval>
 			lexicographic_lagrange_numerators_polyval(
 				self.degree_lt(),
 				challenge,
-				self.lookup_table,
 			);
 
 		let denominator_inv = self.lookup_table.lookup_8b_value(

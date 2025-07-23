@@ -6,7 +6,6 @@ use super::{
 	},
 	univariate_poly::GenericPo2UnivariatePoly,
 };
-use crate::and_reduction::utils::subfield_isomorphism::SubfieldIsomorphismLookup;
 
 pub fn delta_poly<'a, F: Field>(
 	zerocheck_challenge: F,
@@ -34,7 +33,6 @@ mod tests {
 
 	use crate::and_reduction::{
 		univariate::{delta::delta_poly, univariate_poly::UnivariatePoly},
-		utils::subfield_isomorphism::SubfieldIsomorphismLookup,
 	};
 
 	#[test]

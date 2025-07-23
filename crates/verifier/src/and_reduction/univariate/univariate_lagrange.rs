@@ -1,7 +1,5 @@
 use binius_field::{AESTowerField8b, Field};
 
-use crate::and_reduction::utils::subfield_isomorphism::SubfieldIsomorphismLookup;
-
 fn products_excluding_one_element<F: Field>(input: &[F]) -> Vec<F> {
 	let mut results = vec![F::ONE; input.len()];
 	for i in (0..(input.len() - 1)).rev() {
@@ -24,13 +22,12 @@ pub fn lexicographic_lagrange_denominator(log_basis_size: usize) -> AESTowerFiel
 		.product::<AESTowerField8b>()
 }
 
-pub fn lexicographic_lagrange_numerators_polyval<F: Field>(
+pub fn lexicographic_lagrange_numerators_polyval<F: Field + From<AESTowerField8b>>(
 	basis_size: usize,
 	eval_point: F,
-	iso_lookup: &SubfieldIsomorphismLookup<F>,
 ) -> Vec<F> {
 	let basis_point_differences: Vec<_> = (0..=(basis_size - 1) as u8)
-		.map(|i| eval_point - iso_lookup.lookup_8b_value(AESTowerField8b::new(i)))
+		.map(|i| eval_point - F::from(AESTowerField8b::new(i)))
 		.collect();
 
 	products_excluding_one_element(&basis_point_differences)
