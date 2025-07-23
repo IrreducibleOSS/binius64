@@ -18,7 +18,7 @@ use crate::{
 /// Verifies a ring switched pcs proof from the final transcript.
 ///
 /// The verifier first checks the initial ring switching phase of the proof for
-/// completeness.Then, he verifies the underyling large field pcs using the
+/// completeness.Then, he verifies the underlying large field pcs using the
 /// basefold verifier.
 ///
 /// ## Arguments
