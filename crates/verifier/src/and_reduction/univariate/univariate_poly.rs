@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use binius_field::{
-	Field, arithmetic_traits::InvertOrZero,
+	Field,
 };
 
 use crate::and_reduction::{

@@ -1,4 +1,4 @@
-use binius_field::{Field, arithmetic_traits::InvertOrZero};
+use binius_field::{Field};
 
 use super::{
 	univariate_lagrange::{
