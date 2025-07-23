@@ -1,16 +1,15 @@
 #[cfg(test)]
 mod test {
-	use binius_field::{
-		AESTowerField8b, AESTowerField128b, BinaryField128bPolyval, Field, PackedBinaryField128x1b,
-		Random,
-	};
+	use binius_field::{AESTowerField8b, Field, PackedBinaryField128x1b, Random};
 	use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval};
-	use binius_verifier::and_reduction::{
-		univariate::{delta::delta_poly, univariate_poly::UnivariatePoly},
-		utils::{
-			constants::{ROWS_PER_HYPERCUBE_VERTEX, SKIPPED_VARS},
-			subfield_isomorphism::SubfieldIsomorphismLookup,
+	use binius_transcript::ProverTranscript;
+	use binius_verifier::{
+		and_reduction::{
+			univariate::{delta::delta_poly, univariate_poly::UnivariatePoly},
+			utils::constants::{ROWS_PER_HYPERCUBE_VERTEX, SKIPPED_VARS},
 		},
+		config::StdChallenger,
+		fields::B128,
 	};
 	use itertools::izip;
 	use rand::{SeedableRng, rngs::StdRng};
@@ -20,13 +19,11 @@ mod test {
 			fold_lookup::precompute_fold_lookup, sumcheck_round_messages::univariate_round_message,
 			univariate::ntt_lookup::precompute_lookup, utils::multivariate::OneBitMultivariate,
 		},
-		protocols::sumcheck::and_reduction::prover::{
-			AndReductionProver, test::multilinear_sumcheck,
-		},
+		protocols::sumcheck::{and_reduction::prover::AndReductionProver, prove_single},
 	};
 
 	// Sends the sum claim from first multilinear round (second overall round)
-	pub fn sum_claim<BF: Field + From<BinaryField128bPolyval>>(
+	pub fn sum_claim<BF: Field + From<B128>>(
 		first_col: &FieldBuffer<BF>,
 		second_col: &FieldBuffer<BF>,
 		third_col: &FieldBuffer<BF>,
@@ -48,19 +45,17 @@ mod test {
 	}
 
 	#[test]
-	fn test_do_claims_match() {
+	fn test_integration() {
 		let log_num_rows = 10;
 		let mut rng = StdRng::from_seed([0; 32]);
 		let big_field_zerocheck_challenges =
-			vec![BinaryField128bPolyval::new(13929123); (log_num_rows - SKIPPED_VARS - 3) + 1];
+			vec![B128::new(13929123); (log_num_rows - SKIPPED_VARS - 3) + 1];
 
 		let small_field_zerocheck_challenges = vec![
 			AESTowerField8b::new(2),
 			AESTowerField8b::new(4),
 			AESTowerField8b::new(16),
 		];
-
-		let iso_lookup = SubfieldIsomorphismLookup::new::<AESTowerField128b>();
 
 		let mlv_1 = random_one_bit_multivariate(log_num_rows);
 		let mlv_2 = random_one_bit_multivariate(log_num_rows);
@@ -81,29 +76,27 @@ mod test {
 			&lookup,
 			&small_field_zerocheck_challenges,
 			big_field_zerocheck_challenges[0],
-			&iso_lookup,
 		);
 
-		let first_sumcheck_challenge = BinaryField128bPolyval::random(&mut rng);
+		let first_sumcheck_challenge = B128::random(&mut rng);
 
-		let fold_lookup_polyval = precompute_fold_lookup(first_sumcheck_challenge, &iso_lookup);
+		let fold_lookup_polyval =
+			precompute_fold_lookup::<AESTowerField8b, B128>(first_sumcheck_challenge);
 
 		let expected_next_round_sum =
 			first_round_message.evaluate_at_challenge(first_sumcheck_challenge);
 
-		let folded_first_mle: FieldBuffer<BinaryField128bPolyval> =
-			mlv_1.fold(&fold_lookup_polyval);
-		let folded_second_mle: FieldBuffer<BinaryField128bPolyval> =
-			mlv_2.fold(&fold_lookup_polyval);
-		let folded_third_mle: FieldBuffer<BinaryField128bPolyval> =
-			mlv_3.fold(&fold_lookup_polyval);
+		let folded_first_mle: FieldBuffer<B128> = mlv_1.fold(&fold_lookup_polyval);
+		let folded_second_mle: FieldBuffer<B128> = mlv_2.fold(&fold_lookup_polyval);
+		let folded_third_mle: FieldBuffer<B128> = mlv_3.fold(&fold_lookup_polyval);
 
-		let delta_mul_by = delta_poly(big_field_zerocheck_challenges[0], SKIPPED_VARS, &iso_lookup)
-			.evaluate_at_challenge(first_sumcheck_challenge);
+		let delta_mul_by =
+			delta_poly::<AESTowerField8b, B128>(big_field_zerocheck_challenges[0], SKIPPED_VARS)
+				.evaluate_at_challenge(first_sumcheck_challenge);
 
 		let upcasted_small_field_challenges: Vec<_> = small_field_zerocheck_challenges
 			.into_iter()
-			.map(|i| iso_lookup.lookup_8b_value(i))
+			.map(|i| B128::from(i))
 			.collect();
 
 		let polyval_zerocheck_challenges: Vec<_> = upcasted_small_field_challenges
@@ -119,8 +112,7 @@ mod test {
 
 		assert_eq!(
 			expected_next_round_sum,
-			std::convert::Into::<BinaryField128bPolyval>::into(actual_next_round_sum)
-				* delta_mul_by
+			std::convert::Into::<B128>::into(actual_next_round_sum) * delta_mul_by
 		);
 
 		let mles = vec![folded_first_mle, folded_second_mle, folded_third_mle];
@@ -132,6 +124,8 @@ mod test {
 			log_num_rows - SKIPPED_VARS,
 		);
 
-		multilinear_sumcheck(prover);
+		let mut transcript_for_sumcheck = ProverTranscript::new(StdChallenger::default());
+
+		prove_single(prover, &mut transcript_for_sumcheck).unwrap();
 	}
 }
