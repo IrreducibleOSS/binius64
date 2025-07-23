@@ -62,10 +62,7 @@ where
 		evaluation_claim,
 		inner_product::<F>(
 			s_hat_v.clone(),
-			eq_ind_partial_eval(eval_point_low)
-				.as_ref()
-				.iter()
-				.copied()
+			eq_ind_partial_eval(eval_point_low).as_ref().iter().copied()
 		)
 	);
 
@@ -78,13 +75,8 @@ where
 	let tensor_expanded_batching_scalars = eq_ind_partial_eval(&batching_scalars);
 
 	// infer sumcheck claim from transcript
-	let verifier_computed_sumcheck_claim = inner_product::<F>(
-		s_hat_u,
-		tensor_expanded_batching_scalars
-			.as_ref()
-			.iter()
-			.copied()
-	);
+	let verifier_computed_sumcheck_claim =
+		inner_product::<F>(s_hat_u, tensor_expanded_batching_scalars.as_ref().iter().copied());
 
 	// verify large field pcs w/ transcript
 	let (final_fri_oracle, sumcheck_final_claim, basefold_challenges) = verify_basefold_transcript(
