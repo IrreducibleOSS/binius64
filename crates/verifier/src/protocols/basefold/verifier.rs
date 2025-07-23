@@ -68,15 +68,11 @@ where
 
 		let basefold_challenge = transcript.sample();
 
-		// Compute what the sumcheck should have been based on the round message
-		// This allows us to continue verification even if the sumcheck constraint
-		// isn't explicitly satisfied, deferring validation to the final assertion
 		let sum_check = round_message.evaluate(F::ZERO) + round_message.evaluate(F::ONE);
 		if sum_check != expected_sumcheck_round_claim {
 			return Err("Sumcheck constraint not satisfied".into());
 		}
 
-		// Update expected claim based on the actual evaluation at the challenge point
 		expected_sumcheck_round_claim = round_message.evaluate(basefold_challenge);
 
 		basefold_challenges.push(basefold_challenge);
@@ -86,7 +82,6 @@ where
 		}
 	}
 
-	// Init FRI verifier
 	let fri_verifier = FRIVerifier::new(
 		fri_params,
 		vcs,
@@ -95,10 +90,7 @@ where
 		&basefold_challenges,
 	)?;
 
-	// By verifying FRI, the verifier checks that c == t(r'_0, ..., r'_{\ell-1})
-	// note that the prover is claiming that the final_message is [c]
-	let verifier_challenger = transcript;
-	let final_fri_oracle = fri_verifier.verify(verifier_challenger)?;
+	let final_fri_oracle = fri_verifier.verify(transcript)?;
 
 	let sumcheck_output = SumcheckOutput {
 		eval: expected_sumcheck_round_claim,
