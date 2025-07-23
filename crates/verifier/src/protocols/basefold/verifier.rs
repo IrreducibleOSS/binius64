@@ -9,7 +9,7 @@ use binius_utils::DeserializeBytes;
 use crate::{
 	fri::{FRIParams, verify::FRIVerifier},
 	merkle_tree::MerkleTreeScheme,
-	protocols::basefold::utils::verify_sumcheck_round,
+	protocols::sumcheck::common::RoundCoeffs,
 };
 
 /// Determines at which rounds the prover is expected to commit given the FRI
@@ -66,13 +66,11 @@ where
 
 		let basefold_challenge = transcript.sample();
 
-		let round_sum = round_msg[0] + round_msg[1];
-		let next_claim = verify_sumcheck_round(
-			round_sum,
-			expected_sumcheck_round_claim,
-			round_msg,
-			basefold_challenge,
-		);
+		// ! Temporary solution during mle check integration
+		let middle = round_msg[1] - round_msg[0] - round_msg[2];
+		let monomial_basis_coeffs = [round_msg[0], middle, round_msg[2]];
+		let rounds_coeffs = RoundCoeffs(monomial_basis_coeffs.to_vec());
+		let next_claim = rounds_coeffs.evaluate(basefold_challenge);
 
 		expected_sumcheck_round_claim = next_claim;
 
