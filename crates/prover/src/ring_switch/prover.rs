@@ -53,12 +53,12 @@ where
 
 #[cfg(test)]
 mod test {
-	use std::iter::repeat_with;
-
-	use binius_field::{BinaryField1b, BinaryField128b, ExtensionField, Random};
+	use binius_field::{BinaryField1b, BinaryField128b, ExtensionField};
 	use binius_math::{
-		FieldBuffer, inner_product::inner_product_packed, multilinear::eq::eq_ind_partial_eval,
-		test_utils::index_to_hypercube_point,
+		FieldBuffer,
+		inner_product::inner_product_packed,
+		multilinear::eq::eq_ind_partial_eval,
+		test_utils::{index_to_hypercube_point, random_scalars},
 	};
 	use binius_verifier::ring_switch::verifier::eval_rs_eq;
 	use rand::{SeedableRng, rngs::StdRng};
@@ -74,13 +74,10 @@ mod test {
 
 		let n_vars_big_field = 3;
 
-		let z_vals: Vec<_> = repeat_with(|| FE::random(&mut rng))
-			.take(n_vars_big_field)
-			.collect();
+		let z_vals: Vec<FE> = random_scalars(&mut rng, n_vars_big_field);
 
-		let row_batching_challenges: Vec<FE> = repeat_with(|| FE::random(&mut rng))
-			.take(<FE as ExtensionField<F>>::LOG_DEGREE)
-			.collect();
+		let row_batching_challenges: Vec<FE> =
+			random_scalars(&mut rng, <FE as ExtensionField<F>>::LOG_DEGREE);
 
 		let row_batching_expanded_query = eq_ind_partial_eval(&row_batching_challenges);
 
@@ -105,13 +102,10 @@ mod test {
 		let n_vars_big_field = 3;
 
 		// setup ring switch eq mle
-		let z_vals: Vec<_> = repeat_with(|| FE::random(&mut rng))
-			.take(n_vars_big_field)
-			.collect();
+		let z_vals: Vec<FE> = random_scalars(&mut rng, n_vars_big_field);
 
-		let row_batching_challenges: Vec<FE> = repeat_with(|| FE::random(&mut rng))
-			.take(<FE as ExtensionField<F>>::LOG_DEGREE)
-			.collect();
+		let row_batching_challenges: Vec<FE> =
+			random_scalars(&mut rng, <FE as ExtensionField<F>>::LOG_DEGREE);
 
 		let row_batching_expanded_query: FieldBuffer<FE> =
 			eq_ind_partial_eval(&row_batching_challenges);
@@ -119,9 +113,7 @@ mod test {
 		let rs_eq = rs_eq_ind::<F, FE>(&row_batching_challenges, &z_vals);
 
 		// out of range eval point
-		let eval_point: Vec<FE> = repeat_with(|| FE::random(&mut rng))
-			.take(n_vars_big_field)
-			.collect();
+		let eval_point: Vec<FE> = random_scalars(&mut rng, n_vars_big_field);
 
 		// compare eval against inner product w/ eq ind mle of eval point
 
