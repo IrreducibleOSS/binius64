@@ -9,7 +9,7 @@ use binius_utils::DeserializeBytes;
 use crate::{
 	fri::{FRIParams, verify::FRIVerifier},
 	merkle_tree::MerkleTreeScheme,
-	protocols::sumcheck::common::RoundCoeffs,
+	protocols::sumcheck::{common::RoundCoeffs, SumcheckOutput},
 };
 
 /// Determines at which rounds the prover is expected to commit given the FRI
@@ -39,7 +39,7 @@ pub fn verify_transcript<F, FA, VCS, TranscriptChallenger>(
 	fri_params: &FRIParams<F, FA>,
 	vcs: &VCS,
 	n_vars: usize,
-) -> Result<(F, F, Vec<F>), Box<dyn std::error::Error>>
+) -> Result<(F, SumcheckOutput<F>), Box<dyn std::error::Error>>
 where
 	F: Field + BinaryField + ExtensionField<FA> + TowerField,
 	FA: BinaryField,
@@ -94,7 +94,12 @@ where
 	let verifier_challenger = transcript;
 	let final_fri_oracle = fri_verifier.verify(verifier_challenger)?;
 
-	Ok((final_fri_oracle, expected_sumcheck_round_claim, basefold_challenges))
+	let sumcheck_output = SumcheckOutput {
+		eval: expected_sumcheck_round_claim,
+		challenges: basefold_challenges,
+	};
+
+	Ok((final_fri_oracle, sumcheck_output))
 }
 
 /// Verifies that the final FRI oracle is consistent with the sumcheck
