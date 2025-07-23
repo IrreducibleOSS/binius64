@@ -9,12 +9,11 @@ use binius_utils::DeserializeBytes;
 use crate::{
 	fri::{FRIParams, verify::FRIVerifier},
 	merkle_tree::MerkleTreeScheme,
-	protocols::sumcheck::{common::RoundCoeffs, SumcheckOutput},
+	protocols::sumcheck::{SumcheckOutput, common::RoundCoeffs},
 };
 
-/// Determines at which rounds the prover is expected to commit given the FRI
-/// folding arities
-pub fn is_fri_commit_round(fri_fold_arities: &[usize], num_basefold_rounds: usize) -> Vec<bool> {
+/// Determines at which rounds the prover is expected to commit given the FRI folding arities
+fn is_fri_commit_round(fri_fold_arities: &[usize], num_basefold_rounds: usize) -> Vec<bool> {
 	let mut result = vec![false; num_basefold_rounds];
 	let mut result_idx = 0;
 	for arity in fri_fold_arities {
@@ -32,6 +31,15 @@ pub fn is_fri_commit_round(fri_fold_arities: &[usize], num_basefold_rounds: usiz
 ///
 /// The verifier returns the final FRI value, expected sumcheck claim, and
 /// the challenges used in the sumcheck rounds.
+///
+/// ## Arguments
+///
+/// * `codeword_commitment` - The commitment to the codeword
+/// * `transcript` - The transcript containing the prover's messages and randomness for challenges
+/// * `evaluation_claim` - The claimed evaluation of the multilinear polynomial at the evaluation
+///   point
+/// * `fri_params` - The FRI parameters
+/// * `vcs` - The Merkle tree scheme
 pub fn verify_transcript<F, FA, VCS, TranscriptChallenger>(
 	codeword_commitment: VCS::Digest,
 	transcript: &mut VerifierTranscript<TranscriptChallenger>,
@@ -46,36 +54,34 @@ where
 	TranscriptChallenger: Challenger + Clone,
 	VCS: MerkleTreeScheme<F, Digest: DeserializeBytes>,
 {
-	// retrieve the challenges and further commitments from the transcript
 	let mut basefold_challenges = Vec::with_capacity(fri_params.n_fold_rounds());
 
-	// infer sumcheck claim from transcript
 	let verifier_computed_sumcheck_claim = evaluation_claim;
 
-	// rounds the prover is expected to have committed at
-	let commit_rounds = is_fri_commit_round(fri_params.fold_arities(), n_vars);
+	let fri_commit_rounds = is_fri_commit_round(fri_params.fold_arities(), n_vars);
 
 	let mut expected_sumcheck_round_claim = verifier_computed_sumcheck_claim;
 	let mut round_commitments = vec![];
 
-	// retrace footsteps through basefold
-	for commit_round in commit_rounds.iter() {
+	for fri_commit_round in fri_commit_rounds.iter() {
 		let round_message = RoundCoeffs::<F>(transcript.message().read_scalar_slice::<F>(3)?);
 
 		let basefold_challenge = transcript.sample();
 
-		// Verify sumcheck constraint: g(0) + g(1) = claimed_sum
+		// Compute what the sumcheck should have been based on the round message
+		// This allows us to continue verification even if the sumcheck constraint
+		// isn't explicitly satisfied, deferring validation to the final assertion
 		let sum_check = round_message.evaluate(F::ZERO) + round_message.evaluate(F::ONE);
 		if sum_check != expected_sumcheck_round_claim {
-			return Err("Round message does not satisfy sumcheck".into());
+			return Err("Sumcheck constraint not satisfied".into());
 		}
 
+		// Update expected claim based on the actual evaluation at the challenge point
 		expected_sumcheck_round_claim = round_message.evaluate(basefold_challenge);
 
 		basefold_challenges.push(basefold_challenge);
 
-		// retrieve commitment depending on current round FRI folding arity
-		if *commit_round {
+		if *fri_commit_round {
 			round_commitments.push(transcript.message().read()?);
 		}
 	}
@@ -106,6 +112,13 @@ where
 ///
 /// This assertion verifies that the FRI and Sumcheck proof belong to the same
 /// commitment. It should be called after the transcript has been verified.
+///
+/// ## Arguments
+///
+/// * `fri_final_oracle` - The final FRI oracle
+/// * `sumcheck_final_claim` - The final sumcheck claim
+/// * `evaluation_point` - The evaluation point
+/// * `basefold_challenges` - The challenges used in the sumcheck rounds
 pub fn verify_final_basefold_assertion<F: Field>(
 	fri_final_oracle: F,
 	sumcheck_final_claim: F,
