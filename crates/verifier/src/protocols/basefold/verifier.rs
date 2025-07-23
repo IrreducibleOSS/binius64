@@ -9,7 +9,7 @@ use binius_utils::DeserializeBytes;
 use crate::{
 	fri::{FRIParams, verify::FRIVerifier},
 	merkle_tree::MerkleTreeScheme,
-	protocols::sumcheck::{RoundProof, RoundCoeffs, SumcheckOutput},
+	protocols::sumcheck::{RoundCoeffs, RoundProof, SumcheckOutput},
 };
 
 fn is_fri_commit_round(fri_fold_arities: &[usize], num_basefold_rounds: usize) -> Vec<bool> {
@@ -39,7 +39,6 @@ fn is_fri_commit_round(fri_fold_arities: &[usize], num_basefold_rounds: usize) -
 ///   point
 /// * `fri_params` - The FRI parameters
 /// * `vcs` - The Merkle tree scheme
-/// 
 pub fn verify_transcript<F, FA, VCS, TranscriptChallenger>(
 	codeword_commitment: VCS::Digest,
 	transcript: &mut VerifierTranscript<TranscriptChallenger>,
@@ -58,9 +57,8 @@ where
 	let fri_commit_rounds = is_fri_commit_round(fri_params.fold_arities(), n_vars);
 	let mut round_commitments = vec![];
 	let mut sum = evaluation_claim;
-	
-	for is_commit_round in fri_commit_rounds {
 
+	for is_commit_round in fri_commit_rounds {
 		let round_proof = RoundProof(RoundCoeffs(transcript.message().read_scalar_slice::<F>(3)?));
 
 		let challenge = transcript.sample();
@@ -68,28 +66,26 @@ where
 		let round_coeffs = round_proof.recover(sum);
 
 		sum = round_coeffs.evaluate(challenge);
-		
+
 		challenges.push(challenge);
-		
+
 		if is_commit_round {
 			round_commitments.push(transcript.message().read()?);
 		}
 	}
 
-	let fri_verifier = FRIVerifier::new(
-		fri_params,
-		vcs,
-		&codeword_commitment,
-		&round_commitments,
-		&challenges,
-	)?;
+	let fri_verifier =
+		FRIVerifier::new(fri_params, vcs, &codeword_commitment, &round_commitments, &challenges)?;
 
 	let fri_oracle = fri_verifier.verify(transcript)?;
 
-	Ok((fri_oracle, SumcheckOutput {
-		eval: sum,
-		challenges,
-	}))
+	Ok((
+		fri_oracle,
+		SumcheckOutput {
+			eval: sum,
+			challenges,
+		},
+	))
 }
 
 /// Verifies that the final FRI oracle is consistent with the sumcheck
@@ -103,7 +99,6 @@ where
 /// * `sumcheck_final_claim` - The final sumcheck claim
 /// * `evaluation_point` - The evaluation point
 /// * `challenges` - The challenges used in the sumcheck rounds
-/// 
 pub fn final_basefold_assertion<F: Field>(
 	fri_final_oracle: F,
 	sumcheck_final_claim: F,
