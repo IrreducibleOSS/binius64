@@ -80,21 +80,21 @@ impl ZkLogin {
 		// 3. signature
 
 		let _base64decode_check_header = Base64UrlSafe::new(
-			b,
+			&b.subcircuit("base64_check_header"),
 			config.max_len_json_jwt_header,
 			jwt_header.data.clone(),
 			base64_jwt_header.data.clone(),
 			jwt_header.len,
 		);
 		let _base64decode_check_payload = Base64UrlSafe::new(
-			b,
+			&b.subcircuit("base64_check_payload"),
 			config.max_len_json_jwt_payload,
 			jwt_payload.data.clone(),
 			base64_jwt_payload.data.clone(),
 			jwt_payload.len,
 		);
 		let _base64decode_check_signature = Base64UrlSafe::new(
-			b,
+			&b.subcircuit("base64_check_signature"),
 			config.max_len_jwt_signature,
 			jwt_signature.data.clone(),
 			base64_jwt_signature.data.clone(),
@@ -112,7 +112,7 @@ impl ZkLogin {
 		let zkaddr_preimage = FixedByteVec::new_witness(b, max_len_zkaddr_preimage);
 
 		let _zkaddr_preimage_concat = Concat::new(
-			b,
+			&b.subcircuit("zkaddr_preimage_concat"),
 			max_len_zkaddr_preimage,
 			zkaddr_preimage.len,
 			zkaddr_preimage.data.clone(),
@@ -141,7 +141,7 @@ impl ZkLogin {
 		);
 
 		let _zkaddr_sha256 = Sha256::new(
-			b,
+			&mut b.subcircuit("zkaddr_sha256"),
 			zkaddr_preimage.max_len,
 			zkaddr_preimage.len,
 			zkaddr,
@@ -153,7 +153,7 @@ impl ZkLogin {
 		let nonce_preimage = FixedByteVec::new_witness(b, max_len_nonce_preimage);
 
 		let _nonce_preimage_concat = Concat::new(
-			b,
+			&b.subcircuit("nonce_preimage_concat"),
 			max_len_nonce_preimage,
 			nonce_preimage.len,
 			nonce_preimage.data.clone(),
@@ -176,7 +176,7 @@ impl ZkLogin {
 			],
 		);
 		let _nonce_sha256 = Sha256::new(
-			b,
+			&mut b.subcircuit("nonce_sha256"),
 			nonce_preimage.max_len,
 			nonce_preimage.len,
 			nonce,
@@ -192,7 +192,7 @@ impl ZkLogin {
 		.next_multiple_of(8);
 		let jwt_signing_payload = FixedByteVec::new_witness(b, max_len_jwt_signing_payload);
 		let _jwt_signing_payload_concat = Concat::new(
-			b,
+			&b.subcircuit("jwt_signing_payload_concat"),
 			max_len_jwt_signing_payload,
 			jwt_signing_payload.len,
 			jwt_signing_payload.data.clone(),
@@ -232,7 +232,7 @@ impl ZkLogin {
 /// fields.
 fn jwt_header_check(b: &CircuitBuilder, jwt_header: &FixedByteVec) -> JwtClaims {
 	JwtClaims::new(
-		b,
+		&b.subcircuit("jwt_claims_header"),
 		jwt_header.max_len,
 		jwt_header.len,
 		jwt_header.data.clone(),
@@ -262,7 +262,7 @@ fn jwt_payload_check(
 	nonce_byte_array: &[Wire; 4],
 ) -> JwtClaims {
 	JwtClaims::new(
-		b,
+		&b.subcircuit("jwt_claims_payload"),
 		jwt_payload.max_len,
 		jwt_payload.len,
 		jwt_payload.data.clone(),
