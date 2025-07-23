@@ -45,7 +45,7 @@ where
 	///
 	/// The Basefold protocol runs FRI and Sumcheck in parallel, using shared random
 	/// challenges to prove the evaluation claim of a committed polynomial. The eval
-	/// claim is represented as the inner product of the commited mle and the tensor
+	/// claim is represented as the inner product of the committed mle and the tensor
 	/// expanded eval point. Sumcheck is used to reduce this summation to an evaluation
 	/// at a random point, FRI is used both commit to the multilinear and perform the
 	/// multilinear evaluation at the challenge point.
