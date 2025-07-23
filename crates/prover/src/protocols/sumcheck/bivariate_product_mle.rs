@@ -9,14 +9,9 @@ use binius_verifier::protocols::sumcheck::RoundCoeffs;
 
 use super::{common::SumcheckProver, error::Error, gruen34::Gruen34, round_evals::RoundEvals2};
 
-enum RoundCoeffsOrSum<F: Field> {
-	Coeffs(RoundCoeffs<F>),
-	Sum(F),
-}
-
 pub struct BivariateProductMlecheckProver<P: PackedField> {
 	multilinears: [FieldBuffer<P>; 2],
-	last_coeffs_or_sum: RoundCoeffsOrSum<P::Scalar>,
+	last_coeffs_or_eval: RoundCoeffsOrEval<P::Scalar>,
 	gruen34: Gruen34<P>,
 }
 
@@ -34,13 +29,13 @@ impl<F: Field, P: PackedField<Scalar = F>> BivariateProductMlecheckProver<P> {
 			return Err(Error::EvalPointLengthMismatch);
 		}
 
-		let last_coeffs_or_sum = RoundCoeffsOrSum::Sum(eval_claim);
+		let last_coeffs_or_sum = RoundCoeffsOrEval::Eval(eval_claim);
 
 		let gruen34 = Gruen34::new(eval_point);
 
 		Ok(Self {
 			multilinears,
-			last_coeffs_or_sum,
+			last_coeffs_or_eval: last_coeffs_or_sum,
 			gruen34,
 		})
 	}
@@ -60,7 +55,7 @@ where
 	}
 
 	fn execute(&mut self) -> Result<Vec<RoundCoeffs<F>>, Error> {
-		let RoundCoeffsOrSum::Sum(last_sum) = &self.last_coeffs_or_sum else {
+		let RoundCoeffsOrEval::Eval(last_eval) = &self.last_coeffs_or_eval else {
 			return Err(Error::ExpectedFold);
 		};
 
@@ -74,7 +69,7 @@ where
 		let (evals_a_0, evals_a_1) = self.multilinears[0].split_half()?;
 		let (evals_b_0, evals_b_1) = self.multilinears[1].split_half()?;
 
-		// Compute F(1) and F(∞) where F = ∑_{v ∈ B} A(v || X) B(v || X)
+		// Compute F(1) and F(∞) where F = ∑_{v ∈ B} A(v || X) B(v || X) eq(v, z)
 		let packed_prime_evals = (
 			eq_expansion.as_ref(),
 			evals_a_0.as_ref(),
@@ -100,14 +95,14 @@ where
 
 		let (prime_coeffs, round_coeffs) = self
 			.gruen34
-			.interpolate2(*last_sum, packed_prime_evals.sum_scalars());
+			.interpolate2(*last_eval, packed_prime_evals.sum_scalars());
 
-		self.last_coeffs_or_sum = RoundCoeffsOrSum::Coeffs(prime_coeffs);
+		self.last_coeffs_or_eval = RoundCoeffsOrEval::Coeffs(prime_coeffs);
 		Ok(vec![round_coeffs])
 	}
 
 	fn fold(&mut self, challenge: F) -> Result<(), Error> {
-		let RoundCoeffsOrSum::Coeffs(prime_coeffs) = &self.last_coeffs_or_sum else {
+		let RoundCoeffsOrEval::Coeffs(prime_coeffs) = &self.last_coeffs_or_eval else {
 			return Err(Error::ExpectedExecute);
 		};
 
@@ -120,15 +115,15 @@ where
 		}
 
 		self.gruen34.fold(challenge)?;
-		self.last_coeffs_or_sum = RoundCoeffsOrSum::Sum(sum);
+		self.last_coeffs_or_eval = RoundCoeffsOrEval::Eval(sum);
 		Ok(())
 	}
 
 	fn finish(self) -> Result<Vec<F>, Error> {
 		if self.n_vars_remaining() > 0 {
-			let error = match self.last_coeffs_or_sum {
-				RoundCoeffsOrSum::Coeffs(_) => Error::ExpectedFold,
-				RoundCoeffsOrSum::Sum(_) => Error::ExpectedExecute,
+			let error = match self.last_coeffs_or_eval {
+				RoundCoeffsOrEval::Coeffs(_) => Error::ExpectedFold,
+				RoundCoeffsOrEval::Eval(_) => Error::ExpectedExecute,
 			};
 
 			return Err(error);
@@ -142,6 +137,11 @@ where
 
 		Ok(multilinear_evals)
 	}
+}
+
+enum RoundCoeffsOrEval<F: Field> {
+	Coeffs(RoundCoeffs<F>),
+	Eval(F),
 }
 
 #[cfg(test)]
