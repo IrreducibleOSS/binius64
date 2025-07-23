@@ -3,6 +3,7 @@
 use std::ops::{Add, AddAssign, Index, Mul, MulAssign};
 
 use binius_field::Field;
+use binius_math::univariate::evaluate_univariate;
 
 /// A univariate polynomial in monomial basis.
 ///
@@ -17,15 +18,9 @@ impl<F: Field> RoundCoeffs<F> {
 		RoundProof(self)
 	}
 
-	/// Evaluate the polynomial at a point using Horner's rule.
+	/// Evaluate the polynomial at a point.
 	pub fn evaluate(&self, x: F) -> F {
-		let Some((&highest_degree, rest)) = self.0.split_last() else {
-			return F::ZERO;
-		};
-
-		rest.iter()
-			.rev()
-			.fold(highest_degree, |acc, &coeff| acc * x + coeff)
+		evaluate_univariate(&self.0, x)
 	}
 }
 
