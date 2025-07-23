@@ -12,6 +12,7 @@ use super::{
 	round_evals::{RoundEvals2, round_coeffs_by_eq},
 };
 
+#[derive(Debug, Clone)]
 pub struct Gruen34<P: PackedField> {
 	n_vars_remaining: usize,
 	eq_expansion: FieldBuffer<P>,

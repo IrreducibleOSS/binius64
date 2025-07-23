@@ -10,6 +10,7 @@ use binius_verifier::protocols::sumcheck::RoundCoeffs;
 use super::{common::SumcheckProver, error::Error, gruen34::Gruen34, round_evals::RoundEvals2};
 use crate::protocols::sumcheck::common::MleCheckProver;
 
+#[derive(Debug, Clone)]
 pub struct BivariateProductMlecheckProver<P: PackedField> {
 	multilinears: [FieldBuffer<P>; 2],
 	last_coeffs_or_eval: RoundCoeffsOrEval<P::Scalar>,
@@ -146,6 +147,7 @@ where
 	}
 }
 
+#[derive(Debug, Clone)]
 enum RoundCoeffsOrEval<F: Field> {
 	Coeffs(RoundCoeffs<F>),
 	Eval(F),
@@ -159,12 +161,151 @@ mod tests {
 		test_utils::{random_field_buffer, random_scalars},
 	};
 	use binius_transcript::ProverTranscript;
-	use binius_verifier::{config::StdChallenger, protocols::sumcheck::verify};
+	use binius_verifier::{
+		config::StdChallenger,
+		protocols::{mlecheck, sumcheck::verify},
+	};
 	use itertools::{self, Itertools};
 	use rand::{SeedableRng, prelude::StdRng};
 
 	use super::*;
-	use crate::protocols::sumcheck::{MleToSumCheckAdaptor, prove::prove_single};
+	use crate::protocols::sumcheck::{
+		MleToSumCheckAdaptor, prove::prove_single, prove_single_mlecheck,
+	};
+
+	fn test_mlecheck_prove_verify<F, P>(
+		prover: impl MleCheckProver<F>,
+		eval_claim: F,
+		eval_point: &[F],
+		multilinear_a: FieldBuffer<P>,
+		multilinear_b: FieldBuffer<P>,
+	) where
+		F: Field,
+		P: PackedField<Scalar = F>,
+	{
+		// Run the proving protocol
+		let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
+		let output = prove_single_mlecheck(prover, &mut prover_transcript).unwrap();
+
+		// Write the multilinear evaluations to the transcript
+		prover_transcript
+			.message()
+			.write_slice(&output.multilinear_evals);
+
+		// Convert to verifier transcript and run verification
+		let mut verifier_transcript = prover_transcript.into_verifier();
+		let sumcheck_output = mlecheck::verify::<F, _>(
+			eval_point,
+			2, // degree 2 for bivariate product
+			eval_claim,
+			&mut verifier_transcript,
+		)
+		.unwrap();
+
+		let mut reduced_eval_point = sumcheck_output.challenges.clone();
+		reduced_eval_point.reverse();
+
+		// Read the multilinear evaluations from the transcript
+		let multilinear_evals: Vec<F> = verifier_transcript.message().read_vec(2).unwrap();
+
+		// Check that the product of the evaluations equals the reduced evaluation
+		assert_eq!(
+			multilinear_evals[0] * multilinear_evals[1],
+			sumcheck_output.eval,
+			"Product of multilinear evaluations should equal the reduced evaluation"
+		);
+
+		// Check that the original multilinears evaluate to the claimed values at the challenge
+		// point The prover binds variables from high to low, but evaluate expects them from low
+		// to high
+		let eval_a = evaluate(&multilinear_a, &reduced_eval_point).unwrap();
+		let eval_b = evaluate(&multilinear_b, &reduced_eval_point).unwrap();
+
+		assert_eq!(
+			eval_a, multilinear_evals[0],
+			"Multilinear A should evaluate to the first claimed evaluation"
+		);
+		assert_eq!(
+			eval_b, multilinear_evals[1],
+			"Multilinear B should evaluate to the second claimed evaluation"
+		);
+
+		// Also verify the challenges match what the prover saw
+		assert_eq!(
+			output.challenges, sumcheck_output.challenges,
+			"Prover and verifier challenges should match"
+		);
+	}
+
+	fn test_wrapped_sumcheck_prove_verify<F, P>(
+		mlecheck_prover: impl MleCheckProver<F>,
+		eval_claim: F,
+		eval_point: &[F],
+		multilinear_a: FieldBuffer<P>,
+		multilinear_b: FieldBuffer<P>,
+	) where
+		F: Field,
+		P: PackedField<Scalar = F>,
+	{
+		let n_vars = mlecheck_prover.n_vars();
+		let prover = MleToSumCheckAdaptor::new(mlecheck_prover);
+
+		// Run the proving protocol
+		let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
+		let output = prove_single(prover, &mut prover_transcript).unwrap();
+
+		// Write the multilinear evaluations to the transcript
+		prover_transcript
+			.message()
+			.write_slice(&output.multilinear_evals);
+
+		// Convert to verifier transcript and run verification
+		let mut verifier_transcript = prover_transcript.into_verifier();
+		let sumcheck_output = verify::<F, _>(
+			n_vars,
+			3, // degree 3 for trivariate product (bivariate by equality indicator)
+			eval_claim,
+			&mut verifier_transcript,
+		)
+		.unwrap();
+
+		let mut reduced_eval_point = sumcheck_output.challenges.clone();
+		reduced_eval_point.reverse();
+
+		// Read the multilinear evaluations from the transcript
+		let multilinear_evals: Vec<F> = verifier_transcript.message().read_vec(2).unwrap();
+
+		// Evaluate the equality indicator
+		let eq_ind_eval = eq_ind(eval_point, &reduced_eval_point);
+
+		// Check that the product of the evaluations equals the reduced evaluation
+		assert_eq!(
+			multilinear_evals[0] * multilinear_evals[1] * eq_ind_eval,
+			sumcheck_output.eval,
+			"Product of multilinear evaluations should equal the reduced evaluation"
+		);
+
+		// Check that the original multilinears evaluate to the claimed values at the challenge
+		// point The prover binds variables from high to low, but evaluate expects them from low
+		// to high
+		let eval_a = evaluate(&multilinear_a, &reduced_eval_point).unwrap();
+		let eval_b = evaluate(&multilinear_b, &reduced_eval_point).unwrap();
+
+		assert_eq!(
+			eval_a, multilinear_evals[0],
+			"Multilinear A should evaluate to the first claimed evaluation"
+		);
+		assert_eq!(
+			eval_b, multilinear_evals[1],
+			"Multilinear B should evaluate to the second claimed evaluation"
+		);
+
+		// Also verify the challenges match what the prover saw
+		assert_eq!(
+			output.challenges, sumcheck_output.challenges,
+			"Prover and verifier challenges should match"
+		);
+	}
 
 	#[test]
 	fn test_bivariate_product_mlecheck() {
@@ -194,62 +335,21 @@ mod tests {
 			eval_claim,
 		)
 		.unwrap();
-		let prover = MleToSumCheckAdaptor::new(mlecheck_prover);
 
-		// Run the proving protocol
-		let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
-		let output = prove_single(prover, &mut prover_transcript).unwrap();
-
-		// Write the multilinear evaluations to the transcript
-		prover_transcript
-			.message()
-			.write_slice(&output.multilinear_evals);
-
-		// Convert to verifier transcript and run verification
-		let mut verifier_transcript = prover_transcript.into_verifier();
-		let sumcheck_output = verify::<F, _>(
-			n_vars,
-			3, // degree 3 for trivariate product (bivariate by equality indicator)
+		test_mlecheck_prove_verify(
+			mlecheck_prover.clone(),
 			eval_claim,
-			&mut verifier_transcript,
-		)
-		.unwrap();
-
-		let mut reduced_eval_point = sumcheck_output.challenges.clone();
-		reduced_eval_point.reverse();
-
-		// Read the multilinear evaluations from the transcript
-		let multilinear_evals: Vec<F> = verifier_transcript.message().read_vec(2).unwrap();
-
-		// Evaluate the equality indicator
-		let eq_ind_eval = eq_ind(&eval_point, &reduced_eval_point);
-
-		// Check that the product of the evaluations equals the reduced evaluation
-		assert_eq!(
-			multilinear_evals[0] * multilinear_evals[1] * eq_ind_eval,
-			sumcheck_output.eval,
-			"Product of multilinear evaluations should equal the reduced evaluation"
+			&eval_point,
+			multilinear_a.clone(),
+			multilinear_b.clone(),
 		);
 
-		// Check that the original multilinears evaluate to the claimed values at the challenge
-		// point The prover binds variables from high to low, but evaluate expects them from low
-		// to high
-		let eval_a = evaluate(&multilinear_a, &reduced_eval_point).unwrap();
-		let eval_b = evaluate(&multilinear_b, &reduced_eval_point).unwrap();
-
-		assert_eq!(
-			eval_a, multilinear_evals[0],
-			"Multilinear A should evaluate to the first claimed evaluation"
-		);
-		assert_eq!(
-			eval_b, multilinear_evals[1],
-			"Multilinear B should evaluate to the second claimed evaluation"
-		);
-
-		// Also verify the challenges match what the prover saw
-		assert_eq!(
-			output.challenges, sumcheck_output.challenges,
-			"Prover and verifier challenges should match"
+		test_wrapped_sumcheck_prove_verify(
+			mlecheck_prover.clone(),
+			eval_claim,
+			&eval_point,
+			multilinear_a.clone(),
+			multilinear_b.clone(),
 		);
 	}
 }

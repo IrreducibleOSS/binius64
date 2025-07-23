@@ -9,6 +9,7 @@ use binius_transcript::{
 	ProverTranscript,
 	fiat_shamir::{CanSample, Challenger},
 };
+use binius_verifier::protocols::mlecheck;
 
 use super::{common::SumcheckProver, error::Error};
 
@@ -67,6 +68,43 @@ pub fn prove_single<F: Field, Challenger_: Challenger>(
 		transcript
 			.message()
 			.write_slice(round_coeffs.truncate().coeffs());
+
+		let challenge = transcript.sample();
+		challenges.push(challenge);
+		prover.fold(challenge)?;
+	}
+
+	let multilinear_evals = prover.finish()?;
+	Ok(ProveSingleOutput {
+		multilinear_evals,
+		challenges,
+	})
+}
+
+/// Executes the MLE-check proving protocol for a single multivariate polynomial.
+///
+/// Analogous to [`prove_single`] for the MLE-check protocol instead of sumcheck.
+pub fn prove_single_mlecheck<F: Field, Challenger_: Challenger>(
+	mut prover: impl SumcheckProver<F>,
+	transcript: &mut ProverTranscript<Challenger_>,
+) -> Result<ProveSingleOutput<F>, Error> {
+	let n_vars = prover.n_vars();
+	let mut challenges = Vec::with_capacity(n_vars);
+
+	for _ in 0..n_vars {
+		let mut round_coeffs_vec = prover.execute()?;
+		if round_coeffs_vec.len() != 1 {
+			return Err(Error::ArgumentError(format!(
+				"function expects prover to evaluate one composition, but it returned {} from \
+				execute()",
+				round_coeffs_vec.len()
+			)));
+		}
+		let round_coeffs = round_coeffs_vec.pop().expect("round_coeffs_vec.len() == 1");
+
+		transcript
+			.message()
+			.write_slice(mlecheck::RoundProof::truncate(round_coeffs).coeffs());
 
 		let challenge = transcript.sample();
 		challenges.push(challenge);

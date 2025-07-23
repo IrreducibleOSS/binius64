@@ -24,7 +24,7 @@ use crate::protocols::sumcheck::{
 /// terms, ensuring the round polynomials maintain the correct scaling throughout the protocol.
 ///
 /// [Gruen24]: <https://eprint.iacr.org/2024/108>
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MleToSumCheckAdaptor<F: Field, InnerProver> {
 	mlecheck_prover: InnerProver,
 	eq_prefix_eval: F,
