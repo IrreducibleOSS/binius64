@@ -64,11 +64,11 @@ jobs:
       - name: Run clippy
         run: cargo clippy --all --all-features --tests --benches --examples -- -D warnings
       - name: Run tests (binius-field)
-        run: cargo test -p binius-field -j 1
+        run: cargo test -p binius-field -j 4
       - name: Run tests (other crates)
-        run: cargo test --workspace --exclude binius-field -j 2
+        run: cargo test --workspace --exclude binius-field -j 4
       - name: Run tests (all-features)
-        run: cargo test --all --all-features -j 1
+        run: cargo test --all --all-features -j 4
 
   rust-doc:
     name: rust-doc
