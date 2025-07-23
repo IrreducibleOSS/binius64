@@ -25,12 +25,12 @@ use crate::protocols::sumcheck::{
 ///
 /// [Gruen24]: <https://eprint.iacr.org/2024/108>
 #[derive(Debug, Clone)]
-pub struct MleToSumCheckAdaptor<F: Field, InnerProver> {
+pub struct MleToSumCheckDecorator<F: Field, InnerProver> {
 	mlecheck_prover: InnerProver,
 	eq_prefix_eval: F,
 }
 
-impl<F: Field, InnerProver: MleCheckProver<F>> MleToSumCheckAdaptor<F, InnerProver> {
+impl<F: Field, InnerProver: MleCheckProver<F>> MleToSumCheckDecorator<F, InnerProver> {
 	pub fn new(mlecheck_prover: InnerProver) -> Self {
 		Self {
 			mlecheck_prover,
@@ -40,7 +40,7 @@ impl<F: Field, InnerProver: MleCheckProver<F>> MleToSumCheckAdaptor<F, InnerProv
 }
 
 impl<F: Field, InnerProver: MleCheckProver<F>> SumcheckProver<F>
-	for MleToSumCheckAdaptor<F, InnerProver>
+	for MleToSumCheckDecorator<F, InnerProver>
 {
 	fn n_vars(&self) -> usize {
 		self.mlecheck_prover.n_vars()

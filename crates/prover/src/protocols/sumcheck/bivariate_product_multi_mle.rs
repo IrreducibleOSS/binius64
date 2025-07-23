@@ -194,7 +194,7 @@ mod tests {
 	use rand::{SeedableRng, rngs::StdRng};
 
 	use super::*;
-	use crate::protocols::sumcheck::MleToSumCheckAdaptor;
+	use crate::protocols::sumcheck::MleToSumCheckDecorator;
 
 	fn test_bivariate_product_multi_mlecheck_consistency_helper<
 		F: Field,
@@ -239,7 +239,7 @@ mod tests {
 		let mlecheck_prover =
 			BivariateProductMultiMlecheckProver::new(multilinears, &eval_point, &eval_claims)
 				.unwrap();
-		let mut prover = MleToSumCheckAdaptor::new(mlecheck_prover);
+		let mut prover = MleToSumCheckDecorator::new(mlecheck_prover);
 
 		// Append eq indicator at the end
 		folded_multilinears.push(eq_ind_partial_eval(&eval_point));

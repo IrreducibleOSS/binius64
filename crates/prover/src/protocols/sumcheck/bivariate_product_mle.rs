@@ -170,7 +170,7 @@ mod tests {
 
 	use super::*;
 	use crate::protocols::sumcheck::{
-		MleToSumCheckAdaptor, prove::prove_single, prove_single_mlecheck,
+		MleToSumCheckDecorator, prove::prove_single, prove_single_mlecheck,
 	};
 
 	fn test_mlecheck_prove_verify<F, P>(
@@ -248,7 +248,7 @@ mod tests {
 		P: PackedField<Scalar = F>,
 	{
 		let n_vars = mlecheck_prover.n_vars();
-		let prover = MleToSumCheckAdaptor::new(mlecheck_prover);
+		let prover = MleToSumCheckDecorator::new(mlecheck_prover);
 
 		// Run the proving protocol
 		let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
