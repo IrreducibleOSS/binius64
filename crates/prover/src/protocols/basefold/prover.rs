@@ -275,7 +275,6 @@ mod test {
 			verifier_codeword_commitment,
 			&mut verifier_challenger,
 			evaluation_claim,
-			&evaluation_point,
 			&fri_params,
 			merkle_prover.scheme(),
 			n_vars,
