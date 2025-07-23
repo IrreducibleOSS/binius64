@@ -7,8 +7,10 @@ pub mod bivariate_product_multi_mle;
 pub mod common;
 mod error;
 mod gruen34;
+mod mle_to_sumcheck_adaptor;
 mod prove;
 mod round_evals;
 
 pub use error::*;
+pub use mle_to_sumcheck_adaptor::*;
 pub use prove::*;

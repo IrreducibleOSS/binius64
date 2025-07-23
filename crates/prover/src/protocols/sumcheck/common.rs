@@ -77,3 +77,36 @@ where
 		either::for_both!(self, inner => inner.finish())
 	}
 }
+
+/// A prover for the MLE-check variant of the sumcheck protocol.
+///
+/// An MLE-check protocol is an interactive protocol similar to sumcheck, but with modifications
+/// introduced in [Gruen24], Section 3. The prover in this case wants to argue a claim that for
+/// some $n$-variate polynomial $F(X_0, \ldots, X_{n-1})$ (which is not necessarily multilinear),
+/// for a given point $(z_0, \ldots, z_{n-1})$ and claimed value $s$, that
+///
+/// $$
+/// s = \sum_{v \in B_n} F(v) \cdot eq(v, z)
+/// $$
+///
+/// Unless $F$ is indeed multilinear, $s \ne F(z)$ necessarily. While the prover and verifier could
+/// engage in a standard sumcheck protocol to reduce this claim, it is concretely more efficient to
+/// use the optimized protocol from [Gruen24], which we call an "MLE-check".
+///
+/// This trait inherits from [`SumcheckProver`] since it shares the same type-level interface
+/// and protocol execution pattern. However, `MleCheckProver` instances provide different
+/// guarantees for the values returned by [`SumcheckProver::execute`] compared to regular
+/// sumcheck provers.
+///
+/// Note that while this technically violates the Liskov substitution principle (LSP), the
+/// violation is contained and deemed acceptable for the current design. A future refactor
+/// could introduce a common `SumcheckLikeProver` parent trait if stricter LSP compliance
+/// becomes necessary.
+///
+/// [Gruen24]: <https://eprint.iacr.org/2024/108>
+pub trait MleCheckProver<F: Field>: SumcheckProver<F> {
+	/// Returns the evaluation point for the remaining claim.
+	///
+	/// The length of the evaluation point is equal to `self.n_vars()`.
+	fn eval_point(&self) -> &[F];
+}
