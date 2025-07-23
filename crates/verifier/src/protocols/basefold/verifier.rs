@@ -36,10 +36,11 @@ pub fn verify_transcript<F, FA, VCS, TranscriptChallenger>(
 	codeword_commitment: VCS::Digest,
 	transcript: &mut VerifierTranscript<TranscriptChallenger>,
 	evaluation_claim: F,
+	evaluation_point: &[F],
 	fri_params: &FRIParams<F, FA>,
 	vcs: &VCS,
 	n_vars: usize,
-) -> Result<(F, F, Vec<F>), String>
+) -> Result<(), String>
 where
 	F: Field + BinaryField + ExtensionField<FA> + TowerField,
 	FA: BinaryField,
@@ -60,16 +61,13 @@ where
 
 	// retrace footsteps through basefold
 	for commit_round in commit_rounds.iter() {
-		// get round message from transcript
 		let round_msg = transcript
 			.message()
 			.read_scalar_slice::<F>(3)
 			.expect("failed to read round message");
 
-		// sample challenge from transcript
 		let basefold_challenge = transcript.sample();
 
-		// verify a valid sumcheck round message per the expected sumcheck claim
 		let round_sum = round_msg[0] + round_msg[1];
 		let next_claim = verify_sumcheck_round(
 			round_sum,
@@ -78,10 +76,8 @@ where
 			basefold_challenge,
 		);
 
-		// update expected sumcheck claim for next round
 		expected_sumcheck_round_claim = next_claim;
 
-		// add challenge to list of challenges
 		basefold_challenges.push(basefold_challenge);
 
 		// retrieve commitment depending on current round FRI folding arity
@@ -112,7 +108,14 @@ where
 		.verify(verifier_challenger)
 		.expect("failed to verify FRI");
 
-	Ok((final_fri_oracle, expected_sumcheck_round_claim, basefold_challenges))
+	verify_final_basefold_assertion(
+		final_fri_oracle,
+		expected_sumcheck_round_claim,
+		&evaluation_point,
+		&basefold_challenges,
+	);
+
+	Ok(())
 }
 
 /// Verifies that the final FRI oracle is consistent with the sumcheck

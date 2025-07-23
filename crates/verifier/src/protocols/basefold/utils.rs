@@ -28,11 +28,6 @@ pub fn verify_sumcheck_round<F: Field>(
 	round_msg: Vec<F>,
 	sumcheck_challenge: F,
 ) -> F {
-	// first two coefficients of round message should match the sum claim
-	// these are the evaluations of the univariate polynomial at 0, 1 and
-	// (even/odd sum of boolean hypercube evals)
-	assert_eq!(round_msg[0] + round_msg[1], round_sum_claim);
-
 	// When the verifier receives the round message, it represents the coefficients
 	// of the current univariate, partially specialized composition polynomial. By
 	// evaluating this polynomial at the challenge, we determine what the honest
