@@ -64,8 +64,7 @@ where
 			s_hat_v.clone(),
 			eq_ind_partial_eval(eval_point_low)
 				.as_ref()
-				.into_iter()
-				.map(|x: &F| *x)
+				.into_iter().copied()	
 		)
 	);
 
@@ -83,7 +82,7 @@ where
 		tensor_expanded_batching_scalars
 			.as_ref()
 			.into_iter()
-			.map(|x: &F| *x),
+			.copied()
 	);
 
 	// verify large field pcs w/ transcript
