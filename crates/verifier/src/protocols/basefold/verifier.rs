@@ -108,14 +108,17 @@ where
 		.verify(verifier_challenger)
 		.expect("failed to verify FRI");
 
-	verify_final_basefold_assertion(
+	let result = verify_final_basefold_assertion(
 		final_fri_oracle,
 		expected_sumcheck_round_claim,
 		&evaluation_point,
 		&basefold_challenges,
 	);
 
-	Ok(())
+	match result {
+		true => Ok(()),
+		false => Err("sumcheck is inconsistent with FRI".to_string()),
+	}
 }
 
 /// Verifies that the final FRI oracle is consistent with the sumcheck
