@@ -60,19 +60,17 @@ where
 
 	// retrace footsteps through basefold
 	for commit_round in commit_rounds.iter() {
-		let round_msg = transcript
-			.message()
-			.read_scalar_slice::<F>(3)?;
+		let round_message = RoundCoeffs::<F>(transcript.message().read_scalar_slice::<F>(3)?);
 
 		let basefold_challenge = transcript.sample();
 
-		// ! Temporary solution during mle check integration
-		let middle = round_msg[1] - round_msg[0] - round_msg[2];
-		let monomial_basis_coeffs = [round_msg[0], middle, round_msg[2]];
-		let rounds_coeffs = RoundCoeffs(monomial_basis_coeffs.to_vec());
-		let next_claim = rounds_coeffs.evaluate(basefold_challenge);
+		// Verify sumcheck constraint: g(0) + g(1) = claimed_sum
+		let sum_check = round_message.evaluate(F::ZERO) + round_message.evaluate(F::ONE);
+		if sum_check != expected_sumcheck_round_claim {
+			return Err("Round message does not satisfy sumcheck".into());
+		}
 
-		expected_sumcheck_round_claim = next_claim;
+		expected_sumcheck_round_claim = round_message.evaluate(basefold_challenge);
 
 		basefold_challenges.push(basefold_challenge);
 
