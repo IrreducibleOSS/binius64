@@ -1,25 +1,62 @@
-use std::time::Instant;
+use std::{fmt, time::Instant};
 
 use crate::compiler::circuit::Circuit;
 
+/// Various stats of a circuit that affect the prover performance.
+pub struct CircuitStat {
+	pub n_gates: usize,
+	pub n_and_constraints: usize,
+	pub n_mul_constraints: usize,
+	pub value_vec_len: usize,
+	pub n_const: usize,
+	pub n_inout: usize,
+	pub n_witness: usize,
+	pub n_internal: usize,
+}
+
+impl CircuitStat {
+	pub fn collect(circuit: &Circuit) -> Self {
+		let cs = circuit.constraint_system();
+		Self {
+			n_gates: circuit.n_gates(),
+			n_and_constraints: cs.n_and_constraints(),
+			n_mul_constraints: cs.n_mul_constraints(),
+			value_vec_len: cs.value_vec_layout.total_len,
+			n_const: cs.value_vec_layout.n_const,
+			n_inout: cs.value_vec_layout.n_inout,
+			n_witness: cs.value_vec_layout.n_witness,
+			n_internal: cs.value_vec_layout.n_internal,
+		}
+	}
+}
+
+impl fmt::Display for CircuitStat {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		writeln!(f, "Number of gates: {}", self.n_gates)?;
+		writeln!(f, "Number of AND constraints: {}", self.n_and_constraints)?;
+		writeln!(f, "Number of MUL constraints: {}", self.n_mul_constraints)?;
+		writeln!(f, "Length of value vec: {}", self.value_vec_len)?;
+		writeln!(f, "  Constants: {}", self.n_const)?;
+		writeln!(f, "  Inout: {}", self.n_inout)?;
+		writeln!(f, "  Witness: {}", self.n_witness)?;
+		writeln!(f, "  Internal: {}", self.n_internal)?;
+		Ok(())
+	}
+}
+
 pub fn print_stat(circuit: &Circuit) {
-	let cs = circuit.constraint_system();
+	let s = CircuitStat::collect(circuit);
+	println!("{s}");
+	time_witness_population(circuit);
+}
 
-	println!("Number of gates: {}", circuit.n_gates());
-	println!("Number of AND constraints: {}", cs.n_and_constraints());
-	println!("Number of MUL constraints: {}", cs.n_mul_constraints());
-	println!("Length of value vec: {}", cs.value_vec_len());
-	println!("  Constants: {}", cs.value_vec_layout.n_const);
-	println!("  Inout: {}", cs.value_vec_layout.n_inout);
-	println!("  Witness: {}", cs.value_vec_layout.n_witness);
-
+fn time_witness_population(circuit: &Circuit) {
 	let mut w = circuit.new_witness_filler();
 	w.ignore_assertions = true;
 
 	// Now measure the witness filling performance.
 	let start = Instant::now();
 	let _ = circuit.populate_wire_witness(&mut w);
-
 	let elapsed = start.elapsed();
 	println!("fill_witness took {} microseconds", elapsed.as_micros());
 }

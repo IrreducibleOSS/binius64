@@ -1,0 +1,14 @@
+[package]
+name = "zkl"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+
+[dependencies]
+binius-field = { path = "../field" }
+binius-frontend = { path = "../frontend" }
+binius-prover = { path = "../prover" }
+binius-verifier = { path = "../verifier" }
+binius-transcript = { path = "../transcript" }
+binius-utils = { path = "../utils" }
+clap = { version = "4.5", features = ["derive"] }

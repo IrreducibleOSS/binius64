@@ -292,7 +292,7 @@ fn jwt_payload_check(
 }
 
 #[test]
-fn how_much() {
+fn smoke() {
 	let mut builder = CircuitBuilder::new();
 	let config = Config {
 		max_len_json_jwt_header: 264,
