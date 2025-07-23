@@ -36,11 +36,10 @@ pub fn verify_transcript<F, FA, VCS, TranscriptChallenger>(
 	codeword_commitment: VCS::Digest,
 	transcript: &mut VerifierTranscript<TranscriptChallenger>,
 	evaluation_claim: F,
-	evaluation_point: &[F],
 	fri_params: &FRIParams<F, FA>,
 	vcs: &VCS,
 	n_vars: usize,
-) -> Result<(), String>
+) -> Result<(F, F, Vec<F>), String>
 where
 	F: Field + BinaryField + ExtensionField<FA> + TowerField,
 	FA: BinaryField,
@@ -108,17 +107,7 @@ where
 		.verify(verifier_challenger)
 		.expect("failed to verify FRI");
 
-	let result = verify_final_basefold_assertion(
-		final_fri_oracle,
-		expected_sumcheck_round_claim,
-		&evaluation_point,
-		&basefold_challenges,
-	);
-
-	match result {
-		true => Ok(()),
-		false => Err("sumcheck is inconsistent with FRI".to_string()),
-	}
+	Ok((final_fri_oracle, expected_sumcheck_round_claim, basefold_challenges))
 }
 
 /// Verifies that the final FRI oracle is consistent with the sumcheck
