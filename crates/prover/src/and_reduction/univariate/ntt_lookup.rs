@@ -1,8 +1,7 @@
 use std::vec;
 
 use binius_field::{
-	AESTowerField8b, BinaryField1b, Field, PackedAESBinaryField16x8b, PackedBinaryField8x1b,
-	PackedField, packed::set_packed_slice,
+	BinaryField, BinaryField1b, Field, PackedBinaryField8x1b, PackedField, packed::set_packed_slice,
 };
 use binius_verifier::and_reduction::{
 	univariate::univariate_lagrange::{
@@ -11,36 +10,39 @@ use binius_verifier::and_reduction::{
 	utils::constants::{ROWS_PER_HYPERCUBE_VERTEX, SKIPPED_VARS},
 };
 
-pub type NTTLookup = Vec<Vec<Vec<PackedAESBinaryField16x8b>>>;
+pub type NTTLookup<P> = Vec<Vec<Vec<P>>>;
 
 // first index is the idx of the 8 bit chunk that we're in
 // second index is the bit string
 //
 // ASSUME: Each lagrange basis vector thats being ntt'ed has size 2^SKIPPED_VARS
 // ASSUME: Lagrange basis domain is simply AESTowerField8b(0..64)
-pub fn precompute_lookup(onto_domain: &[AESTowerField8b]) -> NTTLookup {
+pub fn precompute_lookup<
+	PNTTDomain: PackedField<Scalar = FNTTDomain>,
+	FNTTDomain: BinaryField + Field + From<u8>,
+>(
+	lexicographic_ntt_domain: &[FNTTDomain],
+) -> NTTLookup<PNTTDomain> {
 	let _span = tracing::debug_span!("precompute_lookup").entered();
 
-	let mut lookup = vec![
+	let mut lookup =
 		vec![
 			vec![
-				PackedAESBinaryField16x8b::zero();
-				onto_domain.len() / PackedAESBinaryField16x8b::WIDTH
+				vec![PNTTDomain::zero(); lexicographic_ntt_domain.len() / PNTTDomain::WIDTH];
+				1 << 8
 			];
-			1 << 8
+			ROWS_PER_HYPERCUBE_VERTEX / 8
 		];
-		ROWS_PER_HYPERCUBE_VERTEX / 8
-	];
 	let lagrange_basis_domain: Vec<_> = (0..ROWS_PER_HYPERCUBE_VERTEX)
-		.map(|x| AESTowerField8b::new(x as u8))
+		.map(|x| FNTTDomain::from(x as u8))
 		.collect();
 
 	let mut eval_point_basis_point_to_numerator =
-		vec![vec![AESTowerField8b::ZERO; lagrange_basis_domain.len()]; onto_domain.len()];
-	let denominator: AESTowerField8b = lexicographic_lagrange_denominator(SKIPPED_VARS);
+		vec![vec![FNTTDomain::ZERO; lagrange_basis_domain.len()]; lexicographic_ntt_domain.len()];
+	let denominator: FNTTDomain = lexicographic_lagrange_denominator(SKIPPED_VARS);
 
 	let inverse_denominator = denominator.invert_or_zero();
-	for (eval_point_idx, eval_point) in onto_domain.iter().enumerate() {
+	for (eval_point_idx, eval_point) in lexicographic_ntt_domain.iter().enumerate() {
 		eval_point_basis_point_to_numerator[eval_point_idx] =
 			lexicographic_lagrange_numerators_8b(ROWS_PER_HYPERCUBE_VERTEX, *eval_point);
 	}
@@ -61,11 +63,11 @@ pub fn precompute_lookup(onto_domain: &[AESTowerField8b]) -> NTTLookup {
 			}
 
 			#[allow(clippy::needless_range_loop)]
-			for eval_point_idx in 0..onto_domain.len() {
-				let mut result = AESTowerField8b::ZERO;
+			for eval_point_idx in 0..lexicographic_ntt_domain.len() {
+				let mut result = FNTTDomain::ZERO;
 				for basis_point_idx in 0..lagrange_basis_domain.len() {
-					result += lagrange_basis_coeffs[basis_point_idx]
-						* eval_point_basis_point_to_numerator[eval_point_idx][basis_point_idx]
+					result += (eval_point_basis_point_to_numerator[eval_point_idx]
+						[basis_point_idx] * lagrange_basis_coeffs[basis_point_idx])
 						* inverse_denominator;
 				}
 				set_packed_slice(
@@ -79,10 +81,8 @@ pub fn precompute_lookup(onto_domain: &[AESTowerField8b]) -> NTTLookup {
 
 	for this_byte_lookup in lookup.iter_mut() {
 		for coefficient_as_bit_string in 0..1 << 8 {
-			let mut result = vec![
-				PackedAESBinaryField16x8b::zero();
-				onto_domain.len() / PackedAESBinaryField16x8b::WIDTH
-			];
+			let mut result =
+				vec![PNTTDomain::zero(); lexicographic_ntt_domain.len() / PNTTDomain::WIDTH];
 			for bit_in_string in 0..8 {
 				let this_one_hot = coefficient_as_bit_string & 1 << bit_in_string;
 				for (i, result_packed_elem) in result.iter_mut().enumerate() {
@@ -98,7 +98,8 @@ pub fn precompute_lookup(onto_domain: &[AESTowerField8b]) -> NTTLookup {
 #[cfg(test)]
 mod test {
 	use binius_field::{
-		AESTowerField8b, arithmetic_traits::InvertOrZero, packed::get_packed_slice,
+		AESTowerField8b, PackedAESBinaryField16x8b, arithmetic_traits::InvertOrZero,
+		packed::get_packed_slice,
 	};
 
 	use super::ROWS_PER_HYPERCUBE_VERTEX;
@@ -110,7 +111,7 @@ mod test {
 			.map(|x| AESTowerField8b::new(x as u8))
 			.collect();
 
-		let lookup = precompute_lookup(&output_domain);
+		let lookup = precompute_lookup::<PackedAESBinaryField16x8b, _>(&output_domain);
 
 		let results = lookup[0][1].clone();
 
