@@ -64,7 +64,8 @@ where
 			s_hat_v.clone(),
 			eq_ind_partial_eval(eval_point_low)
 				.as_ref()
-				.into_iter().copied()	
+				.iter()
+				.copied()
 		)
 	);
 
@@ -81,7 +82,7 @@ where
 		s_hat_u,
 		tensor_expanded_batching_scalars
 			.as_ref()
-			.into_iter()
+			.iter()
 			.copied()
 	);
 
