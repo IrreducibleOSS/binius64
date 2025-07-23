@@ -2,7 +2,7 @@ use binius_field::{
 	BinaryField1b, ExtensionField, Field, PackedAESBinaryField16x8b, PackedBinaryField128x1b,
 	PackedExtension, PackedField, packed::iter_packed_slice_with_offset,
 };
-use binius_math::{Error, FieldBuffer};
+use binius_math::FieldBuffer;
 use binius_utils::rayon::prelude::{
 	IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator,
 };
@@ -105,29 +105,6 @@ impl OneBitMultivariate {
 		);
 		multilin
 	}
-}
-
-#[derive(Debug)]
-pub struct BigFieldMultilinear<F: Field> {
-	pub n_vars: usize,
-	pub packed_evals: Vec<F>,
-}
-
-pub fn mle_to_field_buffer<F: Field>(
-	mle: &BigFieldMultilinear<F>,
-) -> Result<FieldBuffer<F>, Error> {
-	FieldBuffer::from_values(&mle.packed_evals)
-}
-
-pub fn field_buffer_to_mle<F: Field>(buf: FieldBuffer<F>) -> Result<BigFieldMultilinear<F>, Error> {
-	let mut values = vec![];
-	for i in 0..buf.len() {
-		values.push(buf.get(i).unwrap());
-	}
-	Ok(BigFieldMultilinear {
-		n_vars: buf.log_len(),
-		packed_evals: values,
-	})
 }
 
 #[cfg(test)]
