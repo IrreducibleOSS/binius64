@@ -79,7 +79,7 @@ where
 		inner_product::<F>(s_hat_u, tensor_expanded_batching_scalars.as_ref().iter().copied());
 
 	// verify large field pcs w/ transcript
-	let (final_fri_oracle, sumcheck_final_claim, basefold_challenges) = verify_basefold_transcript(
+	let (final_fri_oracle, sumcheck_output) = verify_basefold_transcript(
 		codeword_commitment,
 		transcript,
 		verifier_computed_sumcheck_claim,
@@ -95,11 +95,11 @@ where
 
 	let rs_eq_at_basefold_challenges = eval_rs_eq(
 		eval_point_high,
-		&basefold_challenges,
+		&sumcheck_output.challenges,
 		eq_ind_partial_eval(&batching_scalars).as_ref(),
 	);
 
-	assert_eq!(final_fri_oracle * rs_eq_at_basefold_challenges, sumcheck_final_claim);
+	assert_eq!(final_fri_oracle * rs_eq_at_basefold_challenges, sumcheck_output.eval);
 
 	Ok(())
 }
