@@ -187,7 +187,7 @@ mod test {
 		fields::B128,
 		fri::FRIParams,
 		hash::{StdCompression, StdDigest},
-		protocols::basefold::verifier::{verify_final_basefold_assertion, verify_transcript},
+		protocols::basefold::verifier::verify_transcript,
 	};
 	use rand::{SeedableRng, rngs::StdRng};
 
@@ -271,22 +271,15 @@ mod test {
 			.expect("failed to read commitment");
 
 		// Verifier checks the provided transcript
-		let (fri_final_value, sumcheck_final_claim, basefold_challenges) = verify_transcript(
+		verify_transcript(
 			verifier_codeword_commitment,
 			&mut verifier_challenger,
 			evaluation_claim,
+			&evaluation_point,
 			&fri_params,
 			merkle_prover.scheme(),
 			n_vars,
 		)
 		.expect("failed to verify transcript");
-
-		// Verifier checks the final basefold assertion
-		assert!(verify_final_basefold_assertion(
-			fri_final_value,
-			sumcheck_final_claim,
-			&evaluation_point,
-			&basefold_challenges
-		));
 	}
 }
