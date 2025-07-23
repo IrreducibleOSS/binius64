@@ -1,14 +1,9 @@
 use std::marker::PhantomData;
 
-use binius_field::{
-	Field,
-};
+use binius_field::Field;
 
-use crate::and_reduction::{
-	univariate::univariate_lagrange::{
-		lexicographic_lagrange_denominator,
-		lexicographic_lagrange_numerators_polyval,
-	},
+use crate::and_reduction::univariate::univariate_lagrange::{
+	lexicographic_lagrange_denominator, lexicographic_lagrange_numerators_polyval,
 };
 
 pub trait UnivariatePoly<FChallenge: Field> {
@@ -21,19 +16,18 @@ pub trait UnivariatePoly<FChallenge: Field> {
 pub struct GenericPo2UnivariatePoly<F: Field + From<FNTTDomain>, FNTTDomain: Field> {
 	univariate_lagrange_coeffs: Vec<F>,
 	log_degree_lt: usize,
-	_marker: PhantomData<FNTTDomain>
+	_marker: PhantomData<FNTTDomain>,
 }
 
-impl<F: Field + From<FNTTDomain>, FNTTDomain: Field> GenericPo2UnivariatePoly<F, FNTTDomain>
+impl<FCoeffs: Field + From<FNTTDomain>, FNTTDomain: Field>
+	GenericPo2UnivariatePoly<FCoeffs, FNTTDomain>
 {
-	pub fn new(
-		univariate_lagrange_coeffs: Vec<F>,
-	) -> Self {
+	pub fn new(univariate_lagrange_coeffs: Vec<FCoeffs>) -> Self {
 		let degree_lt = univariate_lagrange_coeffs.len();
 		Self {
 			univariate_lagrange_coeffs,
 			log_degree_lt: degree_lt.trailing_zeros() as usize,
-    		_marker: PhantomData,
+			_marker: PhantomData,
 		}
 	}
 
@@ -41,7 +35,7 @@ impl<F: Field + From<FNTTDomain>, FNTTDomain: Field> GenericPo2UnivariatePoly<F,
 		1 << self.log_degree_lt
 	}
 
-	fn iter(&self) -> impl Iterator<Item = &F> {
+	fn iter(&self) -> impl Iterator<Item = &FCoeffs> {
 		self.univariate_lagrange_coeffs.iter()
 	}
 
@@ -61,13 +55,14 @@ impl<F: Field + From<FNTTDomain>, FNTTDomain: Field> GenericPo2UnivariatePoly<F,
 
 impl<FNTTDomain, FCoeffs, FChallenge> UnivariatePoly<FChallenge>
 	for GenericPo2UnivariatePoly<FCoeffs, FNTTDomain>
-where FNTTDomain: Field+ From<u8>,
-FCoeffs: Field + From<FNTTDomain>,
-FChallenge: Field + From<FCoeffs> + From<FNTTDomain>
+where
+	FNTTDomain: Field + From<u8>,
+	FCoeffs: Field + From<FNTTDomain>,
+	FChallenge: Field + From<FCoeffs> + From<FNTTDomain>,
 {
 	fn evaluate_at_challenge(&self, challenge: FChallenge) -> FChallenge {
 		let evals_of_lagrange_basis_vectors_not_yet_divide_by_denominator =
-			lexicographic_lagrange_numerators_polyval::<FNTTDomain,FChallenge>(
+			lexicographic_lagrange_numerators_polyval::<FNTTDomain, FChallenge>(
 				self.degree_lt(),
 				challenge,
 			);
@@ -78,8 +73,7 @@ FChallenge: Field + From<FCoeffs> + From<FNTTDomain>
 
 		self.evaluate_lagrange_common(
 			evals_of_lagrange_basis_vectors_not_yet_divide_by_denominator.into_iter(),
-			self.iter()
-				.map(|coeff| FChallenge::from(*coeff)),
+			self.iter().map(|coeff| FChallenge::from(*coeff)),
 			denominator_inv,
 		)
 	}
@@ -90,9 +84,7 @@ mod test {
 	use binius_field::{AESTowerField8b, BinaryField128bPolyval, PackedField};
 
 	use super::GenericPo2UnivariatePoly;
-	use crate::and_reduction::{
-		univariate::univariate_poly::UnivariatePoly,
-	};
+	use crate::and_reduction::univariate::univariate_poly::UnivariatePoly;
 
 	#[test]
 	fn univariate_po2_sanity_check() {
@@ -100,7 +92,7 @@ mod test {
 			.map(AESTowerField8b::new)
 			.map(|x| x.square())
 			.collect();
-		let poly = GenericPo2UnivariatePoly::<_,AESTowerField8b>::new(v);
+		let poly = GenericPo2UnivariatePoly::<_, AESTowerField8b>::new(v);
 		for i in 990..1000 {
 			assert_eq!(
 				poly.evaluate_at_challenge(BinaryField128bPolyval::from(i as u128)),
