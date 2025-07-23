@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use binius_field::{
-	AESTowerField8b, BinaryField128bPolyval, Field, arithmetic_traits::InvertOrZero, ExtensionField, BinaryField1b,
+	Field, arithmetic_traits::InvertOrZero,
 };
 
 use crate::and_reduction::{
@@ -24,7 +24,7 @@ pub struct GenericPo2UnivariatePoly<F: Field + From<FNTTDomain>, FNTTDomain: Fie
 	_marker: PhantomData<FNTTDomain>
 }
 
-impl<'a, F: Field + From<FNTTDomain>, FNTTDomain: Field> GenericPo2UnivariatePoly<F, FNTTDomain>
+impl<F: Field + From<FNTTDomain>, FNTTDomain: Field> GenericPo2UnivariatePoly<F, FNTTDomain>
 {
 	pub fn new(
 		univariate_lagrange_coeffs: Vec<F>,
