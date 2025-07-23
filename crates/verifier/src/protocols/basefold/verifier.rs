@@ -9,10 +9,9 @@ use binius_utils::DeserializeBytes;
 use crate::{
 	fri::{FRIParams, verify::FRIVerifier},
 	merkle_tree::MerkleTreeScheme,
-	protocols::sumcheck::{SumcheckOutput, common::RoundCoeffs},
+	protocols::sumcheck::{RoundProof, RoundCoeffs, SumcheckOutput},
 };
 
-/// Determines at which rounds the prover is expected to commit given the FRI folding arities
 fn is_fri_commit_round(fri_fold_arities: &[usize], num_basefold_rounds: usize) -> Vec<bool> {
 	let mut result = vec![false; num_basefold_rounds];
 	let mut result_idx = 0;
@@ -40,6 +39,7 @@ fn is_fri_commit_round(fri_fold_arities: &[usize], num_basefold_rounds: usize) -
 ///   point
 /// * `fri_params` - The FRI parameters
 /// * `vcs` - The Merkle tree scheme
+/// 
 pub fn verify_transcript<F, FA, VCS, TranscriptChallenger>(
 	codeword_commitment: VCS::Digest,
 	transcript: &mut VerifierTranscript<TranscriptChallenger>,
@@ -54,30 +54,24 @@ where
 	TranscriptChallenger: Challenger + Clone,
 	VCS: MerkleTreeScheme<F, Digest: DeserializeBytes>,
 {
-	let mut basefold_challenges = Vec::with_capacity(fri_params.n_fold_rounds());
-
-	let verifier_computed_sumcheck_claim = evaluation_claim;
-
+	let mut challenges = Vec::with_capacity(n_vars);
 	let fri_commit_rounds = is_fri_commit_round(fri_params.fold_arities(), n_vars);
-
-	let mut expected_sumcheck_round_claim = verifier_computed_sumcheck_claim;
 	let mut round_commitments = vec![];
+	let mut sum = evaluation_claim;
+	
+	for is_commit_round in fri_commit_rounds {
 
-	for fri_commit_round in fri_commit_rounds.iter() {
-		let round_message = RoundCoeffs::<F>(transcript.message().read_scalar_slice::<F>(3)?);
+		let round_proof = RoundProof(RoundCoeffs(transcript.message().read_scalar_slice::<F>(3)?));
 
-		let basefold_challenge = transcript.sample();
+		let challenge = transcript.sample();
 
-		let sum_check = round_message.evaluate(F::ZERO) + round_message.evaluate(F::ONE);
-		if sum_check != expected_sumcheck_round_claim {
-			return Err("Sumcheck constraint not satisfied".into());
-		}
+		let round_coeffs = round_proof.recover(sum);
 
-		expected_sumcheck_round_claim = round_message.evaluate(basefold_challenge);
-
-		basefold_challenges.push(basefold_challenge);
-
-		if *fri_commit_round {
+		sum = round_coeffs.evaluate(challenge);
+		
+		challenges.push(challenge);
+		
+		if is_commit_round {
 			round_commitments.push(transcript.message().read()?);
 		}
 	}
@@ -87,17 +81,15 @@ where
 		vcs,
 		&codeword_commitment,
 		&round_commitments,
-		&basefold_challenges,
+		&challenges,
 	)?;
 
-	let final_fri_oracle = fri_verifier.verify(transcript)?;
+	let fri_oracle = fri_verifier.verify(transcript)?;
 
-	let sumcheck_output = SumcheckOutput {
-		eval: expected_sumcheck_round_claim,
-		challenges: basefold_challenges,
-	};
-
-	Ok((final_fri_oracle, sumcheck_output))
+	Ok((fri_oracle, SumcheckOutput {
+		eval: sum,
+		challenges,
+	}))
 }
 
 /// Verifies that the final FRI oracle is consistent with the sumcheck
@@ -110,12 +102,13 @@ where
 /// * `fri_final_oracle` - The final FRI oracle
 /// * `sumcheck_final_claim` - The final sumcheck claim
 /// * `evaluation_point` - The evaluation point
-/// * `basefold_challenges` - The challenges used in the sumcheck rounds
-pub fn verify_final_basefold_assertion<F: Field>(
+/// * `challenges` - The challenges used in the sumcheck rounds
+/// 
+pub fn final_basefold_assertion<F: Field>(
 	fri_final_oracle: F,
 	sumcheck_final_claim: F,
 	evaluation_point: &[F],
-	basefold_challenges: &[F],
+	challenges: &[F],
 ) -> bool {
-	fri_final_oracle * eq_ind(evaluation_point, basefold_challenges) == sumcheck_final_claim
+	fri_final_oracle * eq_ind(evaluation_point, challenges) == sumcheck_final_claim
 }
