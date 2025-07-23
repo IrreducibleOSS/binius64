@@ -1,5 +1,5 @@
 use binius_field::{
-	AESTowerField8b, Field, PackedAESBinaryField16x8b, PackedExtension, PackedField,
+	AESTowerField8b, Field, PackedExtension, PackedField,
 	packed::get_packed_slice,
 };
 use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval};
@@ -18,23 +18,22 @@ use binius_verifier::{
 use super::{univariate::ntt_lookup::NTTLookup, utils::multivariate::OneBitMultivariate};
 
 const BYTES_PER_HYPERCUBE_VERTEX: usize = 1 << (SKIPPED_VARS - 3);
-const NTT_DOMAIN_SIZE: usize = ROWS_PER_HYPERCUBE_VERTEX / PackedAESBinaryField16x8b::WIDTH;
-const HOT_LOOP_NTT_POINTS: usize = 2 * ROWS_PER_HYPERCUBE_VERTEX;
-const PROVER_MESSAGE_NUM_POINTS: usize = 4 * ROWS_PER_HYPERCUBE_VERTEX;
+
 
 // Sends evaluations of the 3*|D|-1 degree polynomial
 #[allow(clippy::too_many_arguments)]
-pub fn univariate_round_message<'a, FChallenge>(
+pub fn univariate_round_message<'a, FChallenge, PNTTDomain>(
 	first_col: &OneBitMultivariate,
 	second_col: &OneBitMultivariate,
 	third_col: &OneBitMultivariate,
 	eq_ind_big_field_challenges: &FieldBuffer<FChallenge>,
-	ntt_lookup: &NTTLookup,
+	ntt_lookup: &NTTLookup<PNTTDomain>,
 	small_field_zerocheck_challenges: &[AESTowerField8b],
 	univariate_zerocheck_challenge: FChallenge,
 ) -> GenericPo2UnivariatePoly<FChallenge, AESTowerField8b>
 where
 	FChallenge: Field + From<AESTowerField8b>,
+	PNTTDomain: PackedExtension<B1>
 {
 	let log_num_rows = first_col.log_num_rows;
 	let num_vars_on_hypercube = log_num_rows - SKIPPED_VARS;
@@ -42,30 +41,30 @@ where
 	let mut pre_delta_prover_message = vec![FChallenge::ZERO; HOT_LOOP_NTT_POINTS];
 
 	let col_1_bytes =
-		<PackedAESBinaryField16x8b as PackedExtension<B1>>::cast_exts(&first_col.packed_evals);
+		<PNTTDomain as PackedExtension<B1>>::cast_exts(&first_col.packed_evals);
 	let col_2_bytes =
-		<PackedAESBinaryField16x8b as PackedExtension<B1>>::cast_exts(&second_col.packed_evals);
+		<PNTTDomain as PackedExtension<B1>>::cast_exts(&second_col.packed_evals);
 	let col_3_bytes =
-		<PackedAESBinaryField16x8b as PackedExtension<B1>>::cast_exts(&third_col.packed_evals);
+		<PNTTDomain as PackedExtension<B1>>::cast_exts(&third_col.packed_evals);
 
-	let eq_ind_small: Vec<PackedAESBinaryField16x8b> =
+	let eq_ind_small: Vec<PNTTDomain> =
 		eq_ind_partial_eval(small_field_zerocheck_challenges)
 			.as_ref()
 			.iter()
-			.map(|&item| PackedAESBinaryField16x8b::broadcast(item))
+			.map(|&item| PNTTDomain::broadcast(item))
 			.collect();
 
 	// Execute the NTTs at each hypercube vertex
 	let pre_delta_prover_message_extension_domain = (0..1 << (num_vars_on_hypercube - 3))
 		.into_par_iter()
 		.map(|subcube_idx| {
-			let mut summed_ntt = [PackedAESBinaryField16x8b::zero(); NTT_DOMAIN_SIZE];
+			let mut summed_ntt = [PNTTDomain::zero(); NTT_DOMAIN_SIZE];
 
 			for point_idx_within_subcube in 0..1 << 3 {
 				let hypercube_point_idx = subcube_idx << 3 | point_idx_within_subcube;
 				let byte_offset = hypercube_point_idx * BYTES_PER_HYPERCUBE_VERTEX;
 
-				let mut col_ntt = [[PackedAESBinaryField16x8b::zero(); NTT_DOMAIN_SIZE]; 3];
+				let mut col_ntt = [[PNTTDomain::zero(); NTT_DOMAIN_SIZE]; 3];
 
 				for i in 0..ntt_lookup.len() {
 					let idx1 = u8::from(get_packed_slice(col_1_bytes, byte_offset + i)) as usize;
