@@ -16,7 +16,7 @@ use crate::{
 	protocols::{basefold::sumcheck::MultilinearSumcheckProver, sumcheck::common::SumcheckProver},
 };
 
-/// Prover for Basefold that writes to a transcript for non interactive proofs.
+/// Basefold Prover that writes to a transcript for non interactive proofs.
 ///
 /// The prover executes FRI and Sumcheck in parallel, sampling random challenges
 /// for FRI and Sumcheck from the trascript.
@@ -30,6 +30,7 @@ where
 {
 	sumcheck_prover: MultilinearSumcheckProver<F>,
 	fri_folder: FRIFolder<'a, F, FA, F, NTT, MerkleProver, VCS>,
+	log_n: usize,
 }
 
 impl<'a, F, FA, NTT, MerkleProver, VCS> BaseFoldProver<'a, F, FA, NTT, MerkleProver, VCS>
@@ -42,46 +43,76 @@ where
 {
 	/// Creates a new Basefold prover.
 	///
-	/// The main arguments needed are multilinear, transparent multilinear, and the claim.
-	/// The rest of the arguments are parameters related to FRI and Sumcheck that are
-	/// bound in some way by lifetimes outside of this function.
+	/// The Basefold protocol runs FRI and Sumcheck in parallel, using shared random
+	/// challenges to prove the evaluation claim of a committed polynomial. The eval
+	/// claim is represented as the inner product of the commited mle and the tensor
+	/// expanded eval point. Sumcheck is used to reduce this summation to an evaluation
+	/// at a random point, FRI is used both commit to the multilinear and perform the
+	/// multilinear evaluation at the challenge point.
+	///
+	/// ## Arguments
+	///
+	/// * `multilinear` - the multilinear polynomial
+	/// * `transparent_multilinear` - the transparent multilinear polynomial
+	/// * `claim` - the claim
+	/// * `committed_codeword` - the committed codeword
+	/// * `committed` - the committed Merkle tree
+	/// * `ntt` - the NTT
+	/// * `merkle_prover` - the Merkle prover
+	/// * `fri_params` - the FRI parameters
+	///
+	/// ## Pre-conditions
+	///  * the multilinear has already been committed to using FRI
+	///  * the length of the multilinear and transparent_multilinear are equal
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		multilinear: FieldBuffer<F>,
 		transparent_multilinear: FieldBuffer<F>,
 		claim: F,
-		ntt: &'a NTT,
-		merkle_prover: &'a MerkleProver,
-		fri_params: &'a FRIParams<F, FA>,
 		committed_codeword: &'a [F],
 		committed: &'a MerkleProver::Committed,
+		merkle_prover: &'a MerkleProver,
+		ntt: &'a NTT,
+		fri_params: &'a FRIParams<F, FA>,
 	) -> Result<Self, Box<dyn std::error::Error>> {
+		assert_eq!(multilinear.log_len(), transparent_multilinear.log_len());
+
 		let log_n = multilinear.log_len();
 
-		// Init FRI prover
 		let fri_folder =
 			FRIFolder::new(fri_params, ntt, merkle_prover, committed_codeword, committed)
 				.expect("failed to create FRI folder");
 
-		// Create sumcheck composition
 		let sumcheck_composition = [multilinear, transparent_multilinear];
 
-		// Create sumcheck prover
 		let sumcheck_prover =
 			MultilinearSumcheckProver::<F>::new(sumcheck_composition, claim, log_n);
 
 		Ok(Self {
 			sumcheck_prover,
 			fri_folder,
+			log_n,
 		})
 	}
 
-	/// Executes the sumcheck roudn, producing a round message
+	/// Executes the sumcheck round, producing a round message.
+	///
+	/// ## Pre-conditions
+	///  * the sumcheck has already been initialized
+	///
+	/// ## Returns
+	///  * the sumcheck round message
 	pub fn execute(&mut self) -> Result<Vec<F>, Box<dyn std::error::Error>> {
 		Ok(self.sumcheck_prover.execute()?[0].0.clone())
 	}
 
-	/// Folds both the sumcheck multilinears and the FRI codeword
+	/// Folds both the sumcheck multilinear and its codeword.
+	///
+	/// ## Arguments
+	/// * `challenge` - a challenge sampled from the transcript
+	///
+	/// ## Returns
+	///  * the FRI fold round output
 	pub fn fold(
 		&mut self,
 		challenge: F,
@@ -91,26 +122,27 @@ where
 	}
 
 	/// Runs the entire basefold protocol, writing to the transcript round by round.
+	///
+	/// ## Arguments
+	/// * `n_vars` - the number of variables in the multilinear
+	/// * `transcript` - the transcript to write to
+	///
+	/// ## Returns
+	///  * the FRI fold round output
 	pub fn prove_with_transcript<T: Challenger>(
 		mut self,
-		n_vars: usize,
 		transcript: &mut ProverTranscript<T>,
 	) -> Result<(), Box<dyn std::error::Error>> {
 		let mut round_commitments = vec![];
-		for _ in 0..n_vars {
-			// execute sumcheck round
+
+		for _ in 0..self.log_n {
 			let round_msg = self.execute()?;
 
-			// write round message to transcript
 			transcript.message().write_scalar_slice(&round_msg);
 
-			// sample challenge from transcript
-			let basefold_challenge = transcript.sample();
+			let challenge = transcript.sample();
 
-			// prover folds
-			let next_round_commitment = self
-				.fold(basefold_challenge)
-				.expect("fold round execution failed");
+			let next_round_commitment = self.fold(challenge).expect("fold round execution failed");
 
 			// prover writes commitment to transcript
 			match next_round_commitment {
@@ -127,11 +159,14 @@ where
 		Ok(())
 	}
 
+	/// Finalizes the transcript by proving FRI queries.
+	///
+	/// ## Arguments
+	/// * `prover_challenger` - the prover's mutable transcript
 	pub fn finish<T: Challenger>(
 		self,
 		prover_challenger: &mut ProverTranscript<T>,
 	) -> Result<(), Box<dyn std::error::Error>> {
-		// prove FRI queries
 		self.fri_folder.finish_proof(prover_challenger)?;
 		Ok(())
 	}
@@ -139,10 +174,12 @@ where
 
 #[cfg(test)]
 mod test {
-	use binius_field::Random;
 	use binius_math::{
-		ReedSolomonCode, inner_product::inner_product_packed, multilinear::eq::eq_ind_partial_eval,
-		ntt::SingleThreadedNTT, test_utils::random_field_buffer,
+		ReedSolomonCode,
+		inner_product::inner_product_packed,
+		multilinear::eq::eq_ind_partial_eval,
+		ntt::SingleThreadedNTT,
+		test_utils::{random_field_buffer, random_scalars},
 	};
 	use binius_transcript::ProverTranscript;
 	use binius_verifier::{
@@ -152,7 +189,6 @@ mod test {
 		hash::{StdCompression, StdDigest},
 		protocols::basefold::verifier::{verify_final_basefold_assertion, verify_transcript},
 	};
-	use itertools::Itertools;
 	use rand::{SeedableRng, rngs::StdRng};
 
 	use super::BaseFoldProver;
@@ -163,36 +199,36 @@ mod test {
 
 	pub const LOG_INV_RATE: usize = 1;
 	pub const NUM_TEST_QUERIES: usize = 3;
-	pub type FA = B128;
+	pub type FA = B128; // for ntt
+
+	pub type F = B128;
 
 	#[test]
 	fn test_basefold() {
 		let mut rng = StdRng::from_seed([0; 32]);
+
 		let n_vars = 8;
 
-		// Prover has a packed multilinear polynomial, eval point, and eval claim
-		let multilinear = random_field_buffer::<B128>(&mut rng, n_vars);
-		let evaluation_point = (0..n_vars).map(|_| B128::random(&mut rng)).collect_vec();
+		// Prover claims a multilinear polynomial, eval point, and evaluation
+		let multilinear = random_field_buffer::<F>(&mut rng, n_vars);
+		let evaluation_point = random_scalars(&mut rng, n_vars);
 
 		let eval_point_eq = eq_ind_partial_eval(&evaluation_point);
 		let evaluation_claim = inner_product_packed(&multilinear, &eval_point_eq);
 
-		// parameters...
+		// setup prover...
 		let merkle_prover =
-			BinaryMerkleTreeProver::<B128, StdDigest, _>::new(StdCompression::default());
+			BinaryMerkleTreeProver::<F, StdDigest, _>::new(StdCompression::default());
 
 		// encode the multilinear
-		let committed_rs_code = ReedSolomonCode::<FA>::new(multilinear.log_len(), LOG_INV_RATE)
+		let rs_code = ReedSolomonCode::<FA>::new(multilinear.log_len(), LOG_INV_RATE)
 			.expect("failed to create Reed-Solomon code");
 
-		// setup FRI prover instance
 		let fri_log_batch_size = 0;
 		let fri_arities = vec![2, 1];
-		let fri_params =
-			FRIParams::new(committed_rs_code, fri_log_batch_size, fri_arities, NUM_TEST_QUERIES)
-				.expect("failed to create FRI params");
+		let fri_params = FRIParams::new(rs_code, fri_log_batch_size, fri_arities, NUM_TEST_QUERIES)
+			.expect("failed to create FRI params");
 
-		// Commit packed mle codeword to transcript
 		let ntt =
 			SingleThreadedNTT::new(fri_params.rs_code().log_len()).expect("failed to create NTT");
 
@@ -207,26 +243,28 @@ mod test {
 		let mut prover_challenger = ProverTranscript::new(StdChallenger::default());
 		prover_challenger.message().write(&codeword_commitment);
 
-		// Instantiate basefold
-		let basefold_pcs_prover = BaseFoldProver::new(
+		// init basefold prover
+		let prover = BaseFoldProver::new(
 			multilinear,
 			eval_point_eq,
 			evaluation_claim,
-			&ntt,
-			&merkle_prover,
-			&fri_params,
 			&codeword,
 			&codeword_committed,
+			&merkle_prover,
+			&ntt,
+			&fri_params,
 		)
 		.expect("failed to create basefold prover");
 
 		// prove non-interactively
-		let _ = basefold_pcs_prover.prove_with_transcript(n_vars, &mut prover_challenger);
+		prover
+			.prove_with_transcript(&mut prover_challenger)
+			.expect("failed to prove");
 
 		// convert the finalized prover transcript into a verifier transcript
 		let mut verifier_challenger = prover_challenger.into_verifier();
 
-		// Verifier retrieves the codeword commitment from the transcript
+		// verifier retrieves the codeword commitment from the transcript
 		let verifier_codeword_commitment = verifier_challenger
 			.message()
 			.read()
