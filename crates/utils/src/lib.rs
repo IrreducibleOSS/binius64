@@ -8,6 +8,8 @@ pub mod env;
 pub mod error_utils;
 pub mod iter;
 pub mod mem;
+#[cfg(feature = "platform-diagnostics")]
+pub mod platform_diagnostics;
 pub mod random_access_sequence;
 pub mod rayon;
 pub mod serialization;

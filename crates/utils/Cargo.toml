@@ -3,6 +3,7 @@ name = "binius-utils"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
+build = "build.rs"
 
 [lints]
 workspace = true
@@ -15,12 +16,14 @@ cfg-if.workspace = true
 generic-array.workspace = true
 itertools.workspace = true
 rayon = { optional = true, workspace = true }
+regex = { workspace = true, optional = true }
 thiserror.workspace = true
 
 [dev-dependencies]
-rand.workspace = true
+rand = { workspace = true, features = ["std_rng"] }
 
 [features]
 default = ["rayon"]
 bail_panic = []
 rayon = ["dep:rayon"]
+platform-diagnostics = ["dep:regex"]
