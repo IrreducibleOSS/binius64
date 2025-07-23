@@ -30,11 +30,11 @@ impl<FCoeffs: Field + From<FDomain>, FDomain: Field> GenericPo2UnivariatePoly<FC
 		}
 	}
 
-	fn degree_lt(&self) -> usize {
+	pub fn degree_lt(&self) -> usize {
 		1 << self.log_degree_lt
 	}
 
-	fn iter(&self) -> impl Iterator<Item = &FCoeffs> {
+	pub fn iter(&self) -> impl Iterator<Item = &FCoeffs> {
 		self.univariate_lagrange_coeffs.iter()
 	}
 
