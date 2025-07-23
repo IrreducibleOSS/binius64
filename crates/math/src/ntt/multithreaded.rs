@@ -16,15 +16,14 @@ use crate::BinarySubspace;
 
 /// Implementation of `AdditiveNTT` that performs the computation multithreaded.
 #[derive(Debug)]
-pub struct MultithreadedNTT<F: BinaryField, TA: TwiddleAccess<F> = OnTheFlyTwiddleAccess<F, Vec<F>>>
-{
+pub struct MultiThreadedNTT<F, TA = OnTheFlyTwiddleAccess<F, Vec<F>>> {
 	single_threaded: SingleThreadedNTT<F, TA>,
 	log_max_threads: usize,
 }
 
 impl<F: BinaryField, TA: TwiddleAccess<F> + Sync> SingleThreadedNTT<F, TA> {
 	/// Returns multithreaded NTT implementation which uses default number of threads.
-	pub fn multithreaded(self) -> MultithreadedNTT<F, TA> {
+	pub fn multithreaded(self) -> MultiThreadedNTT<F, TA> {
 		let log_max_threads = get_log_max_threads();
 		self.multithreaded_with_max_threads(log_max_threads as _)
 	}
@@ -33,15 +32,15 @@ impl<F: BinaryField, TA: TwiddleAccess<F> + Sync> SingleThreadedNTT<F, TA> {
 	pub const fn multithreaded_with_max_threads(
 		self,
 		log_max_threads: usize,
-	) -> MultithreadedNTT<F, TA> {
-		MultithreadedNTT {
+	) -> MultiThreadedNTT<F, TA> {
+		MultiThreadedNTT {
 			single_threaded: self,
 			log_max_threads,
 		}
 	}
 }
 
-impl<F, TA> AdditiveNTT<F> for MultithreadedNTT<F, TA>
+impl<F, TA> AdditiveNTT<F> for MultiThreadedNTT<F, TA>
 where
 	F: BinaryField,
 	TA: TwiddleAccess<F> + Sync,

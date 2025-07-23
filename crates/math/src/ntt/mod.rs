@@ -18,6 +18,6 @@ pub mod twiddle;
 
 pub use additive_ntt::{AdditiveNTT, NTTShape};
 pub use error::Error;
-pub use multithreaded::MultithreadedNTT;
+pub use multithreaded::MultiThreadedNTT;
 pub use odd_interpolate::OddInterpolate;
 pub use single_threaded::SingleThreadedNTT;
