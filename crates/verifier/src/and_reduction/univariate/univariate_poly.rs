@@ -11,16 +11,17 @@ pub trait UnivariatePoly<FChallenge: Field> {
 }
 
 /// This is a univariate polynomial in lagrange basis with the evaluation points being field
-/// elements in lexicographic order. The polynomial with coefficients in FChallenge isomorphic to
+/// elements in lexicographic order forming an F2-subspace of FDomain. 
+/// The polynomial with lagrange coefficients in FChallenge isomorphic to
 /// those of this polynomial can also be queried using methods on this struct
-pub struct GenericPo2UnivariatePoly<F: Field + From<FNTTDomain>, FNTTDomain: Field> {
+pub struct GenericPo2UnivariatePoly<F: Field + From<FDomain>, FDomain: Field> {
 	univariate_lagrange_coeffs: Vec<F>,
 	log_degree_lt: usize,
-	_marker: PhantomData<FNTTDomain>,
+	_marker: PhantomData<FDomain>,
 }
 
-impl<FCoeffs: Field + From<FNTTDomain>, FNTTDomain: Field>
-	GenericPo2UnivariatePoly<FCoeffs, FNTTDomain>
+impl<FCoeffs: Field + From<FDomain>, FDomain: Field>
+	GenericPo2UnivariatePoly<FCoeffs, FDomain>
 {
 	pub fn new(univariate_lagrange_coeffs: Vec<FCoeffs>) -> Self {
 		let degree_lt = univariate_lagrange_coeffs.len();
@@ -53,22 +54,22 @@ impl<FCoeffs: Field + From<FNTTDomain>, FNTTDomain: Field>
 	}
 }
 
-impl<FNTTDomain, FCoeffs, FChallenge> UnivariatePoly<FChallenge>
-	for GenericPo2UnivariatePoly<FCoeffs, FNTTDomain>
+impl<FDomain, FCoeffs, FChallenge> UnivariatePoly<FChallenge>
+	for GenericPo2UnivariatePoly<FCoeffs, FDomain>
 where
-	FNTTDomain: Field + From<u8>,
-	FCoeffs: Field + From<FNTTDomain>,
-	FChallenge: Field + From<FCoeffs> + From<FNTTDomain>,
+	FDomain: Field + From<u8>,
+	FCoeffs: Field + From<FDomain>,
+	FChallenge: Field + From<FCoeffs> + From<FDomain>,
 {
 	fn evaluate_at_challenge(&self, challenge: FChallenge) -> FChallenge {
 		let evals_of_lagrange_basis_vectors_not_yet_divide_by_denominator =
-			lexicographic_lagrange_numerators_polyval::<FNTTDomain, FChallenge>(
+			lexicographic_lagrange_numerators_polyval::<FDomain, FChallenge>(
 				self.degree_lt(),
 				challenge,
 			);
 
 		let denominator_inv = FChallenge::from(
-			lexicographic_lagrange_denominator::<FNTTDomain>(self.log_degree_lt).invert_or_zero(),
+			lexicographic_lagrange_denominator::<FDomain>(self.log_degree_lt).invert_or_zero(),
 		);
 
 		self.evaluate_lagrange_common(

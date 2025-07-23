@@ -16,23 +16,23 @@ fn products_excluding_one_element<F: Field>(input: &[F]) -> Vec<F> {
 	results
 }
 
-pub fn lexicographic_lagrange_denominator<FNTTDomain: Field + From<u8>>(
+pub fn lexicographic_lagrange_denominator<FDomain: Field + From<u8>>(
 	log_basis_size: usize,
-) -> FNTTDomain {
+) -> FDomain {
 	(1..=((1 << log_basis_size) - 1) as u8)
-		.map(FNTTDomain::from)
-		.product::<FNTTDomain>()
+		.map(FDomain::from)
+		.product::<FDomain>()
 }
 
 pub fn lexicographic_lagrange_numerators_polyval<
-	FNTTDomain: Field + From<u8>,
-	FChallenge: Field + From<FNTTDomain>,
+	FDomain: Field + From<u8>,
+	FChallenge: Field + From<FDomain>,
 >(
 	basis_size: usize,
 	eval_point: FChallenge,
 ) -> Vec<FChallenge> {
 	let basis_point_differences: Vec<_> = (0..=(basis_size - 1) as u8)
-		.map(|i| eval_point - FChallenge::from(FNTTDomain::from(i)))
+		.map(|i| eval_point - FChallenge::from(FDomain::from(i)))
 		.collect();
 
 	products_excluding_one_element(&basis_point_differences)
