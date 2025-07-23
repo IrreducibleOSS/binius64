@@ -20,6 +20,9 @@ pub trait UnivariatePoly<FCoeffs: Field, FChallenge: Field> {
 	fn degree_lt(&self) -> usize;
 }
 
+/// This is a univariate polynomial in lagrange basis with the evaluation points being field
+/// elements in lexicographic order. The polynomial with coefficients in FChallenge isomorphic to
+/// those of this polynomial can also be queried using methods on this struct
 pub struct GenericPo2UnivariatePoly<'a, F: Field, FChallenge: Field> {
 	univariate_lagrange_coeffs: Vec<F>,
 	log_degree_lt: usize,
@@ -38,6 +41,19 @@ impl<'a, F: Field, FChallenge: Field> GenericPo2UnivariatePoly<'a, F, FChallenge
 			lookup_table: iso_lookup,
 		}
 	}
+
+	fn evaluate_lagrange_common<FEval: Field>(
+		&self,
+		numerators: impl Iterator<Item = FEval>,
+		coeffs_in_eval_field: impl Iterator<Item = FEval>,
+		denominator_inv_in_eval_field: FEval,
+	) -> FEval {
+		numerators
+			.zip(coeffs_in_eval_field)
+			.map(|(basis_vec_eval, coeff)| basis_vec_eval * coeff)
+			.sum::<FEval>()
+			* denominator_inv_in_eval_field
+	}
 }
 
 impl UnivariatePoly<AESTowerField8b, BinaryField128bPolyval>
@@ -55,16 +71,16 @@ impl UnivariatePoly<AESTowerField8b, BinaryField128bPolyval>
 				self.lookup_table,
 			);
 
-		(evals_of_lagrange_basis_vectors_not_yet_divide_by_denominator
-			.iter()
-			.zip(self.iter_coeffs())
-			.map(|(basis_vec_eval, coeff)| {
-				*basis_vec_eval * self.lookup_table.lookup_8b_value(*coeff)
-			})
-			.sum::<BinaryField128bPolyval>())
-			* self.lookup_table.lookup_8b_value(
-				lexicographic_lagrange_denominator(self.log_degree_lt).invert_or_zero(),
-			)
+		let denominator_inv = self.lookup_table.lookup_8b_value(
+			lexicographic_lagrange_denominator(self.log_degree_lt).invert_or_zero(),
+		);
+
+		self.evaluate_lagrange_common(
+			evals_of_lagrange_basis_vectors_not_yet_divide_by_denominator.into_iter(),
+			self.iter_coeffs()
+				.map(|coeff| self.lookup_table.lookup_8b_value(*coeff)),
+			denominator_inv,
+		)
 	}
 
 	fn evaluate_at_subfield_point(&self, challenge: AESTowerField8b) -> AESTowerField8b {
@@ -97,14 +113,15 @@ impl<F: Field> UnivariatePoly<F, F> for GenericPo2UnivariatePoly<'_, F, F> {
 				self.lookup_table,
 			);
 
-		(evals_of_lagrange_basis_vectors_not_yet_divide_by_denominator
-			.iter()
-			.zip(self.iter_coeffs())
-			.map(|(basis_vec_eval, coeff)| *basis_vec_eval * *coeff)
-			.sum::<F>())
-			* self.lookup_table.lookup_8b_value(
-				lexicographic_lagrange_denominator(self.log_degree_lt).invert_or_zero(),
-			)
+		let denominator_inv = self.lookup_table.lookup_8b_value(
+			lexicographic_lagrange_denominator(self.log_degree_lt).invert_or_zero(),
+		);
+
+		self.evaluate_lagrange_common(
+			evals_of_lagrange_basis_vectors_not_yet_divide_by_denominator.into_iter(),
+			self.iter_coeffs().cloned(),
+			denominator_inv,
+		)
 	}
 
 	fn evaluate_at_subfield_point(&self, challenge: F) -> F {
