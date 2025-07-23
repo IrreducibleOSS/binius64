@@ -1,18 +1,18 @@
 use binius_field::{
-	AESTowerField8b, BinaryField1b, Field, PackedAESBinaryField16x8b, PackedExtension, PackedField,
+	AESTowerField8b, Field, PackedAESBinaryField16x8b, PackedExtension, PackedField,
 	packed::get_packed_slice,
 };
 use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval};
 use binius_utils::rayon::prelude::{IntoParallelIterator, ParallelIterator};
-use binius_verifier::and_reduction::{
-	univariate::{
-		delta::delta_poly,
-		univariate_poly::{GenericPo2UnivariatePoly, UnivariatePoly},
+use binius_verifier::{
+	and_reduction::{
+		univariate::{
+			delta::delta_poly,
+			univariate_poly::{GenericPo2UnivariatePoly, UnivariatePoly},
+		},
+		utils::constants::{ROWS_PER_HYPERCUBE_VERTEX, SKIPPED_VARS},
 	},
-	utils::{
-		constants::{ROWS_PER_HYPERCUBE_VERTEX, SKIPPED_VARS},
-		subfield_isomorphism::SubfieldIsomorphismLookup,
-	},
+	fields::B1,
 };
 
 use super::{univariate::ntt_lookup::NTTLookup, utils::multivariate::OneBitMultivariate};
@@ -21,8 +21,6 @@ const BYTES_PER_HYPERCUBE_VERTEX: usize = 1 << (SKIPPED_VARS - 3);
 const NTT_DOMAIN_SIZE: usize = ROWS_PER_HYPERCUBE_VERTEX / PackedAESBinaryField16x8b::WIDTH;
 const HOT_LOOP_NTT_POINTS: usize = 2 * ROWS_PER_HYPERCUBE_VERTEX;
 const PROVER_MESSAGE_NUM_POINTS: usize = 4 * ROWS_PER_HYPERCUBE_VERTEX;
-
-type Bit = BinaryField1b;
 
 // Sends evaluations of the 3*|D|-1 degree polynomial
 #[allow(clippy::too_many_arguments)]
@@ -34,10 +32,9 @@ pub fn univariate_round_message<'a, FChallenge>(
 	ntt_lookup: &NTTLookup,
 	small_field_zerocheck_challenges: &[AESTowerField8b],
 	univariate_zerocheck_challenge: FChallenge,
-	subfield_iso_lookup: &'a SubfieldIsomorphismLookup<FChallenge>,
-) -> GenericPo2UnivariatePoly<'a, FChallenge, FChallenge>
+) -> GenericPo2UnivariatePoly<FChallenge, AESTowerField8b>
 where
-	FChallenge: Field,
+	FChallenge: Field + From<AESTowerField8b>,
 {
 	let log_num_rows = first_col.log_num_rows;
 	let num_vars_on_hypercube = log_num_rows - SKIPPED_VARS;
@@ -45,11 +42,11 @@ where
 	let mut pre_delta_prover_message = vec![FChallenge::ZERO; HOT_LOOP_NTT_POINTS];
 
 	let col_1_bytes =
-		<PackedAESBinaryField16x8b as PackedExtension<Bit>>::cast_exts(&first_col.packed_evals);
+		<PackedAESBinaryField16x8b as PackedExtension<B1>>::cast_exts(&first_col.packed_evals);
 	let col_2_bytes =
-		<PackedAESBinaryField16x8b as PackedExtension<Bit>>::cast_exts(&second_col.packed_evals);
+		<PackedAESBinaryField16x8b as PackedExtension<B1>>::cast_exts(&second_col.packed_evals);
 	let col_3_bytes =
-		<PackedAESBinaryField16x8b as PackedExtension<Bit>>::cast_exts(&third_col.packed_evals);
+		<PackedAESBinaryField16x8b as PackedExtension<B1>>::cast_exts(&third_col.packed_evals);
 
 	let eq_ind_small: Vec<PackedAESBinaryField16x8b> =
 		eq_ind_partial_eval(small_field_zerocheck_challenges)
@@ -92,8 +89,7 @@ where
 			let mut result = [FChallenge::ZERO; ROWS_PER_HYPERCUBE_VERTEX];
 
 			for (i, val) in result.iter_mut().enumerate() {
-				*val = eq_weight
-					* subfield_iso_lookup.lookup_8b_value(get_packed_slice(&summed_ntt, i));
+				*val = eq_weight * FChallenge::from(get_packed_slice(&summed_ntt, i));
 			}
 
 			result
@@ -111,35 +107,30 @@ where
 	pre_delta_prover_message[ROWS_PER_HYPERCUBE_VERTEX..2 * ROWS_PER_HYPERCUBE_VERTEX]
 		.copy_from_slice(&pre_delta_prover_message_extension_domain);
 
-	let pre_delta_poly =
-		GenericPo2UnivariatePoly::new(pre_delta_prover_message, subfield_iso_lookup);
+	let pre_delta_poly = GenericPo2UnivariatePoly::new(pre_delta_prover_message);
 
-	let delta = delta_poly(univariate_zerocheck_challenge, SKIPPED_VARS, subfield_iso_lookup);
+	let delta = delta_poly(univariate_zerocheck_challenge, SKIPPED_VARS);
 
 	let final_evals = (0..PROVER_MESSAGE_NUM_POINTS)
 		.map(|i| {
-			let point = subfield_iso_lookup.lookup_8b_value(AESTowerField8b::new(i as u8));
-			pre_delta_poly.evaluate_at_subfield_point(point)
-				* delta.evaluate_at_subfield_point(point)
+			let point = FChallenge::from(AESTowerField8b::new(i as u8));
+			pre_delta_poly.evaluate_at_challenge(point) * delta.evaluate_at_challenge(point)
 		})
 		.collect();
 
-	GenericPo2UnivariatePoly::new(final_evals, subfield_iso_lookup)
+	GenericPo2UnivariatePoly::new(final_evals)
 }
 
 #[cfg(test)]
 mod test {
-	use binius_field::{
-		AESTowerField8b, AESTowerField128b, BinaryField128bPolyval, Field, PackedBinaryField128x1b,
-		Random,
-	};
+	use binius_field::{AESTowerField8b, Field, PackedBinaryField128x1b, Random};
 	use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval};
-	use binius_verifier::and_reduction::{
-		univariate::{delta::delta_poly, univariate_poly::UnivariatePoly},
-		utils::{
-			constants::{ROWS_PER_HYPERCUBE_VERTEX, SKIPPED_VARS},
-			subfield_isomorphism::SubfieldIsomorphismLookup,
+	use binius_verifier::{
+		and_reduction::{
+			univariate::{delta::delta_poly, univariate_poly::UnivariatePoly},
+			utils::constants::{ROWS_PER_HYPERCUBE_VERTEX, SKIPPED_VARS},
 		},
+		fields::B128,
 	};
 	use itertools::izip;
 	use rand::{SeedableRng, rngs::StdRng};
@@ -161,7 +152,7 @@ mod test {
 	}
 
 	// Sends the sum claim from first multilinear round (second overall round)
-	pub fn sum_claim<BF: Field + From<BinaryField128bPolyval>>(
+	pub fn sum_claim<BF: Field + From<B128>>(
 		first_col: &FieldBuffer<BF>,
 		second_col: &FieldBuffer<BF>,
 		third_col: &FieldBuffer<BF>,
@@ -178,7 +169,7 @@ mod test {
 		let mut rng = StdRng::from_seed([0; 32]);
 
 		let big_field_zerocheck_challenges =
-			vec![BinaryField128bPolyval::random(&mut rng); (log_num_rows - SKIPPED_VARS - 3) + 1];
+			vec![B128::random(&mut rng); (log_num_rows - SKIPPED_VARS - 3) + 1];
 
 		let small_field_zerocheck_challenges = [
 			AESTowerField8b::new(2),
@@ -196,8 +187,6 @@ mod test {
 			.map(|x| AESTowerField8b::new(x as u8))
 			.collect();
 
-		let iso_lookup = SubfieldIsomorphismLookup::new::<AESTowerField128b>();
-
 		let ntt_lookup = precompute_lookup(&onto_domain);
 
 		let first_round_message = univariate_round_message(
@@ -208,26 +197,25 @@ mod test {
 			&ntt_lookup,
 			&small_field_zerocheck_challenges,
 			big_field_zerocheck_challenges[0],
-			&iso_lookup,
 		);
 
-		let first_sumcheck_challenge = BinaryField128bPolyval::random(&mut rng);
+		let first_sumcheck_challenge = B128::random(&mut rng);
 		let expected_next_round_sum =
 			first_round_message.evaluate_at_challenge(first_sumcheck_challenge);
 
-		let lookup = precompute_fold_lookup(first_sumcheck_challenge, &iso_lookup);
+		let lookup = precompute_fold_lookup::<AESTowerField8b, _>(first_sumcheck_challenge);
 
 		let folded_first_mle = mlv_1.fold(&lookup);
 		let folded_second_mle = mlv_2.fold(&lookup);
 		let folded_third_mle = mlv_3.fold(&lookup);
 
 		let eq_ind_mul_by =
-			delta_poly(big_field_zerocheck_challenges[0], SKIPPED_VARS, &iso_lookup)
+			delta_poly::<AESTowerField8b, _>(big_field_zerocheck_challenges[0], SKIPPED_VARS)
 				.evaluate_at_challenge(first_sumcheck_challenge);
 
 		let upcasted_small_field_challenges: Vec<_> = small_field_zerocheck_challenges
 			.into_iter()
-			.map(|i| iso_lookup.lookup_8b_value(i))
+			.map(|i| B128::from(i))
 			.collect();
 
 		let polyval_zerocheck_challenges: Vec<_> = upcasted_small_field_challenges
@@ -239,7 +227,7 @@ mod test {
 		let polyval_eq = eq_ind_partial_eval(&polyval_zerocheck_challenges);
 		let actual_next_round_sum =
 			sum_claim(&folded_first_mle, &folded_second_mle, &folded_third_mle, &polyval_eq)
-				* std::convert::Into::<BinaryField128bPolyval>::into(eq_ind_mul_by);
+				* std::convert::Into::<B128>::into(eq_ind_mul_by);
 
 		assert_eq!(expected_next_round_sum, actual_next_round_sum);
 	}
