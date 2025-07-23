@@ -212,10 +212,7 @@ impl<F: Field> SumcheckProver<F> for AndReductionProver<F> {
 #[cfg(test)]
 pub mod test {
 	use binius_field::Random;
-	use binius_math::{
-		multilinear::{eq::eq_ind, evaluate::evaluate},
-		test_utils::random_field_buffer,
-	};
+	use binius_math::{multilinear::{eq::eq_ind, evaluate::evaluate}, test_utils::random_field_buffer};
 	use binius_transcript::ProverTranscript;
 	use binius_verifier::{config::StdChallenger, fields::B128, protocols::sumcheck::verify};
 	use itertools::Itertools;
@@ -258,16 +255,10 @@ pub mod test {
 			.map(|_| B128::random(&mut rng))
 			.collect::<Vec<B128>>();
 
-		let multilinears: Vec<FieldBuffer<B128>> = (0..3)
-			.map(|_| random_field_buffer(&mut rng, log_n))
-			.collect();
+		let multilinears: Vec<FieldBuffer<B128>> = (0..3).map(|_|random_field_buffer(&mut rng, log_n)).collect();
 
-		let composition = itertools::izip!(
-			multilinears[0].as_ref(),
-			multilinears[1].as_ref(),
-			multilinears[2].as_ref()
-		)
-		.map(|(&a, &b, &c)| a * b - c)
+		let composition = itertools::izip!(multilinears[0].as_ref(), multilinears[1].as_ref(), multilinears[2].as_ref())
+		.map(|(&a, &b,&c)| a*b-c)
 		.collect_vec();
 
 		let composition_buffer = FieldBuffer::new(log_n, composition).unwrap();
