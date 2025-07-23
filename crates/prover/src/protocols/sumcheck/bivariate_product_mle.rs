@@ -8,6 +8,7 @@ use binius_utils::rayon::prelude::*;
 use binius_verifier::protocols::sumcheck::RoundCoeffs;
 
 use super::{common::SumcheckProver, error::Error, gruen34::Gruen34, round_evals::RoundEvals2};
+use crate::protocols::sumcheck::common::MleCheckProver;
 
 pub struct BivariateProductMlecheckProver<P: PackedField> {
 	multilinears: [FieldBuffer<P>; 2],
@@ -66,7 +67,7 @@ where
 		let (evals_b_0, evals_b_1) = self.multilinears[1].split_half()?;
 
 		// Compute F(1) and F(∞) where F = ∑_{v ∈ B} A(v || X) B(v || X) eq(v, z)
-		let packed_prime_evals = (
+		let round_evals = (
 			eq_expansion.as_ref(),
 			evals_a_0.as_ref(),
 			evals_a_1.as_ref(),
@@ -87,13 +88,13 @@ where
 					y_inf: prod_inf_i,
 				}
 			})
-			.reduce(RoundEvals2::default, |lhs, rhs| lhs + &rhs);
+			.reduce(RoundEvals2::default, |lhs, rhs| lhs + &rhs)
+			.sum_scalars();
 
-		let (prime_coeffs, round_coeffs) = self
-			.gruen34
-			.interpolate2(*last_eval, packed_prime_evals.sum_scalars());
+		let alpha = self.gruen34.next_coordinate();
+		let round_coeffs = round_evals.interpolate_eq(*last_eval, alpha);
 
-		self.last_coeffs_or_eval = RoundCoeffsOrEval::Coeffs(prime_coeffs);
+		self.last_coeffs_or_eval = RoundCoeffsOrEval::Coeffs(round_coeffs.clone());
 		Ok(vec![round_coeffs])
 	}
 
@@ -135,6 +136,16 @@ where
 	}
 }
 
+impl<F, P> MleCheckProver<F> for BivariateProductMlecheckProver<P>
+where
+	F: Field,
+	P: PackedField<Scalar = F>,
+{
+	fn eval_point(&self) -> &[F] {
+		&self.gruen34.eval_point()[..self.n_vars()]
+	}
+}
+
 enum RoundCoeffsOrEval<F: Field> {
 	Coeffs(RoundCoeffs<F>),
 	Eval(F),
@@ -153,7 +164,7 @@ mod tests {
 	use rand::{SeedableRng, prelude::StdRng};
 
 	use super::*;
-	use crate::protocols::sumcheck::prove::prove_single;
+	use crate::protocols::sumcheck::{MleToSumCheckAdaptor, prove::prove_single};
 
 	#[test]
 	fn test_bivariate_product_mlecheck() {
@@ -177,12 +188,13 @@ mod tests {
 		let eval_claim = evaluate(&product_buffer, &eval_point).unwrap();
 
 		// Create the prover
-		let prover = BivariateProductMlecheckProver::new(
+		let mlecheck_prover = BivariateProductMlecheckProver::new(
 			[multilinear_a.clone(), multilinear_b.clone()],
 			&eval_point,
 			eval_claim,
 		)
 		.unwrap();
+		let prover = MleToSumCheckAdaptor::new(mlecheck_prover);
 
 		// Run the proving protocol
 		let mut prover_transcript = ProverTranscript::new(StdChallenger::default());

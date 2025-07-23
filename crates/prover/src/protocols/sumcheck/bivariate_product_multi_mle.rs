@@ -11,6 +11,7 @@ use binius_verifier::protocols::sumcheck::RoundCoeffs;
 use itertools::{Itertools, izip};
 
 use super::{common::SumcheckProver, error::Error, gruen34::Gruen34, round_evals::RoundEvals2};
+use crate::protocols::sumcheck::common::MleCheckProver;
 
 enum RoundCoeffsOrSums<F: Field> {
 	Coeffs(Vec<RoundCoeffs<F>>),
@@ -118,11 +119,15 @@ where
 				|lhs, rhs| Ok(izip!(lhs, rhs).map(|(l, r)| l + &r).collect()),
 			)?;
 
-		let (prime_coeffs, round_coeffs) = izip!(sums, packed_prime_evals)
-			.map(|(&sum, evals)| self.gruen34.interpolate2(sum, evals.sum_scalars()))
-			.unzip::<_, _, Vec<_>, Vec<_>>();
+		let alpha = self.gruen34.next_coordinate();
+		let round_coeffs = izip!(sums, packed_prime_evals)
+			.map(|(&sum, packed_evals)| {
+				let round_evals = packed_evals.sum_scalars();
+				round_evals.interpolate_eq(sum, alpha)
+			})
+			.collect::<Vec<_>>();
 
-		self.last_coeffs_or_sums = RoundCoeffsOrSums::Coeffs(prime_coeffs);
+		self.last_coeffs_or_sums = RoundCoeffsOrSums::Coeffs(round_coeffs.clone());
 		Ok(round_coeffs)
 	}
 
@@ -167,6 +172,16 @@ where
 	}
 }
 
+impl<F, P> MleCheckProver<F> for BivariateProductMultiMlecheckProver<P>
+where
+	F: Field,
+	P: PackedField<Scalar = F>,
+{
+	fn eval_point(&self) -> &[F] {
+		self.gruen34.eval_point()
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use std::iter::repeat_with;
@@ -179,6 +194,7 @@ mod tests {
 	use rand::{SeedableRng, rngs::StdRng};
 
 	use super::*;
+	use crate::protocols::sumcheck::MleToSumCheckAdaptor;
 
 	fn test_bivariate_product_multi_mlecheck_consistency_helper<
 		F: Field,
@@ -220,9 +236,10 @@ mod tests {
 			})
 			.collect_vec();
 
-		let mut prover =
+		let mlecheck_prover =
 			BivariateProductMultiMlecheckProver::new(multilinears, &eval_point, &eval_claims)
 				.unwrap();
+		let mut prover = MleToSumCheckAdaptor::new(mlecheck_prover);
 
 		// Append eq indicator at the end
 		folded_multilinears.push(eq_ind_partial_eval(&eval_point));

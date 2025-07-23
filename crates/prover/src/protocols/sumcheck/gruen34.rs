@@ -31,6 +31,15 @@ impl<F: Field, P: PackedField<Scalar = F>> Gruen34<P> {
 		}
 	}
 
+	pub fn eval_point(&self) -> &[F] {
+		&self.eval_point
+	}
+
+	/// Returns the coordinate value of the evaluation point for the next variable to be bound.
+	pub fn next_coordinate(&self) -> F {
+		self.eval_point[self.n_vars_remaining - 1]
+	}
+
 	pub fn eq_expansion(&self) -> &FieldBuffer<P> {
 		&self.eq_expansion
 	}
@@ -39,12 +48,13 @@ impl<F: Field, P: PackedField<Scalar = F>> Gruen34<P> {
 		self.n_vars_remaining
 	}
 
+	#[allow(dead_code)]
 	pub fn interpolate2(
 		&self,
 		sum: F,
 		round_evals: RoundEvals2<F>,
 	) -> (RoundCoeffs<F>, RoundCoeffs<F>) {
-		let alpha = self.eval_point[self.n_vars_remaining - 1];
+		let alpha = self.next_coordinate();
 		let prime_coeffs = round_evals.interpolate_eq(sum, alpha);
 		let round_coeffs = round_coeffs_by_eq(&prime_coeffs, alpha) * self.eq_prefix_eval;
 		(prime_coeffs, round_coeffs)
@@ -58,7 +68,7 @@ impl<F: Field, P: PackedField<Scalar = F>> Gruen34<P> {
 			eq_ind_truncate_low_inplace(&mut self.eq_expansion, self.n_vars_remaining - 2)?;
 		}
 
-		let alpha = self.eval_point[self.n_vars_remaining - 1];
+		let alpha = self.next_coordinate();
 		self.eq_prefix_eval *= eq_one_var(challenge, alpha);
 
 		self.n_vars_remaining -= 1;
