@@ -63,12 +63,10 @@ jobs:
         run: RUSTFLAGS="-C target-cpu=native" cargo test -p binius-utils --features platform-diagnostics test_platform_diagnostics -- --nocapture
       - name: Run clippy
         run: cargo clippy --all --all-features --tests --benches --examples -- -D warnings
-      - name: Run tests (binius-field)
-        run: cargo test -p binius-field -j 4
       - name: Run tests (other crates)
-        run: cargo test --workspace --exclude binius-field -j 4
+        run: cargo test --workspace -j 6
       - name: Run tests (all-features)
-        run: cargo test --all --all-features -j 4
+        run: cargo test --all --all-features -j 6
 
   rust-doc:
     name: rust-doc
