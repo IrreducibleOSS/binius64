@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod test {
-	use binius_field::{AESTowerField8b, Field, PackedBinaryField128x1b, Random};
+	use binius_field::{
+		AESTowerField8b, Field, PackedAESBinaryField16x8b, PackedBinaryField128x1b, Random,
+	};
 	use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval};
 	use binius_transcript::ProverTranscript;
 	use binius_verifier::{
@@ -66,7 +68,7 @@ mod test {
 			.map(|x| AESTowerField8b::new(x as u8))
 			.collect();
 
-		let lookup = precompute_lookup(&onto_domain);
+		let lookup = precompute_lookup::<PackedAESBinaryField16x8b, _>(&onto_domain);
 
 		let first_round_message = univariate_round_message(
 			&mlv_1,
