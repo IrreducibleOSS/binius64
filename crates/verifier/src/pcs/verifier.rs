@@ -10,12 +10,12 @@ use binius_transcript::{
 use binius_utils::DeserializeBytes;
 
 use crate::{
-	fields::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme,
+	Error, fields::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme,
 	protocols::basefold::verifier::verify_transcript as verify_basefold_transcript,
 	ring_switch::verifier::eval_rs_eq,
 };
 
-/// Verifies a ring switched pcs proof from the final transcript.
+/// Verifies a ring switched pcs proof from the final transcript
 ///
 /// The verifier first checks the initial ring switching phase of the proof for
 /// completeness.Then, he verifies the underlying large field pcs using the
@@ -28,7 +28,7 @@ use crate::{
 /// * `eval_point` - the evaluation point of the prover
 /// * `codeword_commitment` - VCS commitment to the codeword
 /// * `fri_params` - the FRI parameters
-/// * `vcs` - the VCS
+/// * `vcs` - the vector commitment scheme
 pub fn verify_transcript<F, FA, TranscriptChallenger, VCS>(
 	transcript: &mut VerifierTranscript<TranscriptChallenger>,
 	evaluation_claim: F,
@@ -36,7 +36,7 @@ pub fn verify_transcript<F, FA, TranscriptChallenger, VCS>(
 	codeword_commitment: VCS::Digest,
 	fri_params: &FRIParams<F, FA>,
 	vcs: &VCS,
-) -> Result<(), String>
+) -> Result<(), Error>
 where
 	F: Field
 		+ BinaryField
@@ -50,11 +50,10 @@ where
 {
 	let packing_degree = <F as ExtensionField<B1>>::LOG_DEGREE;
 
-	// partial evals of packed mle at high degree vars
+	// packed mle  partial evals of at high variables
 	let s_hat_v = transcript
 		.message()
-		.read_scalar_slice::<F>(1 << packing_degree)
-		.expect("failed to read s_hat_v");
+		.read_scalar_slice::<F>(1 << packing_degree)?;
 
 	// check initial message is partial eval
 	let (eval_point_low, _) = eval_point.split_at(packing_degree);
@@ -86,10 +85,7 @@ where
 		fri_params,
 		vcs,
 		eval_point.len() - packing_degree,
-	)
-	.expect("failed to verify basefold transcript");
-
-	// Final basefold verification
+	)?;
 
 	let (_, eval_point_high) = eval_point.split_at(packing_degree);
 
