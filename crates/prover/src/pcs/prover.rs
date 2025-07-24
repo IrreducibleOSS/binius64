@@ -9,7 +9,6 @@ use binius_transcript::{
 };
 use binius_utils::SerializeBytes;
 use binius_verifier::{fields::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme};
-use itertools::Itertools;
 
 use crate::{
 	Error, merkle_tree::MerkleTreeProver, protocols::basefold::prover::BaseFoldProver,
@@ -95,7 +94,7 @@ where
 		// basis decompose/recombine s_hat_v across opposite dimension
 		let s_hat_u: Vec<F> = <TensorAlgebra<B1, F>>::new(s_hat_v).transpose().elems;
 
-		let r_double_prime: Vec<F> = prover_samples_batching_scalars(transcript)?;
+		let r_double_prime: Vec<F> = transcript.sample_vec(<F as ExtensionField<B1>>::LOG_DEGREE);
 
 		let eq_r_double_prime = eq_ind_partial_eval(&r_double_prime);
 
@@ -209,19 +208,6 @@ where
 			fri_params,
 		)
 	}
-}
-
-/// Samples batching scalars from the prover's mutable transcript.
-///
-/// ## Arguments
-///
-/// * `transcript` - mutable transcript of the prover's proof
-pub fn prover_samples_batching_scalars<F: Field + TowerField, TranscriptChallenger: Challenger>(
-	transcript: &mut ProverTranscript<TranscriptChallenger>,
-) -> Result<Vec<F>, Error> {
-	Ok((0..F::LOG_DEGREE)
-		.map(|_| transcript.sample())
-		.collect_vec())
 }
 
 #[cfg(test)]
