@@ -16,6 +16,8 @@ pub enum Error {
 	ArgumentRangeError { arg: String, range: Range<usize> },
 	#[error("buffer length must be a power of two")]
 	PowerOfTwoLengthRequired,
+	#[error("tensor and/or multilinear sizes do not match during fold")]
+	FoldLengthMismatch,
 	#[error("cannot split a buffer of length 1")]
 	CannotSplit,
 }

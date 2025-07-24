@@ -22,12 +22,21 @@ use crate::Error;
 /// This struct maintains a set of invariants:
 ///  1) `values.len()` is a power of two
 ///  2) `values.len() >= 1 << log_len.saturating_sub(P::LOG_WIDTH)`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Eq)]
 pub struct FieldBuffer<P: PackedField, Data: Deref<Target = [P]> = Box<[P]>> {
 	/// log2 the number over elements in the buffer.
 	log_len: usize,
 	/// The packed values.
 	values: Data,
+}
+
+impl<P: PackedField, Data: Deref<Target = [P]>> PartialEq for FieldBuffer<P, Data> {
+	fn eq(&self, other: &Self) -> bool {
+		// Custom equality impl is needed because values beyond length until capacity can be
+		// arbitrary.
+		let prefix = 1 << self.log_len.saturating_sub(P::LOG_WIDTH);
+		self.log_len == other.log_len && self.values[..prefix] == other.values[..prefix]
+	}
 }
 
 impl<P: PackedField> FieldBuffer<P> {

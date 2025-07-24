@@ -18,6 +18,7 @@ itertools.workspace = true
 rayon = { optional = true, workspace = true }
 regex = { workspace = true, optional = true }
 thiserror.workspace = true
+trait-set.workspace = true
 
 [dev-dependencies]
 rand = { workspace = true, features = ["std_rng"] }

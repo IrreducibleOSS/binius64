@@ -79,7 +79,11 @@ where
 
 		assert!(self.n_vars() > 0);
 
-		// Perform chunked summation to only ever read the equality indicator expansion once
+		// Perform chunked summation: for every row, evaluate all compositions and add up
+		// results to an array of round evals accumulators. Alternative would be to sum each
+		// composition on its own pass, but that would require reading the entirety of eq field
+		// buffer on each pass, which will evict the latter from the cache. By doing chunked
+		// compute, we reasonably hope that eq chunk always stays in L1 cache.
 		const MAX_CHUNK_VARS: usize = 12;
 		let chunk_vars = max(MAX_CHUNK_VARS, P::LOG_WIDTH).min(self.n_vars() - 1);
 
