@@ -183,7 +183,7 @@ mod test {
 	use binius_field::Field;
 	use binius_math::{
 		FieldBuffer, ReedSolomonCode,
-		inner_product::inner_product_packed,
+		inner_product::inner_product_buffers,
 		multilinear::eq::eq_ind_partial_eval,
 		ntt::SingleThreadedNTT,
 		test_utils::{random_field_buffer, random_scalars},
@@ -289,7 +289,7 @@ mod test {
 		let evaluation_point = random_scalars(&mut rng, n_vars);
 
 		let eval_point_eq = eq_ind_partial_eval(&evaluation_point);
-		let evaluation_claim = inner_product_packed(&multilinear, &eval_point_eq);
+		let evaluation_claim = inner_product_buffers(&multilinear, &eval_point_eq);
 
 		match run_basefold_prove_and_verify(multilinear, evaluation_point, evaluation_claim) {
 			Ok(()) => {}
@@ -310,7 +310,7 @@ mod test {
 		let eval_point_eq = eq_ind_partial_eval(&evaluation_point);
 
 		// dubiously modified claim
-		let mut evaluation_claim = inner_product_packed(&multilinear, &eval_point_eq);
+		let mut evaluation_claim = inner_product_buffers(&multilinear, &eval_point_eq);
 		evaluation_claim += F::ONE;
 
 		if let Ok(()) =

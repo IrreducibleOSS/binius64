@@ -6,7 +6,7 @@ use binius_field::{Field, PackedField};
 use binius_utils::rayon::prelude::*;
 
 use crate::{
-	Error, FieldBuffer, inner_product::inner_product_packed, multilinear::eq::eq_ind_partial_eval,
+	Error, FieldBuffer, inner_product::inner_product_buffers, multilinear::eq::eq_ind_partial_eval,
 };
 
 /// Evaluates a multilinear polynomial at a given point using sqrt(n) memory.
@@ -50,7 +50,7 @@ where
 	// Collect inner products of chunks into scalar values
 	let scalars = evals
 		.chunks_par(log_chunk_size)?
-		.map(|chunk| inner_product_packed(&chunk, &eq_tensor))
+		.map(|chunk| inner_product_buffers(&chunk, &eq_tensor))
 		.collect::<Vec<_>>();
 
 	// Create temporary buffer from collected scalar values

@@ -12,6 +12,7 @@ use binius_transcript::{
 use binius_verifier::protocols::mlecheck;
 
 use super::{common::SumcheckProver, error::Error};
+use crate::protocols::sumcheck::common::MleCheckProver;
 
 /// Executes the sumcheck proving protocol for a single multivariate polynomial.
 ///
@@ -85,7 +86,7 @@ pub fn prove_single<F: Field, Challenger_: Challenger>(
 ///
 /// Analogous to [`prove_single`] for the MLE-check protocol instead of sumcheck.
 pub fn prove_single_mlecheck<F: Field, Challenger_: Challenger>(
-	mut prover: impl SumcheckProver<F>,
+	mut prover: impl MleCheckProver<F>,
 	transcript: &mut ProverTranscript<Challenger_>,
 ) -> Result<ProveSingleOutput<F>, Error> {
 	let n_vars = prover.n_vars();

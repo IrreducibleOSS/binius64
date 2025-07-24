@@ -56,7 +56,7 @@ mod test {
 	use binius_field::{BinaryField1b, BinaryField128b, ExtensionField};
 	use binius_math::{
 		FieldBuffer,
-		inner_product::inner_product_packed,
+		inner_product::inner_product_buffers,
 		multilinear::eq::eq_ind_partial_eval,
 		test_utils::{index_to_hypercube_point, random_scalars},
 	};
@@ -118,7 +118,7 @@ mod test {
 		// compare eval against inner product w/ eq ind mle of eval point
 
 		let tensor_expanded_eval_point = eq_ind_partial_eval::<FE>(&eval_point);
-		let expected_eval = inner_product_packed(&rs_eq, &tensor_expanded_eval_point);
+		let expected_eval = inner_product_buffers(&rs_eq, &tensor_expanded_eval_point);
 
 		let actual_eval =
 			eval_rs_eq::<F, FE>(&z_vals, &eval_point, row_batching_expanded_query.as_ref());
