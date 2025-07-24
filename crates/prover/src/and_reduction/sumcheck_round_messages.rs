@@ -195,6 +195,8 @@ mod test {
 
 		let ntt_lookup = NTTLookup::<PackedAESBinaryField16x8b>::new(&onto_domain);
 
+		
+		// Prover generates first round message
 		let first_round_message = univariate_round_message(
 			&mlv_1,
 			&mlv_2,
@@ -205,6 +207,7 @@ mod test {
 			big_field_zerocheck_challenges[0],
 		);
 
+		// Verifier checks the accuracy of the message by challenging the prover and folding polynomials transparently
 		let first_sumcheck_challenge = B128::random(&mut rng);
 		let expected_next_round_sum =
 			first_round_message.evaluate_at_challenge(first_sumcheck_challenge);
