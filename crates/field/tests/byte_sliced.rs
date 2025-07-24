@@ -28,7 +28,7 @@ macro_rules! define_byte_sliced_test {
 			#[test]
 			fn check_from_fn() {
 				let mut rng = StdRng::seed_from_u64(0);
-				let scalar_elems = random_scalars::<$associated_packed>(&mut rng);
+				let scalar_elems = random_scalars::<$name>(&mut rng);
 
 				let bytesliced = <$name>::from_fn(|i| scalar_elems[i]);
 				for i in 0..<$name>::WIDTH {
@@ -39,8 +39,8 @@ macro_rules! define_byte_sliced_test {
 			#[test]
 			fn check_add() {
 				let mut rng = StdRng::seed_from_u64(0);
-				let scalar_elems_a = random_scalars::<$associated_packed>(&mut rng);
-				let scalar_elems_b = random_scalars::<$associated_packed>(&mut rng);
+				let scalar_elems_a = random_scalars::<$name>(&mut rng);
+				let scalar_elems_b = random_scalars::<$name>(&mut rng);
 
 				let bytesliced_a = <$name>::from_scalars(scalar_elems_a.iter().copied());
 				let bytesliced_b = <$name>::from_scalars(scalar_elems_b.iter().copied());
@@ -55,8 +55,8 @@ macro_rules! define_byte_sliced_test {
 			#[test]
 			fn check_add_assign() {
 				let mut rng = StdRng::seed_from_u64(0);
-				let scalar_elems_a = random_scalars::<$associated_packed>(&mut rng);
-				let scalar_elems_b = random_scalars::<$associated_packed>(&mut rng);
+				let scalar_elems_a = random_scalars::<$name>(&mut rng);
+				let scalar_elems_b = random_scalars::<$name>(&mut rng);
 
 				let mut bytesliced_a = <$name>::from_scalars(scalar_elems_a.iter().copied());
 				let bytesliced_b = <$name>::from_scalars(scalar_elems_b.iter().copied());
@@ -71,8 +71,8 @@ macro_rules! define_byte_sliced_test {
 			#[test]
 			fn check_sub() {
 				let mut rng = StdRng::seed_from_u64(0);
-				let scalar_elems_a = random_scalars::<$associated_packed>(&mut rng);
-				let scalar_elems_b = random_scalars::<$associated_packed>(&mut rng);
+				let scalar_elems_a = random_scalars::<$name>(&mut rng);
+				let scalar_elems_b = random_scalars::<$name>(&mut rng);
 
 				let bytesliced_a = <$name>::from_scalars(scalar_elems_a.iter().copied());
 				let bytesliced_b = <$name>::from_scalars(scalar_elems_b.iter().copied());
@@ -87,8 +87,8 @@ macro_rules! define_byte_sliced_test {
 			#[test]
 			fn check_sub_assign() {
 				let mut rng = StdRng::seed_from_u64(0);
-				let scalar_elems_a = random_scalars::<$associated_packed>(&mut rng);
-				let scalar_elems_b = random_scalars::<$associated_packed>(&mut rng);
+				let scalar_elems_a = random_scalars::<$name>(&mut rng);
+				let scalar_elems_b = random_scalars::<$name>(&mut rng);
 
 				let mut bytesliced_a = <$name>::from_scalars(scalar_elems_a.iter().copied());
 				let bytesliced_b = <$name>::from_scalars(scalar_elems_b.iter().copied());
@@ -103,8 +103,8 @@ macro_rules! define_byte_sliced_test {
 			#[test]
 			fn check_mul() {
 				let mut rng = StdRng::seed_from_u64(0);
-				let scalar_elems_a = random_scalars::<$associated_packed>(&mut rng);
-				let scalar_elems_b = random_scalars::<$associated_packed>(&mut rng);
+				let scalar_elems_a = random_scalars::<$name>(&mut rng);
+				let scalar_elems_b = random_scalars::<$name>(&mut rng);
 
 				let bytesliced_a = <$name>::from_scalars(scalar_elems_a.iter().copied());
 				let bytesliced_b = <$name>::from_scalars(scalar_elems_b.iter().copied());
@@ -119,8 +119,8 @@ macro_rules! define_byte_sliced_test {
 			#[test]
 			fn check_mul_assign() {
 				let mut rng = StdRng::seed_from_u64(0);
-				let scalar_elems_a = random_scalars::<$associated_packed>(&mut rng);
-				let scalar_elems_b = random_scalars::<$associated_packed>(&mut rng);
+				let scalar_elems_a = random_scalars::<$name>(&mut rng);
+				let scalar_elems_b = random_scalars::<$name>(&mut rng);
 
 				let mut bytesliced_a = <$name>::from_scalars(scalar_elems_a.iter().copied());
 				let bytesliced_b = <$name>::from_scalars(scalar_elems_b.iter().copied());
@@ -135,7 +135,7 @@ macro_rules! define_byte_sliced_test {
 			#[test]
 			fn check_inv() {
 				let mut rng = StdRng::seed_from_u64(0);
-				let scalar_elems = random_scalars::<$associated_packed>(&mut rng);
+				let scalar_elems = random_scalars::<$name>(&mut rng);
 
 				let bytesliced = <$name>::from_scalars(scalar_elems.iter().copied());
 
@@ -149,7 +149,7 @@ macro_rules! define_byte_sliced_test {
 			#[test]
 			fn check_square() {
 				let mut rng = StdRng::seed_from_u64(0);
-				let scalar_elems = random_scalars::<$associated_packed>(&mut rng);
+				let scalar_elems = random_scalars::<$name>(&mut rng);
 
 				let bytesliced = <$name>::from_scalars(scalar_elems.iter().copied());
 
@@ -168,7 +168,7 @@ macro_rules! define_byte_sliced_test {
 				use rand::{SeedableRng, rngs::StdRng};
 
 				let mut rng = StdRng::seed_from_u64(0);
-				let scalar_elems = random_scalars::<$associated_packed>(&mut rng);
+				let scalar_elems = random_scalars::<$name>(&mut rng);
 
 				let bytesliced = <$name>::from_scalars(scalar_elems.iter().copied());
 
@@ -190,8 +190,8 @@ macro_rules! define_byte_sliced_test {
 			#[test]
 			fn check_interleave() {
 				let mut rng = StdRng::seed_from_u64(0);
-				let scalar_elems_a = random_scalars::<$associated_packed>(&mut rng);
-				let scalar_elems_b = random_scalars::<$associated_packed>(&mut rng);
+				let scalar_elems_a = random_scalars::<$name>(&mut rng);
+				let scalar_elems_b = random_scalars::<$name>(&mut rng);
 
 				let bytesliced_a = <$name>::from_scalars(scalar_elems_a.iter().copied());
 				let bytesliced_b = <$name>::from_scalars(scalar_elems_b.iter().copied());
@@ -225,7 +225,7 @@ macro_rules! define_byte_sliced_test {
 			#[test]
 			fn check_spread() {
 				let mut rng = StdRng::seed_from_u64(0);
-				let scalar_elems = random_scalars::<$associated_packed>(&mut rng);
+				let scalar_elems = random_scalars::<$name>(&mut rng);
 
 				let bytesliced = <$name>::from_scalars(scalar_elems.iter().copied());
 
@@ -252,7 +252,7 @@ macro_rules! define_byte_sliced_test {
 			#[test]
 			fn check_transpose_to() {
 				let mut rng = StdRng::seed_from_u64(0);
-				let scalar_elems = random_scalars::<$associated_packed>(&mut rng);
+				let scalar_elems = random_scalars::<$name>(&mut rng);
 
 				let bytesliced = <$name>::from_scalars(scalar_elems.iter().copied());
 				let mut destination = [<$associated_packed>::zero(); <$name>::HEIGHT_BYTES];
@@ -266,7 +266,7 @@ macro_rules! define_byte_sliced_test {
 			#[test]
 			fn check_transpose_from() {
 				let mut rng = StdRng::seed_from_u64(0);
-				let scalar_elems = random_scalars::<$associated_packed>(&mut rng);
+				let scalar_elems = random_scalars::<$name>(&mut rng);
 
 				let mut destination = [<$associated_packed>::zero(); <$name>::HEIGHT_BYTES];
 				for i in 0..<$name>::WIDTH {
