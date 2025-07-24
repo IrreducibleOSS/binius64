@@ -4,6 +4,7 @@ use crate::{
 		concat::{Concat, Term},
 		fixed_byte_vec::FixedByteVec,
 		jwt_claims::{Attribute, JwtClaims},
+		rs256::Rs256Verify,
 		sha256::Sha256,
 	},
 	compiler::{CircuitBuilder, Wire},
@@ -49,6 +50,8 @@ pub struct ZkLogin {
 	pub jwt_claims_header: JwtClaims,
 	// /// The subcircuit that verifies the JWT in the payload.
 	pub jwt_claims_payload: JwtClaims,
+	/// The subcircuit that verifies the RS256 signature in the JWT.
+	pub jwt_signature_verify: Rs256Verify,
 }
 
 impl ZkLogin {
@@ -73,6 +76,9 @@ impl ZkLogin {
 		let zkaddr: [Wire; 4] = std::array::from_fn(|_| b.add_inout());
 		let vk_u: [Wire; 4] = std::array::from_fn(|_| b.add_inout());
 		let nonce: [Wire; 4] = std::array::from_fn(|_| b.add_witness());
+
+		// RSA modulus as public input (256 bytes for 2048-bit RSA)
+		let rsa_modulus = FixedByteVec::new_inout(b, 256);
 
 		// Decode JWT.
 		// 1. header
@@ -218,10 +224,13 @@ impl ZkLogin {
 		let jwt_claims_header = jwt_header_check(b, &jwt_header);
 		let jwt_claims_payload =
 			jwt_payload_check(b, &jwt_payload, &sub_byte_vec, &aud_byte_vec, &iss_byte_vec, &nonce);
+		let jwt_signature_verify =
+			Rs256Verify::new(b, jwt_signing_payload, jwt_signature, rsa_modulus);
 
 		Self {
 			jwt_claims_header,
 			jwt_claims_payload,
+			jwt_signature_verify,
 		}
 	}
 }
