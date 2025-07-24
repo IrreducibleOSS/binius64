@@ -80,23 +80,44 @@ where
 
 #[cfg(test)]
 mod test {
-	use binius_field::{AESTowerField8b, BinaryField128bPolyval, PackedField};
+	use binius_field::{AESTowerField8b, Random};
+	use itertools::Itertools;
+	use rand::{SeedableRng, rngs::StdRng};
 
 	use super::GenericPo2UnivariatePoly;
-	use crate::and_reduction::univariate::univariate_poly::UnivariatePoly;
+	use crate::{
+		and_reduction::univariate::univariate_poly::UnivariatePoly, fields::B128,
+		protocols::sumcheck::RoundCoeffs,
+	};
 
 	#[test]
 	fn univariate_po2_sanity_check() {
+		let mut rng = StdRng::from_seed([0; 32]);
+
+		let monomial_basis_coeffs = (0..64)
+			.map(|_| AESTowerField8b::random(&mut rng))
+			.collect_vec();
+		let monomial_basis_poly = RoundCoeffs(monomial_basis_coeffs.clone());
+
+		let monomial_basis_coeffs_isomorphic = monomial_basis_coeffs
+			.into_iter()
+			.map(|monomial_basis_coeff| B128::from(monomial_basis_coeff))
+			.collect_vec();
+
+		let monomial_basis_isomorphic = RoundCoeffs(monomial_basis_coeffs_isomorphic);
+
 		let v = (0..64)
 			.map(AESTowerField8b::new)
-			.map(|x| x.square())
+			.map(|x| monomial_basis_poly.evaluate(x))
 			.collect();
+
 		let poly = GenericPo2UnivariatePoly::<_, AESTowerField8b>::new(v);
-		for i in 990..1000 {
-			assert_eq!(
-				poly.evaluate_at_challenge(BinaryField128bPolyval::from(i as u128)),
-				BinaryField128bPolyval::from(i as u128).square()
-			);
-		}
+
+		let random_point = B128::random(&mut rng);
+
+		assert_eq!(
+			poly.evaluate_at_challenge(random_point),
+			monomial_basis_isomorphic.evaluate(random_point)
+		);
 	}
 }
