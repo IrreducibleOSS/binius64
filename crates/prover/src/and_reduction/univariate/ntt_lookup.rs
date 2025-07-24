@@ -126,6 +126,7 @@ mod test {
 
 	use super::{NTTLookup, ROWS_PER_HYPERCUBE_VERTEX};
 
+	// TODO test against binius NTT
 	#[test]
 	fn assert_accurate_ntt_on_well_known_poly() {
 		let output_domain: Vec<_> = (ROWS_PER_HYPERCUBE_VERTEX..2 * ROWS_PER_HYPERCUBE_VERTEX)
