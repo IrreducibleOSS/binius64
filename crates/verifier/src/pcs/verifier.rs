@@ -11,8 +11,9 @@ use binius_transcript::{
 };
 use binius_utils::DeserializeBytes;
 
+use super::Error;
 use crate::{
-	Error, fields::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme,
+	fields::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme,
 	protocols::basefold::verifier::verify_transcript as verify_basefold_transcript,
 	ring_switch::verifier::eval_rs_eq,
 };
@@ -59,13 +60,17 @@ where
 
 	// check valid partial eval
 	let (eval_point_low, _) = eval_point.split_at(packing_degree);
-	assert_eq!(
-		evaluation_claim,
-		inner_product::<F>(
-			s_hat_v.clone(),
-			eq_ind_partial_eval(eval_point_low).as_ref().iter().copied()
-		)
+	let computed_claim = inner_product::<F>(
+		s_hat_v.clone(),
+		eq_ind_partial_eval(eval_point_low).as_ref().iter().copied(),
 	);
+
+	if evaluation_claim != computed_claim {
+		return Err(Error::EvaluationClaimMismatch {
+			expected: format!("{:?}", computed_claim),
+			actual: format!("{:?}", evaluation_claim),
+		});
+	}
 
 	// basis decompose/recombine s_hat_v across opposite dimension
 	let s_hat_u: Vec<F> = <TensorAlgebra<B1, F>>::new(s_hat_v).transpose().elems;
@@ -85,7 +90,8 @@ where
 		fri_params,
 		vcs,
 		eval_point.len() - packing_degree,
-	)?;
+	)
+	.map_err(|e| Error::BasefoldVerification(e.to_string()))?;
 
 	let (_, eval_point_high) = eval_point.split_at(packing_degree);
 
@@ -95,7 +101,9 @@ where
 		eq_ind_partial_eval(&batching_scalars).as_ref(),
 	);
 
-	assert_eq!(final_fri_oracle * rs_eq_at_basefold_challenges, sumcheck_output.eval);
+	if sumcheck_output.eval != final_fri_oracle * rs_eq_at_basefold_challenges {
+		return Err(Error::FriOracleVerificationFailed);
+	}
 
 	Ok(())
 }
