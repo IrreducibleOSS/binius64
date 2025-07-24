@@ -13,38 +13,18 @@ use crate::{
 /// Convert a FixedByteVec with big-endian byte ordering to a BigNum.
 ///
 /// This function converts a FixedByteVec containing a packed representation of
-/// bytes with big-endian ordering (see `FixedByteVec::populate_bytes`) to a
-/// BigNum that's compatible with BigNum arithmetic.
+/// bytes with big-endian ordering to a BigNum that's compatible with BigNum arithmetic.
 ///
 /// # Arguments
-/// * `builder` - Circuit builder
 /// * `byte_vec` - FixedByteVec containing bytes in big-endian order, with each wire containing 8
-///   bytes packed in little-endian order
+///   bytes packed as a big-endian u64
 ///
 /// # Returns
-/// A vector of 32 wires representing the corresponding BigNum
-fn fixedbytevec_be_to_bignum(builder: &mut CircuitBuilder, byte_vec: &FixedByteVec) -> BigNum {
-	let mut limbs = Vec::new();
-
-	// Reverse wires to convert from big-endian to little-endian byte ordering.
-	for packed_wire in byte_vec.data.clone().into_iter().rev() {
-		let mut bytes = Vec::with_capacity(8);
-		for i in 0..8 {
-			bytes.push(builder.extract_byte(packed_wire, i));
-		}
-
-		// Combine the bytes of each wire to a 64-bit big-endian word to be
-		// compatible with BigNum arithmetic
-		let mut be_word = bytes[7];
-		for i in 1..8 {
-			let shifted = builder.shl(bytes[7 - i], (i * 8) as u32);
-			be_word = builder.bor(be_word, shifted);
-		}
-
-		limbs.push(be_word);
+/// A BigNum with limbs in little-endian order (least significant limb first)
+fn fixedbytevec_be_to_bignum(byte_vec: &FixedByteVec) -> BigNum {
+	BigNum {
+		limbs: byte_vec.data.iter().rev().cloned().collect(),
 	}
-
-	BigNum { limbs }
 }
 
 /// RS256 signature verification circuit (internal implementation)
@@ -87,10 +67,10 @@ impl Rs256Verify {
 	/// * `message` - A FixedByteVec containing the plaintext message
 	/// * `signature` - The RSA signature as a FixedByteVec (256 bytes for 2048-bit RSA). The
 	///   signature should be in big-endian byte order (standard JWT/RSA format). Each wire in the
-	///   FixedByteVec contains 8 bytes packed in little-endian order.
+	///   FixedByteVec contains 8 bytes packed as a big-endian u64.
 	/// * `modulus` - The RSA modulus as a FixedByteVec (256 bytes for 2048-bit RSA). The modulus
 	///   should be in big-endian byte order (standard RSA format). Each wire in the FixedByteVec
-	///   contains 8 bytes packed in little-endian order.
+	///   contains 8 bytes packed as a big-endian u64.
 	///
 	/// # Panics
 	/// * If signature_bytes does not have enough space for 256 bytes
@@ -115,10 +95,10 @@ impl Rs256Verify {
 		);
 		assert!(modulus.max_len.is_multiple_of(8), "modulus_bytes max_len must be multiple of 8");
 
-		let signature_bignum = fixedbytevec_be_to_bignum(builder, &signature);
+		let signature_bignum = fixedbytevec_be_to_bignum(&signature);
 		builder.assert_eq("signature_bytes_len", signature.len, builder.add_constant_64(256));
 
-		let modulus_bignum = fixedbytevec_be_to_bignum(builder, &modulus);
+		let modulus_bignum = fixedbytevec_be_to_bignum(&modulus);
 		builder.assert_eq("modulus_bytes_len", modulus.len, builder.add_constant_64(256));
 
 		let mut sha256_builder = builder.subcircuit("sha256");

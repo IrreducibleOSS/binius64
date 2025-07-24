@@ -42,7 +42,7 @@ impl FixedByteVec {
 
 	/// Populate the FixedByteVec with bytes.
 	///
-	/// This method packs bytes into 64-bit words using little-endian ordering,
+	/// This method packs bytes into 64-bit words using big-endian ordering,
 	///
 	/// # Panics
 	/// * If bytes.len() exceeds self.max_len
@@ -54,12 +54,12 @@ impl FixedByteVec {
 			self.max_len
 		);
 
-		// Pack bytes into 64-bit words (little-endian)
+		// Pack bytes into 64-bit words (big-endian)
 		for (i, chunk) in bytes.chunks(8).enumerate() {
 			if i < self.data.len() {
 				let mut word = 0u64;
 				for (j, &byte) in chunk.iter().enumerate() {
-					word |= (byte as u64) << (j * 8);
+					word |= (byte as u64) << ((7 - j) * 8);
 				}
 				w[self.data[i]] = Word(word);
 			}

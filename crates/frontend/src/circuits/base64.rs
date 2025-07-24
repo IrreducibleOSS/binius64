@@ -23,8 +23,8 @@ use crate::{
 ///
 /// # Input Packing
 ///
-/// - decoded: Pack 8 bytes per 64-bit word
-/// - encoded: Pack 8 base64 characters per 64-bit word
+/// - decoded: Pack 8 bytes per 64-bit word in big-endian format
+/// - encoded: Pack 8 base64 characters per 64-bit word in big-endian format
 /// - len_decoded: Single 64-bit word containing byte count
 pub struct Base64UrlSafe {
 	/// Decoded data array (packed 8 bytes per word).
@@ -135,12 +135,12 @@ impl Base64UrlSafe {
 			self.max_len_decoded,
 		);
 
-		// Pack bytes into 64-bit words (little-endian)
+		// Pack bytes into 64-bit words (big-endian)
 		for (i, chunk) in data.chunks(8).enumerate() {
 			if i < self.decoded.len() {
 				let mut word = 0u64;
 				for (j, &byte) in chunk.iter().enumerate() {
-					word |= (byte as u64) << (j * 8);
+					word |= (byte as u64) << ((7 - j) * 8);
 				}
 				w[self.decoded[i]] = Word(word);
 			}
@@ -171,12 +171,12 @@ impl Base64UrlSafe {
 			max_bytes
 		);
 
-		// Pack bytes into 64-bit words (little-endian)
+		// Pack bytes into 64-bit words (big-endian)
 		for (i, chunk) in data.chunks(8).enumerate() {
 			if i < self.encoded.len() {
 				let mut word = 0u64;
 				for (j, &byte) in chunk.iter().enumerate() {
-					word |= (byte as u64) << (j * 8);
+					word |= (byte as u64) << ((7 - j) * 8);
 				}
 				w[self.encoded[i]] = Word(word);
 			}
@@ -272,7 +272,7 @@ fn verify_base64_group(
 /// # Arguments
 ///
 /// * `builder` - Circuit builder
-/// * `words` - Array of 64-bit words, each containing 8 packed bytes
+/// * `words` - Array of 64-bit words, each containing 8 packed bytes in big-endian format
 /// * `byte_idx` - Global byte index to extract
 ///
 /// # Returns
@@ -288,7 +288,8 @@ fn extract_byte(builder: &CircuitBuilder, words: &[Wire], byte_idx: usize) -> Wi
 	}
 
 	let word = words[word_idx];
-	builder.extract_byte(word, byte_offset as u32)
+	let big_endian_offset = 7 - byte_offset;
+	builder.extract_byte(word, big_endian_offset as u32)
 }
 
 /// Computes the number of valid bytes in a base64 group.
