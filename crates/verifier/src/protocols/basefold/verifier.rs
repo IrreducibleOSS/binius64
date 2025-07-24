@@ -133,7 +133,7 @@ where
 /// # Returns
 ///
 /// A boolean indicating if the final FRI oracle is consistent with the sumcheck claim.
-pub fn final_basefold_assertion<F: Field>(
+pub fn sumcheck_fri_consistency<F: Field>(
 	fri_final_oracle: F,
 	sumcheck_final_claim: F,
 	evaluation_point: &[F],
