@@ -8,6 +8,8 @@ mod par_bridge;
 mod parallel_iterator;
 mod parallel_wrapper;
 
+pub use core::iter::{empty, once, repeat, repeat_n as repeatn};
+
 pub use from_parallel_iterator::FromParallelIterator;
 pub use indexed_parallel_iterator::IndexedParallelIterator;
 pub(super) use indexed_parallel_iterator::IndexedParallelIteratorInner;

@@ -1,14 +1,11 @@
-use binius_field::{Field, PackedExtension, PackedField};
+use binius_field::{PackedExtension, PackedField};
 use binius_frontend::{constraint_system::ValueVec, word::Word};
 use binius_math::{FieldBuffer, ntt::AdditiveNTT};
 use binius_transcript::{
 	ProverTranscript,
 	fiat_shamir::{CanSample, Challenger},
 };
-use binius_utils::{
-	SerializeBytes,
-	rayon::{iter::repeatn, prelude::*},
-};
+use binius_utils::{SerializeBytes, rayon::prelude::*};
 use binius_verifier::{
 	LOG_WORDS_PER_ELEM, Params, fields::B128, fri::FRIParams, merkle_tree::MerkleTreeScheme,
 };
@@ -64,23 +61,28 @@ fn pack_witness<P: PackedField<Scalar = B128>>(
 		});
 	}
 
-	let witness_elems = witness.combined_witness().par_chunks(2).map(|chunk| {
-		let word_0 = chunk.first().copied().expect("chunk cannot be empty");
-		let word_1 = chunk.get(1).copied().unwrap_or(Word::ZERO);
-		B128::new(((word_1.0 as u128) << 64) | (word_0.0 as u128))
-	});
-	let padded_witness_elems =
-		witness_elems.chain(repeatn(B128::ZERO, (1 << log_witness_elems) - n_witness_elems));
+	let mut padded_witness_elems = FieldBuffer::zeros(log_witness_elems);
+	let witness_elems = witness
+		.combined_witness()
+		.par_chunks(2 * P::WIDTH)
+		.map(|chunk| {
+			// Pack B128 elements into packed elements
+			P::from_scalars(
+				// Pack words into B128 elements
+				chunk.chunks(2).map(|word_pair| {
+					let word_0 = word_pair.first().copied().expect("chunk cannot be empty");
+					let word_1 = word_pair.get(1).copied().unwrap_or(Word::ZERO);
+					B128::new(((word_1.0 as u128) << 64) | (word_0.0 as u128))
+				}),
+			)
+		});
+	padded_witness_elems
+		.as_mut()
+		.par_iter_mut()
+		.zip(witness_elems)
+		.for_each(|(dst, elem)| *dst = elem);
 
-	let witness_packed = padded_witness_elems
-		.chunks(P::WIDTH)
-		.map(|chunk| P::from_scalars(chunk))
-		.collect::<Vec<_>>();
-	debug_assert_eq!(witness_packed.len(), 1 << log_witness_elems.saturating_sub(P::LOG_WIDTH));
-
-	let ret = FieldBuffer::new(log_witness_elems, witness_packed.into_boxed_slice())
-		.expect("witness_packed length is correct by construction");
-	Ok(ret)
+	Ok(padded_witness_elems)
 }
 
 fn run_fri<P, Challenger_, NTT, MTScheme, MTProver>(

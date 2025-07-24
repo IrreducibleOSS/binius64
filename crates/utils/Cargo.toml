@@ -24,7 +24,7 @@ trait-set.workspace = true
 rand = { workspace = true, features = ["std_rng"] }
 
 [features]
-default = ["rayon"]
+default = []
 bail_panic = []
 rayon = ["dep:rayon"]
 platform-diagnostics = ["dep:regex"]
