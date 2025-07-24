@@ -16,9 +16,6 @@ use crate::{
 	ring_switch::prover::rs_eq_ind,
 };
 
-// Small field, in our case this is B1.
-type F = B1;
-
 /// Ring switched PCS prover for non-interactively proving an evaluation claim of a one bit
 /// polynomial.
 ///
@@ -26,19 +23,19 @@ type F = B1;
 /// at a large field point. The prover first performs the ring switching phase of the proof,
 /// establishing completeness. Then, the large field pcs (basefold) is invoked to establish
 /// soundness.
-pub struct OneBitPCSProver<FE>
+pub struct OneBitPCSProver<F>
 where
-	FE: TowerField + From<u128> + PackedExtension<F>,
+	F: TowerField + PackedExtension<B1>,
 {
-	pub small_field_evaluation_claim: FE,
-	pub evaluation_claim: FE,
-	pub evaluation_point: Vec<FE>,
-	pub packed_mle: FieldBuffer<FE>,
+	pub small_field_evaluation_claim: F,
+	pub evaluation_claim: F,
+	pub evaluation_point: Vec<F>,
+	pub packed_mle: FieldBuffer<F>,
 }
 
-impl<FE> OneBitPCSProver<FE>
+impl<F> OneBitPCSProver<F>
 where
-	FE: TowerField + From<u128> + PackedExtension<F> + PackedField<Scalar = FE>,
+	F: TowerField + PackedExtension<B1> + PackedField<Scalar = F>,
 {
 	/// Create a new ring switched PCS prover.
 	///
@@ -48,9 +45,9 @@ where
 	/// * `evaluation_claim` - the evaluation claim of the small field multilinear
 	/// * `evaluation_point` - the evaluation point of the small field multilinear
 	pub fn new(
-		packed_mle: FieldBuffer<FE>,
-		evaluation_claim: FE,
-		evaluation_point: Vec<FE>,
+		packed_mle: FieldBuffer<F>,
+		evaluation_claim: F,
+		evaluation_point: Vec<F>,
 	) -> Result<Self, Error> {
 		Ok(Self {
 			small_field_evaluation_claim: evaluation_claim,
@@ -78,17 +75,17 @@ where
 		transcript: &mut ProverTranscript<TranscriptChallenger>,
 		ntt: &'a NTT,
 		merkle_prover: &'a MerkleProver,
-		fri_params: &'a FRIParams<FE, FA>,
-		committed_codeword: &'a [FE],
+		fri_params: &'a FRIParams<F, FA>,
+		committed_codeword: &'a [F],
 		committed: &'a MerkleProver::Committed,
 	) -> Result<(), Error>
 	where
 		TranscriptChallenger: Challenger,
-		FE: TowerField + ExtensionField<FA> + From<u128> + PackedExtension<F>,
+		F: TowerField + ExtensionField<FA> + PackedExtension<B1>,
 		FA: BinaryField,
 		NTT: AdditiveNTT<FA> + Sync,
-		MerkleProver: MerkleTreeProver<FE, Scheme = VCS>,
-		VCS: MerkleTreeScheme<FE, Digest: SerializeBytes>,
+		MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
+		VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 	{
 		// packed mle partial evals of at high variables
 		let s_hat_v = Self::initialize_proof(&self.packed_mle, &self.evaluation_point)?;
@@ -96,14 +93,14 @@ where
 		transcript.message().write_scalar_slice(&s_hat_v);
 
 		// basis decompose/recombine s_hat_v across opposite dimension
-		let s_hat_u: Vec<FE> = <TensorAlgebra<F, FE>>::new(s_hat_v).transpose().elems;
+		let s_hat_u: Vec<F> = <TensorAlgebra<B1, F>>::new(s_hat_v).transpose().elems;
 
-		let r_double_prime: Vec<FE> = prover_samples_batching_scalars(transcript)?;
+		let r_double_prime: Vec<F> = prover_samples_batching_scalars(transcript)?;
 
 		let eq_r_double_prime = eq_ind_partial_eval(&r_double_prime);
 
 		let computed_sumcheck_claim =
-			inner_product::<FE>(s_hat_u, eq_r_double_prime.as_ref().iter().copied());
+			inner_product::<F>(s_hat_u, eq_r_double_prime.as_ref().iter().copied());
 
 		let big_field_basefold_prover = self.setup_for_fri_sumcheck(
 			&r_double_prime,
@@ -134,21 +131,21 @@ where
 	///
 	/// * `s_hat_v` - the initial message to the verifier
 	fn initialize_proof(
-		packed_mle: &FieldBuffer<FE>,
-		evaluation_point: &[FE],
-	) -> Result<Vec<FE>, Error> {
-		let (_, eval_point_high) = evaluation_point.split_at(FE::LOG_DEGREE);
+		packed_mle: &FieldBuffer<F>,
+		evaluation_point: &[F],
+	) -> Result<Vec<F>, Error> {
+		let (_, eval_point_high) = evaluation_point.split_at(F::LOG_DEGREE);
 
-		let small_field_mle = <FE as PackedExtension<F>>::cast_bases(packed_mle.as_ref());
+		let small_field_mle = <F as PackedExtension<B1>>::cast_bases(packed_mle.as_ref());
 
-		let eq_at_high = eq_ind_partial_eval::<FE>(eval_point_high);
+		let eq_at_high = eq_ind_partial_eval::<F>(eval_point_high);
 
-		let mut s_hat_v = vec![FE::ZERO; 1 << FE::LOG_DEGREE];
+		let mut s_hat_v = vec![F::ZERO; 1 << F::LOG_DEGREE];
 
 		for (packed_elem, eq_at_high_value) in small_field_mle.iter().zip(eq_at_high.as_ref()) {
 			packed_elem.iter().enumerate().for_each(
 				|(low_vars_subcube_idx, bit_in_packed_field)| {
-					if bit_in_packed_field == F::ONE {
+					if bit_in_packed_field == B1::ONE {
 						s_hat_v[low_vars_subcube_idx] += *eq_at_high_value;
 					}
 				},
@@ -178,28 +175,28 @@ where
 	///
 	/// * `basefold_prover` - the basefold prover
 	#[allow(clippy::too_many_arguments)]
-	pub fn setup_for_fri_sumcheck<'a, FA, NTT, MerkleProver, VCS>(
+	fn setup_for_fri_sumcheck<'a, FA, NTT, MerkleProver, VCS>(
 		self,
-		r_double_prime: &[FE],
+		r_double_prime: &[F],
 		ntt: &'a NTT,
 		merkle_prover: &'a MerkleProver,
-		fri_params: &'a FRIParams<FE, FA>,
-		committed_codeword: &'a [FE],
+		fri_params: &'a FRIParams<F, FA>,
+		committed_codeword: &'a [F],
 		committed: &'a MerkleProver::Committed,
-		basefold_sumcheck_claim: FE,
-	) -> Result<BaseFoldProver<'a, FE, FA, NTT, MerkleProver, VCS>, Error>
+		basefold_sumcheck_claim: F,
+	) -> Result<BaseFoldProver<'a, F, FA, NTT, MerkleProver, VCS>, Error>
 	where
-		FE: TowerField + ExtensionField<FA> + From<u128> + PackedExtension<F>,
+		F: TowerField + ExtensionField<FA> + PackedExtension<B1>,
 		FA: BinaryField,
 		NTT: AdditiveNTT<FA> + Sync,
-		MerkleProver: MerkleTreeProver<FE, Scheme = VCS>,
-		VCS: MerkleTreeScheme<FE, Digest: SerializeBytes>,
+		MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
+		VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 	{
 		let (_, eval_point_high) = self
 			.evaluation_point
-			.split_at(<FE as ExtensionField<B1>>::LOG_DEGREE);
+			.split_at(<F as ExtensionField<B1>>::LOG_DEGREE);
 
-		let rs_eq_ind: FieldBuffer<FE> = rs_eq_ind::<B1, FE>(r_double_prime, eval_point_high);
+		let rs_eq_ind: FieldBuffer<F> = rs_eq_ind::<B1, F>(r_double_prime, eval_point_high);
 
 		BaseFoldProver::new(
 			self.packed_mle,
