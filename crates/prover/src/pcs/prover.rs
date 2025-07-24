@@ -92,14 +92,14 @@ where
 		transcript.message().write_scalar_slice(&s_hat_v);
 
 		// basis decompose/recombine s_hat_v across opposite dimension
-		let s_hat_u: Vec<F> = <TensorAlgebra<B1, F>>::new(s_hat_v).transpose().elems;
+		let s_hat_u = <TensorAlgebra<B1, F>>::new(s_hat_v).transpose().elems;
 
-		let r_double_prime: Vec<F> = transcript.sample_vec(<F as ExtensionField<B1>>::LOG_DEGREE);
+		let r_double_prime = transcript.sample_vec(<F as ExtensionField<B1>>::LOG_DEGREE);
 
 		let eq_r_double_prime = eq_ind_partial_eval(&r_double_prime);
 
 		let computed_sumcheck_claim =
-			inner_product::<F>(s_hat_u, eq_r_double_prime.as_ref().iter().copied());
+			inner_product(s_hat_u, eq_r_double_prime.as_ref().iter().copied());
 
 		let big_field_basefold_prover = self.setup_for_fri_sumcheck(
 			&r_double_prime,
@@ -195,7 +195,7 @@ where
 			.evaluation_point
 			.split_at(<F as ExtensionField<B1>>::LOG_DEGREE);
 
-		let rs_eq_ind: FieldBuffer<F> = rs_eq_ind::<B1, F>(r_double_prime, eval_point_high);
+		let rs_eq_ind = rs_eq_ind::<B1, F>(r_double_prime, eval_point_high);
 
 		BaseFoldProver::new(
 			self.packed_mle,
