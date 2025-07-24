@@ -30,6 +30,22 @@ pub struct Config {
 	pub max_len_t_max: usize,
 }
 
+impl Default for Config {
+	fn default() -> Self {
+		Self {
+			max_len_json_jwt_header: 264,
+			max_len_json_jwt_payload: 504,
+			max_len_jwt_signature: 264,
+			max_len_jwt_sub: 72,
+			max_len_jwt_aud: 72,
+			max_len_jwt_iss: 72,
+			max_len_salt: 72,
+			max_len_nonce_r: 48,
+			max_len_t_max: 48,
+		}
+	}
+}
+
 impl Config {
 	pub fn max_len_base64_jwt_header(&self) -> usize {
 		(self.max_len_json_jwt_header.div_ceil(3) * 4).next_multiple_of(8)
@@ -303,17 +319,7 @@ fn jwt_payload_check(
 #[test]
 fn smoke() {
 	let mut builder = CircuitBuilder::new();
-	let config = Config {
-		max_len_json_jwt_header: 264,
-		max_len_json_jwt_payload: 504,
-		max_len_jwt_signature: 264,
-		max_len_jwt_sub: 72,
-		max_len_jwt_aud: 72,
-		max_len_jwt_iss: 72,
-		max_len_salt: 72,
-		max_len_nonce_r: 48,
-		max_len_t_max: 48,
-	};
+	let config = Config::default();
 	println!("ZK Login circuit\nconfig: {config:#?}\n--");
 	let _zklogin = ZkLogin::new(&mut builder, config);
 	let circuit = builder.build();

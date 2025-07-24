@@ -18,44 +18,45 @@ struct ConfigCli {
 	// NOTE: all those fields is a mirror of the zklogin::Config struct.
 	//       when updating keep in sync those two.
 	/// Maximum byte length of base64 decoded JWT header (must be multiple of 24)
-	#[arg(long, default_value_t = 264, value_parser = multiple_of_24)]
-	max_len_json_jwt_header: usize,
+	#[arg(long, value_parser = multiple_of_24)]
+	max_len_json_jwt_header: Option<usize>,
 
 	/// Maximum byte length of base64 decoded JWT payload (must be multiple of 24)
-	#[arg(long, default_value_t = 504, value_parser = multiple_of_24)]
-	max_len_json_jwt_payload: usize,
+	#[arg(long, value_parser = multiple_of_24)]
+	max_len_json_jwt_payload: Option<usize>,
 
 	/// Maximum byte length of base64 decoded JWT signature (must be multiple of 24)
-	#[arg(long, default_value_t = 264, value_parser = multiple_of_24)]
-	max_len_jwt_signature: usize,
+	#[arg(long, value_parser = multiple_of_24)]
+	max_len_jwt_signature: Option<usize>,
 
 	/// Maximum byte length of JWT sub claim (must be multiple of 8)
-	#[arg(long, default_value_t = 72, value_parser = multiple_of_8)]
-	max_len_jwt_sub: usize,
+	#[arg(long, value_parser = multiple_of_8)]
+	max_len_jwt_sub: Option<usize>,
 
 	/// Maximum byte length of JWT aud claim (must be multiple of 8)
-	#[arg(long, default_value_t = 72, value_parser = multiple_of_8)]
-	max_len_jwt_aud: usize,
+	#[arg(long, value_parser = multiple_of_8)]
+	max_len_jwt_aud: Option<usize>,
 
 	/// Maximum byte length of JWT iss claim (must be multiple of 8)
-	#[arg(long, default_value_t = 72, value_parser = multiple_of_8)]
-	max_len_jwt_iss: usize,
+	#[arg(long, value_parser = multiple_of_8)]
+	max_len_jwt_iss: Option<usize>,
 
 	/// Maximum byte length of salt (must be multiple of 8)
-	#[arg(long, default_value_t = 72, value_parser = multiple_of_8)]
-	max_len_salt: usize,
+	#[arg(long, value_parser = multiple_of_8)]
+	max_len_salt: Option<usize>,
 
 	/// Maximum byte length of nonce r (must be multiple of 8)
-	#[arg(long, default_value_t = 48, value_parser = multiple_of_8)]
-	max_len_nonce_r: usize,
+	#[arg(long, value_parser = multiple_of_8)]
+	max_len_nonce_r: Option<usize>,
 
 	/// Maximum byte length of t_max (must be multiple of 8)
-	#[arg(long, default_value_t = 48, value_parser = multiple_of_8)]
-	max_len_t_max: usize,
+	#[arg(long, value_parser = multiple_of_8)]
+	max_len_t_max: Option<usize>,
 }
 
 impl ConfigCli {
 	fn into_config(self) -> Config {
+		let default = Config::default();
 		let ConfigCli {
 			max_len_json_jwt_header,
 			max_len_json_jwt_payload,
@@ -68,15 +69,17 @@ impl ConfigCli {
 			max_len_t_max,
 		} = self;
 		Config {
-			max_len_json_jwt_header,
-			max_len_json_jwt_payload,
-			max_len_jwt_signature,
-			max_len_jwt_sub,
-			max_len_jwt_aud,
-			max_len_jwt_iss,
-			max_len_salt,
-			max_len_nonce_r,
-			max_len_t_max,
+			max_len_json_jwt_header: max_len_json_jwt_header
+				.unwrap_or(default.max_len_json_jwt_header),
+			max_len_json_jwt_payload: max_len_json_jwt_payload
+				.unwrap_or(default.max_len_json_jwt_payload),
+			max_len_jwt_signature: max_len_jwt_signature.unwrap_or(default.max_len_jwt_signature),
+			max_len_jwt_sub: max_len_jwt_sub.unwrap_or(default.max_len_jwt_sub),
+			max_len_jwt_aud: max_len_jwt_aud.unwrap_or(default.max_len_jwt_aud),
+			max_len_jwt_iss: max_len_jwt_iss.unwrap_or(default.max_len_jwt_iss),
+			max_len_salt: max_len_salt.unwrap_or(default.max_len_salt),
+			max_len_nonce_r: max_len_nonce_r.unwrap_or(default.max_len_nonce_r),
+			max_len_t_max: max_len_t_max.unwrap_or(default.max_len_t_max),
 		}
 	}
 }
