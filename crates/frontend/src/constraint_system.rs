@@ -20,7 +20,7 @@ impl Default for ValueIndex {
 /// A different variants of shifting a value.
 ///
 /// Note that there is no shift left arithmetic because it is redundant.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum ShiftVariant {
 	/// Shift logical left.
 	Sll,
@@ -30,7 +30,7 @@ pub enum ShiftVariant {
 	Sar,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct ShiftedValueIndex {
 	/// The index of this value in the input values vector `z`.
 	pub value_index: ValueIndex,
@@ -83,6 +83,7 @@ impl ShiftedValueIndex {
 
 pub type Operand = Vec<ShiftedValueIndex>;
 
+#[derive(Clone, Debug, PartialEq)]
 pub struct AndConstraint {
 	pub a: Operand,
 	pub b: Operand,
@@ -115,6 +116,7 @@ impl AndConstraint {
 	}
 }
 
+#[derive(Clone, Debug, PartialEq)]
 pub struct MulConstraint {
 	pub a: Operand,
 	pub b: Operand,
