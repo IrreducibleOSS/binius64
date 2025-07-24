@@ -63,14 +63,8 @@ pub struct Rs256Verify {
 	pub signature: FixedByteVec,
 	/// The RSA modulus as a FixedByteVec (the primary input interface)
 	pub modulus: FixedByteVec,
-	/// Quotients for each of the 16 squaring operations
-	pub square_quotients: Vec<BigNum>,
-	/// Remainders for each of the 16 squaring operations
-	pub square_remainders: Vec<BigNum>,
-	/// Quotient for the final multiplication
-	pub mul_quotient: BigNum,
-	/// Remainder for the final multiplication (the EM - Encoded Message)
-	pub mul_remainder: BigNum,
+	/// Wires associated with intermediate RSA computations
+	pub rsa_intermediates: RsaIntermediates,
 	/// SHA256 circuit for hashing the message
 	pub sha256: Sha256,
 }
@@ -97,26 +91,15 @@ impl Rs256Verify {
 	/// * `modulus` - The RSA modulus as a FixedByteVec (256 bytes for 2048-bit RSA). The modulus
 	///   should be in big-endian byte order (standard RSA format). Each wire in the FixedByteVec
 	///   contains 8 bytes packed in little-endian order.
-	/// * `square_quotients` - Quotients for the 16 squaring operations
-	/// * `square_remainders` - Remainders for the 16 squaring operations
-	/// * `mul_quotient` - Quotient for the final multiplication
-	/// * `mul_remainder` - Remainder for the final multiplication, this is the EM (Encoded Message)
-	///   specified in PKCS#1 v1.5.
 	///
 	/// # Panics
 	/// * If signature_bytes does not have enough space for 256 bytes
-	/// * If square_quotients or square_remainders are not length 16
-	/// * If mul_remainder does not have 32 limbs
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		builder: &mut CircuitBuilder,
 		message: FixedByteVec,
 		signature: FixedByteVec,
 		modulus: FixedByteVec,
-		square_quotients: Vec<BigNum>,
-		square_remainders: Vec<BigNum>,
-		mul_quotient: BigNum,
-		mul_remainder: BigNum,
 	) -> Self {
 		assert!(
 			signature.max_len >= 256,
@@ -131,13 +114,6 @@ impl Rs256Verify {
 			"modulus_bytes must have at least 256 bytes for 2048-bit RSA"
 		);
 		assert!(modulus.max_len.is_multiple_of(8), "modulus_bytes max_len must be multiple of 8");
-		assert_eq!(square_quotients.len(), 16, "must provide 16 square quotients");
-		assert_eq!(square_remainders.len(), 16, "must provide 16 square remainders");
-		assert_eq!(
-			mul_remainder.limbs.len(),
-			32,
-			"mul_remainder must have 32 limbs to store the EM"
-		);
 
 		let signature_bignum = fixedbytevec_be_to_bignum(builder, &signature);
 		builder.assert_eq("signature_bytes_len", signature.len, builder.add_constant_64(256));
@@ -158,14 +134,16 @@ impl Rs256Verify {
 			limbs: expected_hash_wires.to_vec(),
 		};
 
+		let rsa_intermediates = RsaIntermediates::new_witness(builder);
+
 		modexp_65537_verify(
 			builder,
 			&signature_bignum,
 			&modulus_bignum,
-			&square_quotients,
-			&square_remainders,
-			&mul_quotient,
-			&mul_remainder,
+			&rsa_intermediates.square_quotients,
+			&rsa_intermediates.square_remainders,
+			&rsa_intermediates.mul_quotient,
+			&rsa_intermediates.mul_remainder,
 		);
 
 		// Validate PKCS#1 v1.5 prefix structure
@@ -233,31 +211,20 @@ impl Rs256Verify {
 				.collect(),
 		};
 
-		assert_eq(builder, "mul_remainder_expected_em", &mul_remainder, &expected_em);
+		assert_eq(
+			builder,
+			"mul_remainder_expected_em",
+			&rsa_intermediates.mul_remainder,
+			&expected_em,
+		);
 
 		Self {
 			message,
 			signature,
 			modulus,
-			square_quotients,
-			square_remainders,
-			mul_quotient,
-			mul_remainder,
+			rsa_intermediates,
 			sha256,
 		}
-	}
-
-	/// Populate the RSA signature
-	///
-	/// # Arguments
-	/// * `w` - Witness filler
-	/// * `signature_bytes` - The bytes of an RSA signature
-	///
-	/// # Panics
-	/// Panics if signature_bytes.len() != 256
-	pub fn populate_signature(&self, w: &mut WitnessFiller, signature_bytes: &[u8]) {
-		assert_eq!(signature_bytes.len(), 256, "signature must be exactly 256 bytes");
-		self.signature.populate_bytes(w, signature_bytes);
 	}
 
 	/// Populate the message length
@@ -266,6 +233,14 @@ impl Rs256Verify {
 	/// Panics if message_len > message.len() * 8
 	pub fn populate_message_len(&self, w: &mut WitnessFiller, message_len: usize) {
 		self.sha256.populate_len(w, message_len);
+	}
+
+	/// Populate the RSA signature, modulus and intermediate computations
+	pub fn populate_rsa(&self, w: &mut WitnessFiller, signature: &[u8], modulus: &[u8]) {
+		self.populate_signature(w, signature);
+		self.populate_modulus(w, modulus);
+		self.rsa_intermediates
+			.populate_witness(w, signature, modulus);
 	}
 
 	/// Populate the message
@@ -280,69 +255,22 @@ impl Rs256Verify {
 	///
 	/// # Panics
 	/// Panics if modulus_bytes.len() != 256
-	pub fn populate_modulus(&self, w: &mut WitnessFiller, modulus_bytes: &[u8]) {
+	fn populate_modulus(&self, w: &mut WitnessFiller, modulus_bytes: &[u8]) {
 		assert_eq!(modulus_bytes.len(), 256, "modulus must be exactly 256 bytes");
 		self.modulus.populate_bytes(w, modulus_bytes);
 	}
 
-	/// Populate the square quotients for the 16 squaring operations
+	/// Populate the RSA signature
+	///
+	/// # Arguments
+	/// * `w` - Witness filler
+	/// * `signature_bytes` - The bytes of an RSA signature
 	///
 	/// # Panics
-	/// Panics if square_quotient_limbs.len() != 16 or if any quotient doesn't have 32 limbs.
-	pub fn populate_square_quotients(
-		&self,
-		w: &mut WitnessFiller,
-		square_quotient_limbs: &[Vec<u64>],
-	) {
-		assert_eq!(square_quotient_limbs.len(), 16, "must provide 16 square quotients");
-		for (i, q_limbs) in square_quotient_limbs.iter().enumerate() {
-			assert_eq!(
-				q_limbs.len(),
-				self.square_quotients[i].limbs.len(),
-				"square_quotient[{i}] must have {} limbs",
-				self.square_quotients[i].limbs.len()
-			);
-			self.square_quotients[i].populate_limbs(w, q_limbs);
-		}
-	}
-
-	/// Populate the square remainders for the 16 squaring operations
-	///
-	/// # Panics
-	/// Panics if square_remainder_limbs.len() != 16 or if any remainder doesn't have 32 limbs
-	pub fn populate_square_remainders(
-		&self,
-		w: &mut WitnessFiller,
-		square_remainder_limbs: &[Vec<u64>],
-	) {
-		assert_eq!(square_remainder_limbs.len(), 16, "must provide 16 square remainders");
-		for (i, r_limbs) in square_remainder_limbs.iter().enumerate() {
-			assert_eq!(r_limbs.len(), 32, "square_remainder[{i}] must have 32 limbs");
-			self.square_remainders[i].populate_limbs(w, r_limbs);
-		}
-	}
-
-	/// Populate the multiplication quotient
-	///
-	/// # Panics
-	/// Panics if mul_quotient_limbs.len() != 32
-	pub fn populate_mul_quotient(&self, w: &mut WitnessFiller, mul_quotient_limbs: &[u64]) {
-		assert_eq!(
-			mul_quotient_limbs.len(),
-			self.mul_quotient.limbs.len(),
-			"mul_quotient must have {} limbs",
-			self.mul_quotient.limbs.len()
-		);
-		self.mul_quotient.populate_limbs(w, mul_quotient_limbs);
-	}
-
-	/// Populate the multiplication remainder (the EM - Encoded Message)
-	///
-	/// # Panics
-	/// Panics if mul_remainder_limbs.len() != 32
-	pub fn populate_mul_remainder(&self, w: &mut WitnessFiller, mul_remainder_limbs: &[u64]) {
-		assert_eq!(mul_remainder_limbs.len(), 32, "mul_remainder must have 32 limbs");
-		self.mul_remainder.populate_limbs(w, mul_remainder_limbs);
+	/// Panics if signature_bytes.len() != 256
+	fn populate_signature(&self, w: &mut WitnessFiller, signature_bytes: &[u8]) {
+		assert_eq!(signature_bytes.len(), 256, "signature must be exactly 256 bytes");
+		self.signature.populate_bytes(w, signature_bytes);
 	}
 }
 
@@ -382,34 +310,46 @@ fn modexp_65537_verify(
 	);
 }
 
+/// Wires associated with intermediate RSA computations
 pub struct RsaIntermediates {
-	/// 16 vectors of quotient limbs from squaring operations
-	pub square_quotients: Vec<Vec<u64>>,
-	/// 16 vectors of remainder limbs (each 32 limbs) from squaring operations
-	pub square_remainders: Vec<Vec<u64>>,
-	/// Quotient limbs from final multiplication
-	pub mul_quotient: Vec<u64>,
-	/// Remainder limbs (32 limbs) from final multiplication
-	pub mul_remainder: Vec<u64>,
+	/// Quotients for each of the 16 squaring operations
+	square_quotients: Vec<BigNum>,
+	/// Remainders for each of the 16 squaring operations
+	square_remainders: Vec<BigNum>,
+	/// Quotient for the final multiplication
+	mul_quotient: BigNum,
+	/// Remainder for the final multiplication (the EM - Encoded Message)
+	mul_remainder: BigNum,
 }
 
 impl RsaIntermediates {
-	/// Compute RSA intermediate values for RS256 verification
+	fn new_witness(builder: &CircuitBuilder) -> Self {
+		let mut square_quotients = Vec::new();
+		let mut square_remainders = Vec::new();
+		for _ in 0..16 {
+			square_quotients.push(BigNum::new_witness(builder, 32));
+			square_remainders.push(BigNum::new_witness(builder, 32));
+		}
+		let mul_quotient = BigNum::new_witness(builder, 32);
+		let mul_remainder = BigNum::new_witness(builder, 32);
+
+		RsaIntermediates {
+			square_quotients,
+			square_remainders,
+			mul_quotient,
+			mul_remainder,
+		}
+	}
+
+	/// Populate RSA intermediate values for RS256 verification
 	///
-	/// This function computes the quotients and remainders needed for verifying
-	/// RSA signatures with public exponent 65537 (2^16 + 1).
+	/// This function populates the quotients and remainders needed for
+	/// verifying RSA signatures with public exponent 65537 (2^16 + 1).
 	///
 	/// # Arguments
 	/// * `signature` - The bytes of a RSA signature
 	/// * `modulus_limbs` - The bytes of a RSA modulus
-	///
-	/// # Returns
-	/// The `RsaIntermediates` computed during signature verification.
-	///
-	/// # Panics
-	/// * If signature.len() != 256
-	/// * If modulus.len() != 256
-	pub fn new(signature: &[u8], modulus: &[u8]) -> Self {
+	fn populate_witness(&self, w: &mut WitnessFiller, signature: &[u8], modulus: &[u8]) {
 		assert_eq!(signature.len(), 256, "signature must be exactly 256 bytes");
 		assert_eq!(modulus.len(), 256, "modulus must be exactly 256 bytes");
 
@@ -445,12 +385,66 @@ impl RsaIntermediates {
 		let mut mul_remainder = mul_r.to_u64_digits();
 		mul_remainder.resize(32, 0u64);
 
-		RsaIntermediates {
-			square_quotients,
-			square_remainders,
-			mul_quotient,
-			mul_remainder,
+		self.populate_square_quotients(w, &square_quotients);
+		self.populate_square_remainders(w, &square_remainders);
+		self.populate_mul_quotient(w, &mul_quotient);
+		self.populate_mul_remainder(w, &mul_remainder);
+	}
+
+	/// Populate the square quotients for the 16 squaring operations
+	///
+	/// # Panics
+	/// Panics if square_quotient_limbs.len() != 16 or if any quotient doesn't have 32 limbs.
+	fn populate_square_quotients(&self, w: &mut WitnessFiller, square_quotient_limbs: &[Vec<u64>]) {
+		assert_eq!(square_quotient_limbs.len(), 16, "must provide 16 square quotients");
+		for (i, q_limbs) in square_quotient_limbs.iter().enumerate() {
+			assert_eq!(
+				q_limbs.len(),
+				self.square_quotients[i].limbs.len(),
+				"square_quotient[{i}] must have {} limbs",
+				self.square_quotients[i].limbs.len()
+			);
+			self.square_quotients[i].populate_limbs(w, q_limbs);
 		}
+	}
+
+	/// Populate the square remainders for the 16 squaring operations
+	///
+	/// # Panics
+	/// Panics if square_remainder_limbs.len() != 16 or if any remainder doesn't have 32 limbs
+	fn populate_square_remainders(
+		&self,
+		w: &mut WitnessFiller,
+		square_remainder_limbs: &[Vec<u64>],
+	) {
+		assert_eq!(square_remainder_limbs.len(), 16, "must provide 16 square remainders");
+		for (i, r_limbs) in square_remainder_limbs.iter().enumerate() {
+			assert_eq!(r_limbs.len(), 32, "square_remainder[{i}] must have 32 limbs");
+			self.square_remainders[i].populate_limbs(w, r_limbs);
+		}
+	}
+
+	/// Populate the multiplication quotient
+	///
+	/// # Panics
+	/// Panics if mul_quotient_limbs.len() != 32
+	fn populate_mul_quotient(&self, w: &mut WitnessFiller, mul_quotient_limbs: &[u64]) {
+		assert_eq!(
+			mul_quotient_limbs.len(),
+			self.mul_quotient.limbs.len(),
+			"mul_quotient must have {} limbs",
+			self.mul_quotient.limbs.len()
+		);
+		self.mul_quotient.populate_limbs(w, mul_quotient_limbs);
+	}
+
+	/// Populate the multiplication remainder (the EM - Encoded Message)
+	///
+	/// # Panics
+	/// Panics if mul_remainder_limbs.len() != 32
+	fn populate_mul_remainder(&self, w: &mut WitnessFiller, mul_remainder_limbs: &[u64]) {
+		assert_eq!(mul_remainder_limbs.len(), 32, "mul_remainder must have 32 limbs");
+		self.mul_remainder.populate_limbs(w, mul_remainder_limbs);
 	}
 }
 
@@ -476,18 +470,11 @@ mod tests {
 		message: &[u8],
 		modulus: &[u8],
 	) {
-		let intermediates = RsaIntermediates::new(signature, modulus);
 		let hash = Sha256::digest(message);
-
-		circuit.populate_signature(w, signature);
+		circuit.populate_rsa(w, signature, modulus);
 		circuit.populate_message_len(w, message.len());
 		circuit.populate_message(w, message);
 		circuit.sha256.populate_digest(w, hash.into());
-		circuit.populate_modulus(w, modulus);
-		circuit.populate_square_quotients(w, &intermediates.square_quotients);
-		circuit.populate_square_remainders(w, &intermediates.square_remainders);
-		circuit.populate_mul_quotient(w, &intermediates.mul_quotient);
-		circuit.populate_mul_remainder(w, &intermediates.mul_remainder);
 	}
 
 	fn setup_circuit(builder: &mut CircuitBuilder, max_message_len: usize) -> Rs256Verify {
@@ -495,25 +482,7 @@ mod tests {
 		let modulus_bytes = FixedByteVec::new_inout(builder, 256);
 		let message = FixedByteVec::new_witness(builder, max_message_len);
 
-		let mut square_quotients = Vec::new();
-		let mut square_remainders = Vec::new();
-		for _ in 0..16 {
-			square_quotients.push(BigNum::new_witness(builder, 32));
-			square_remainders.push(BigNum::new_witness(builder, 32));
-		}
-		let mul_quotient = BigNum::new_witness(builder, 32);
-		let mul_remainder = BigNum::new_witness(builder, 32);
-
-		Rs256Verify::new(
-			builder,
-			message,
-			signature_bytes,
-			modulus_bytes,
-			square_quotients,
-			square_remainders,
-			mul_quotient,
-			mul_remainder,
-		)
+		Rs256Verify::new(builder, message, signature_bytes, modulus_bytes)
 	}
 
 	#[test]
