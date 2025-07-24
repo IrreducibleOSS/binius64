@@ -4,6 +4,7 @@ pub mod fields;
 pub mod fri;
 pub mod hash;
 pub mod merkle_tree;
+pub mod pcs;
 pub mod protocols;
 pub mod ring_switch;
 mod verify;
