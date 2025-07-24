@@ -11,6 +11,8 @@ workspace = true
 cranelift-entity = { workspace = true }
 num-bigint = { workspace = true }
 num-integer = { workspace = true }
+serde.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
 rand = { workspace = true, features = ["std_rng", "thread_rng"] }

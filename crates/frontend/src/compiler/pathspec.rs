@@ -3,7 +3,7 @@ use cranelift_entity::PrimaryMap;
 /// A designator of a path within a circuit.
 ///
 /// Compact, only 32-bit.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PathSpec(u32);
 cranelift_entity::entity_impl!(PathSpec);
 
@@ -57,6 +57,14 @@ impl PathSpecTree {
 			out.push_str(&nodes[ls].name);
 		}
 		stringify_rec(self.root, &self.nodes, ls, out);
+	}
+
+	/// Returns the parent of the given path or null if `root` was supplied.
+	pub fn parent(&self, path: PathSpec) -> Option<PathSpec> {
+		if path == self.root {
+			return None;
+		}
+		Some(self.nodes[path].parent)
 	}
 
 	/// Returns the root of the tree.

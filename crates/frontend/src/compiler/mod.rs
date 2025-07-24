@@ -19,6 +19,7 @@ mod gate;
 use gate::Opcode;
 
 pub mod circuit;
+mod dump;
 mod gate_graph;
 mod pathspec;
 #[cfg(test)]

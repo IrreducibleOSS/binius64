@@ -13,55 +13,50 @@ struct Cli {
 	command: Commands,
 }
 
-#[derive(Subcommand)]
-enum Commands {
-	/// Print circuit statistics
-	Stat {
-		// NOTE: all those fields is a mirror of the zklogin::Config struct.
-		//       when updating keep in sync those two.
-		/// Maximum byte length of base64 decoded JWT header (must be multiple of 24)
-		#[arg(long, default_value_t = 264, value_parser = multiple_of_24)]
-		max_len_json_jwt_header: usize,
+#[derive(Parser)]
+struct ConfigCli {
+	// NOTE: all those fields is a mirror of the zklogin::Config struct.
+	//       when updating keep in sync those two.
+	/// Maximum byte length of base64 decoded JWT header (must be multiple of 24)
+	#[arg(long, default_value_t = 264, value_parser = multiple_of_24)]
+	max_len_json_jwt_header: usize,
 
-		/// Maximum byte length of base64 decoded JWT payload (must be multiple of 24)
-		#[arg(long, default_value_t = 504, value_parser = multiple_of_24)]
-		max_len_json_jwt_payload: usize,
+	/// Maximum byte length of base64 decoded JWT payload (must be multiple of 24)
+	#[arg(long, default_value_t = 504, value_parser = multiple_of_24)]
+	max_len_json_jwt_payload: usize,
 
-		/// Maximum byte length of base64 decoded JWT signature (must be multiple of 24)
-		#[arg(long, default_value_t = 264, value_parser = multiple_of_24)]
-		max_len_jwt_signature: usize,
+	/// Maximum byte length of base64 decoded JWT signature (must be multiple of 24)
+	#[arg(long, default_value_t = 264, value_parser = multiple_of_24)]
+	max_len_jwt_signature: usize,
 
-		/// Maximum byte length of JWT sub claim (must be multiple of 8)
-		#[arg(long, default_value_t = 72, value_parser = multiple_of_8)]
-		max_len_jwt_sub: usize,
+	/// Maximum byte length of JWT sub claim (must be multiple of 8)
+	#[arg(long, default_value_t = 72, value_parser = multiple_of_8)]
+	max_len_jwt_sub: usize,
 
-		/// Maximum byte length of JWT aud claim (must be multiple of 8)
-		#[arg(long, default_value_t = 72, value_parser = multiple_of_8)]
-		max_len_jwt_aud: usize,
+	/// Maximum byte length of JWT aud claim (must be multiple of 8)
+	#[arg(long, default_value_t = 72, value_parser = multiple_of_8)]
+	max_len_jwt_aud: usize,
 
-		/// Maximum byte length of JWT iss claim (must be multiple of 8)
-		#[arg(long, default_value_t = 72, value_parser = multiple_of_8)]
-		max_len_jwt_iss: usize,
+	/// Maximum byte length of JWT iss claim (must be multiple of 8)
+	#[arg(long, default_value_t = 72, value_parser = multiple_of_8)]
+	max_len_jwt_iss: usize,
 
-		/// Maximum byte length of salt (must be multiple of 8)
-		#[arg(long, default_value_t = 72, value_parser = multiple_of_8)]
-		max_len_salt: usize,
+	/// Maximum byte length of salt (must be multiple of 8)
+	#[arg(long, default_value_t = 72, value_parser = multiple_of_8)]
+	max_len_salt: usize,
 
-		/// Maximum byte length of nonce r (must be multiple of 8)
-		#[arg(long, default_value_t = 48, value_parser = multiple_of_8)]
-		max_len_nonce_r: usize,
+	/// Maximum byte length of nonce r (must be multiple of 8)
+	#[arg(long, default_value_t = 48, value_parser = multiple_of_8)]
+	max_len_nonce_r: usize,
 
-		/// Maximum byte length of t_max (must be multiple of 8)
-		#[arg(long, default_value_t = 48, value_parser = multiple_of_8)]
-		max_len_t_max: usize,
-	},
+	/// Maximum byte length of t_max (must be multiple of 8)
+	#[arg(long, default_value_t = 48, value_parser = multiple_of_8)]
+	max_len_t_max: usize,
 }
 
-fn main() {
-	let cli = Cli::parse();
-
-	match cli.command {
-		Commands::Stat {
+impl ConfigCli {
+	fn into_config(self) -> Config {
+		let ConfigCli {
 			max_len_json_jwt_header,
 			max_len_json_jwt_payload,
 			max_len_jwt_signature,
@@ -71,21 +66,43 @@ fn main() {
 			max_len_salt,
 			max_len_nonce_r,
 			max_len_t_max,
-		} => {
-			let config = Config {
-				max_len_json_jwt_header,
-				max_len_json_jwt_payload,
-				max_len_jwt_signature,
-				max_len_jwt_sub,
-				max_len_jwt_aud,
-				max_len_jwt_iss,
-				max_len_salt,
-				max_len_nonce_r,
-				max_len_t_max,
-			};
-
-			print_circuit_stats(config);
+		} = self;
+		Config {
+			max_len_json_jwt_header,
+			max_len_json_jwt_payload,
+			max_len_jwt_signature,
+			max_len_jwt_sub,
+			max_len_jwt_aud,
+			max_len_jwt_iss,
+			max_len_salt,
+			max_len_nonce_r,
+			max_len_t_max,
 		}
+	}
+}
+
+#[derive(Subcommand)]
+enum Commands {
+	/// Print circuit statistics
+	Stat {
+		#[command(flatten)]
+		config: ConfigCli,
+	},
+	/// Print the composition of the circuit in JSON format.
+	Composition {
+		#[command(flatten)]
+		config: ConfigCli,
+	},
+}
+
+fn main() {
+	let cli = Cli::parse();
+
+	match cli.command {
+		Commands::Stat { config } => {
+			print_circuit_stats(config.into_config());
+		}
+		Commands::Composition { config } => print_circuit_composition(config.into_config()),
 	}
 }
 
@@ -100,6 +117,14 @@ fn print_circuit_stats(config: Config) {
 
 	let stat = CircuitStat::collect(&circuit);
 	println!("{stat}");
+}
+
+fn print_circuit_composition(config: Config) {
+	let mut builder = CircuitBuilder::new();
+	let _zklogin = ZkLogin::new(&mut builder, config);
+	let circuit = builder.build();
+	let dump = circuit.simple_json_dump();
+	println!("{dump}");
 }
 
 fn multiple_of_8(s: &str) -> Result<usize, String> {

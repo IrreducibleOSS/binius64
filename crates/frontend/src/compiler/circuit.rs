@@ -198,4 +198,9 @@ impl Circuit {
 	pub fn n_gates(&self) -> usize {
 		self.shared.graph.gates.len()
 	}
+
+	/// Returns a string with a JSON dump that is useful to profile the circuit.
+	pub fn simple_json_dump(&self) -> String {
+		crate::compiler::dump::dump_composition(&self.shared.graph)
+	}
 }
