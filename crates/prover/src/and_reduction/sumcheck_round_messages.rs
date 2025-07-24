@@ -1,4 +1,7 @@
-use binius_field::{Field, PackedBinaryField128x1b, PackedExtension, packed::get_packed_slice};
+use binius_field::{
+	BinaryField, Field, PackedBinaryField128x1b, PackedExtension,
+	packed::{get_packed_slice, iter_packed_slice_with_offset},
+};
 use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval};
 use binius_utils::rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use binius_verifier::{
@@ -19,7 +22,7 @@ const NTT_DOMAIN_SIZE: usize = ROWS_PER_HYPERCUBE_VERTEX;
 const HOT_LOOP_NTT_POINTS: usize = 2 * ROWS_PER_HYPERCUBE_VERTEX;
 const PROVER_MESSAGE_NUM_POINTS: usize = 4 * ROWS_PER_HYPERCUBE_VERTEX;
 
-// Sends evaluations of the 3*|D|-1 degree polynomial
+// Sends evaluations of the 3*(|D| - 1) degree polynomial
 #[allow(clippy::too_many_arguments)]
 pub fn univariate_round_message<'a, FChallenge, PNTTDomain>(
 	first_col: &OneBitMultivariate,
@@ -34,7 +37,7 @@ where
 	FChallenge: Field + From<PNTTDomain::Scalar>,
 	PNTTDomain: PackedExtension<B1, PackedSubfield = PackedBinaryField128x1b>,
 	u8: From<<PNTTDomain as binius_field::PackedField>::Scalar>,
-	<PNTTDomain as binius_field::PackedField>::Scalar: From<u8>,
+	<PNTTDomain as binius_field::PackedField>::Scalar: From<u8> + BinaryField,
 {
 	assert!(PNTTDomain::WIDTH == 16);
 
@@ -63,23 +66,26 @@ where
 				let hypercube_point_idx = subcube_idx << 3 | point_idx_within_subcube;
 				let byte_offset = hypercube_point_idx * BYTES_PER_HYPERCUBE_VERTEX;
 
-				let mut col_ntt = [[PNTTDomain::zero(); NTT_DOMAIN_SIZE / 16]; 3];
-
-				for i in 0..ntt_lookup.len() {
-					let idx1 = u8::from(get_packed_slice(col_1_bytes, byte_offset + i)) as usize;
-					let idx2 = u8::from(get_packed_slice(col_2_bytes, byte_offset + i)) as usize;
-					let idx3 = u8::from(get_packed_slice(col_3_bytes, byte_offset + i)) as usize;
-
-					for j in 0..NTT_DOMAIN_SIZE / 16 {
-						col_ntt[0][j] += ntt_lookup[i][idx1][j];
-						col_ntt[1][j] += ntt_lookup[i][idx2][j];
-						col_ntt[2][j] += ntt_lookup[i][idx3][j];
-					}
-				}
+				let first_col_ntt = ntt_lookup.ntt(
+					iter_packed_slice_with_offset(col_1_bytes, byte_offset)
+						.take(BYTES_PER_HYPERCUBE_VERTEX)
+						.map(u8::from),
+				);
+				let second_col_ntt = ntt_lookup.ntt(
+					iter_packed_slice_with_offset(col_2_bytes, byte_offset)
+						.take(BYTES_PER_HYPERCUBE_VERTEX)
+						.map(u8::from),
+				);
+				let third_col_ntt = ntt_lookup.ntt(
+					iter_packed_slice_with_offset(col_3_bytes, byte_offset)
+						.take(BYTES_PER_HYPERCUBE_VERTEX)
+						.map(u8::from),
+				);
 
 				let weight = eq_ind_small[point_idx_within_subcube];
 				for i in 0..NTT_DOMAIN_SIZE / 16 {
-					summed_ntt[i] += (col_ntt[0][i] * col_ntt[1][i] - col_ntt[2][i]) * weight;
+					summed_ntt[i] +=
+						(first_col_ntt[i] * second_col_ntt[i] - third_col_ntt[i]) * weight;
 				}
 			}
 
@@ -137,7 +143,7 @@ mod test {
 
 	use super::univariate_round_message;
 	use crate::and_reduction::{
-		fold_lookup::precompute_fold_lookup, univariate::ntt_lookup::precompute_lookup,
+		fold_lookup::FoldLookup, univariate::ntt_lookup::NTTLookup,
 		utils::multivariate::OneBitMultivariate,
 	};
 
@@ -187,7 +193,7 @@ mod test {
 			.map(|x| AESTowerField8b::new(x as u8))
 			.collect();
 
-		let ntt_lookup = precompute_lookup::<PackedAESBinaryField16x8b, _>(&onto_domain);
+		let ntt_lookup = NTTLookup::<PackedAESBinaryField16x8b>::new(&onto_domain);
 
 		let first_round_message = univariate_round_message(
 			&mlv_1,
@@ -203,7 +209,7 @@ mod test {
 		let expected_next_round_sum =
 			first_round_message.evaluate_at_challenge(first_sumcheck_challenge);
 
-		let lookup = precompute_fold_lookup::<AESTowerField8b, _>(first_sumcheck_challenge);
+		let lookup = FoldLookup::new::<AESTowerField8b>(first_sumcheck_challenge);
 
 		let folded_first_mle = mlv_1.fold(&lookup);
 		let folded_second_mle = mlv_2.fold(&lookup);
