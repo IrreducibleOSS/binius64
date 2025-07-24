@@ -1,3 +1,5 @@
+// Copyright 2025 Irreducible Inc.
+
 use binius_field::{BinaryField, ExtensionField, Field, PackedExtension, PackedField, TowerField};
 use binius_math::{
 	inner_product::inner_product, multilinear::eq::eq_ind_partial_eval,
