@@ -1,4 +1,4 @@
-use binius_field::{BinaryField, ExtensionField, Field, PackedExtension, PackedField, TowerField};
+use binius_field::{BinaryField, ExtensionField, Field, PackedExtension, PackedField};
 use binius_math::{
 	FieldBuffer, inner_product::inner_product, multilinear::eq::eq_ind_partial_eval,
 	ntt::AdditiveNTT, tensor_algebra::TensorAlgebra,
@@ -24,7 +24,7 @@ use crate::{
 /// soundness.
 pub struct OneBitPCSProver<F>
 where
-	F: TowerField + PackedExtension<B1>,
+	F: Field + PackedExtension<B1> + BinaryField, 
 {
 	pub small_field_evaluation_claim: F,
 	pub evaluation_claim: F,
@@ -34,7 +34,7 @@ where
 
 impl<F> OneBitPCSProver<F>
 where
-	F: TowerField + PackedExtension<B1> + PackedField<Scalar = F>,
+	F: Field + PackedExtension<B1> + PackedField<Scalar = F> + BinaryField,
 {
 	/// Create a new ring switched PCS prover.
 	///
@@ -80,7 +80,7 @@ where
 	) -> Result<(), Error>
 	where
 		TranscriptChallenger: Challenger,
-		F: TowerField + ExtensionField<FA> + PackedExtension<B1>,
+		F: Field + ExtensionField<FA> + PackedExtension<B1> + BinaryField,
 		FA: BinaryField,
 		NTT: AdditiveNTT<FA> + Sync,
 		MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
@@ -185,7 +185,7 @@ where
 		basefold_sumcheck_claim: F,
 	) -> Result<BaseFoldProver<'a, F, FA, NTT, MerkleProver, VCS>, Error>
 	where
-		F: TowerField + ExtensionField<FA> + PackedExtension<B1>,
+		F: Field + ExtensionField<FA> + PackedExtension<B1> + BinaryField,
 		FA: BinaryField,
 		NTT: AdditiveNTT<FA> + Sync,
 		MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
