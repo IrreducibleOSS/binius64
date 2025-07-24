@@ -119,14 +119,23 @@ where
 
 #[cfg(test)]
 mod test {
+	use std::iter::repeat_with;
+
 	use binius_field::{
-		AESTowerField8b, PackedAESBinaryField16x8b, arithmetic_traits::InvertOrZero,
-		packed::get_packed_slice,
+		AESTowerField8b, Field, PackedAESBinaryField16x8b, PackedBinaryField8x1b, PackedField,
+		Random,
+		packed::{get_packed_slice, set_packed_slice},
 	};
+	use binius_math::{
+		BinarySubspace,
+		ntt::{AdditiveNTT, NTTShape, SingleThreadedNTT},
+	};
+	use binius_verifier::{and_reduction::utils::constants::SKIPPED_VARS, fields::B1};
+	use itertools::Itertools;
+	use rand::{SeedableRng, rngs::StdRng};
 
 	use super::{NTTLookup, ROWS_PER_HYPERCUBE_VERTEX};
 
-	// TODO test against binius NTT
 	#[test]
 	fn assert_accurate_ntt_on_well_known_poly() {
 		let output_domain: Vec<_> = (ROWS_PER_HYPERCUBE_VERTEX..2 * ROWS_PER_HYPERCUBE_VERTEX)
@@ -147,6 +156,81 @@ mod test {
 				.product::<AESTowerField8b>();
 
 			assert_eq!(get_packed_slice(&results, i), expected_result);
+		}
+	}
+
+	#[test]
+	fn test_against_binius_ntt() {
+		let mut rng = StdRng::from_seed([0; 32]);
+		let mut coeffs = (0..ROWS_PER_HYPERCUBE_VERTEX)
+			.map(|_| AESTowerField8b::from(B1::random(&mut rng)))
+			.collect_vec();
+
+		let mut coeffs_packed = vec![PackedBinaryField8x1b::zero(); ROWS_PER_HYPERCUBE_VERTEX / 8];
+
+		for (i, coeff) in coeffs.iter().enumerate() {
+			set_packed_slice(&mut coeffs_packed, i, B1::from(u8::from(*coeff)));
+		}
+
+		let coeffs_packed_iter_u8 = coeffs_packed.iter().map(|i| i.to_underlier());
+
+		let ntt_lookup = NTTLookup::<PackedAESBinaryField16x8b>::new(
+			&(0..ROWS_PER_HYPERCUBE_VERTEX)
+				.map(|i| AESTowerField8b::from((ROWS_PER_HYPERCUBE_VERTEX + i) as u8))
+				.collect_vec(),
+		);
+
+		let ntt_lookup_result = ntt_lookup.ntt(coeffs_packed_iter_u8);
+
+		let input_subspace = BinarySubspace::new_unchecked(
+			(0..SKIPPED_VARS)
+				.map(|i| AESTowerField8b::from(1 << i))
+				.collect_vec(),
+		);
+
+		let input_ntt = SingleThreadedNTT::with_subspace(&input_subspace).unwrap();
+
+		input_ntt
+			.inverse_transform(
+				&mut coeffs,
+				NTTShape {
+					log_x: 0,
+					log_y: SKIPPED_VARS,
+					log_z: 0,
+				},
+				0,
+				0,
+				0,
+			)
+			.unwrap();
+
+		let output_subspace = BinarySubspace::new_unchecked(
+			(0..SKIPPED_VARS + 1)
+				.map(|i| AESTowerField8b::from((1 << i) as u8))
+				.collect_vec(),
+		);
+
+		coeffs.extend(repeat_with(|| AESTowerField8b::ZERO).take(ROWS_PER_HYPERCUBE_VERTEX));
+
+		let output_ntt = SingleThreadedNTT::with_subspace(&output_subspace).unwrap();
+
+		output_ntt
+			.forward_transform(
+				&mut coeffs,
+				NTTShape {
+					log_x: 0,
+					log_y: SKIPPED_VARS + 1,
+					log_z: 0,
+				},
+				0,
+				0,
+				0,
+			)
+			.unwrap();
+
+		for (i, coeff) in coeffs.iter().skip(ROWS_PER_HYPERCUBE_VERTEX).enumerate() {
+			let lookup_result = get_packed_slice(&ntt_lookup_result, i);
+			assert_eq!(lookup_result, *coeff);
 		}
 	}
 }

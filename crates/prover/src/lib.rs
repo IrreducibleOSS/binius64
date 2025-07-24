@@ -1,5 +1,5 @@
 pub mod and_reduction;
-pub mod basefold;
+// pub mod basefold;
 mod error;
 mod formatting;
 pub mod fri;
