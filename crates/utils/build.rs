@@ -26,11 +26,4 @@ fn main() {
 
 	// Pass target features as comma-separated list
 	println!("cargo:rustc-env=COMPILE_TIME_FEATURES={}", target_features.join(","));
-
-	// Print build-time warnings for visibility
-	println!("cargo:warning=Platform Build Configuration:");
-	println!("cargo:warning=  Target: {}", env::var("TARGET").unwrap());
-	println!("cargo:warning=  Host: {}", env::var("HOST").unwrap());
-	println!("cargo:warning=  RUSTFLAGS: {rustflags}");
-	println!("cargo:warning=  Features detected: {}", target_features.len());
 }
