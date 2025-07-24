@@ -19,11 +19,13 @@ use crate::{
 // Small field, in our case this is B1.
 type F = B1;
 
-/// Ring switched PCS prover for non-interactively proving an evalutation claim of a one bit polynomial.
-/// 
+/// Ring switched PCS prover for non-interactively proving an evaluation claim of a one bit
+/// polynomial.
+///
 /// The prover combines ring switching and basefold to prover a small field multilinear evaluation
-/// at a large field point. The prover first performs the ring switching phase of the proof, establishing
-/// completeness. Then, the large field pcs (basefold) is invoked to establish soundness.
+/// at a large field point. The prover first performs the ring switching phase of the proof,
+/// establishing completeness. Then, the large field pcs (basefold) is invoked to establish
+/// soundness.
 pub struct OneBitPCSProver<FE>
 where
 	FE: TowerField + From<u128> + PackedExtension<F>,
@@ -88,7 +90,6 @@ where
 		MerkleProver: MerkleTreeProver<FE, Scheme = VCS>,
 		VCS: MerkleTreeScheme<FE, Digest: SerializeBytes>,
 	{
-
 		// packed mle partial evals of at high variables
 		let s_hat_v = Self::initialize_proof(&self.packed_mle, &self.evaluation_point)?;
 
@@ -103,10 +104,8 @@ where
 		let eq_r_double_prime = eq_ind_partial_eval(&r_double_prime);
 
 		// compute sumcheck claim on s_hat_u * eq_r_double_prime composition
-		let computed_sumcheck_claim = inner_product::<FE>(
-			s_hat_u,
-			eq_r_double_prime.as_ref().iter().copied(),
-		);
+		let computed_sumcheck_claim =
+			inner_product::<FE>(s_hat_u, eq_r_double_prime.as_ref().iter().copied());
 
 		// setup basefold prover
 		let big_field_basefold_prover = self.setup_for_fri_sumcheck(
