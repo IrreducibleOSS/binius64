@@ -44,6 +44,12 @@ pub struct UniquenessPropagator {
 	propagation_queue: VecDeque<ValueIndex>,
 }
 
+impl Default for UniquenessPropagator {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl UniquenessPropagator {
 	pub fn new() -> Self {
 		Self {
@@ -710,7 +716,7 @@ mod tests {
 		println!("\nWire uniqueness summary:");
 		for (wire, name) in wires_to_check {
 			let status = result.is_wire_unique(wire).unwrap();
-			println!("  {}: {:?}", name, status);
+			println!("  {name}: {status:?}");
 		}
 	}
 
@@ -740,7 +746,7 @@ mod tests {
 
 		for (wire, name) in wires_to_check {
 			let status = result.is_wire_unique(wire).unwrap();
-			println!("  {}: {:?}", name, status);
+			println!("  {name}: {status:?}");
 		}
 	}
 
@@ -770,7 +776,7 @@ mod tests {
 
 		let derived = builder.bxor(x, y);
 		let circuit = builder.build();
-		
+
 		let result = process_circuit_uniqueness(&circuit);
 
 		let wires_to_check = vec![
@@ -788,25 +794,25 @@ mod tests {
 		println!("\nUnique wires:");
 		for (wire, name) in wires_to_check {
 			let status = result.is_wire_unique(wire).unwrap();
-			println!("  {}: {:?}", name, status);
+			println!("  {name}: {status:?}");
 		}
 	}
 
 	#[test]
 	fn test_minimal_quadratic_constraint() {
 		let builder = CircuitBuilder::new();
-		
+
 		// Minimal test: just x * x = 4
 		let four = builder.add_constant(Word(4));
 		let zero = builder.add_constant(Word::ZERO);
-		
+
 		let x = builder.add_witness();
-		
+
 		// x * x = 4
 		let (lo, hi) = builder.imul(x, x);
 		builder.assert_eq("x_squared_lo_eq_4", lo, four);
 		builder.assert_eq("x_squared_hi_eq_0", hi, zero);
-		
+
 		let circuit = builder.build();
 		let result = process_circuit_uniqueness(&circuit);
 		assert_eq!(
