@@ -67,8 +67,8 @@ where
 
 	if evaluation_claim != computed_claim {
 		return Err(Error::EvaluationClaimMismatch {
-			expected: format!("{:?}", computed_claim),
-			actual: format!("{:?}", evaluation_claim),
+			expected: format!("{computed_claim:?}"),
+			actual: format!("{evaluation_claim:?}"),
 		});
 	}
 
