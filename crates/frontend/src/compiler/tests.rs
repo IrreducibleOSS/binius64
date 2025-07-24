@@ -2,7 +2,7 @@ use proptest::prelude::*;
 use rand::{Rng, SeedableRng as _, rngs::StdRng};
 
 use super::*;
-use crate::{constraint_verifier::verify_constraints, word::Word};
+use crate::{constraint_verifier::verify_constraints, uniqueness_propagator::process_circuit_uniqueness, word::Word};
 
 #[test]
 fn wires_layout() {
