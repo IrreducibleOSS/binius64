@@ -12,8 +12,7 @@ use binius_verifier::{fields::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme}
 use itertools::Itertools;
 
 use crate::{
-	Error, merkle_tree::MerkleTreeProver, 
-	protocols::basefold::prover::BaseFoldProver,
+	Error, merkle_tree::MerkleTreeProver, protocols::basefold::prover::BaseFoldProver,
 	ring_switch::prover::rs_eq_ind,
 };
 
