@@ -18,6 +18,8 @@ enum RoundCoeffsOrSums<F: Field> {
 	Sums(Vec<F>),
 }
 
+/// Multiple claim version of `BivariateProductMlecheckProver` that can prove mlechecks
+/// that share the evaluation point. This allows deduplicating folding and evaluation work.
 pub struct BivariateProductMultiMlecheckProver<P: PackedField> {
 	n_vars: usize,
 	multilinears: Vec<FieldBuffer<P>>,
@@ -26,6 +28,8 @@ pub struct BivariateProductMultiMlecheckProver<P: PackedField> {
 }
 
 impl<F: Field, P: PackedField<Scalar = F>> BivariateProductMultiMlecheckProver<P> {
+	/// Constructs a prover, given the multilinear polynomial evaluations (in pairs) and
+	/// evaluation claims on the shared evaluation point.
 	pub fn new(
 		multilinears: Vec<[FieldBuffer<P>; 2]>,
 		eval_point: &[F],
@@ -75,6 +79,7 @@ where
 
 		assert!(self.n_vars() > 0);
 
+		// Perform chunked summation to only ever read the equality indicator expansion once
 		const MAX_CHUNK_VARS: usize = 12;
 		let chunk_vars = max(MAX_CHUNK_VARS, P::LOG_WIDTH).min(self.n_vars() - 1);
 
@@ -122,7 +127,7 @@ where
 		let alpha = self.gruen34.next_coordinate();
 		let round_coeffs = izip!(sums, packed_prime_evals)
 			.map(|(&sum, packed_evals)| {
-				let round_evals = packed_evals.sum_scalars();
+				let round_evals = packed_evals.sum_scalars(self.n_vars());
 				round_evals.interpolate_eq(sum, alpha)
 			})
 			.collect::<Vec<_>>();
@@ -186,7 +191,7 @@ where
 mod tests {
 	use std::iter::repeat_with;
 
-	use binius_field::PackedBinaryField8x16b;
+	use binius_field::{PackedBinaryField8x16b, Random};
 	use binius_math::{
 		multilinear::{eq::eq_ind_partial_eval, evaluate::evaluate_inplace},
 		test_utils::{random_field_buffer, random_scalars},
@@ -194,7 +199,60 @@ mod tests {
 	use rand::{SeedableRng, rngs::StdRng};
 
 	use super::*;
-	use crate::protocols::sumcheck::MleToSumCheckDecorator;
+	use crate::protocols::sumcheck::{
+		MleToSumCheckDecorator, bivariate_product_mle::BivariateProductMlecheckProver,
+	};
+
+	#[test]
+	fn test_bivariate_multi_mlecheck_conforms_to_single_bivariate_mlecheck() {
+		type P = PackedBinaryField8x16b;
+		type F = <P as PackedField>::Scalar;
+
+		let n_vars = 8;
+		let mut rng = StdRng::seed_from_u64(0);
+
+		// Generate two random multilinear polynomials
+		let multilinear_a = random_field_buffer::<P>(&mut rng, n_vars);
+		let multilinear_b = random_field_buffer::<P>(&mut rng, n_vars);
+
+		// Compute product on the hypercube
+		let product = itertools::zip_eq(multilinear_a.as_ref(), multilinear_b.as_ref())
+			.map(|(&l, &r)| l * r)
+			.collect_vec();
+		let product_buffer = FieldBuffer::new(n_vars, product).unwrap();
+
+		// Claim eval point
+		let eval_point = random_scalars::<F>(&mut rng, n_vars);
+		let eval_claim = evaluate_inplace(product_buffer, &eval_point).unwrap();
+
+		let multilinears = [multilinear_a, multilinear_b];
+
+		let mut single_prover =
+			BivariateProductMlecheckProver::new(multilinears.clone(), &eval_point, eval_claim)
+				.unwrap();
+
+		let mut multi_prover = BivariateProductMultiMlecheckProver::new(
+			[multilinears].to_vec(),
+			&eval_point,
+			&[eval_claim],
+		)
+		.unwrap();
+
+		for _round in 0..n_vars {
+			let round_coeffs_single = single_prover.execute().unwrap();
+			let round_coeffs_multi = multi_prover.execute().unwrap();
+
+			assert_eq!(round_coeffs_single, round_coeffs_multi);
+
+			let challenge = F::random(&mut rng);
+			single_prover.fold(challenge).unwrap();
+			multi_prover.fold(challenge).unwrap();
+		}
+
+		let multilinear_evals_single = single_prover.finish().unwrap();
+		let multilinear_evals_multi = multi_prover.finish().unwrap();
+		assert_eq!(multilinear_evals_single, multilinear_evals_multi);
+	}
 
 	fn test_bivariate_product_multi_mlecheck_consistency_helper<
 		F: Field,
@@ -244,11 +302,13 @@ mod tests {
 		// Append eq indicator at the end
 		folded_multilinears.push(eq_ind_partial_eval(&eval_point));
 
+		// Compare  mlecheck prover and naive degree-3 sumcheck by sampling
+		// the round polynomials at multiple random points
 		for n_vars_remaining in (1..=n_vars).rev() {
 			// Round polynomials from the prover
 			let coeffs = prover.execute().unwrap();
 
-			// Sample the witness at different points
+			// Sample the witness at different points (in specialized variable)
 			for &sample in &samples {
 				let sample_broadcast = P::broadcast(sample);
 				let lerps = folded_multilinears
@@ -264,6 +324,7 @@ mod tests {
 				assert_eq!(lerps.len(), 2 * n_pairs + 1);
 				let (eq_ind, pairs) = lerps.split_last().unwrap();
 
+				// Naive sum computation at the sample point
 				for ((l, r), coeffs) in izip!(pairs.iter().tuples(), &coeffs) {
 					assert_eq!(coeffs.0.len(), degree + 1);
 					let eval = izip!(eq_ind, l, r)
@@ -272,6 +333,8 @@ mod tests {
 						.iter()
 						.take(1 << n_vars_remaining)
 						.sum::<F>();
+
+					// Test conformance to the mlecheck round polynomial
 					assert_eq!(eval, coeffs.evaluate(sample));
 				}
 			}

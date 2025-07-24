@@ -143,7 +143,7 @@ where
 				}
 			})
 			.reduce(RoundEvals2::default, |lhs, rhs| lhs + &rhs)
-			.sum_scalars();
+			.sum_scalars(n_vars_remaining);
 
 		let alpha = self.gruen34.next_coordinate();
 		let round_coeffs = round_evals.interpolate_eq(*last_eval, alpha);
@@ -322,6 +322,8 @@ mod tests {
 		)
 		.unwrap();
 
+		// The prover binds variables from high to low, but evaluate expects them from low
+		// to high
 		let mut reduced_eval_point = sumcheck_output.challenges.clone();
 		reduced_eval_point.reverse();
 
@@ -339,8 +341,7 @@ mod tests {
 		);
 
 		// Check that the original multilinears evaluate to the claimed values at the challenge
-		// point The prover binds variables from high to low, but evaluate expects them from low
-		// to high
+		// point
 		let eval_a = evaluate(&multilinear_a, &reduced_eval_point).unwrap();
 		let eval_b = evaluate(&multilinear_b, &reduced_eval_point).unwrap();
 

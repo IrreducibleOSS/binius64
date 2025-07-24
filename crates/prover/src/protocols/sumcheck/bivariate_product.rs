@@ -71,7 +71,9 @@ impl<F: Field, P: PackedField<Scalar = F>> SumcheckProver<F> for BivariateProduc
 				})
 				.reduce(RoundEvals2::default, |lhs, rhs| lhs + &rhs);
 
-		let round_coeffs = round_evals.sum_scalars().interpolate(*last_sum);
+		let round_coeffs = round_evals
+			.sum_scalars(n_vars_remaining)
+			.interpolate(*last_sum);
 		self.last_coeffs_or_sum = RoundCoeffsOrSum::Coeffs(round_coeffs.clone());
 		Ok(vec![round_coeffs])
 	}

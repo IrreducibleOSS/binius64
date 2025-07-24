@@ -16,10 +16,10 @@ pub struct RoundEvals2<P: PackedField> {
 }
 
 impl<P: PackedField> RoundEvals2<P> {
-	pub fn sum_scalars(self) -> RoundEvals2<P::Scalar> {
+	pub fn sum_scalars(self, n_vars: usize) -> RoundEvals2<P::Scalar> {
 		RoundEvals2 {
-			y_1: self.y_1.iter().sum(),
-			y_inf: self.y_inf.iter().sum(),
+			y_1: self.y_1.iter().take(1 << n_vars).sum(),
+			y_inf: self.y_inf.iter().take(1 << n_vars).sum(),
 		}
 	}
 }
