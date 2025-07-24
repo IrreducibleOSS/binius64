@@ -57,7 +57,7 @@ where
 		.message()
 		.read_scalar_slice::<F>(1 << packing_degree)?;
 
-	// check initial message is partial eval
+	// check valid partial eval
 	let (eval_point_low, _) = eval_point.split_at(packing_degree);
 	assert_eq!(
 		evaluation_claim,
@@ -70,16 +70,14 @@ where
 	// basis decompose/recombine s_hat_v across opposite dimension
 	let s_hat_u: Vec<F> = <TensorAlgebra<B1, F>>::new(s_hat_v).transpose().elems;
 
-	// retrieve batching scalars
 	let batching_scalars: Vec<F> = verifier_samples_batching_scalars(transcript);
 
 	let tensor_expanded_batching_scalars = eq_ind_partial_eval(&batching_scalars);
 
-	// infer sumcheck claim from transcript
+	// infer sumcheck claim
 	let verifier_computed_sumcheck_claim =
 		inner_product::<F>(s_hat_u, tensor_expanded_batching_scalars.as_ref().iter().copied());
 
-	// verify large field pcs w/ transcript
 	let (final_fri_oracle, sumcheck_output) = verify_basefold_transcript(
 		codeword_commitment,
 		transcript,
@@ -103,6 +101,14 @@ where
 }
 
 /// Verifier samples batching scalars from the transcript
+///
+/// ## Arguments
+///
+/// * `transcript` - the transcript of the prover's proof
+///
+/// ## Returns
+///
+/// * `batching_scalars` - the batching scalars
 pub fn verifier_samples_batching_scalars<F, FE, T>(
 	transcript: &mut VerifierTranscript<T>,
 ) -> Vec<FE>
