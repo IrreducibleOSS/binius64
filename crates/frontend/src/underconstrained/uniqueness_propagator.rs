@@ -496,7 +496,7 @@ mod tests {
 
 	#[test]
 	fn test_constant_uniqueness() {
-		let builder = CircuitBuilder::new();
+		let builder = CircuitBuilder::with_name("test_constant_uniqueness");
 
 		let zero = builder.add_constant(Word::ZERO);
 		let one = builder.add_constant(Word::ONE);
@@ -540,7 +540,7 @@ mod tests {
 
 	#[test]
 	fn test_and_constraint_propagation() {
-		let builder = CircuitBuilder::new();
+		let builder = CircuitBuilder::with_name("test_and_constraint_propagation");
 
 		let zero = builder.add_constant(Word::ZERO);
 		let all_one = builder.add_constant(Word::ALL_ONE);
@@ -584,7 +584,7 @@ mod tests {
 
 	#[test]
 	fn test_mul_constraint_propagation() {
-		let builder = CircuitBuilder::new();
+		let builder = CircuitBuilder::with_name("test_mul_constraint_propagation");
 
 		let one = builder.add_constant(Word::ONE);
 		let two = builder.add_constant(Word(2));
@@ -629,7 +629,7 @@ mod tests {
 
 	#[test]
 	fn test_wire_uniqueness_lookup() {
-		let builder = CircuitBuilder::new();
+		let builder = CircuitBuilder::with_name("test_wire_uniqueness_lookup");
 
 		let _zero = builder.add_constant(Word::ZERO);
 		let five = builder.add_constant(Word(5));
@@ -674,7 +674,7 @@ mod tests {
 
 	#[test]
 	fn test_complex_circuit_analysis() {
-		let builder = CircuitBuilder::new();
+		let builder = CircuitBuilder::with_name("test_complex_circuit_analysis");
 
 		let zero = builder.add_constant(Word::ZERO);
 		let one = builder.add_constant(Word::ONE);
@@ -722,7 +722,7 @@ mod tests {
 
 	#[test]
 	fn test_circuit_with_non_unique_witnesses() {
-		let builder = CircuitBuilder::new();
+		let builder = CircuitBuilder::with_name("test_circuit_with_non_unique_witnesses");
 		let zero = builder.add_constant(Word::ZERO);
 		let one = builder.add_constant(Word::ONE);
 
@@ -752,7 +752,7 @@ mod tests {
 
 	#[test]
 	fn test_witness_with_multiple_valid_assignments() {
-		let builder = CircuitBuilder::new();
+		let builder = CircuitBuilder::with_name("test_witness_with_multiple_valid_assignments");
 
 		// A circuit where witnesses have multiple valid assignments
 		// We'll use a quadratic constraint: x * x = 4
@@ -800,7 +800,7 @@ mod tests {
 
 	#[test]
 	fn test_minimal_quadratic_constraint() {
-		let builder = CircuitBuilder::new();
+		let builder = CircuitBuilder::with_name("test_minimal_quadratic_constraint");
 
 		// Minimal test: just x * x = 4
 		let four = builder.add_constant(Word(4));

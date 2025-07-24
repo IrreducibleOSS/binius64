@@ -540,7 +540,7 @@ mod tests {
 	fn how_much() {
 		const BYTE_LEN: usize = 2048;
 		println!("SHA-256 of {BYTE_LEN} bytes\n--");
-		let mut b = compiler::CircuitBuilder::new();
+		let mut b = compiler::CircuitBuilder::with_name("sha256_circuit_stats");
 		let _c = mk_circuit(&mut b, 2048);
 		let circuit = b.build();
 		crate::util::print_stat(&circuit);
@@ -548,7 +548,7 @@ mod tests {
 
 	#[test]
 	fn full_sha256() {
-		let mut b = compiler::CircuitBuilder::new();
+		let mut b = compiler::CircuitBuilder::with_name("test_full_sha256");
 		let c = mk_circuit(&mut b, 2048);
 		let circuit = b.build();
 		assert_eq!(circuit.n_gates(), 103_189);
@@ -564,7 +564,7 @@ mod tests {
 
 	#[test]
 	fn full_sha256_multi_block() {
-		let mut b = compiler::CircuitBuilder::new();
+		let mut b = compiler::CircuitBuilder::with_name("test_full_sha256_multi_block");
 		let c = mk_circuit(&mut b, 2048);
 		let circuit = b.build();
 		let mut w = circuit.new_witness_filler();
@@ -581,7 +581,7 @@ mod tests {
 
 	// Helper function to run SHA-256 test with given input and expected digest
 	fn test_sha256_with_input(message: &[u8], expected_digest: [u8; 32]) {
-		let mut b = compiler::CircuitBuilder::new();
+		let mut b = compiler::CircuitBuilder::with_name("test_sha256_with_input");
 		let c = mk_circuit(&mut b, 2048);
 		let circuit = b.build();
 		let cs = circuit.constraint_system();
@@ -741,7 +741,7 @@ mod tests {
 	#[test]
 	fn test_bogus_length_rejection() {
 		// Test that providing wrong length causes circuit to reject
-		let mut b = compiler::CircuitBuilder::new();
+		let mut b = compiler::CircuitBuilder::with_name("test_bogus_length_rejection");
 		let c = mk_circuit(&mut b, 2048);
 		let circuit = b.build();
 		let mut w = circuit.new_witness_filler();
@@ -763,7 +763,7 @@ mod tests {
 	#[test]
 	fn test_invalid_digest_rejection() {
 		// Test that providing wrong digest causes circuit to reject
-		let mut b = compiler::CircuitBuilder::new();
+		let mut b = compiler::CircuitBuilder::with_name("test_invalid_digest_rejection");
 		let c = mk_circuit(&mut b, 2048);
 		let circuit = b.build();
 		let mut w = circuit.new_witness_filler();
@@ -782,7 +782,7 @@ mod tests {
 	#[test]
 	fn test_wrong_message_content() {
 		// Test that providing wrong message content causes circuit to reject
-		let mut b = compiler::CircuitBuilder::new();
+		let mut b = compiler::CircuitBuilder::with_name("test_wrong_message_content");
 		let c = mk_circuit(&mut b, 2048);
 		let circuit = b.build();
 		let mut w = circuit.new_witness_filler();
@@ -822,7 +822,7 @@ mod tests {
 
 		for (max_len, description) in test_cases {
 			// Test circuit construction - this used to panic for certain max_len values
-			let mut b = compiler::CircuitBuilder::new();
+			let mut b = compiler::CircuitBuilder::with_name(format!("test_max_len_{}", max_len));
 			let c = mk_circuit(&mut b, max_len);
 			let circuit = b.build();
 

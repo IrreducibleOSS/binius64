@@ -306,7 +306,7 @@ mod tests {
 
 	#[test]
 	fn test_single_attribute() {
-		let b = CircuitBuilder::new();
+		let b = CircuitBuilder::with_name("test_single_attribute");
 
 		let max_len_json = 256;
 		let len_json = b.add_witness();
@@ -342,7 +342,7 @@ mod tests {
 
 	#[test]
 	fn test_multiple_attributes() {
-		let b = CircuitBuilder::new();
+		let b = CircuitBuilder::with_name("test_multiple_attributes");
 
 		let max_len_json = 256;
 		let len_json = b.add_witness();
@@ -398,7 +398,7 @@ mod tests {
 
 	#[test]
 	fn test_attribute_not_found() {
-		let b = CircuitBuilder::new();
+		let b = CircuitBuilder::with_name("test_attribute_not_found");
 
 		let max_len_json = 128;
 		let len_json = b.add_witness();
@@ -433,7 +433,7 @@ mod tests {
 
 	#[test]
 	fn test_wrong_value() {
-		let b = CircuitBuilder::new();
+		let b = CircuitBuilder::with_name("test_wrong_value");
 
 		let max_len_json = 128;
 		let len_json = b.add_witness();
@@ -468,7 +468,7 @@ mod tests {
 
 	#[test]
 	fn test_attributes_in_different_order() {
-		let b = CircuitBuilder::new();
+		let b = CircuitBuilder::with_name("test_attributes_in_different_order");
 
 		let max_len_json = 256;
 		let len_json = b.add_witness();
@@ -516,7 +516,7 @@ mod tests {
 
 	#[test]
 	fn test_empty_string_value() {
-		let b = CircuitBuilder::new();
+		let b = CircuitBuilder::with_name("test_empty_string_value");
 
 		let max_len_json = 128;
 		let len_json = b.add_witness();
@@ -553,7 +553,7 @@ mod tests {
 
 	#[test]
 	fn test_special_characters() {
-		let b = CircuitBuilder::new();
+		let b = CircuitBuilder::with_name("test_special_characters");
 
 		let max_len_json = 256;
 		let len_json = b.add_witness();
@@ -600,7 +600,7 @@ mod tests {
 
 	#[test]
 	fn test_last_attribute_no_comma() {
-		let b = CircuitBuilder::new();
+		let b = CircuitBuilder::with_name("test_last_attribute_no_comma");
 
 		let max_len_json = 128;
 		let len_json = b.add_witness();

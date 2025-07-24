@@ -323,7 +323,7 @@ mod tests {
 
 	#[test]
 	fn test_aligned_slice() {
-		let b = CircuitBuilder::new();
+		let b = CircuitBuilder::with_name("test_aligned_slice");
 
 		// Test case: 16-byte input, 8-byte slice at offset 0
 		let max_n_input = 16;
@@ -369,7 +369,7 @@ mod tests {
 
 	#[test]
 	fn test_unaligned_slice() {
-		let b = CircuitBuilder::new();
+		let b = CircuitBuilder::with_name("test_unaligned_slice");
 
 		// Test case: 16-byte input, 8-byte slice at offset 3
 		let max_n_input = 16;
@@ -417,7 +417,7 @@ mod tests {
 
 	#[test]
 	fn test_bounds_check() {
-		let b = CircuitBuilder::new();
+		let b = CircuitBuilder::with_name("test_bounds_check");
 
 		let max_n_input = 16;
 		let max_n_slice = 8;
@@ -455,7 +455,7 @@ mod tests {
 
 	#[test]
 	fn test_bounds_check_edge_case() {
-		let b = CircuitBuilder::new();
+		let b = CircuitBuilder::with_name("test_bounds_check_edge_case");
 
 		let max_n_input = 16;
 		let max_n_slice = 8;
@@ -495,7 +495,7 @@ mod tests {
 
 	#[test]
 	fn test_empty_slice() {
-		let b = CircuitBuilder::new();
+		let b = CircuitBuilder::with_name("test_empty_slice");
 
 		let max_n_input = 16;
 		let max_n_slice = 8;
@@ -532,7 +532,7 @@ mod tests {
 
 	#[test]
 	fn test_mismatched_slice_content() {
-		let b = CircuitBuilder::new();
+		let b = CircuitBuilder::with_name("test_mismatched_slice_content");
 
 		let max_n_input = 16;
 		let max_n_slice = 8;
@@ -568,7 +568,7 @@ mod tests {
 
 	#[test]
 	fn test_offset_at_end() {
-		let b = CircuitBuilder::new();
+		let b = CircuitBuilder::with_name("test_offset_at_end");
 
 		let max_n_input = 16;
 		let max_n_slice = 8;
@@ -606,7 +606,7 @@ mod tests {
 	#[test]
 	fn test_multiple_byte_extraction_paths() {
 		// This test verifies that byte extraction works correctly for all paths
-		let b = CircuitBuilder::new();
+		let b = CircuitBuilder::with_name("test_byte_extraction_correctness");
 
 		let max_n_input = 24; // 3 words
 		let max_n_slice = 8; // 1 word
@@ -657,7 +657,7 @@ mod tests {
 
 	#[test]
 	fn test_large_offset_overflow() {
-		let b = CircuitBuilder::new();
+		let b = CircuitBuilder::with_name("test_large_offset_overflow");
 
 		let max_n_input = 16;
 		let max_n_slice = 8;
@@ -694,7 +694,7 @@ mod tests {
 
 	#[test]
 	fn test_32bit_validation() {
-		let b = CircuitBuilder::new();
+		let b = CircuitBuilder::with_name("test_32bit_validation");
 
 		let max_n_input = 16;
 		let max_n_slice = 8;
@@ -750,7 +750,7 @@ mod tests {
 
 	#[test]
 	fn test_edge_case_len_input_zero() {
-		let b = CircuitBuilder::new();
+		let b = CircuitBuilder::with_name("test_edge_case_len_input_zero");
 
 		let max_n_input = 16;
 		let max_n_slice = 8;
@@ -787,7 +787,7 @@ mod tests {
 
 	#[test]
 	fn test_edge_case_len_input_zero_with_nonzero_slice() {
-		let b = CircuitBuilder::new();
+		let b = CircuitBuilder::with_name("test_edge_case_len_input_zero_with_nonzero_slice");
 
 		let max_n_input = 16;
 		let max_n_slice = 8;
@@ -819,7 +819,7 @@ mod tests {
 
 	#[test]
 	fn test_padding_beyond_actual_data() {
-		let b = CircuitBuilder::new();
+		let b = CircuitBuilder::with_name("test_padding_beyond_actual_data");
 
 		let max_n_input = 24; // 3 words
 		let max_n_slice = 16; // 2 words

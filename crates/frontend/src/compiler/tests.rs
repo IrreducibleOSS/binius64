@@ -7,7 +7,7 @@ use crate::{constraint_verifier::verify_constraints, word::Word};
 #[test]
 fn wires_layout() {
 	// Create a circuit with wires in mixed order
-	let builder = CircuitBuilder::new();
+	let builder = CircuitBuilder::with_name("test_witness_wire_ordering");
 
 	// Add wires in a specific order to test sorting
 	let witness1 = builder.add_witness();
@@ -78,7 +78,7 @@ fn wires_layout() {
 #[test]
 fn test_icmp_ult() {
 	// Build a circuit with only two inputs and check c = a < b.
-	let builder = CircuitBuilder::new();
+	let builder = CircuitBuilder::with_name("test_icmp_ult");
 	let a = builder.add_inout();
 	let b = builder.add_inout();
 	let actual = builder.icmp_ult(a, b);
@@ -100,7 +100,7 @@ fn test_icmp_ult() {
 #[test]
 fn test_icmp_eq() {
 	// Build a circuit with only two inputs and check c = a == b.
-	let builder = CircuitBuilder::new();
+	let builder = CircuitBuilder::with_name("test_icmp_eq");
 	let a = builder.add_inout();
 	let b = builder.add_inout();
 	let actual = builder.icmp_eq(a, b);
@@ -121,7 +121,7 @@ fn test_icmp_eq() {
 
 #[test]
 fn test_iadd_cin_cout_max_values() {
-	let builder = CircuitBuilder::new();
+	let builder = CircuitBuilder::with_name("test_iadd_cin_cout_max_values");
 
 	let a = builder.add_constant_64(0xFFFFFFFFFFFFFFFF);
 	let b = builder.add_constant_64(0xFFFFFFFFFFFFFFFF);
@@ -138,7 +138,7 @@ fn test_iadd_cin_cout_max_values() {
 
 #[test]
 fn test_iadd_cin_cout_zero() {
-	let builder = CircuitBuilder::new();
+	let builder = CircuitBuilder::with_name("test_iadd_cin_cout_zero");
 
 	let a = builder.add_constant_64(0);
 	let b = builder.add_constant_64(0);
@@ -154,7 +154,7 @@ fn test_iadd_cin_cout_zero() {
 }
 
 fn prop_check_icmp_ult(a: u64, b: u64, expected_result: Word) {
-	let builder = CircuitBuilder::new();
+	let builder = CircuitBuilder::with_name("prop_check_icmp_ult");
 	let a_wire = builder.add_constant_64(a);
 	let b_wire = builder.add_constant_64(b);
 	let result_wire = builder.icmp_ult(a_wire, b_wire);
@@ -170,7 +170,7 @@ fn prop_check_icmp_ult(a: u64, b: u64, expected_result: Word) {
 }
 
 fn prop_check_icmp_eq(a: u64, b: u64, expected_result: Word) {
-	let builder = CircuitBuilder::new();
+	let builder = CircuitBuilder::with_name("prop_check_icmp_eq");
 	let a_wire = builder.add_constant_64(a);
 	let b_wire = builder.add_constant_64(b);
 	let result_wire = builder.icmp_eq(a_wire, b_wire);
@@ -188,7 +188,7 @@ fn prop_check_icmp_eq(a: u64, b: u64, expected_result: Word) {
 proptest! {
 	#[test]
 	fn prop_iadd_cin_cout_carry_chain(a1 in any::<u64>(), b1 in any::<u64>(), a2 in any::<u64>(), b2 in any::<u64>()) {
-		let builder = CircuitBuilder::new();
+		let builder = CircuitBuilder::with_name("prop_iadd_cin_cout_carry_chain");
 
 		// First addition
 		let a1_wire = builder.add_constant_64(a1);
@@ -237,7 +237,7 @@ proptest! {
 
 	#[test]
 	fn prop_check_assert_eq(x in any::<u64>(), y in any::<u64>()) {
-		let builder = CircuitBuilder::new();
+		let builder = CircuitBuilder::with_name("prop_check_assert_eq");
 		let is_equal = x == y;
 		let x_wire = builder.add_constant_64(x);
 		let y_wire = builder.add_constant_64(y);

@@ -464,7 +464,7 @@ mod tests {
 		max_n_joined: usize,
 		term_max_lens: Vec<usize>,
 	) -> (CircuitBuilder, Concat) {
-		let b = CircuitBuilder::new();
+		let b = CircuitBuilder::with_name("concat_circuit");
 
 		let len_joined = b.add_inout();
 		let joined: Vec<Wire> = (0..max_n_joined / 8).map(|_| b.add_inout()).collect();

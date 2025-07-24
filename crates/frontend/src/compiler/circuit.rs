@@ -86,6 +86,7 @@ pub struct Circuit {
 	shared: Shared,
 	value_vec_layout: ValueVecLayout,
 	wire_mapping: SecondaryMap<Wire, ValueIndex>,
+	name: String,
 }
 
 impl Circuit {
@@ -95,12 +96,19 @@ impl Circuit {
 		shared: Shared,
 		value_vec_layout: ValueVecLayout,
 		wire_mapping: SecondaryMap<Wire, ValueIndex>,
+		name: String,
 	) -> Self {
 		Self {
 			shared,
 			value_vec_layout,
 			wire_mapping,
+			name,
 		}
+	}
+
+	/// Get the name of this circuit
+	pub fn name(&self) -> &str {
+		&self.name
 	}
 
 	/// For the given wire, returns its index in the witness vector.

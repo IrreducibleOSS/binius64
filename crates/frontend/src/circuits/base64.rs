@@ -539,7 +539,7 @@ mod tests {
 	fn test_base64_encoding(input: &[u8], max_len_decoded: usize) {
 		let expected_base64 = encode_base64(input);
 
-		let builder = CircuitBuilder::new();
+		let builder = CircuitBuilder::with_name("test_base64_encoding_correctness");
 		let circuit = create_base64_circuit(&builder, max_len_decoded);
 		let compiled = builder.build();
 
@@ -586,7 +586,7 @@ mod tests {
 	#[test]
 	fn test_invalid_base64() {
 		// Test that invalid base64 encoding fails
-		let builder = CircuitBuilder::new();
+		let builder = CircuitBuilder::with_name("test_invalid_base64");
 		let circuit = create_base64_circuit(&builder, 120);
 		let compiled = builder.build();
 

@@ -38,7 +38,7 @@ pub fn bignum_to_biguint(w: &WitnessFiller, bignum: &BigNum) -> BigUint {
 fn test_add_overflow_detection_via_final_carry() {
 	// This test demonstrates that the final carry check catches overflow
 	// We'll try to add values that would overflow the allocated limbs
-	let builder = CircuitBuilder::new();
+	let builder = CircuitBuilder::with_name("test_add_overflow_fails");
 
 	let a = BigNum {
 		limbs: vec![builder.add_witness()],
@@ -63,7 +63,7 @@ fn test_add_overflow_detection_via_final_carry() {
 
 #[test]
 fn test_mul_single_case() {
-	let builder = CircuitBuilder::new();
+	let builder = CircuitBuilder::with_name("test_mul_single_case");
 
 	// Create 2048-bit numbers for inputs (32 limbs)
 	let a = BigNum::new_witness(&builder, 32);
@@ -127,7 +127,7 @@ proptest! {
 		// supported by the circuit constraints.
 		prop_assume!(carry == 0);
 
-		let builder = CircuitBuilder::new();
+		let builder = CircuitBuilder::with_name("test_add_with_values");
 		let num_limbs = vals.len();
 
 		let a = BigNum::new_witness(&builder, num_limbs);
@@ -163,7 +163,7 @@ proptest! {
 		a_limbs in prop::collection::vec(any::<u64>(), 1..10),
 		b_limbs in prop::collection::vec(any::<u64>(), 1..10)
 	) {
-		let builder = CircuitBuilder::new();
+		let builder = CircuitBuilder::with_name("test_mul_with_values");
 
 		let a = BigNum::new_inout(&builder, a_limbs.len());
 		let b = BigNum::new_inout(&builder, b_limbs.len());
@@ -198,7 +198,7 @@ proptest! {
 
 	#[test]
 	fn test_square_with_values(a_limbs in prop::collection::vec(any::<u64>(), 1..10)) {
-		let builder = CircuitBuilder::new();
+		let builder = CircuitBuilder::with_name("test_square_with_values");
 
 		let a = BigNum::new_witness(&builder, a_limbs.len());
 		let result = square(&builder, &a);
@@ -227,7 +227,7 @@ proptest! {
 
 	#[test]
 	fn prop_square_vs_mul_equivalence(vals in prop::collection::vec(any::<u64>(), 1..=8)) {
-		let builder = CircuitBuilder::new();
+		let builder = CircuitBuilder::with_name("prop_square_vs_mul_equivalence");
 
 		let a = BigNum::new_witness(&builder, vals.len());
 
@@ -253,7 +253,7 @@ proptest! {
 
 	#[test]
 	fn prop_assert_eq_equal(vals in prop::collection::vec(any::<u64>(), 0..=8)) {
-		let builder = CircuitBuilder::new();
+		let builder = CircuitBuilder::with_name("prop_assert_eq_equal");
 		let a = BigNum::new_witness(&builder, vals.len());
 		let b = BigNum::new_witness(&builder, vals.len());
 
@@ -279,7 +279,7 @@ proptest! {
 		// Skip if they're actually equal
 		prop_assume!(a_vals != b_vals);
 
-		let builder = CircuitBuilder::new();
+		let builder = CircuitBuilder::with_name("prop_assert_eq_different");
 		let a = BigNum::new_witness(&builder, a_vals.len());
 		let b = BigNum::new_witness(&builder, b_vals.len());
 
@@ -306,7 +306,7 @@ proptest! {
 		prop_assume!(mod_vals.len() <= a_vals.len());
 		prop_assume!(!mod_vals.iter().all(|&v| v == 0));
 
-		let builder = CircuitBuilder::new();
+		let builder = CircuitBuilder::with_name("prop_mod_reduce");
 		let a = BigNum::new_witness(&builder, a_vals.len());
 		let modulus = BigNum::new_witness(&builder, mod_vals.len());
 
@@ -372,7 +372,7 @@ proptest! {
 		// If the provided values are actually correct, skip this test case
 		prop_assume!(provided_q != correct_q || provided_r != correct_r);
 
-		let builder = CircuitBuilder::new();
+		let builder = CircuitBuilder::with_name("prop_mod_reduce_invalid_inputs");
 
 		let a = BigNum::new_witness(&builder, a_vals.len());
 		let modulus = BigNum::new_witness(&builder, mod_vals.len());

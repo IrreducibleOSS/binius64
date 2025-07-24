@@ -293,7 +293,7 @@ fn jwt_payload_check(
 
 #[test]
 fn smoke() {
-	let mut builder = CircuitBuilder::new();
+	let mut builder = CircuitBuilder::with_name("test_zklogin_smoke");
 	let config = Config {
 		max_len_json_jwt_header: 264,
 		max_len_json_jwt_payload: 504,

@@ -37,15 +37,28 @@ pub(crate) struct Shared {
 pub struct CircuitBuilder {
 	/// Current path at which this circuit builder is positioned.
 	current_path: PathSpec,
+	/// Name of the circuit for debugging and diagnostic purposes
+	name: String,
 	shared: Rc<RefCell<Option<Shared>>>,
 }
 
 impl Default for CircuitBuilder {
 	fn default() -> Self {
+		Self::with_name("unnamed_circuit")
+	}
+}
+
+impl CircuitBuilder {
+	pub fn new() -> Self {
+		CircuitBuilder::default()
+	}
+
+	pub fn with_name(name: impl Into<String>) -> Self {
 		let path_spec_tree = PathSpecTree::new();
 		let root = path_spec_tree.root();
 		CircuitBuilder {
 			current_path: root,
+			name: name.into(),
 			shared: Rc::new(RefCell::new(Some(Shared {
 				graph: GateGraph {
 					gates: PrimaryMap::new(),
@@ -60,11 +73,10 @@ impl Default for CircuitBuilder {
 			}))),
 		}
 	}
-}
 
-impl CircuitBuilder {
-	pub fn new() -> Self {
-		CircuitBuilder::default()
+	/// Get the name of this circuit
+	pub fn name(&self) -> &str {
+		&self.name
 	}
 
 	/// # Preconditions
@@ -139,7 +151,19 @@ impl CircuitBuilder {
 			total_len,
 		};
 
-		Circuit::new(shared, value_vec_layout, wire_mapping)
+		let circuit = Circuit::new(shared, value_vec_layout, wire_mapping, self.name.clone());
+
+		// Run uniqueness check
+		let uniqueness_result = crate::underconstrained::process_circuit_uniqueness(&circuit);
+		println!(
+			"CIRC>> Circuit {}: Uniqueness: {}/{} witnesses unique ({:.1}%)",
+			self.name,
+			uniqueness_result.unique_witnesses,
+			uniqueness_result.total_witnesses,
+			uniqueness_result.uniqueness_ratio * 100.0
+		);
+
+		circuit
 	}
 
 	pub fn subcircuit(&self, name: impl Into<String>) -> CircuitBuilder {
@@ -149,6 +173,7 @@ impl CircuitBuilder {
 			.extend(self.current_path, name);
 		CircuitBuilder {
 			current_path: nested_path,
+			name: self.name.clone(),
 			shared: self.shared.clone(),
 		}
 	}

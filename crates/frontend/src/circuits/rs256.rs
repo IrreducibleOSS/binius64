@@ -478,7 +478,7 @@ mod tests {
 
 	#[test]
 	fn test_real_rsa_signature_verification_with_message() {
-		let mut builder = CircuitBuilder::new();
+		let mut builder = CircuitBuilder::with_name("test_real_rsa_signature_verification_with_message");
 		let max_message_len = 256;
 		let circuit = setup_circuit(&mut builder, max_message_len);
 		let cs = builder.build();
@@ -504,7 +504,7 @@ mod tests {
 
 	#[test]
 	fn test_real_rsa_signature_with_invalid_prefix() {
-		let mut builder = CircuitBuilder::new();
+		let mut builder = CircuitBuilder::with_name("test_real_rsa_signature_with_invalid_prefix");
 		let max_message_len = 256;
 		let circuit = setup_circuit(&mut builder, max_message_len);
 		let cs = builder.build();
@@ -537,7 +537,7 @@ mod tests {
 
 	#[test]
 	fn test_real_rsa_signature_verification_with_wrong_message() {
-		let mut builder = CircuitBuilder::new();
+		let mut builder = CircuitBuilder::with_name("test_real_rsa_signature_verification_with_wrong_message");
 		let max_message_len = 256;
 		let circuit = setup_circuit(&mut builder, max_message_len);
 		let cs = builder.build();

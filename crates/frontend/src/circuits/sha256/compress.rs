@@ -243,7 +243,7 @@ mod tests {
 			0xb00361a3, 0x96177a9c, 0xb410ff61, 0xf20015ad,
 		];
 
-		let mut circuit = compiler::CircuitBuilder::new();
+		let mut circuit = compiler::CircuitBuilder::with_name("test_sha256_compress512");
 		let state = State::iv(&mut circuit);
 		let input: [Wire; 16] = std::array::from_fn(|_| circuit.add_witness());
 		let output: [Wire; 8] = std::array::from_fn(|_| circuit.add_inout());
@@ -282,7 +282,7 @@ mod tests {
 		// This creates ~100 layers with a lot of computations and a very large number of layers
 		// (hundreds of thousands) with a few gates each.
 		const N: usize = 1 << 10;
-		let mut circuit = compiler::CircuitBuilder::new();
+		let mut circuit = compiler::CircuitBuilder::with_name("test_multiple_sha256_compressions");
 
 		println!("{N} sha256 compress512 invocations");
 
@@ -324,7 +324,7 @@ mod tests {
 	fn sha256_parallel() {
 		// Test multiple SHA-256 compressions in parallel (no chaining)
 		const N: usize = 1 << 10;
-		let circuit = compiler::CircuitBuilder::new();
+		let circuit = compiler::CircuitBuilder::with_name("test_parallel_sha256_compressions");
 
 		println!("{N} sha256 compress512 invocations in parallel");
 
