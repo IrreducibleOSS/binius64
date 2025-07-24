@@ -1,6 +1,6 @@
 use std::vec;
 
-use binius_field::{BinaryField, ExtensionField, TowerField};
+use binius_field::{BinaryField, ExtensionField, Field};
 use binius_math::{FieldBuffer, ntt::AdditiveNTT};
 use binius_transcript::{
 	ProverTranscript,
@@ -24,7 +24,7 @@ use crate::{
 /// for FRI and Sumcheck from the transcript.
 pub struct BaseFoldProver<'a, F, FA, NTT, MerkleProver, VCS>
 where
-	F: TowerField + ExtensionField<FA> + BinaryField,
+	F: Field + ExtensionField<FA> + BinaryField,
 	FA: BinaryField,
 	NTT: AdditiveNTT<FA> + Sync,
 	MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
@@ -37,7 +37,7 @@ where
 
 impl<'a, F, FA, NTT, MerkleProver, VCS> BaseFoldProver<'a, F, FA, NTT, MerkleProver, VCS>
 where
-	F: TowerField + ExtensionField<FA>,
+	F: Field + ExtensionField<FA> + BinaryField,
 	FA: BinaryField,
 	NTT: AdditiveNTT<FA> + Sync,
 	MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
