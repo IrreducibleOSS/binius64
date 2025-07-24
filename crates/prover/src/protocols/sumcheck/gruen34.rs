@@ -12,6 +12,15 @@ use super::{
 	round_evals::{RoundEvals2, round_coeffs_by_eq},
 };
 
+// A helper struct that implements an Mlecheck degree lowering logic using tricks from [Gruen24]
+// section 3.4 (hence the name). See a docstring to `BivariateProductMlecheckProver` implementation
+// for more in-depth explanation.
+//
+// It's initialized with a point from an evaluation claim, and takes care of folding the eq
+// indicator expansion, updating prefix product and multiplying by the linear part (denoted (3), (1)
+// and (2) in the mentioned docstring).
+//
+// [Gruen24]: <https://eprint.iacr.org/2024/108>
 #[derive(Debug, Clone)]
 pub struct Gruen34<P: PackedField> {
 	n_vars_remaining: usize,
@@ -49,14 +58,19 @@ impl<F: Field, P: PackedField<Scalar = F>> Gruen34<P> {
 		self.n_vars_remaining
 	}
 
+	// An interpolation routine for degree-2 round polynomials. Takes P'(x) evals and sum claim on
+	// P(x).
 	#[allow(dead_code)]
 	pub fn interpolate2(
 		&self,
 		sum: F,
-		round_evals: RoundEvals2<F>,
+		prime_evals: RoundEvals2<F>,
 	) -> (RoundCoeffs<F>, RoundCoeffs<F>) {
+		// Value of evaluation point in currently specialized variable
 		let alpha = self.next_coordinate();
-		let prime_coeffs = round_evals.interpolate_eq(sum, alpha);
+		// Degree-2 interpolation
+		let prime_coeffs = prime_evals.interpolate_eq(sum, alpha);
+		// Multiply by linear eq indicator part (2) and prefix product (1)
 		let round_coeffs = round_coeffs_by_eq(&prime_coeffs, alpha) * self.eq_prefix_eval;
 		(prime_coeffs, round_coeffs)
 	}
@@ -64,11 +78,14 @@ impl<F: Field, P: PackedField<Scalar = F>> Gruen34<P> {
 	pub fn fold(&mut self, challenge: F) -> Result<(), Error> {
 		assert!(self.n_vars_remaining > 0);
 
+		// Eq indicator folding is just an xor. Remember that we are one variable less than other
+		// multilinears.
 		if self.n_vars_remaining > 1 {
 			debug_assert_eq!(self.eq_expansion.log_len(), self.n_vars_remaining - 1);
 			eq_ind_truncate_low_inplace(&mut self.eq_expansion, self.n_vars_remaining - 2)?;
 		}
 
+		// Update the prefix product (1)
 		let alpha = self.next_coordinate();
 		self.eq_prefix_eval *= eq_one_var(challenge, alpha);
 

@@ -10,6 +10,54 @@ use binius_verifier::protocols::sumcheck::RoundCoeffs;
 use super::{common::SumcheckProver, error::Error, gruen34::Gruen34, round_evals::RoundEvals2};
 use crate::protocols::sumcheck::common::MleCheckProver;
 
+/// A [`SumcheckProver`] implementation that reduces an evaluation claim on a multilinear extension
+/// of the product of two multilinears to evaluation claims on said multilinears. We call such
+/// reductions Mlechecks.
+///
+/// ## Mathematical Definition
+/// * $n \in N$ - number of variables in multilinear polynomials
+/// * $A, B \in F\[x\], x = \(x_1, \ldots, x_n\)$ - multilinears being multiplied
+/// * $(\widetilde{AB})\[x\] = y$ - evaluation claim on the product MLE
+///
+/// The claim is equivalent to $P(x) = \sum_{v \in B} \widetilde{eq}(v, x) A(v) B(v) = y$, and the
+/// reduction can be achieved by sumchecking the latter degree-3 composition. The paper [Gruen24],
+/// however, describes a way to partition the $\widetilde{eq}(v, x)$ into three parts in round $j
+/// \in 1, \ldots, n$ during specialization of variable $v_{n-j+1}$, with $j-1$ challenges
+/// $\alpha_i$ already sampled:
+///
+/// $$ \widetilde{eq}(x_{n-j+2}, \ldots, x_n; \alpha_{j-1}, \ldots, \alpha_{1}) \tag{1} $$
+/// $$ \widetilde{eq}(x_{n-j+1}; v_{n-j+1}) \tag{2} $$
+/// $$ \widetilde{eq}(x_1, \ldots, x_{n-j}; v_1, \ldots, v_{n-j}) \tag{3} $$
+///
+/// The following holds:
+/// * (1) is a constant that can be incrementally updated in O(1) time,
+/// * (2) is a linear polynomial that is easy to compute in monomial form specialized to either
+///   variable
+/// * (3) is a an equality indicator over the claim point suffix
+///
+/// These observations allow us to instead sumcheck:
+/// $$
+/// P'(x) = \sum_{v \in B} \widetilde{eq}(x_1, \ldots, x_{n-j}; v_1, \ldots, v_{n-j}) A(v) B(v)
+/// $$
+///
+/// Which is simpler because:
+/// * $P'(x)$ is degree-2 in $j$-th variable, requiring one less evaluation point
+/// * Equality indicator expansion does not depend on $j$-th variable and thus doesn't need to be
+///   interpolated
+///
+/// After computing the round polynomial for $P'(x)$ in monomial form, one can simply multiply by
+/// (2) and (1) in polynomial form. For more details, see [`Gruen34`]('gruen34::Gruen34') struct and
+/// [Gruen24] Section 3.4.
+///
+/// Note 1: as evident from the definition, this prover binds variables in high-to-low index order.
+///
+/// Note 2: evaluation points are 0 (implicit), 1 and Karatsuba infinity.
+///
+/// # Invariants
+///
+/// - The length of both multilinears is always equal.
+///
+/// [Gruen24]: <https://eprint.iacr.org/2024/108>
 #[derive(Debug, Clone)]
 pub struct BivariateProductMlecheckProver<P: PackedField> {
 	multilinears: [FieldBuffer<P>; 2],
@@ -18,6 +66,8 @@ pub struct BivariateProductMlecheckProver<P: PackedField> {
 }
 
 impl<F: Field, P: PackedField<Scalar = F>> BivariateProductMlecheckProver<P> {
+	/// Constructs a prover, given the multilinear polynomial evaluations and the evaluation
+	/// claim on the multilinear extension of their product.
 	pub fn new(
 		multilinears: [FieldBuffer<P>; 2],
 		eval_point: &[F],
@@ -63,7 +113,10 @@ where
 		let n_vars_remaining = self.n_vars();
 		assert!(n_vars_remaining > 0);
 
+		// For P' the eq expansion does not depend on the currently specialized variable and
+		// thus doesn't need to be interpolated.
 		let eq_expansion = self.gruen34.eq_expansion();
+
 		let (evals_a_0, evals_a_1) = self.multilinears[0].split_half()?;
 		let (evals_b_0, evals_b_1) = self.multilinears[1].split_half()?;
 
