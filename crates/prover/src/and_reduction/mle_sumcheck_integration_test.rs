@@ -18,8 +18,8 @@ mod test {
 
 	use crate::{
 		and_reduction::{
-			fold_lookup::precompute_fold_lookup, sumcheck_round_messages::univariate_round_message,
-			univariate::ntt_lookup::precompute_lookup, utils::multivariate::OneBitMultivariate,
+			fold_lookup::FoldLookup, sumcheck_round_messages::univariate_round_message,
+			univariate::ntt_lookup::NTTLookup, utils::multivariate::OneBitMultivariate,
 		},
 		protocols::sumcheck::{and_reduction::prover::AndReductionProver, prove_single},
 	};
@@ -68,22 +68,21 @@ mod test {
 			.map(|x| AESTowerField8b::new(x as u8))
 			.collect();
 
-		let lookup = precompute_lookup::<PackedAESBinaryField16x8b, _>(&onto_domain);
+		let ntt_lookup = NTTLookup::<PackedAESBinaryField16x8b>::new(&onto_domain);
 
 		let first_round_message = univariate_round_message(
 			&mlv_1,
 			&mlv_2,
 			&mlv_3,
 			&eq_ind_only_big,
-			&lookup,
+			&ntt_lookup,
 			&small_field_zerocheck_challenges,
 			big_field_zerocheck_challenges[0],
 		);
 
 		let first_sumcheck_challenge = B128::random(&mut rng);
 
-		let fold_lookup_polyval =
-			precompute_fold_lookup::<AESTowerField8b, B128>(first_sumcheck_challenge);
+		let fold_lookup_polyval = FoldLookup::new::<AESTowerField8b>(first_sumcheck_challenge);
 
 		let expected_next_round_sum =
 			first_round_message.evaluate_at_challenge(first_sumcheck_challenge);
