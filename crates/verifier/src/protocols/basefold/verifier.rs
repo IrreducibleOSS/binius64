@@ -30,7 +30,6 @@ const NUM_ROUND_COEFFS: usize = 3;
 /// # Returns
 ///
 /// A vector of booleans, where true indicates a FRI commitment was made in that round.
-/// 
 fn is_fri_commit_round(
 	fri_fold_arities: &[usize],
 	num_basefold_rounds: usize,
@@ -64,7 +63,6 @@ fn is_fri_commit_round(
 /// * `fri_params` - The FRI parameters
 /// * `vcs` - The Merkle tree scheme
 /// * `n_vars` - The number of variables in the multilinear polynomial
-/// 
 pub fn verify_transcript<F, FA, VCS, TranscriptChallenger>(
 	codeword_commitment: VCS::Digest,
 	transcript: &mut VerifierTranscript<TranscriptChallenger>,
@@ -85,7 +83,11 @@ where
 	let mut sum = evaluation_claim;
 
 	for is_commit_round in fri_commit_rounds {
-		let round_proof = RoundProof(RoundCoeffs(transcript.message().read_scalar_slice::<F>(NUM_ROUND_COEFFS)?));
+		let round_proof = RoundProof(RoundCoeffs(
+			transcript
+				.message()
+				.read_scalar_slice::<F>(NUM_ROUND_COEFFS)?,
+		));
 
 		let challenge = transcript.sample();
 
@@ -129,7 +131,6 @@ where
 /// # Returns
 ///
 /// A boolean indicating if the final FRI oracle is consistent with the sumcheck claim.
-/// 
 pub fn final_basefold_assertion<F: Field>(
 	fri_final_oracle: F,
 	sumcheck_final_claim: F,
