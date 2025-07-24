@@ -9,11 +9,13 @@ use binius_transcript::{
 use binius_utils::DeserializeBytes;
 
 use crate::{
+	Error,
 	fri::{FRIParams, verify::FRIVerifier},
 	merkle_tree::MerkleTreeScheme,
 	protocols::sumcheck::{RoundCoeffs, RoundProof, SumcheckOutput},
 };
 
+// The mle-check in basefold involves a degree 2 univariate round polynomial.
 const NUM_ROUND_COEFFS: usize = 3;
 
 /// Determines for each round if a FRI commitment was made depending on folding arities.
@@ -33,7 +35,7 @@ const NUM_ROUND_COEFFS: usize = 3;
 fn is_fri_commit_round(
 	fri_fold_arities: &[usize],
 	num_basefold_rounds: usize,
-) -> Result<Vec<bool>, Box<dyn std::error::Error>> {
+) -> Result<Vec<bool>, Error> {
 	let mut result = vec![false; num_basefold_rounds];
 	let mut result_idx = 0;
 	for arity in fri_fold_arities {
@@ -70,7 +72,7 @@ pub fn verify_transcript<F, FA, VCS, TranscriptChallenger>(
 	fri_params: &FRIParams<F, FA>,
 	vcs: &VCS,
 	n_vars: usize,
-) -> Result<(F, SumcheckOutput<F>), Box<dyn std::error::Error>>
+) -> Result<(F, SumcheckOutput<F>), Error>
 where
 	F: Field + BinaryField + ExtensionField<FA> + TowerField,
 	FA: BinaryField,
