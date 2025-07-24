@@ -88,12 +88,8 @@ impl OneBitMultivariate {
 				)
 				.take(bytes_per_group);
 
-				*hyprecube_vertex_val = this_group_byte_chunks
-					.enumerate()
-					.map(|(byte_chunk_idx, byte_field_elem)| {
-						lookup[byte_chunk_idx][Into::<u8>::into(byte_field_elem) as usize]
-					})
-					.sum();
+				*hyprecube_vertex_val =
+					lookup.fold_one_bit_univariate(this_group_byte_chunks.map(u8::from));
 			},
 		);
 		multilin
@@ -107,7 +103,7 @@ mod test {
 	use rand::{SeedableRng, rngs::StdRng};
 
 	use super::OneBitMultivariate;
-	use crate::and_reduction::fold_lookup::precompute_fold_lookup;
+	use crate::and_reduction::fold_lookup::FoldLookup;
 
 	#[test]
 	fn test_lookup_fold() {
@@ -122,7 +118,7 @@ mod test {
 
 		let challenge = B128::random(&mut rng);
 
-		let lookup = precompute_fold_lookup::<AESTowerField8b, B128>(challenge);
+		let lookup = FoldLookup::new::<AESTowerField8b>(challenge);
 
 		let folded_naive = mlv.fold_naive::<AESTowerField8b, B128>(challenge);
 
