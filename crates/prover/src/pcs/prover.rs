@@ -201,7 +201,7 @@ where
 
 		let rs_eq_ind: FieldBuffer<FE> = rs_eq_ind::<B1, FE>(r_double_prime, eval_point_high);
 
-		Ok(BaseFoldProver::new(
+		BaseFoldProver::new(
 			self.packed_mle,
 			rs_eq_ind,
 			basefold_sumcheck_claim,
@@ -210,7 +210,7 @@ where
 			merkle_prover,
 			ntt,
 			fri_params,
-		)?)
+		)
 	}
 }
 
