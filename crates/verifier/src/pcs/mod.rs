@@ -3,4 +3,4 @@
 pub mod error;
 pub mod verifier;
 
-pub use error::Error;
+pub use error::{Error, VerificationError};

@@ -74,7 +74,7 @@ pub fn verify_transcript<F, FA, VCS, TranscriptChallenger>(
 	n_vars: usize,
 ) -> Result<(F, SumcheckOutput<F>), Error>
 where
-	F: Field + BinaryField + ExtensionField<FA> ,
+	F: Field + BinaryField + ExtensionField<FA>,
 	FA: BinaryField,
 	TranscriptChallenger: Challenger + Clone,
 	VCS: MerkleTreeScheme<F, Digest: DeserializeBytes>,
