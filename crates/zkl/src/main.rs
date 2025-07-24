@@ -1,3 +1,5 @@
+use std::{fs, path::Path};
+
 use binius_frontend::{
 	circuits::zklogin::{Config, ZkLogin},
 	compiler::CircuitBuilder,
@@ -96,6 +98,10 @@ enum Commands {
 		#[command(flatten)]
 		config: ConfigCli,
 	},
+	/// Check circuit statistics against snapshot
+	CheckSnapshot,
+	/// Bless the snapshot with current circuit statistics.
+	BlessSnapshot,
 }
 
 fn main() {
@@ -106,20 +112,33 @@ fn main() {
 			print_circuit_stats(config.into_config());
 		}
 		Commands::Composition { config } => print_circuit_composition(config.into_config()),
+		Commands::CheckSnapshot => {
+			check_snapshot(Config::default());
+		}
+		Commands::BlessSnapshot => {
+			bless_snapshot(Config::default());
+		}
 	}
 }
 
-fn print_circuit_stats(config: Config) {
-	println!("ZK Login circuit");
-	println!("config: {config:#?}");
-	println!("--");
+fn get_circuit_stats_string(config: Config) -> String {
+	let mut output = String::new();
+	output.push_str("ZK Login circuit\n");
+	output.push_str(&format!("config: {config:#?}\n"));
+	output.push_str("--\n");
 
 	let mut builder = CircuitBuilder::new();
 	let _zklogin = ZkLogin::new(&mut builder, config);
 	let circuit = builder.build();
 
 	let stat = CircuitStat::collect(&circuit);
-	println!("{stat}");
+	output.push_str(&format!("{stat}"));
+	output
+}
+
+fn print_circuit_stats(config: Config) {
+	let output = get_circuit_stats_string(config);
+	print!("{output}");
 }
 
 fn print_circuit_composition(config: Config) {
@@ -150,4 +169,73 @@ fn multiple_of_24(s: &str) -> Result<usize, String> {
 	} else {
 		Ok(value)
 	}
+}
+
+const SNAPSHOT_PATH: &str = "crates/zkl/snapshots/stat_output.snap";
+
+fn check_snapshot(config: Config) {
+	let snapshot_path = Path::new(SNAPSHOT_PATH);
+
+	if !snapshot_path.exists() {
+		eprintln!("Error: Snapshot file not found at {SNAPSHOT_PATH}");
+		eprintln!("Run 'cargo run -p zkl -- bless-snapshot' to create it.");
+		std::process::exit(1);
+	}
+
+	let expected = fs::read_to_string(snapshot_path).unwrap_or_else(|e| {
+		eprintln!("Error reading snapshot file: {e}");
+		std::process::exit(1);
+	});
+
+	let actual = get_circuit_stats_string(config);
+
+	if expected != actual {
+		eprintln!("Error: Circuit statistics do not match snapshot!");
+		eprintln!("\n--- Expected (from snapshot) ---");
+		eprintln!("{expected}");
+		eprintln!("\n--- Actual ---");
+		eprintln!("{actual}");
+		eprintln!("\n--- Diff ---");
+
+		// Simple line-by-line diff
+		let expected_lines: Vec<_> = expected.lines().collect();
+		let actual_lines: Vec<_> = actual.lines().collect();
+
+		let max_lines = expected_lines.len().max(actual_lines.len());
+		for i in 0..max_lines {
+			let exp_line = expected_lines.get(i).unwrap_or(&"");
+			let act_line = actual_lines.get(i).unwrap_or(&"");
+
+			if exp_line != act_line {
+				eprintln!("Line {}: - {}", i + 1, exp_line);
+				eprintln!("Line {}: + {}", i + 1, act_line);
+			}
+		}
+
+		eprintln!("\nRun 'cargo run -p zkl -- bless-snapshot' to update the snapshot.");
+		std::process::exit(1);
+	}
+
+	println!("✓ Circuit statistics match snapshot");
+}
+
+fn bless_snapshot(config: Config) {
+	let snapshot_path = Path::new(SNAPSHOT_PATH);
+
+	// Create directory if it doesn't exist
+	if let Some(parent) = snapshot_path.parent() {
+		fs::create_dir_all(parent).unwrap_or_else(|e| {
+			eprintln!("Error creating snapshot directory: {e}");
+			std::process::exit(1);
+		});
+	}
+
+	let output = get_circuit_stats_string(config);
+
+	fs::write(snapshot_path, &output).unwrap_or_else(|e| {
+		eprintln!("Error writing snapshot file: {e}");
+		std::process::exit(1);
+	});
+
+	println!("✓ Snapshot updated at {SNAPSHOT_PATH}");
 }

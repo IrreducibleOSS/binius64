@@ -1,0 +1,21 @@
+ZK Login circuit
+config: Config {
+    max_len_json_jwt_header: 264,
+    max_len_json_jwt_payload: 504,
+    max_len_jwt_signature: 264,
+    max_len_jwt_sub: 72,
+    max_len_jwt_aud: 72,
+    max_len_jwt_iss: 72,
+    max_len_salt: 72,
+    max_len_nonce_r: 48,
+    max_len_t_max: 48,
+}
+--
+Number of gates: 802733
+Number of AND constraints: 1117833
+Number of MUL constraints: 26945
+Length of value vec: 1240471
+  Constants: 619
+  Inout: 133
+  Witness: 185241
+  Internal: 1054206

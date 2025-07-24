@@ -33,7 +33,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: "3.13"
       - name: Run pre-commit
         uses: pre-commit/action@v3.0.1
         env:
@@ -70,3 +70,14 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Build documentation
         run: cargo doc --document-private-items --no-deps
+
+  zkl-snapshot:
+    name: zkl-snapshot
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Check zkl circuit statistics snapshot
+        run: cargo run -p zkl --release -- check-snapshot
