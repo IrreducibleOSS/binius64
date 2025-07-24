@@ -57,8 +57,10 @@ serde_json = "1.0.140"
 sha2 = "0.10.8"
 subtle = "2.5.0"
 thiserror = "2.0.3"
-transpose = "0.2.2"
 tracing = "0.1.38"
+tracing-chrome = "0.7.2"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt"] }
+transpose = "0.2.2"
 trait-set = "0.3.0"
 
 [workspace.lints.clippy]

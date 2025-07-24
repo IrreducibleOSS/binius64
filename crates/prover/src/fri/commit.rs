@@ -115,6 +115,7 @@ where
 		"[task] Merkle Tree",
 		phase = "commit",
 		perfetto_category = "task.main",
+
 		dimensions_data = ?dimension_data
 	)
 	.entered();

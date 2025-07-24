@@ -2,4 +2,5 @@
 
 pub mod basefold;
 pub mod mlecheck;
+pub mod shift;
 pub mod sumcheck;

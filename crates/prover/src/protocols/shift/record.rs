@@ -2,26 +2,31 @@
 
 use binius_field::Field;
 use binius_frontend::constraint_system::{
-	AndConstraint, ConstraintSystem, MulConstraint, Operand, ShiftVariant, ShiftedValueIndex,
+	ConstraintSystem, Operand, ShiftVariant, ShiftedValueIndex,
 };
 
-/// `ShiftedValueDatum` identifies a shift variant and a shift amount
-/// and a subset of the constraint indices
+// TODO: document
 #[derive(Debug, Clone)]
-pub struct ShiftedValueKey {
+pub struct ShiftedValueKey<F> {
 	// The shift variant together with the amount form an identifier.
 	// With 3 variants, and amounts up to 64, this can fit in 8 bits.
 	// Using a u8 identifier could save space and increase speed in
-	// in the hot accumuulation loops due to less indirection.
-	pub shift_variant: ShiftVariant,
-	pub amount: usize,
+	// the hot accumulation loops due to less indirection.
+	/// The type of shift operation (logical left, logical right, arithmetic right)
+	pub op: ShiftVariant,
+	/// Number of bit positions to shift (0-63)
+	pub s: usize,
+	/// Indices of all constraints that use this exact shift operation
 	pub constraint_indices: Vec<u32>,
+	/// Just to try memoization
+	pub memo: F,
 }
 
-impl ShiftedValueKey {
-	// The
+impl<F: Field> ShiftedValueKey<F> {
+	/// Given a tensor of challenge evaluations, sums the values at positions
+	/// corresponding to all constraints that use this shift variant and amount.
 	#[inline]
-	pub fn accumulate<F: Field>(&self, tensor: &[F]) -> F {
+	pub fn accumulate(&self, tensor: &[F]) -> F {
 		self.constraint_indices
 			.iter()
 			.map(|&i| tensor[i as usize])
@@ -29,17 +34,15 @@ impl ShiftedValueKey {
 	}
 }
 
-/// WordData is a vector of vectors of `WordItem`.
-/// so the outer vector goes across all the witness words.
-/// it should have length equal to the number of witness words.
-/// the inside vector goes across all `duplicates`
-pub type Record = Vec<Vec<ShiftedValueKey>>;
+/// TODO: document
+pub type Record<F> = Vec<Vec<ShiftedValueKey<F>>>;
 
-/// Generic function to build word index from any iterator of constraints
-///
-/// we want this to take a list of operands, one for each word, and make a word index.
-fn build_record(word_count: usize, operands: impl Iterator<Item = impl AsRef<Operand>>) -> Record {
-	let mut word_index: Vec<Vec<ShiftedValueKey>> = (0..word_count).map(|_| Vec::new()).collect();
+/// TODO: document
+pub fn build_record<F: Field>(
+	word_count: usize,
+	operands: impl Iterator<Item = impl AsRef<Operand>>,
+) -> Record<F> {
+	let mut record: Vec<Vec<ShiftedValueKey<F>>> = (0..word_count).map(|_| Vec::new()).collect();
 
 	for (i, operand) in operands.enumerate() {
 		for ShiftedValueIndex {
@@ -48,28 +51,29 @@ fn build_record(word_count: usize, operands: impl Iterator<Item = impl AsRef<Ope
 			amount,
 		} in operand.as_ref()
 		{
-			let keys = &mut word_index[value_index.0 as usize];
+			let keys = &mut record[value_index.0 as usize];
 
-			if let Some(info) = keys.iter_mut().find(|info| {
-				info.shift_variant as u8 == *shift_variant as u8 && info.amount == *amount
-			}) {
-				info.constraint_indices.push(i as u32);
+			if let Some(key) = keys
+				.iter_mut()
+				.find(|key| key.op as u8 == *shift_variant as u8 && key.s == *amount)
+			{
+				key.constraint_indices.push(i as u32);
 			} else {
 				keys.push(ShiftedValueKey {
-					shift_variant: *shift_variant,
-					amount: *amount,
+					op: *shift_variant,
+					s: *amount,
 					constraint_indices: vec![i as u32],
+					memo: F::ZERO,
 				});
 			}
 		}
 	}
 
-	word_index
+	record
 }
 
-/// Build word index for AND constraints (bit multiplication)
-/// Returns [a_index, b_index, c_index] for the three operands of AND constraints
-pub fn build_record_for_bitmul_constraints(cs: &ConstraintSystem) -> [Record; 3] {
+/// Build records for bitmul constraints
+pub fn build_record_for_bitmul_constraints<F: Field>(cs: &ConstraintSystem) -> [Record<F>; 3] {
 	let word_count = cs.value_vec_layout.total_len;
 	let constraints = &cs.and_constraints;
 	[
@@ -79,8 +83,8 @@ pub fn build_record_for_bitmul_constraints(cs: &ConstraintSystem) -> [Record; 3]
 	]
 }
 
-/// Build word index for MUL constraints (integer multiplication)
-pub fn build_record_for_intmul_constraints(cs: &ConstraintSystem) -> [Record; 4] {
+/// Build records for intmul constraints
+pub fn build_record_for_intmul_constraints<F: Field>(cs: &ConstraintSystem) -> [Record<F>; 4] {
 	let word_count = cs.value_vec_layout.total_len;
 	let constraints = &cs.mul_constraints;
 	[
@@ -95,7 +99,12 @@ pub fn build_record_for_intmul_constraints(cs: &ConstraintSystem) -> [Record; 4]
 mod tests {
 	use std::ops::IndexMut;
 
-	use binius_frontend::{compiler::CircuitBuilder, constraint_system::ValueIndex};
+	use binius_field::BinaryField128bGhash as Ghash;
+	use binius_frontend::{
+		compiler::CircuitBuilder,
+		constraint_system::{AndConstraint, MulConstraint, ValueIndex},
+		word::Word,
+	};
 
 	use super::*;
 	use crate::protocols::shift::tests::*;
@@ -106,6 +115,8 @@ mod tests {
 		let a = builder.add_inout();
 		let b = builder.add_inout();
 
+		let _zero = builder.add_constant(Word::ZERO);
+
 		let result = builder.icmp_ult(a, b);
 		let expected = builder.add_inout();
 		builder.assert_eq("test", result, expected);
@@ -113,48 +124,48 @@ mod tests {
 		let circuit = builder.build();
 		let cs = circuit.constraint_system();
 
-		invert_constraints(cs);
+		invert_constraints::<Ghash>(cs);
 	}
 
 	#[test]
 	fn test_invert_cs_jwt_claims() {
 		let (cs, _) = create_jwt_claims_cs_with_witness();
-		invert_constraints(cs);
+		invert_constraints::<Ghash>(cs);
 	}
 
 	#[test]
 	fn test_invert_cs_sha256() {
 		let (cs, _) = create_sha256_cs_with_witness();
-		invert_constraints(cs);
+		invert_constraints::<Ghash>(cs);
 	}
 
 	#[test]
 	fn test_invert_cs_base64() {
 		let (cs, _) = create_base64_cs_with_witness();
-		invert_constraints(cs);
+		invert_constraints::<Ghash>(cs);
 	}
 
 	#[test]
 	fn test_invert_cs_concat() {
 		let (cs, _) = create_concat_cs_with_witness();
-		invert_constraints(cs);
+		invert_constraints::<Ghash>(cs);
 	}
 
 	#[test]
 	fn test_invert_cs_slice() {
 		let (cs, _) = create_slice_cs_with_witness();
-		invert_constraints(cs);
+		invert_constraints::<Ghash>(cs);
 	}
 
 	#[test]
 	fn test_invert_cs_rs256() {
 		let (cs, _) = create_rs256_cs_with_witness();
-		invert_constraints(cs);
+		invert_constraints::<Ghash>(cs);
 	}
 
 	// Tools for testing
 
-	fn find_max_constraint_index(record: &Record) -> u32 {
+	fn find_max_constraint_index<F>(record: &Record<F>) -> u32 {
 		record
 			.iter()
 			.flat_map(|keys| keys.iter())
@@ -165,8 +176,8 @@ mod tests {
 	}
 
 	/// Generic function to fill operands from record data
-	fn fill_operand_list_from_record<Operands>(
-		record: &[Vec<ShiftedValueKey>],
+	fn fill_operand_list_from_record<F, Operands>(
+		record: &[Vec<ShiftedValueKey<F>>],
 		operand_list: &mut Operands,
 	) where
 		Operands: IndexMut<usize, Output = Operand>,
@@ -175,8 +186,8 @@ mod tests {
 			for key in keys {
 				let shifted_value_index = ShiftedValueIndex {
 					value_index: ValueIndex(word_index as u32),
-					shift_variant: key.shift_variant,
-					amount: key.amount,
+					shift_variant: key.op,
+					amount: key.s,
 				};
 
 				for &constraint_index in &key.constraint_indices {
@@ -186,23 +197,20 @@ mod tests {
 		}
 	}
 
-	fn revert_bitmul_constraints(
-		a_record: Record,
-		b_record: Record,
-		c_record: Record,
-	) -> Vec<AndConstraint> {
+	fn revert_bitmul_constraints<F>(bitmul_records: &[Record<F>; 3]) -> Vec<AndConstraint> {
+		let [a_record, b_record, c_record] = bitmul_records;
 		let max_index = [
-			find_max_constraint_index(&a_record),
-			find_max_constraint_index(&b_record),
-			find_max_constraint_index(&c_record),
+			find_max_constraint_index(a_record),
+			find_max_constraint_index(b_record),
+			find_max_constraint_index(c_record),
 		]
 		.into_iter()
 		.max()
 		.unwrap_or(0);
 
-		if max_index == 0 {
-			return Vec::new();
-		}
+		// if max_index == 0 {
+		// 	return Vec::new();
+		// }
 
 		let mut constraints: Vec<AndConstraint> = (0..=max_index)
 			.map(|_| AndConstraint {
@@ -232,25 +240,21 @@ mod tests {
 		constraints
 	}
 
-	fn revert_intmul_constraints(
-		a_record: Record,
-		b_record: Record,
-		hi_record: Record,
-		lo_record: Record,
-	) -> Vec<MulConstraint> {
+	fn revert_intmul_constraints<F>(intmul_records: &[Record<F>; 4]) -> Vec<MulConstraint> {
+		let [a_record, b_record, hi_record, lo_record] = intmul_records;
 		let max_index = [
-			find_max_constraint_index(&a_record),
-			find_max_constraint_index(&b_record),
-			find_max_constraint_index(&hi_record),
-			find_max_constraint_index(&lo_record),
+			find_max_constraint_index(a_record),
+			find_max_constraint_index(b_record),
+			find_max_constraint_index(hi_record),
+			find_max_constraint_index(lo_record),
 		]
 		.into_iter()
 		.max()
 		.unwrap_or(0);
 
-		if max_index == 0 {
-			return Vec::new();
-		}
+		// if max_index == 0 {
+		// 	return Vec::new();
+		// }
 
 		let mut constraints: Vec<MulConstraint> = (0..=max_index)
 			.map(|_| MulConstraint {
@@ -303,12 +307,11 @@ mod tests {
 	}
 
 	// The reversion function
-	fn invert_constraints(cs: ConstraintSystem) {
+	fn invert_constraints<F: Field>(cs: ConstraintSystem) {
 		let mut original_bitmul = cs.and_constraints.clone();
 		let mut original_intmul = cs.mul_constraints.clone();
 
 		// Sort original constraints for canonical ordering
-
 		original_bitmul
 			.iter_mut()
 			.for_each(sort_bitmul_constraint_operands);
@@ -316,12 +319,11 @@ mod tests {
 			.iter_mut()
 			.for_each(sort_intmul_constraint_operands);
 
-		let [bitmul_a, bitmul_b, bitmul_c] = build_record_for_bitmul_constraints(&cs);
-		let [intmul_a, intmul_b, intmul_hi, intmul_lo] = build_record_for_intmul_constraints(&cs);
+		let bitmul_records: [Record<F>; 3] = build_record_for_bitmul_constraints(&cs);
+		let intmul_records: [Record<F>; 4] = build_record_for_intmul_constraints(&cs);
 
-		let mut reverted_bitmul = revert_bitmul_constraints(bitmul_a, bitmul_b, bitmul_c);
-		let mut reverted_intmul =
-			revert_intmul_constraints(intmul_a, intmul_b, intmul_hi, intmul_lo);
+		let mut reverted_bitmul = revert_bitmul_constraints(&bitmul_records);
+		let mut reverted_intmul = revert_intmul_constraints(&intmul_records);
 
 		// Sort reverted constraints for canonical ordering
 		reverted_bitmul

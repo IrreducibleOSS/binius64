@@ -124,6 +124,7 @@ pub struct MulConstraint {
 	pub lo: Operand,
 }
 
+#[derive(Clone, Debug)]
 pub struct ConstraintSystem {
 	pub value_vec_layout: ValueVecLayout,
 	pub constants: Vec<Word>,
