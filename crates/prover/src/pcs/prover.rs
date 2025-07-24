@@ -98,16 +98,13 @@ where
 		// basis decompose/recombine s_hat_v across opposite dimension
 		let s_hat_u: Vec<FE> = <TensorAlgebra<F, FE>>::new(s_hat_v).transpose().elems;
 
-		// sample batching scalars
 		let r_double_prime: Vec<FE> = prover_samples_batching_scalars(transcript)?;
 
 		let eq_r_double_prime = eq_ind_partial_eval(&r_double_prime);
 
-		// compute sumcheck claim on s_hat_u * eq_r_double_prime composition
 		let computed_sumcheck_claim =
 			inner_product::<FE>(s_hat_u, eq_r_double_prime.as_ref().iter().copied());
 
-		// setup basefold prover
 		let big_field_basefold_prover = self.setup_for_fri_sumcheck(
 			&r_double_prime,
 			ntt,
@@ -118,7 +115,6 @@ where
 			computed_sumcheck_claim,
 		)?;
 
-		// prove basefold
 		big_field_basefold_prover.prove_with_transcript(transcript)?;
 
 		Ok(())
@@ -141,10 +137,8 @@ where
 		packed_mle: &FieldBuffer<FE>,
 		evaluation_point: &[FE],
 	) -> Result<Vec<FE>, Error> {
-		// split eval point into low and high variables
 		let (_, eval_point_high) = evaluation_point.split_at(FE::LOG_DEGREE);
 
-		// Lift the packed multilinear to the large field
 		let small_field_mle = <FE as PackedExtension<F>>::cast_bases(packed_mle.as_ref());
 
 		let eq_at_high = eq_ind_partial_eval::<FE>(eval_point_high);
