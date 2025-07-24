@@ -10,7 +10,44 @@ use crate::{
 	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
 };
 
-/// RS256 verification circuit
+/// Convert a FixedByteVec with big-endian byte ordering to a BigNum.
+///
+/// This function converts a FixedByteVec containing a packed representation of
+/// bytes with big-endian ordering (see `FixedByteVec::populate_bytes`) to a
+/// BigNum that's compatible with BigNum arithmetic.
+///
+/// # Arguments
+/// * `builder` - Circuit builder
+/// * `byte_vec` - FixedByteVec containing bytes in big-endian order, with each wire containing 8
+///   bytes packed in little-endian order
+///
+/// # Returns
+/// A vector of 32 wires representing the corresponding BigNum
+fn fixedbytevec_be_to_bignum(builder: &mut CircuitBuilder, byte_vec: &FixedByteVec) -> BigNum {
+	let mut limbs = Vec::new();
+
+	// Reverse wires to convert from big-endian to little-endian byte ordering.
+	for packed_wire in byte_vec.data.clone().into_iter().rev() {
+		let mut bytes = Vec::with_capacity(8);
+		for i in 0..8 {
+			bytes.push(builder.extract_byte(packed_wire, i));
+		}
+
+		// Combine the bytes of each wire to a 64-bit big-endian word to be
+		// compatible with BigNum arithmetic
+		let mut be_word = bytes[7];
+		for i in 1..8 {
+			let shifted = builder.shl(bytes[7 - i], (i * 8) as u32);
+			be_word = builder.bor(be_word, shifted);
+		}
+
+		limbs.push(be_word);
+	}
+
+	BigNum { limbs }
+}
+
+/// RS256 signature verification circuit (internal implementation)
 ///
 /// This circuit verifies a `signature` for a given `message` according to the
 /// signature verification algorithm RSASSA-PKCS1-v1_5, using SHA-256 as a
@@ -22,10 +59,10 @@ use crate::{
 pub struct Rs256Verify {
 	/// The message to verify (packed as 64-bit words, 8 bytes per wire)
 	pub message: FixedByteVec,
-	/// The RSA signature of the message
-	pub signature: BigNum,
-	/// The RSA modulus
-	pub modulus: BigNum,
+	/// The RSA signature as a FixedByteVec (the primary input interface)
+	pub signature: FixedByteVec,
+	/// The RSA modulus as a FixedByteVec (the primary input interface)
+	pub modulus: FixedByteVec,
 	/// Quotients for each of the 16 squaring operations
 	pub square_quotients: Vec<BigNum>,
 	/// Remainders for each of the 16 squaring operations
@@ -54,8 +91,12 @@ impl Rs256Verify {
 	/// # Arguments
 	/// * `builder` - Circuit builder
 	/// * `message` - A FixedByteVec containing the plaintext message
-	/// * `signature` - The RSA signature to verify
-	/// * `modulus` - The RSA modulus
+	/// * `signature` - The RSA signature as a FixedByteVec (256 bytes for 2048-bit RSA). The
+	///   signature should be in big-endian byte order (standard JWT/RSA format). Each wire in the
+	///   FixedByteVec contains 8 bytes packed in little-endian order.
+	/// * `modulus` - The RSA modulus as a FixedByteVec (256 bytes for 2048-bit RSA). The modulus
+	///   should be in big-endian byte order (standard RSA format). Each wire in the FixedByteVec
+	///   contains 8 bytes packed in little-endian order.
 	/// * `square_quotients` - Quotients for the 16 squaring operations
 	/// * `square_remainders` - Remainders for the 16 squaring operations
 	/// * `mul_quotient` - Quotient for the final multiplication
@@ -63,22 +104,33 @@ impl Rs256Verify {
 	///   specified in PKCS#1 v1.5.
 	///
 	/// # Panics
-	/// * If signature, modulus do not have 32 limbs
+	/// * If signature_bytes does not have enough space for 256 bytes
 	/// * If square_quotients or square_remainders are not length 16
 	/// * If mul_remainder does not have 32 limbs
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		builder: &mut CircuitBuilder,
 		message: FixedByteVec,
-		signature: BigNum,
-		modulus: BigNum,
+		signature: FixedByteVec,
+		modulus: FixedByteVec,
 		square_quotients: Vec<BigNum>,
 		square_remainders: Vec<BigNum>,
 		mul_quotient: BigNum,
 		mul_remainder: BigNum,
 	) -> Self {
-		assert_eq!(signature.limbs.len(), 32, "signature must be 32 limbs (2048 bits)");
-		assert_eq!(modulus.limbs.len(), 32, "modulus must be 32 limbs (2048 bits)");
+		assert!(
+			signature.max_len >= 256,
+			"signature_bytes must have at least 256 bytes for 2048-bit RSA"
+		);
+		assert!(
+			signature.max_len.is_multiple_of(8),
+			"signature_bytes max_len must be multiple of 8"
+		);
+		assert!(
+			modulus.max_len >= 256,
+			"modulus_bytes must have at least 256 bytes for 2048-bit RSA"
+		);
+		assert!(modulus.max_len.is_multiple_of(8), "modulus_bytes max_len must be multiple of 8");
 		assert_eq!(square_quotients.len(), 16, "must provide 16 square quotients");
 		assert_eq!(square_remainders.len(), 16, "must provide 16 square remainders");
 		assert_eq!(
@@ -86,10 +138,13 @@ impl Rs256Verify {
 			32,
 			"mul_remainder must have 32 limbs to store the EM"
 		);
-		// Compute max_message_len from message vector (8 bytes per wire)
-		// max_message_len = message.len() * 8;
 
-		// Create SHA256 circuit to compute the hash from the message
+		let signature_bignum = fixedbytevec_be_to_bignum(builder, &signature);
+		builder.assert_eq("signature_bytes_len", signature.len, builder.add_constant_64(256));
+
+		let modulus_bignum = fixedbytevec_be_to_bignum(builder, &modulus);
+		builder.assert_eq("modulus_bytes_len", modulus.len, builder.add_constant_64(256));
+
 		let mut sha256_builder = builder.subcircuit("sha256");
 		let expected_hash_wires: [Wire; 4] = std::array::from_fn(|_| sha256_builder.add_witness());
 		let sha256 = Sha256::new(
@@ -99,16 +154,14 @@ impl Rs256Verify {
 			expected_hash_wires,
 			message.data.clone(),
 		);
-
-		// Convert hash wires to BigNum for comparison
 		let expected_hash = BigNum {
 			limbs: expected_hash_wires.to_vec(),
 		};
 
 		modexp_65537_verify(
-			&*builder,
-			&signature,
-			&modulus,
+			builder,
+			&signature_bignum,
+			&modulus_bignum,
 			&square_quotients,
 			&square_remainders,
 			&mul_quotient,
@@ -196,11 +249,15 @@ impl Rs256Verify {
 
 	/// Populate the RSA signature
 	///
+	/// # Arguments
+	/// * `w` - Witness filler
+	/// * `signature_bytes` - The bytes of an RSA signature
+	///
 	/// # Panics
-	/// Panics if signature_limbs.len() != 32
-	pub fn populate_signature(&self, w: &mut WitnessFiller, signature_limbs: &[u64]) {
-		assert_eq!(signature_limbs.len(), 32, "signature must have 32 limbs");
-		self.signature.populate_limbs(w, signature_limbs);
+	/// Panics if signature_bytes.len() != 256
+	pub fn populate_signature(&self, w: &mut WitnessFiller, signature_bytes: &[u8]) {
+		assert_eq!(signature_bytes.len(), 256, "signature must be exactly 256 bytes");
+		self.signature.populate_bytes(w, signature_bytes);
 	}
 
 	/// Populate the message length
@@ -222,10 +279,10 @@ impl Rs256Verify {
 	/// Populate the RSA modulus
 	///
 	/// # Panics
-	/// Panics if modulus_limbs.len() != 32
-	pub fn populate_modulus(&self, w: &mut WitnessFiller, modulus_limbs: &[u64]) {
-		assert_eq!(modulus_limbs.len(), 32, "modulus must have 32 limbs");
-		self.modulus.populate_limbs(w, modulus_limbs);
+	/// Panics if modulus_bytes.len() != 256
+	pub fn populate_modulus(&self, w: &mut WitnessFiller, modulus_bytes: &[u8]) {
+		assert_eq!(modulus_bytes.len(), 256, "modulus must be exactly 256 bytes");
+		self.modulus.populate_bytes(w, modulus_bytes);
 	}
 
 	/// Populate the square quotients for the 16 squaring operations
@@ -343,40 +400,29 @@ impl RsaIntermediates {
 	/// RSA signatures with public exponent 65537 (2^16 + 1).
 	///
 	/// # Arguments
-	/// * `signature_limbs` - RSA signature as 32 u64 limbs
-	/// * `modulus_limbs` - RSA modulus as 32 u64 limbs
+	/// * `signature` - The bytes of a RSA signature
+	/// * `modulus_limbs` - The bytes of a RSA modulus
 	///
 	/// # Returns
 	/// The `RsaIntermediates` computed during signature verification.
 	///
 	/// # Panics
-	/// * If signature_limbs.len() != 32
-	/// * If modulus_limbs.len() != 32
-	pub fn new(signature_limbs: &[u64], modulus_limbs: &[u64]) -> Self {
-		assert_eq!(signature_limbs.len(), 32, "signature must have 32 limbs");
-		assert_eq!(modulus_limbs.len(), 32, "modulus must have 32 limbs");
+	/// * If signature.len() != 256
+	/// * If modulus.len() != 256
+	pub fn new(signature: &[u8], modulus: &[u8]) -> Self {
+		assert_eq!(signature.len(), 256, "signature must be exactly 256 bytes");
+		assert_eq!(modulus.len(), 256, "modulus must be exactly 256 bytes");
 
-		// Convert u64 limbs to BigUint via little-endian bytes
-		let mut sig_bytes = Vec::with_capacity(signature_limbs.len() * 8);
-		for &word in signature_limbs {
-			sig_bytes.extend_from_slice(&word.to_le_bytes());
-		}
-		let signature = BigUint::from_bytes_le(&sig_bytes);
-
-		let mut mod_bytes = Vec::with_capacity(modulus_limbs.len() * 8);
-		for &word in modulus_limbs {
-			mod_bytes.extend_from_slice(&word.to_le_bytes());
-		}
-		let modulus = BigUint::from_bytes_le(&mod_bytes);
+		let signature_value = BigUint::from_bytes_be(signature);
+		let modulus_value = BigUint::from_bytes_be(modulus);
 
 		let mut square_quotients = Vec::new();
 		let mut square_remainders = Vec::new();
 
-		let mut result = signature.clone();
-
+		let mut result = signature_value.clone();
 		for _ in 0..16 {
 			let squared = &result * &result;
-			let (q, r) = squared.div_rem(&modulus);
+			let (q, r) = squared.div_rem(&modulus_value);
 
 			let mut q_limbs = q.to_u64_digits();
 			q_limbs.resize(32, 0u64);
@@ -390,8 +436,8 @@ impl RsaIntermediates {
 		}
 
 		// Final multiplication
-		let multiplied = &result * &signature;
-		let (mul_q, mul_r) = multiplied.div_rem(&modulus);
+		let multiplied = &result * &signature_value;
+		let (mul_q, mul_r) = multiplied.div_rem(&modulus_value);
 
 		let mut mul_quotient = mul_q.to_u64_digits();
 		mul_quotient.resize(32, 0u64);
@@ -426,24 +472,18 @@ mod tests {
 	fn populate_circuit(
 		circuit: &Rs256Verify,
 		w: &mut WitnessFiller,
-		signature: &BigUint,
+		signature: &[u8],
 		message: &[u8],
-		modulus: &BigUint,
+		modulus: &[u8],
 	) {
-		let mut sig_limbs = signature.to_u64_digits();
-		sig_limbs.resize(32, 0u64);
-
-		let mut modulus_limbs = modulus.to_u64_digits();
-		modulus_limbs.resize(32, 0u64);
-
-		let intermediates = RsaIntermediates::new(&sig_limbs, &modulus_limbs);
+		let intermediates = RsaIntermediates::new(signature, modulus);
 		let hash = Sha256::digest(message);
 
-		circuit.populate_signature(w, &sig_limbs);
+		circuit.populate_signature(w, signature);
 		circuit.populate_message_len(w, message.len());
 		circuit.populate_message(w, message);
 		circuit.sha256.populate_digest(w, hash.into());
-		circuit.populate_modulus(w, &modulus_limbs);
+		circuit.populate_modulus(w, modulus);
 		circuit.populate_square_quotients(w, &intermediates.square_quotients);
 		circuit.populate_square_remainders(w, &intermediates.square_remainders);
 		circuit.populate_mul_quotient(w, &intermediates.mul_quotient);
@@ -451,8 +491,8 @@ mod tests {
 	}
 
 	fn setup_circuit(builder: &mut CircuitBuilder, max_message_len: usize) -> Rs256Verify {
-		let signature = BigNum::new_inout(builder, 32);
-		let modulus = BigNum::new_inout(builder, 32);
+		let signature_bytes = FixedByteVec::new_inout(builder, 256);
+		let modulus_bytes = FixedByteVec::new_inout(builder, 256);
 		let message = FixedByteVec::new_witness(builder, max_message_len);
 
 		let mut square_quotients = Vec::new();
@@ -467,8 +507,8 @@ mod tests {
 		Rs256Verify::new(
 			builder,
 			message,
-			signature,
-			modulus,
+			signature_bytes,
+			modulus_bytes,
 			square_quotients,
 			square_remainders,
 			mul_quotient,
@@ -479,24 +519,23 @@ mod tests {
 	#[test]
 	fn test_real_rsa_signature_verification_with_message() {
 		let mut builder = CircuitBuilder::new();
-		let max_message_len = 256;
-		let circuit = setup_circuit(&mut builder, max_message_len);
+		let circuit = setup_circuit(&mut builder, 256);
 		let cs = builder.build();
 
+		// Generate a real RSA signature as it would appear in a JWT
 		let mut rng = StdRng::seed_from_u64(42);
 		let bits = 2048;
 		let private_key = RsaPrivateKey::new(&mut rng, bits).expect("failed to generate key");
 		let public_key = RsaPublicKey::from(&private_key);
-
 		let message = b"Test message for RS256 verification";
+
 		let signing_key = SigningKey::<Sha256>::new(private_key);
 		let signature = signing_key.sign(message);
-
-		let signature_value = BigUint::from_bytes_be(signature.to_bytes().as_ref());
-		let modulus_value = BigUint::from_bytes_le(&public_key.n().to_le_bytes());
+		let signature_bytes = signature.to_bytes();
+		let modulus_bytes = public_key.n().to_be_bytes();
 
 		let mut w = cs.new_witness_filler();
-		populate_circuit(&circuit, &mut w, &signature_value, message, &modulus_value);
+		populate_circuit(&circuit, &mut w, &signature_bytes, message, &modulus_bytes);
 
 		cs.populate_wire_witness(&mut w).unwrap();
 		verify_constraints(&cs.constraint_system(), &w.into_value_vec()).unwrap();
@@ -525,11 +564,12 @@ mod tests {
 		let n = BigUint::from_bytes_le(&n_bytes);
 		let corrupted_signature = corrupted_em.modpow(&d, &n);
 
-		let signature_value = corrupted_signature;
-		let modulus_value = BigUint::from_bytes_le(&public_key.n().to_le_bytes());
+		let mut signature_bytes = corrupted_signature.to_bytes_be();
+		signature_bytes.resize(256, 0u8);
+		let modulus_bytes = public_key.n().to_be_bytes();
 
 		let mut w = cs.new_witness_filler();
-		populate_circuit(&circuit, &mut w, &signature_value, message, &modulus_value);
+		populate_circuit(&circuit, &mut w, &signature_bytes, message, &modulus_bytes);
 
 		let result = cs.populate_wire_witness(&mut w);
 		assert!(result.is_err(), "Circuit should fail when PKCS#1 v1.5 prefix is corrupted");
@@ -550,16 +590,16 @@ mod tests {
 		let message = b"Test message for RS256 verification with wrong message";
 		let signing_key = SigningKey::<Sha256>::new(private_key);
 		let signature_obj = signing_key.sign(message);
-		let sig_bytes = signature_obj.to_bytes();
+		let signature_bytes = signature_obj.to_bytes();
 
-		let signature_value = BigUint::from_bytes_be(sig_bytes.as_ref());
-		let modulus_value = BigUint::from_bytes_le(&public_key.n().to_le_bytes());
+		let signature_bytes = BigUint::from_bytes_be(signature_bytes.as_ref()).to_bytes_be();
+		let modulus_bytes = public_key.n().to_be_bytes();
 
 		// Use a WRONG message
 		let wrong_message = b"This is a completely different message!";
 
 		let mut w = cs.new_witness_filler();
-		populate_circuit(&circuit, &mut w, &signature_value, wrong_message, &modulus_value);
+		populate_circuit(&circuit, &mut w, &signature_bytes, wrong_message, &modulus_bytes);
 
 		let result = cs.populate_wire_witness(&mut w);
 		assert!(result.is_err(), "Circuit should fail when message doesn't match signature");

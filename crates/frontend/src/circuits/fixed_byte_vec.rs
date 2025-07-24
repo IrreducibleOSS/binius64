@@ -1,4 +1,7 @@
-use crate::compiler::{CircuitBuilder, Wire};
+use crate::{
+	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
+	word::Word,
+};
 
 /// A vector of bytes of an arbitrary size up to and including the configured `max_len`.
 ///
@@ -35,5 +38,38 @@ impl FixedByteVec {
 		let len = b.add_inout();
 		let data = (0..(max_len / 8)).map(|_| b.add_witness()).collect();
 		Self { max_len, len, data }
+	}
+
+	/// Populate the FixedByteVec with bytes.
+	///
+	/// This method packs bytes into 64-bit words using little-endian ordering,
+	///
+	/// # Panics
+	/// * If bytes.len() exceeds self.max_len
+	pub fn populate_bytes(&self, w: &mut WitnessFiller, bytes: &[u8]) {
+		assert!(
+			bytes.len() <= self.max_len,
+			"bytes.len() {} exceeds max_len {}",
+			bytes.len(),
+			self.max_len
+		);
+
+		// Pack bytes into 64-bit words (little-endian)
+		for (i, chunk) in bytes.chunks(8).enumerate() {
+			if i < self.data.len() {
+				let mut word = 0u64;
+				for (j, &byte) in chunk.iter().enumerate() {
+					word |= (byte as u64) << (j * 8);
+				}
+				w[self.data[i]] = Word(word);
+			}
+		}
+
+		// Zero out remaining words
+		for i in bytes.len().div_ceil(8)..self.data.len() {
+			w[self.data[i]] = Word::ZERO;
+		}
+
+		w[self.len] = Word(bytes.len() as u64);
 	}
 }
