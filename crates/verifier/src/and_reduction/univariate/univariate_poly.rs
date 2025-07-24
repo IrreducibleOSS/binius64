@@ -101,7 +101,7 @@ mod test {
 
 		let monomial_basis_coeffs_isomorphic = monomial_basis_coeffs
 			.into_iter()
-			.map(|monomial_basis_coeff| B128::from(monomial_basis_coeff))
+			.map(B128::from)
 			.collect_vec();
 
 		let monomial_basis_isomorphic = RoundCoeffs(monomial_basis_coeffs_isomorphic);
