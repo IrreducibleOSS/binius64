@@ -139,7 +139,7 @@ mod test {
 		fields::B128,
 	};
 	use itertools::izip;
-	use rand::{SeedableRng, rngs::StdRng};
+	use rand::{Rng, SeedableRng, rngs::StdRng};
 
 	use super::univariate_round_message;
 	use crate::and_reduction::{
@@ -147,8 +147,7 @@ mod test {
 		utils::multivariate::OneBitMultivariate,
 	};
 
-	fn random_one_bit_multivariate(log_num_rows: usize) -> OneBitMultivariate {
-		let mut rng = StdRng::from_seed([0; 32]);
+	fn random_one_bit_multivariate(log_num_rows: usize, mut rng: impl Rng) -> OneBitMultivariate {
 		OneBitMultivariate {
 			log_num_rows,
 			packed_evals: (0..1 << log_num_rows)
@@ -183,9 +182,14 @@ mod test {
 			AESTowerField8b::new(16),
 		];
 
-		let mlv_1 = random_one_bit_multivariate(log_num_rows);
-		let mlv_2 = random_one_bit_multivariate(log_num_rows);
-		let mlv_3 = random_one_bit_multivariate(log_num_rows);
+		let mlv_1 = random_one_bit_multivariate(log_num_rows, &mut rng);
+		let mlv_2 = random_one_bit_multivariate(log_num_rows, &mut rng);
+		let mlv_3 = OneBitMultivariate {
+			log_num_rows,
+			packed_evals: (0..1 << log_num_rows)
+				.map(|i| mlv_1.packed_evals[i] * mlv_2.packed_evals[i])
+				.collect(),
+		};
 
 		let eq_ind_only_big = eq_ind_partial_eval(&big_field_zerocheck_challenges[1..]);
 
@@ -195,7 +199,6 @@ mod test {
 
 		let ntt_lookup = NTTLookup::<PackedAESBinaryField16x8b>::new(&onto_domain);
 
-		
 		// Prover generates first round message
 		let first_round_message = univariate_round_message(
 			&mlv_1,
@@ -207,7 +210,8 @@ mod test {
 			big_field_zerocheck_challenges[0],
 		);
 
-		// Verifier checks the accuracy of the message by challenging the prover and folding polynomials transparently
+		// Verifier checks the accuracy of the message by challenging the prover and folding
+		// polynomials transparently
 		let first_sumcheck_challenge = B128::random(&mut rng);
 		let expected_next_round_sum =
 			first_round_message.evaluate_at_challenge(first_sumcheck_challenge);
