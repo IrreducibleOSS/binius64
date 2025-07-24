@@ -1,14 +1,16 @@
 // Copyright 2025 Irreducible Inc.
 
-use binius_field::{BinaryField, ExtensionField, Field, PackedExtension, PackedField, TowerField};
+use binius_field::{BinaryField, ExtensionField, Field, PackedExtension, PackedField};
 use binius_math::{
-	inner_product::inner_product, multilinear::eq::eq_ind_partial_eval,
+	multilinear::evaluate::evaluate,
+	multilinear::eq::eq_ind_partial_eval,
 	tensor_algebra::TensorAlgebra,
 };
 use binius_transcript::{
 	VerifierTranscript,
 	fiat_shamir::{CanSample, Challenger},
 };
+use binius_math::field_buffer::FieldBuffer;
 use binius_utils::DeserializeBytes;
 
 use super::Error;
@@ -45,7 +47,6 @@ where
 		+ BinaryField
 		+ PackedField<Scalar = F>
 		+ ExtensionField<FA>
-		+ TowerField
 		+ PackedExtension<B1>,
 	FA: BinaryField,
 	TranscriptChallenger: Challenger + Clone,
@@ -54,16 +55,16 @@ where
 	let packing_degree = <F as ExtensionField<B1>>::LOG_DEGREE;
 
 	// packed mle  partial evals of at high variables
-	let s_hat_v = transcript
-		.message()
-		.read_scalar_slice::<F>(1 << packing_degree)?;
+	let s_hat_v = FieldBuffer::from_values(
+		&transcript
+			.message()
+			.read_scalar_slice::<F>(1 << packing_degree)?,
+	).unwrap();
 
 	// check valid partial eval
 	let (eval_point_low, _) = eval_point.split_at(packing_degree);
-	let computed_claim = inner_product::<F>(
-		s_hat_v.clone(),
-		eq_ind_partial_eval(eval_point_low).as_ref().iter().copied(),
-	);
+	
+	let computed_claim = evaluate::<F, F, _>(&s_hat_v, eval_point_low).unwrap();
 
 	if evaluation_claim != computed_claim {
 		return Err(Error::EvaluationClaimMismatch {
@@ -73,15 +74,15 @@ where
 	}
 
 	// basis decompose/recombine s_hat_v across opposite dimension
-	let s_hat_u: Vec<F> = <TensorAlgebra<B1, F>>::new(s_hat_v).transpose().elems;
+	let s_hat_u: FieldBuffer<F> = FieldBuffer::from_values(
+		&<TensorAlgebra<B1, F>>::new(s_hat_v.as_ref().to_vec()).transpose().elems,
+	).unwrap();
 
-	let batching_scalars: Vec<F> = verifier_samples_batching_scalars(transcript);
-
-	let tensor_expanded_batching_scalars = eq_ind_partial_eval(&batching_scalars);
+	// sample batching scalars from transcript
+	let batching_scalars: Vec<F> = (0..packing_degree).map(|_| transcript.sample()).collect();
 
 	// infer sumcheck claim
-	let verifier_computed_sumcheck_claim =
-		inner_product::<F>(s_hat_u, tensor_expanded_batching_scalars.as_ref().iter().copied());
+	let verifier_computed_sumcheck_claim = evaluate::<F, F, _>(&s_hat_u, &batching_scalars).unwrap();
 
 	let (final_fri_oracle, sumcheck_output) = verify_basefold_transcript(
 		codeword_commitment,
@@ -106,24 +107,4 @@ where
 	}
 
 	Ok(())
-}
-
-/// Verifier samples batching scalars from the transcript
-///
-/// ## Arguments
-///
-/// * `transcript` - the transcript of the prover's proof
-///
-/// ## Returns
-///
-/// * `batching_scalars` - the batching scalars
-pub fn verifier_samples_batching_scalars<F, FE, T>(
-	transcript: &mut VerifierTranscript<T>,
-) -> Vec<FE>
-where
-	F: Field,
-	FE: Field + ExtensionField<F> + PackedExtension<F>,
-	T: Challenger,
-{
-	(0..FE::LOG_DEGREE).map(|_| transcript.sample()).collect()
 }

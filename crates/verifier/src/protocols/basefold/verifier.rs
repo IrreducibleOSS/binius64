@@ -1,6 +1,6 @@
 // Copyright 2025 Irreducible Inc.
 
-use binius_field::{BinaryField, ExtensionField, Field, TowerField};
+use binius_field::{BinaryField, ExtensionField, Field};
 use binius_math::multilinear::eq::eq_ind;
 use binius_transcript::{
 	VerifierTranscript,
@@ -74,7 +74,7 @@ pub fn verify_transcript<F, FA, VCS, TranscriptChallenger>(
 	n_vars: usize,
 ) -> Result<(F, SumcheckOutput<F>), Error>
 where
-	F: Field + BinaryField + ExtensionField<FA> + TowerField,
+	F: Field + BinaryField + ExtensionField<FA> ,
 	FA: BinaryField,
 	TranscriptChallenger: Challenger + Clone,
 	VCS: MerkleTreeScheme<F, Digest: DeserializeBytes>,
