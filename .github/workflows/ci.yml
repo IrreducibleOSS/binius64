@@ -60,6 +60,27 @@ jobs:
       - name: Run clippy
         run: cargo clippy --all --all-features --tests --benches --examples -- -D warnings
 
+  rust-wasm-wasi:
+    name: rust-wasm-wasi-${{ matrix.expand.name }}
+    runs-on: ${{ matrix.expand.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        expand:
+          - runner: "ubuntu-arm64-2core-8gb"
+            name: "arm64"
+          - runner: "ubuntu-24.04"
+            name: "x86_64"
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: wasm32-wasip1
+      - name: Run WASM build
+        run: cargo build --all --all-features --tests --benches --examples --target wasm32-wasip1
+
   rust-doc:
     name: rust-doc
     runs-on: ubuntu-latest

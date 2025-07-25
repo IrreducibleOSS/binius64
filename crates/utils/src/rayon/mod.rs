@@ -39,6 +39,16 @@ cfg_if::cfg_if! {
 			pub const fn num_threads(self, _num_threads: usize) -> Self {
 				Self()
 			}
+
+			#[inline(always)]
+			pub const fn use_current_thread(self) -> Self {
+				Self()
+			}
+
+			#[inline(always)]
+			pub const fn build_global(self) -> Result<(), ThreadPoolBuildError> {
+				Ok(())
+			}
 		}
 
 		#[derive(Debug)]

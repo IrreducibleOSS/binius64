@@ -105,6 +105,7 @@ where
 ///
 /// # Returns
 /// The precomputed nibble power table that can be used with `nibble_invert_128b`.
+#[allow(unused)]
 pub fn generate_nibble_pow_2_n_table<F>(
 	new_fn: impl Fn(u128) -> F,
 	to_u128: impl Fn(F) -> u128,

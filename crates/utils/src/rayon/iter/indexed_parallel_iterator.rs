@@ -61,7 +61,7 @@ pub(crate) trait IndexedParallelIteratorInner: ParallelIteratorInner {
 	}
 
 	#[inline]
-	fn step_by(self, step: usize) -> impl IndexedParallelIteratorInner<Item = Self::Item>
+	fn step_by(self, step: usize) -> std::iter::StepBy<Self>
 	where
 		Self: Sized,
 	{
@@ -123,10 +123,19 @@ impl<L: IndexedParallelIteratorInner, R: IndexedParallelIteratorInner> IndexedPa
 }
 impl<I: IndexedParallelIteratorInner> IndexedParallelIteratorInner for std::iter::Enumerate<I> {}
 impl<I: IndexedParallelIteratorInner> IndexedParallelIteratorInner for std::iter::StepBy<I> {}
-impl<I: Iterator, R, F: Fn(I::Item) -> R> IndexedParallelIteratorInner for std::iter::Map<I, F> {}
+impl<I: IndexedParallelIteratorInner, R, F: Fn(I::Item) -> R> IndexedParallelIteratorInner
+	for std::iter::Map<I, F>
+{
+}
 impl<I: IndexedParallelIteratorInner> IndexedParallelIteratorInner for std::iter::Take<I> {}
 impl<T> IndexedParallelIteratorInner for std::vec::IntoIter<T> {}
 impl<T, const N: usize> IndexedParallelIteratorInner for std::array::IntoIter<T, N> {}
+impl<T: Clone> IndexedParallelIteratorInner for std::iter::Repeat<T> {}
+impl<I1: IndexedParallelIteratorInner, I2: IndexedParallelIteratorInner<Item = I1::Item>>
+	IndexedParallelIteratorInner for std::iter::Chain<I1, I2>
+{
+}
+impl<I: IndexedParallelIteratorInner> IndexedParallelIteratorInner for std::iter::Skip<I> {}
 
 #[allow(private_bounds)]
 pub trait IndexedParallelIterator: ParallelIterator {
@@ -203,7 +212,10 @@ pub trait IndexedParallelIterator: ParallelIterator {
 	}
 
 	#[inline]
-	fn step_by(self, step: usize) -> impl IndexedParallelIterator<Item = Self::Item>
+	fn step_by(
+		self,
+		step: usize,
+	) -> ParallelWrapper<std::iter::StepBy<<Self as IndexedParallelIterator>::Inner>>
 	where
 		Self: Sized,
 	{
