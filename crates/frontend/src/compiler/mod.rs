@@ -154,13 +154,18 @@ impl CircuitBuilder {
 		let circuit = Circuit::new(shared, value_vec_layout, wire_mapping, self.name.clone());
 
 		// Run uniqueness check
+		let start = std::time::Instant::now();
 		let uniqueness_result = crate::underconstrained::process_circuit_uniqueness(&circuit);
+		let elapsed = start.elapsed();
+		let millis = elapsed.as_millis();
+
 		println!(
-			"CIRC>> Circuit {}: Uniqueness: {}/{} witnesses unique ({:.1}%)",
+			"CIRC>> Circuit {}: Uniqueness: {}/{} witnesses unique ({:.1}%) ({} ms.)",
 			self.name,
 			uniqueness_result.unique_witnesses,
 			uniqueness_result.total_witnesses,
-			uniqueness_result.uniqueness_ratio * 100.0
+			uniqueness_result.uniqueness_ratio * 100.0,
+			millis
 		);
 
 		circuit
