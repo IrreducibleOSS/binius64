@@ -2,7 +2,10 @@
 
 use std::{iter, ops::DerefMut};
 
-use binius_field::{Field, PackedField};
+use binius_field::{
+	Field, PackedField,
+	packed::{get_packed_slice, set_packed_slice},
+};
 use binius_utils::rayon::prelude::*;
 
 use crate::{Error, FieldBuffer};
@@ -58,6 +61,41 @@ pub fn tensor_prod_eq_ind<P: PackedField, Data: DerefMut<Target = [P]>>(
 				*lo_i -= prod;
 				*hi_i = prod;
 			});
+	}
+
+	Ok(())
+}
+
+/// Left tensor of values with the eq indicator evaluated at extra_query_coordinates.
+///
+/// # Formal definition
+/// This differs from `tensor_prod_eq_ind` in tensor product being applied on the left
+/// and in reversed order:
+/// $(1 - r_{k-1}, r_{k-1}) \otimes \ldots \otimes (1 - r_0, r_0) \otimes v$
+///
+/// # Implementation
+/// This operation is inplace, singlethreaded, and not very optimized. Main intent is to
+/// use it on small tensors out of the hot paths.
+pub fn tensor_prod_eq_ind_prepend<P: PackedField, Data: DerefMut<Target = [P]>>(
+	values: &mut FieldBuffer<P, Data>,
+	extra_query_coordinates: &[P::Scalar],
+) -> Result<(), Error> {
+	let new_log_len = values.log_len() + extra_query_coordinates.len();
+
+	if values.log_cap() < new_log_len {
+		return Err(Error::IncorrectArgumentLength {
+			arg: "values.log_cap()".to_string(),
+			expected: new_log_len,
+		});
+	}
+
+	for &r_i in extra_query_coordinates.iter().rev() {
+		values.zero_extend(values.log_len() + 1)?;
+		for i in (0..values.len() / 2).rev() {
+			let eval = get_packed_slice(values.as_ref(), i);
+			set_packed_slice(values.as_mut(), 2 * i, eval * (P::Scalar::ONE - r_i));
+			set_packed_slice(values.as_mut(), 2 * i + 1, eval * r_i);
+		}
 	}
 
 	Ok(())
@@ -330,5 +368,25 @@ mod tests {
 		}
 
 		assert_eq!(log_n_values, 0);
+	}
+
+	#[test]
+	fn test_tensor_prod_eq_prepend_conforms_to_append() {
+		let mut rng = StdRng::seed_from_u64(0);
+
+		let n_vars = 10;
+		let base_vars = 4;
+
+		let point = random_scalars::<F>(&mut rng, n_vars);
+
+		let append = eq_ind_partial_eval(&point);
+
+		let mut prepend = FieldBuffer::<P>::zeros_truncated(0, n_vars).unwrap();
+		let (prefix, suffix) = point.split_at(n_vars - base_vars);
+		prepend.set(0, F::ONE).unwrap();
+		tensor_prod_eq_ind(&mut prepend, suffix).unwrap();
+		tensor_prod_eq_ind_prepend(&mut prepend, prefix).unwrap();
+
+		assert_eq!(append, prepend);
 	}
 }
