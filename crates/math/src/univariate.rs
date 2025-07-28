@@ -1,4 +1,6 @@
-use binius_field::Field;
+use binius_field::{BinaryField, Field};
+
+use crate::Error;
 
 /// Evaluate a univariate polynomial specified by its monomial coefficients.
 ///
@@ -14,6 +16,30 @@ pub fn evaluate_univariate<F: Field>(coeffs: &[F], x: F) -> F {
 	rest.iter()
 		.rev()
 		.fold(highest_degree, |acc, &coeff| acc * x + coeff)
+}
+
+/// Creates a subspace of dimension `dim` by enumerating all binary combinations
+/// of the first `dim` basis elements. Returns a vector of 2^dim elements.
+///
+/// ## Throws
+///
+/// * `Error::DomainSizeTooLarge` if `dim` is greater than the field dimension.
+pub fn make_subspace<F: BinaryField>(dim: usize) -> Result<Vec<F>, Error> {
+	let basis: Vec<F> = (0..dim)
+		.map(|i| F::basis_checked(i).map_err(|_| Error::DomainSizeTooLarge))
+		.collect::<Result<Vec<_>, _>>()?;
+
+	let subspace = (0..1 << dim)
+		.map(|combination| {
+			basis
+				.iter()
+				.enumerate()
+				.filter_map(|(i, &b)| ((combination >> i) & 1 == 1).then_some(b))
+				.sum()
+		})
+		.collect();
+
+	Ok(subspace)
 }
 
 #[cfg(test)]
@@ -42,5 +68,18 @@ mod tests {
 				evaluate_univariate_with_powers(&coeffs, x)
 			);
 		}
+	}
+
+	#[test]
+	fn test_make_subspace() {
+		fn compare_subspace_with_direct_construction(dim: usize) {
+			let subspace = make_subspace::<F>(dim).unwrap();
+			let direct_subspace = (0..1 << dim).map(|i| F::new(i)).collect::<Vec<_>>();
+			assert_eq!(subspace, direct_subspace);
+		}
+		compare_subspace_with_direct_construction(0);
+		compare_subspace_with_direct_construction(1);
+		compare_subspace_with_direct_construction(2);
+		compare_subspace_with_direct_construction(6);
 	}
 }
