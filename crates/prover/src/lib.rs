@@ -1,3 +1,4 @@
+pub mod and_reduction;
 mod error;
 mod formatting;
 pub mod fri;
