@@ -115,8 +115,7 @@ where
 		trace_commitment,
 		params.fri_params(),
 		params.merkle_scheme(),
-	)
-	.unwrap();
+	)?;
 
 	Ok(())
 }
