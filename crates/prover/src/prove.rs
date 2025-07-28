@@ -1,13 +1,17 @@
 use binius_field::{PackedExtension, PackedField};
 use binius_frontend::{constraint_system::ValueVec, word::Word};
-use binius_math::{FieldBuffer, ntt::AdditiveNTT};
+use binius_math::{
+	FieldBuffer, 
+	ntt::AdditiveNTT,
+	multilinear::evaluate::evaluate
+};
 use binius_transcript::{
 	ProverTranscript,
 	fiat_shamir::{CanSample, Challenger},
 };
 use binius_utils::{SerializeBytes, rayon::prelude::*};
 use binius_verifier::{
-	LOG_WORDS_PER_ELEM, Params, fields::B128, fri::FRIParams, merkle_tree::MerkleTreeScheme,
+	LOG_WORDS_PER_ELEM, LOG_WORD_SIZE_BITS, Params, fields::B128, fri::FRIParams, merkle_tree::MerkleTreeScheme,
 };
 
 use super::error::Error;
@@ -43,8 +47,25 @@ where
 	} = fri::commit_interleaved(params.fri_params(), ntt, merkle_prover, witness_packed.to_ref())?;
 	transcript.message().write(&trace_commitment);
 
-	// Run the FRI proximity test protocol on the witness commitment.
-	run_fri(params.fri_params(), ntt, merkle_prover, trace_codeword, trace_committed, transcript)?;
+
+	// Commit evaluation
+	let evaluation_point: Vec<B128> = transcript.sample_vec(params.log_witness_elems());
+
+	let witness_evaluation = evaluate(
+		&witness_packed, 
+		&evaluation_point
+	).unwrap();
+
+	transcript.message().write(&witness_evaluation);
+
+
+
+
+	// // Run the FRI proximity test protocol on the witness commitment.
+	// run_fri(params.fri_params(), ntt, merkle_prover, trace_codeword, trace_committed, transcript)?;
+
+
+
 	Ok(())
 }
 
