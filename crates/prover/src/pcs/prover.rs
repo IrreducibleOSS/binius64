@@ -325,8 +325,6 @@ mod test {
 
 		let packed_mle_values = random_scalars::<B128>(&mut rng, 1 << big_field_n_vars);
 
-		println!("packed_mle_values: {:?}", packed_mle_values.len());
-
 		let lifted_small_field_mle = lift_small_to_large_field(
 			&large_field_mle_to_small_field_mle::<B1, B128>(&packed_mle_values),
 		);
@@ -335,8 +333,6 @@ mod test {
 			FieldBuffer::from_values(&packed_mle_values).expect("failed to create field buffer");
 
 		let evaluation_point = random_scalars::<B128>(&mut rng, n_vars);
-
-		println!("lifted_small_field_mle: {:?}", lifted_small_field_mle.len());
 
 		let evaluation_claim = inner_product::<B128>(
 			lifted_small_field_mle,
