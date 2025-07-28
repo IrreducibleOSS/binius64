@@ -82,7 +82,7 @@ where
 	Ok(())
 }
 
-pub fn large_field_mle_to_small_field_mle<F, FE>(large_field_mle: &[FE]) -> Vec<F>
+fn large_field_mle_to_small_field_mle<F, FE>(large_field_mle: &[FE]) -> Vec<F>
 where
 	F: Field,
 	FE: Field + ExtensionField<F>,
@@ -93,7 +93,7 @@ where
 		.collect()
 }
 
-pub fn lift_small_to_large_field<F, FE>(small_field_elms: &[F]) -> Vec<FE>
+fn lift_small_to_large_field<F, FE>(small_field_elms: &[F]) -> Vec<FE>
 where
 	F: Field,
 	FE: Field + ExtensionField<F>,
