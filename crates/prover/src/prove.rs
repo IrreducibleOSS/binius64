@@ -1,4 +1,4 @@
-use binius_field::{BinaryField, ExtensionField, Field, PackedExtension, PackedField};
+use binius_field::{ExtensionField, Field, PackedExtension, PackedField};
 use binius_frontend::{constraint_system::ValueVec, word::Word};
 use binius_math::{
 	FieldBuffer, inner_product::inner_product, multilinear::eq::eq_ind_partial_eval,
@@ -12,14 +12,13 @@ use binius_utils::{SerializeBytes, rayon::prelude::*};
 use binius_verifier::{
 	LOG_WORDS_PER_ELEM, Params,
 	fields::{B1, B128},
-	fri::FRIParams,
 	merkle_tree::MerkleTreeScheme,
 };
 
 use super::error::Error;
 use crate::{
 	fri,
-	fri::{CommitOutput, FRIFolder, FoldRoundOutput},
+	fri::CommitOutput,
 	merkle_tree::MerkleTreeProver,
 	pcs::prover::OneBitPCSProver,
 };

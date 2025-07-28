@@ -10,7 +10,6 @@ use binius_prover::{merkle_tree::prover::BinaryMerkleTreeProver, prove};
 use binius_transcript::{ProverTranscript, fiat_shamir::HasherChallenger};
 use binius_verifier::{
 	Params,
-	fields::B128,
 	hash::{StdCompression, StdDigest},
 	merkle_tree::BinaryMerkleTreeScheme,
 	verify,
