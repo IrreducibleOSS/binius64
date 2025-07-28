@@ -1,13 +1,19 @@
 use binius_field::{BinaryField, ExtensionField, Field, PackedExtension, PackedField};
 use binius_frontend::{constraint_system::ValueVec, word::Word};
-use binius_math::{FieldBuffer, ntt::AdditiveNTT, inner_product::inner_product, multilinear::eq::eq_ind_partial_eval};
+use binius_math::{
+	FieldBuffer, inner_product::inner_product, multilinear::eq::eq_ind_partial_eval,
+	ntt::AdditiveNTT,
+};
 use binius_transcript::{
 	ProverTranscript,
 	fiat_shamir::{CanSample, Challenger},
 };
 use binius_utils::{SerializeBytes, rayon::prelude::*};
 use binius_verifier::{
-	LOG_WORDS_PER_ELEM, Params, fields::{B1, B128}, fri::FRIParams, merkle_tree::MerkleTreeScheme,
+	LOG_WORDS_PER_ELEM, Params,
+	fields::{B1, B128},
+	fri::FRIParams,
+	merkle_tree::MerkleTreeScheme,
 };
 
 use super::error::Error;
@@ -24,7 +30,7 @@ pub fn prove<P, Challenger_, NTT, MTScheme, MTProver>(
 	witness: ValueVec,
 	transcript: &mut ProverTranscript<Challenger_>,
 	ntt: &NTT,
-	merkle_prover: &MTProver,	
+	merkle_prover: &MTProver,
 ) -> Result<(), Error>
 where
 	P: PackedField<Scalar = B128> + PackedExtension<B128>,
@@ -46,12 +52,11 @@ where
 	} = fri::commit_interleaved(params.fri_params(), ntt, merkle_prover, witness_packed.to_ref())?;
 	transcript.message().write(&trace_commitment);
 
-	// ! slow 
-	let lifted_small_field_mle = lift_small_to_large_field(
-		&large_field_mle_to_small_field_mle::<B1, B128>(
-			&witness_packed.as_ref().iter().copied().collect::<Vec<_>>()
-		),
-	);
+	// ! slow
+	let lifted_small_field_mle =
+		lift_small_to_large_field(&large_field_mle_to_small_field_mle::<B1, B128>(
+			&witness_packed.as_ref().iter().copied().collect::<Vec<_>>(),
+		));
 
 	let small_field_log_n_vars = log_witness_elems + <B128 as ExtensionField<B1>>::LOG_DEGREE;
 

@@ -8,7 +8,11 @@ use binius_transcript::{
 	fiat_shamir::{CanSample, Challenger},
 };
 use binius_utils::SerializeBytes;
-use binius_verifier::{fields::{B1, B128}, fri::FRIParams, merkle_tree::MerkleTreeScheme};
+use binius_verifier::{
+	fields::{B1, B128},
+	fri::FRIParams,
+	merkle_tree::MerkleTreeScheme,
+};
 
 use crate::{
 	Error, merkle_tree::MerkleTreeProver, protocols::basefold::prover::BaseFoldProver,
@@ -24,7 +28,7 @@ use crate::{
 /// soundness.
 pub struct OneBitPCSProver<F>
 where
-	F: BinaryField + PackedExtension<B1> + PackedExtension<F>
+	F: BinaryField + PackedExtension<B1> + PackedExtension<F>,
 {
 	pub small_field_evaluation_claim: F,
 	pub evaluation_claim: F,
@@ -319,11 +323,9 @@ mod test {
 		let n_vars = 12;
 		let big_field_n_vars = n_vars - <B128 as ExtensionField<B1>>::LOG_DEGREE;
 
-
 		let packed_mle_values = random_scalars::<B128>(&mut rng, 1 << big_field_n_vars);
 
 		println!("packed_mle_values: {:?}", packed_mle_values.len());
-
 
 		let lifted_small_field_mle = lift_small_to_large_field(
 			&large_field_mle_to_small_field_mle::<B1, B128>(&packed_mle_values),
