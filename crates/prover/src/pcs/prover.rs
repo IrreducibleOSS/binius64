@@ -9,7 +9,7 @@ use binius_transcript::{
 };
 use binius_utils::SerializeBytes;
 use binius_verifier::{
-	fields::{B1, B128},
+	fields::B1,
 	fri::FRIParams,
 	merkle_tree::MerkleTreeScheme,
 };
@@ -38,7 +38,7 @@ where
 
 impl<F> OneBitPCSProver<F>
 where
-	F: PackedExtension<B128> + PackedExtension<B1> + PackedField<Scalar = F> + BinaryField,
+	F: BinaryField + PackedExtension<B1> + PackedField<Scalar = F>,
 {
 	/// Create a new ring switched PCS prover.
 	///
@@ -137,13 +137,13 @@ where
 		packed_mle: &FieldBuffer<F>,
 		evaluation_point: &[F],
 	) -> Result<Vec<F>, Error> {
-		let (_, eval_point_high) = evaluation_point.split_at(<F as ExtensionField<B1>>::LOG_DEGREE);
+		let (_, eval_point_high) = evaluation_point.split_at(F::LOG_DEGREE);
 
 		let small_field_mle = <F as PackedExtension<B1>>::cast_bases(packed_mle.as_ref());
 
 		let eq_at_high = eq_ind_partial_eval::<F>(eval_point_high);
 
-		let mut s_hat_v = vec![F::ZERO; 1 << <F as ExtensionField<B1>>::LOG_DEGREE];
+		let mut s_hat_v = vec![F::ZERO; 1 << F::LOG_DEGREE];
 
 		for (packed_elem, eq_at_high_value) in small_field_mle.iter().zip(eq_at_high.as_ref()) {
 			packed_elem.iter().enumerate().for_each(
