@@ -2,7 +2,9 @@
 
 use binius_field::{BinaryField, ExtensionField};
 use binius_frontend::{constraint_system::ConstraintSystem, word::Word};
-use binius_math::{ntt::SingleThreadedNTT, inner_product::inner_product, multilinear::eq::eq_ind_partial_eval};
+use binius_math::{
+	inner_product::inner_product, multilinear::eq::eq_ind_partial_eval, ntt::SingleThreadedNTT,
+};
 use binius_transcript::{
 	VerifierTranscript,
 	fiat_shamir::{CanSample, Challenger},
@@ -101,7 +103,8 @@ where
 	// Receive the trace commitment.
 	let trace_commitment = transcript.message().read::<MTScheme::Digest>()?;
 
-	let small_field_log_n_vars = params.log_witness_elems() + <B128 as ExtensionField<B1>>::LOG_DEGREE;
+	let small_field_log_n_vars =
+		params.log_witness_elems() + <B128 as ExtensionField<B1>>::LOG_DEGREE;
 
 	let evaluation_point: Vec<B128> = transcript.sample_vec(small_field_log_n_vars);
 	let evaluation_claim = transcript.message().read::<B128>()?;
@@ -114,7 +117,8 @@ where
 		trace_commitment,
 		&params.fri_params(),
 		params.merkle_scheme(),
-	).unwrap();
-	
+	)
+	.unwrap();
+
 	Ok(())
 }
