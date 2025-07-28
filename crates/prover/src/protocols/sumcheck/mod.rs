@@ -10,6 +10,7 @@ mod error;
 pub mod gruen34;
 mod mle_to_sumcheck;
 mod prove;
+pub mod quadratic_mle;
 mod round_evals;
 
 pub use error::*;

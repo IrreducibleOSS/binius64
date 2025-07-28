@@ -569,12 +569,14 @@ impl<P: PackedField, Data: DerefMut<Target = [P]>> FieldBuffer<P, Data> {
 }
 
 impl<P: PackedField, Data: Deref<Target = [P]>> AsRef<[P]> for FieldBuffer<P, Data> {
+	#[inline]
 	fn as_ref(&self) -> &[P] {
 		&self.values[..1 << self.log_len.saturating_sub(P::LOG_WIDTH)]
 	}
 }
 
 impl<P: PackedField, Data: DerefMut<Target = [P]>> AsMut<[P]> for FieldBuffer<P, Data> {
+	#[inline]
 	fn as_mut(&mut self) -> &mut [P] {
 		&mut self.values[..1 << self.log_len.saturating_sub(P::LOG_WIDTH)]
 	}
