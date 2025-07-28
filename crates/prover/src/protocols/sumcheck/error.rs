@@ -9,6 +9,8 @@ pub enum Error {
 	ArgumentError(String),
 	#[error("multilinears do not have equal number of variables")]
 	MultilinearSizeMismatch,
+	#[error("bitmasks slice length does not match the evaluation point length")]
+	BitmasksSizeMismatch,
 	#[error("number of eval claims does not match the number of multilinears")]
 	EvalClaimsNumberMismatch,
 	#[error("the length of evaluation point does not match the size of the multilinears")]

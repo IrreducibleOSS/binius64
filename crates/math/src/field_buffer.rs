@@ -34,8 +34,24 @@ impl<P: PackedField, Data: Deref<Target = [P]>> PartialEq for FieldBuffer<P, Dat
 	fn eq(&self, other: &Self) -> bool {
 		// Custom equality impl is needed because values beyond length until capacity can be
 		// arbitrary.
-		let prefix = 1 << self.log_len.saturating_sub(P::LOG_WIDTH);
-		self.log_len == other.log_len && self.values[..prefix] == other.values[..prefix]
+		if self.log_len < P::LOG_WIDTH {
+			let iter_1 = self
+				.values
+				.first()
+				.expect("len >= 1")
+				.iter()
+				.take(1 << self.log_len);
+			let iter_2 = other
+				.values
+				.first()
+				.expect("len >= 1")
+				.iter()
+				.take(1 << self.log_len);
+			iter_1.eq(iter_2)
+		} else {
+			let prefix = 1 << (self.log_len - P::LOG_WIDTH);
+			self.log_len == other.log_len && self.values[..prefix] == other.values[..prefix]
+		}
 	}
 }
 

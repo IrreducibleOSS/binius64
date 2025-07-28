@@ -54,6 +54,7 @@ where
 	}
 
 	let values_log_len = values.log_len();
+	let width = P::WIDTH.min(values.len());
 
 	if 1 << (values_log_len + tensor.log_len()) != bits.len() {
 		return Err(Error::FoldLengthMismatch);
@@ -64,12 +65,12 @@ where
 		.par_iter_mut()
 		.enumerate()
 		.for_each(|(i, packed)| {
-			*packed = P::from_fn(|j| {
+			*packed = P::from_scalars((0..width).map(|j| {
 				let scalar_index = i << P::LOG_WIDTH | j;
 				let mut acc = P::Scalar::ZERO;
 
 				for (k, tensor_packed) in tensor.as_ref().iter().enumerate() {
-					for (l, tensor_scalar) in tensor_packed.iter().enumerate() {
+					for (l, tensor_scalar) in tensor_packed.iter().take(tensor.len()).enumerate() {
 						let tensor_scalar_index = k << P::LOG_WIDTH | l;
 						if bits.get(tensor_scalar_index << values_log_len | scalar_index) {
 							acc += tensor_scalar;
@@ -78,7 +79,7 @@ where
 				}
 
 				acc
-			});
+			}));
 		});
 
 	Ok(())
@@ -88,7 +89,7 @@ where
 mod tests {
 	use std::iter::repeat_with;
 
-	use binius_field::PackedBinaryField4x32b;
+	use binius_field::PackedBinaryField8x16b;
 	use rand::prelude::*;
 
 	use super::*;
@@ -97,7 +98,7 @@ mod tests {
 		test_utils::{random_field_buffer, random_scalars},
 	};
 
-	type P = PackedBinaryField4x32b;
+	type P = PackedBinaryField8x16b;
 	type F = <P as PackedField>::Scalar;
 
 	#[test]
@@ -118,12 +119,11 @@ mod tests {
 		assert_eq!(multilinear.get(0).unwrap(), eval);
 	}
 
-	#[test]
-	fn test_binary_fold_high_conforms_to_regular_fold_high() {
+	fn test_binary_fold_high_conforms_to_regular_fold_high_helper(
+		n_vars: usize,
+		tensor_n_vars: usize,
+	) {
 		let mut rng = StdRng::seed_from_u64(0);
-
-		let n_vars = 10;
-		let tensor_n_vars = 5;
 
 		let point = random_scalars::<F>(&mut rng, tensor_n_vars);
 
@@ -148,5 +148,12 @@ mod tests {
 		}
 
 		assert_eq!(bits_buffer, binary_fold_result);
+	}
+
+	#[test]
+	fn test_binary_fold_high_conforms_to_regular_fold_high() {
+		for (n_vars, tensor_n_vars) in [(2, 0), (2, 1), (4, 4), (10, 3)] {
+			test_binary_fold_high_conforms_to_regular_fold_high_helper(n_vars, tensor_n_vars)
+		}
 	}
 }

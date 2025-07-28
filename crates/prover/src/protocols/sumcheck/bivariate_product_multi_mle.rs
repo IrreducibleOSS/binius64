@@ -1,7 +1,5 @@
 // Copyright 2023-2025 Irreducible Inc.
 
-#![allow(dead_code)]
-
 use std::cmp::max;
 
 use binius_field::{Field, PackedField};
@@ -13,15 +11,9 @@ use itertools::{Itertools, izip};
 use super::{common::SumcheckProver, error::Error, gruen34::Gruen34, round_evals::RoundEvals2};
 use crate::protocols::sumcheck::common::MleCheckProver;
 
-enum RoundCoeffsOrSums<F: Field> {
-	Coeffs(Vec<RoundCoeffs<F>>),
-	Sums(Vec<F>),
-}
-
 /// Multiple claim version of `BivariateProductMlecheckProver` that can prove mlechecks
 /// that share the evaluation point. This allows deduplicating folding and evaluation work.
 pub struct BivariateProductMultiMlecheckProver<P: PackedField> {
-	n_vars: usize,
 	multilinears: Vec<FieldBuffer<P>>,
 	last_coeffs_or_sums: RoundCoeffsOrSums<P::Scalar>,
 	gruen34: Gruen34<P>,
@@ -55,7 +47,6 @@ impl<F: Field, P: PackedField<Scalar = F>> BivariateProductMultiMlecheckProver<P
 		let gruen34 = Gruen34::new(eval_point);
 
 		Ok(Self {
-			n_vars,
 			multilinears,
 			last_coeffs_or_sums,
 			gruen34,
@@ -92,7 +83,7 @@ where
 			.try_fold(
 				|| vec![RoundEvals2::default(); sums.len()],
 				|mut packed_prime_evals: Vec<RoundEvals2<P>>, chunk_index| -> Result<_, Error> {
-					let eq = self.gruen34.eq_expansion().chunk(chunk_vars, chunk_index)?;
+					let eq_chunk = self.gruen34.eq_expansion().chunk(chunk_vars, chunk_index)?;
 
 					for (round_evals, (evals_a, evals_b)) in
 						izip!(&mut packed_prime_evals, self.multilinears.iter().tuples())
@@ -100,23 +91,23 @@ where
 						let (evals_a_0, evals_a_1) = evals_a.split_half()?;
 						let (evals_b_0, evals_b_1) = evals_b.split_half()?;
 
-						let evals_a_0 = evals_a_0.chunk(chunk_vars, chunk_index)?;
-						let evals_b_0 = evals_b_0.chunk(chunk_vars, chunk_index)?;
-						let evals_a_1 = evals_a_1.chunk(chunk_vars, chunk_index)?;
-						let evals_b_1 = evals_b_1.chunk(chunk_vars, chunk_index)?;
+						let evals_a_0_chunk = evals_a_0.chunk(chunk_vars, chunk_index)?;
+						let evals_b_0_chunk = evals_b_0.chunk(chunk_vars, chunk_index)?;
+						let evals_a_1_chunk = evals_a_1.chunk(chunk_vars, chunk_index)?;
+						let evals_b_1_chunk = evals_b_1.chunk(chunk_vars, chunk_index)?;
 
-						for (&eq, &evals_a_0_i, &evals_b_0_i, &evals_a_1_i, &evals_b_1_i) in izip!(
-							eq.as_ref(),
-							evals_a_0.as_ref(),
-							evals_b_0.as_ref(),
-							evals_a_1.as_ref(),
-							evals_b_1.as_ref()
+						for (&eq_i, &evals_a_0_i, &evals_b_0_i, &evals_a_1_i, &evals_b_1_i) in izip!(
+							eq_chunk.as_ref(),
+							evals_a_0_chunk.as_ref(),
+							evals_b_0_chunk.as_ref(),
+							evals_a_1_chunk.as_ref(),
+							evals_b_1_chunk.as_ref()
 						) {
 							let evals_a_inf_i = evals_a_0_i + evals_a_1_i;
 							let evals_b_inf_i = evals_b_0_i + evals_b_1_i;
 
-							round_evals.y_1 += eq * evals_a_1_i * evals_b_1_i;
-							round_evals.y_inf += eq * evals_a_inf_i * evals_b_inf_i;
+							round_evals.y_1 += eq_i * evals_a_1_i * evals_b_1_i;
+							round_evals.y_inf += eq_i * evals_a_inf_i * evals_b_inf_i;
 						}
 					}
 
@@ -189,6 +180,11 @@ where
 	fn eval_point(&self) -> &[F] {
 		self.gruen34.eval_point()
 	}
+}
+
+enum RoundCoeffsOrSums<F: Field> {
+	Coeffs(Vec<RoundCoeffs<F>>),
+	Sums(Vec<F>),
 }
 
 #[cfg(test)]

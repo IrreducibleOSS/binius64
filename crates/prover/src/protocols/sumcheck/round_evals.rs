@@ -5,6 +5,37 @@ use std::ops::Add;
 use binius_field::{Field, PackedField};
 use binius_verifier::protocols::sumcheck::RoundCoeffs;
 
+// Sumcheck round evaluations for degree-1 polynomials, on point 1 alone.
+#[derive(Clone, Debug, Default)]
+pub struct RoundEvals1<P: PackedField> {
+	pub y_1: P,
+}
+
+impl<P: PackedField> RoundEvals1<P> {
+	pub fn sum_scalars(self, n_vars: usize) -> RoundEvals1<P::Scalar> {
+		RoundEvals1 {
+			y_1: self.y_1.iter().take(1 << n_vars).sum(),
+		}
+	}
+}
+
+impl<F: Field> RoundEvals1<F> {
+	// Interpolation routine for evaluations on P'(x) in Mlechecks.
+	pub fn interpolate_eq(self, sum: F, alpha: F) -> RoundCoeffs<F> {
+		let y_0 = (sum - self.y_1 * alpha) * (F::ONE - alpha).invert_or_zero();
+		calculate_round_coeffs_from_evals_1(y_0, self.y_1)
+	}
+}
+
+impl<P: PackedField> Add<&Self> for RoundEvals1<P> {
+	type Output = Self;
+
+	fn add(mut self, rhs: &Self) -> Self::Output {
+		self.y_1 += rhs.y_1;
+		self
+	}
+}
+
 // Sumcheck round evaluations for degree-2 polynomials, on points 1 and ∞. The latter
 // is defined as limit of P(X)/X^n as X approaches infinity, which equals the leading coefficient.
 // This is the Karatsuba trick. Take note that it may require removing lower-degree terms from the
@@ -49,6 +80,19 @@ impl<P: PackedField> Add<&Self> for RoundEvals2<P> {
 		self.y_inf += rhs.y_inf;
 		self
 	}
+}
+
+// Computes the coefficients of a degree 1 polynomial interpolating two points (0, y_0) and (1,
+// y_1).
+fn calculate_round_coeffs_from_evals_1<F: Field>(y_0: F, y_1: F) -> RoundCoeffs<F> {
+	// For a polynomial P(X) = c_1 x + c_0:
+	//
+	// P(0) =        c_0
+	// P(1) = c_1  + c_0
+
+	let c_0 = y_0;
+	let c_1 = y_1 - c_0;
+	RoundCoeffs(vec![c_0, c_1])
 }
 
 // Computes the coefficients of a degree 2 polynomial interpolating three points: (0, y_0),

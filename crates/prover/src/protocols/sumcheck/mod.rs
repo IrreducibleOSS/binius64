@@ -11,7 +11,9 @@ pub mod gruen34;
 mod mle_to_sumcheck;
 mod prove;
 pub mod quadratic_mle;
+pub mod rerand_mle;
 mod round_evals;
+mod switchover;
 
 pub use error::*;
 pub use mle_to_sumcheck::*;
