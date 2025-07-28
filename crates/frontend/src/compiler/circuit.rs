@@ -96,6 +96,7 @@ impl Circuit {
 		value_vec_layout: ValueVecLayout,
 		wire_mapping: SecondaryMap<Wire, ValueIndex>,
 	) -> Self {
+		value_vec_layout.validate();
 		Self {
 			shared,
 			value_vec_layout,

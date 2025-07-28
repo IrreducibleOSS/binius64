@@ -194,6 +194,17 @@ pub struct ValueVecLayout {
 	pub total_len: usize,
 }
 
+impl ValueVecLayout {
+	/// Asserts that the value vec layout has a correct shape.
+	pub fn validate(&self) {
+		assert!(self.total_len.is_power_of_two(), "total length must be a power-of-two");
+		assert!(
+			self.offset_witness.is_power_of_two(),
+			"witness parameters must start at a power-of-two offset",
+		);
+	}
+}
+
 /// The vector of values.
 ///
 /// This is a prover-only structure.
