@@ -13,6 +13,7 @@ mod prove;
 pub mod quadratic_mle;
 pub mod rerand_mle;
 mod round_evals;
+pub mod selector_mle;
 mod switchover;
 
 pub use error::*;

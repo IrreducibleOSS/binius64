@@ -25,6 +25,7 @@ serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 rand.workspace = true
+trait-set.workspace = true
 
 [dev-dependencies]
 binius-math = { path = "../math", features = ["test-utils"] }
