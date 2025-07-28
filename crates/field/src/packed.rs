@@ -548,6 +548,7 @@ impl<P: PackedField> RandomAccessSequenceMut<P::Scalar> for PackedSliceMut<'_, P
 }
 
 impl<F: Field> Broadcast<F> for F {
+	#[inline]
 	fn broadcast(scalar: F) -> Self {
 		scalar
 	}
@@ -598,14 +599,27 @@ impl<F: Field> PackedField for F {
 		panic!("cannot transpose when WIDTH = 1");
 	}
 
+	#[inline]
 	fn broadcast(scalar: Self::Scalar) -> Self {
 		scalar
 	}
 
+	#[inline]
+	fn zero() -> Self {
+		Self::ZERO
+	}
+
+	#[inline]
+	fn one() -> Self {
+		Self::ONE
+	}
+
+	#[inline]
 	fn square(self) -> Self {
 		<Self as Square>::square(self)
 	}
 
+	#[inline]
 	fn invert_or_zero(self) -> Self {
 		<Self as InvertOrZero>::invert_or_zero(self)
 	}
