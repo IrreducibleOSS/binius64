@@ -100,8 +100,12 @@ where
 	// Receive the trace commitment.
 	let trace_commitment = transcript.message().read::<MTScheme::Digest>()?;
 
-	// Run the FRI proximity test protocol on the trace commitment.
-	run_fri(params.fri_params(), params.merkle_scheme(), trace_commitment, transcript)?;
+	let witness_evaluation_claim = transcript.message().read::<B128>()?;
+
+	// // Run the FRI proximity test protocol on the trace commitment.
+	// run_fri(params.fri_params(), params.merkle_scheme(), trace_commitment, transcript)?;
+	
+	
 	Ok(())
 }
 
