@@ -34,3 +34,16 @@ where
 		par_iter.into_par_iter().into_inner().collect()
 	}
 }
+
+impl<T> FromParallelIterator<T> for Box<[T]>
+where
+	T: Send,
+{
+	#[inline(always)]
+	fn from_par_iter<I>(par_iter: I) -> Self
+	where
+		I: IntoParallelIterator<Item = T>,
+	{
+		Vec::from_par_iter(par_iter).into_boxed_slice()
+	}
+}
