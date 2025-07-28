@@ -93,6 +93,11 @@ impl ZkLogin {
 		let vk_u: [Wire; 4] = std::array::from_fn(|_| b.add_inout());
 		let nonce: [Wire; 4] = std::array::from_fn(|_| b.add_witness());
 
+		// The base64 encoded nonce in the JWT payload This must have
+		// 8 wires = (base64_decoded_nonce.len() * 8) / 6 due to a
+		// requirement of Base64UrlSafe.
+		let base64_jwt_payload_nonce: [Wire; 8] = std::array::from_fn(|_| b.add_witness());
+
 		// RSA modulus as public input (256 bytes for 2048-bit RSA)
 		let rsa_modulus = FixedByteVec::new_inout(b, 256);
 
@@ -170,7 +175,11 @@ impl ZkLogin {
 			zkaddr_preimage.data.clone(),
 		);
 
-		// nonce preimage is a result of concatenation of vk_u, T_max and r. vk_u is a public key
+		// We need to check:
+		//
+		// nonce_preimage = concat(vk_u, T_max, r) where vk_u is a public key
+		// assert nonce = SHA256(nonce_preimage)
+		// assert nonce = base64_decode(base64_jwt_payload_nonce)
 		let max_len_nonce_preimage = 32 + config.max_len_t_max + config.max_len_nonce_r;
 		let nonce_preimage = FixedByteVec::new_witness(b, max_len_nonce_preimage);
 
@@ -203,6 +212,25 @@ impl ZkLogin {
 			nonce_preimage.len,
 			nonce,
 			nonce_preimage.data.clone(),
+		);
+
+		// The nonce must be padded with 2 extra wires so it can store 48 bytes
+		// (the least multiple of 24 that's greater than 32) due to a
+		// requirement of Base64UrlSafe
+		let nonce_padding: [Wire; 2] = std::array::from_fn(|_| b.add_witness());
+		let base64_decoded_nonce: [Wire; 6] = nonce
+			.into_iter()
+			.chain(nonce_padding)
+			.collect::<Vec<_>>()
+			.try_into()
+			.expect("an array of size 6");
+
+		let _base64decode_check_nonce = Base64UrlSafe::new(
+			&b.subcircuit("base64_check_nonce"),
+			base64_decoded_nonce.len() * 8,
+			base64_decoded_nonce.to_vec(),
+			base64_jwt_payload_nonce.to_vec(),
+			b.add_constant_64(32),
 		);
 
 		// Check signing payload. The JWT signed payload L is a concatenation of:
@@ -238,8 +266,14 @@ impl ZkLogin {
 		);
 
 		let jwt_claims_header = jwt_header_check(b, &jwt_header);
-		let jwt_claims_payload =
-			jwt_payload_check(b, &jwt_payload, &sub_byte_vec, &aud_byte_vec, &iss_byte_vec, &nonce);
+		let jwt_claims_payload = jwt_payload_check(
+			b,
+			&jwt_payload,
+			&sub_byte_vec,
+			&aud_byte_vec,
+			&iss_byte_vec,
+			&base64_jwt_payload_nonce,
+		);
 		let jwt_signature_verify =
 			Rs256Verify::new(b, jwt_signing_payload, jwt_signature, rsa_modulus);
 
@@ -284,7 +318,7 @@ fn jwt_payload_check(
 	sub_byte_vec: &FixedByteVec,
 	aud_byte_vec: &FixedByteVec,
 	iss_byte_vec: &FixedByteVec,
-	nonce_byte_array: &[Wire; 4],
+	base64_nonce: &[Wire; 8],
 ) -> JwtClaims {
 	JwtClaims::new(
 		&b.subcircuit("jwt_claims_payload"),
@@ -310,7 +344,7 @@ fn jwt_payload_check(
 			Attribute {
 				name: "nonce",
 				len_value: b.add_constant_64(32),
-				value: nonce_byte_array.to_vec(),
+				value: base64_nonce.to_vec(),
 			},
 		],
 	)
