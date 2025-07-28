@@ -47,10 +47,10 @@ where
 	transcript.message().write(&trace_commitment);
 
 	// ! slow
-	let lifted_small_field_mle =
-		lift_small_to_large_field(&large_field_mle_to_small_field_mle::<B1, B128>(
-			&witness_packed.as_ref().to_vec(),	
-		));
+	let lifted_small_field_mle = lift_small_to_large_field(&large_field_mle_to_small_field_mle::<
+		B1,
+		B128,
+	>(witness_packed.as_ref()));
 
 	let small_field_log_n_vars = log_witness_elems + <B128 as ExtensionField<B1>>::LOG_DEGREE;
 
