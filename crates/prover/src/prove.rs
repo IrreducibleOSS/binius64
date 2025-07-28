@@ -68,7 +68,7 @@ where
 	transcript.message().write(&evaluation);
 
 	let ring_switch_pcs_prover =
-		OneBitPCSProver::new(witness_packed, evaluation, evaluation_point.clone())?;
+		OneBitPCSProver::new(witness_packed, evaluation, evaluation_point)?;
 
 	ring_switch_pcs_prover.prove_with_transcript(
 		transcript,
