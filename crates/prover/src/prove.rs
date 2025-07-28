@@ -81,7 +81,7 @@ where
 fn large_field_mle_to_small_field_mle<F, FE>(large_field_mle: &[FE]) -> Vec<F>
 where
 	F: Field,
-	FE: Field + ExtensionField<F>,
+	FE: Field + ExtensionField<F> + PackedExtension<F>,
 {
 	large_field_mle
 		.iter()
@@ -92,7 +92,7 @@ where
 fn lift_small_to_large_field<F, FE>(small_field_elms: &[F]) -> Vec<FE>
 where
 	F: Field,
-	FE: Field + ExtensionField<F>,
+	FE: Field + ExtensionField<F> + PackedExtension<F>,
 {
 	small_field_elms.iter().map(|&elm| FE::from(elm)).collect()
 }
