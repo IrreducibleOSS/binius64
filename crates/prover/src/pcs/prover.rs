@@ -24,7 +24,7 @@ use crate::{
 /// soundness.
 pub struct OneBitPCSProver<F>
 where
-	F: Field + PackedExtension<B1> + BinaryField,
+	F: BinaryField + PackedExtension<B1> + PackedExtension<F>,
 {
 	pub small_field_evaluation_claim: F,
 	pub evaluation_claim: F,
@@ -34,7 +34,7 @@ where
 
 impl<F> OneBitPCSProver<F>
 where
-	F: Field + PackedExtension<B1> + PackedField<Scalar = F> + BinaryField,
+	F: BinaryField + PackedExtension<B1> + PackedField<Scalar = F>,
 {
 	/// Create a new ring switched PCS prover.
 	///
@@ -80,7 +80,7 @@ where
 	) -> Result<(), Error>
 	where
 		TranscriptChallenger: Challenger,
-		F: Field + ExtensionField<FA> + PackedExtension<B1> + BinaryField,
+		F: ExtensionField<FA> + PackedExtension<B1> + BinaryField,
 		FA: BinaryField,
 		NTT: AdditiveNTT<FA> + Sync,
 		MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
@@ -185,7 +185,7 @@ where
 		basefold_sumcheck_claim: F,
 	) -> Result<BaseFoldProver<'a, F, FA, NTT, MerkleProver, VCS>, Error>
 	where
-		F: Field + ExtensionField<FA> + PackedExtension<B1> + BinaryField,
+		F: ExtensionField<FA> + PackedExtension<B1> + BinaryField,
 		FA: BinaryField,
 		NTT: AdditiveNTT<FA> + Sync,
 		MerkleProver: MerkleTreeProver<F, Scheme = VCS>,

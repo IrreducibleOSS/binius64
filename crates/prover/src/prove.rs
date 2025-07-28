@@ -1,21 +1,22 @@
-use binius_field::{PackedExtension, PackedField};
+use binius_field::{ExtensionField, Field, PackedExtension, PackedField};
 use binius_frontend::{constraint_system::ValueVec, word::Word};
-use binius_math::{FieldBuffer, ntt::AdditiveNTT};
+use binius_math::{
+	FieldBuffer, inner_product::inner_product, multilinear::eq::eq_ind_partial_eval,
+	ntt::AdditiveNTT,
+};
 use binius_transcript::{
 	ProverTranscript,
 	fiat_shamir::{CanSample, Challenger},
 };
 use binius_utils::{SerializeBytes, rayon::prelude::*};
 use binius_verifier::{
-	LOG_WORDS_PER_ELEM, Params, fields::B128, fri::FRIParams, merkle_tree::MerkleTreeScheme,
+	LOG_WORDS_PER_ELEM, Params,
+	fields::{B1, B128},
+	merkle_tree::MerkleTreeScheme,
 };
 
 use super::error::Error;
-use crate::{
-	fri,
-	fri::{CommitOutput, FRIFolder, FoldRoundOutput},
-	merkle_tree::MerkleTreeProver,
-};
+use crate::{fri, fri::CommitOutput, merkle_tree::MerkleTreeProver, pcs::prover::OneBitPCSProver};
 
 #[allow(clippy::too_many_arguments)]
 pub fn prove<P, Challenger_, NTT, MTScheme, MTProver>(
@@ -33,7 +34,9 @@ where
 	MTScheme::Digest: SerializeBytes,
 	MTProver: MerkleTreeProver<B128, Scheme = MTScheme>,
 {
-	let witness_packed = pack_witness::<P>(params.log_witness_elems(), witness)?;
+	let witness_packed = pack_witness::<B128>(params.log_witness_elems(), witness)?;
+
+	let log_witness_elems = params.log_witness_elems();
 
 	// Commit the witness.
 	let CommitOutput {
@@ -43,9 +46,55 @@ where
 	} = fri::commit_interleaved(params.fri_params(), ntt, merkle_prover, witness_packed.to_ref())?;
 	transcript.message().write(&trace_commitment);
 
-	// Run the FRI proximity test protocol on the witness commitment.
-	run_fri(params.fri_params(), ntt, merkle_prover, trace_codeword, trace_committed, transcript)?;
+	// ! slow
+	let lifted_small_field_mle = lift_small_to_large_field(&large_field_mle_to_small_field_mle::<
+		B1,
+		B128,
+	>(witness_packed.as_ref()));
+
+	let small_field_log_n_vars = log_witness_elems + <B128 as ExtensionField<B1>>::LOG_DEGREE;
+
+	let evaluation_point: Vec<B128> = transcript.sample_vec(small_field_log_n_vars);
+
+	let evaluation = inner_product::<B128>(
+		lifted_small_field_mle,
+		eq_ind_partial_eval(&evaluation_point).as_ref().to_vec(),
+	);
+
+	transcript.message().write(&evaluation);
+
+	let pcs_prover =
+		OneBitPCSProver::new(witness_packed, evaluation, evaluation_point)?;
+
+	pcs_prover.prove_with_transcript(
+		transcript,
+		ntt,
+		merkle_prover,
+		params.fri_params(),
+		&trace_codeword,
+		&trace_committed,
+	)?;
+
 	Ok(())
+}
+
+fn large_field_mle_to_small_field_mle<F, FE>(large_field_mle: &[FE]) -> Vec<F>
+where
+	F: Field,
+	FE: Field + ExtensionField<F> + PackedExtension<F>,
+{
+	large_field_mle
+		.iter()
+		.flat_map(|elm| ExtensionField::<F>::iter_bases(elm))
+		.collect()
+}
+
+fn lift_small_to_large_field<F, FE>(small_field_elms: &[F]) -> Vec<FE>
+where
+	F: Field,
+	FE: Field + ExtensionField<F> + PackedExtension<F>,
+{
+	small_field_elms.iter().map(|&elm| FE::from(elm)).collect()
 }
 
 fn pack_witness<P: PackedField<Scalar = B128>>(
@@ -83,39 +132,4 @@ fn pack_witness<P: PackedField<Scalar = B128>>(
 		.for_each(|(dst, elem)| *dst = elem);
 
 	Ok(padded_witness_elems)
-}
-
-fn run_fri<P, Challenger_, NTT, MTScheme, MTProver>(
-	params: &FRIParams<B128, B128>,
-	ntt: &NTT,
-	merkle_prover: &MTProver,
-	codeword: Vec<P>,
-	committed: MTProver::Committed,
-	transcript: &mut ProverTranscript<Challenger_>,
-) -> Result<(), Error>
-where
-	P: PackedField<Scalar = B128>,
-	Challenger_: Challenger,
-	NTT: AdditiveNTT<B128> + Sync,
-	MTScheme: MerkleTreeScheme<B128>,
-	MTScheme::Digest: SerializeBytes,
-	MTProver: MerkleTreeProver<B128, Scheme = MTScheme>,
-{
-	let mut round_prover = FRIFolder::new(params, ntt, merkle_prover, &codeword, &committed)?;
-
-	let mut round_commitments = Vec::with_capacity(params.n_oracles());
-	for _i in 0..params.n_fold_rounds() {
-		let challenge = transcript.sample();
-		let fold_round_output = round_prover.execute_fold_round(challenge)?;
-		match fold_round_output {
-			FoldRoundOutput::NoCommitment => {}
-			FoldRoundOutput::Commitment(round_commitment) => {
-				transcript.message().write(&round_commitment);
-				round_commitments.push(round_commitment);
-			}
-		}
-	}
-
-	round_prover.finish_proof(transcript)?;
-	Ok(())
 }
