@@ -16,12 +16,7 @@ use binius_verifier::{
 };
 
 use super::error::Error;
-use crate::{
-	fri,
-	fri::CommitOutput,
-	merkle_tree::MerkleTreeProver,
-	pcs::prover::OneBitPCSProver,
-};
+use crate::{fri, fri::CommitOutput, merkle_tree::MerkleTreeProver, pcs::prover::OneBitPCSProver};
 
 #[allow(clippy::too_many_arguments)]
 pub fn prove<P, Challenger_, NTT, MTScheme, MTProver>(
