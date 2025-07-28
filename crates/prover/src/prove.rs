@@ -49,7 +49,7 @@ where
 	// ! slow
 	let lifted_small_field_mle =
 		lift_small_to_large_field(&large_field_mle_to_small_field_mle::<B1, B128>(
-			&witness_packed.as_ref().iter().copied().collect::<Vec<_>>(),
+			&witness_packed.as_ref().to_vec(),	
 		));
 
 	let small_field_log_n_vars = log_witness_elems + <B128 as ExtensionField<B1>>::LOG_DEGREE;
@@ -58,11 +58,7 @@ where
 
 	let evaluation = inner_product::<B128>(
 		lifted_small_field_mle,
-		eq_ind_partial_eval(&evaluation_point)
-			.as_ref()
-			.iter()
-			.copied()
-			.collect::<Vec<_>>(),
+		eq_ind_partial_eval(&evaluation_point).as_ref().to_vec(),
 	);
 
 	transcript.message().write(&evaluation);
