@@ -8,7 +8,7 @@ use binius_transcript::{
 	fiat_shamir::{CanSample, Challenger},
 };
 use binius_utils::SerializeBytes;
-use binius_verifier::{fields::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme};
+use binius_verifier::{fields::{B1, B128}, fri::FRIParams, merkle_tree::MerkleTreeScheme};
 
 use crate::{
 	Error, merkle_tree::MerkleTreeProver, protocols::basefold::prover::BaseFoldProver,
@@ -24,7 +24,7 @@ use crate::{
 /// soundness.
 pub struct OneBitPCSProver<F>
 where
-	F: Field + PackedExtension<B1> + BinaryField,
+	F: BinaryField + PackedExtension<B1> + PackedExtension<F>
 {
 	pub small_field_evaluation_claim: F,
 	pub evaluation_claim: F,
@@ -34,7 +34,7 @@ where
 
 impl<F> OneBitPCSProver<F>
 where
-	F: Field + PackedExtension<B1> + PackedField<Scalar = F> + BinaryField,
+	F: PackedExtension<B128> + PackedExtension<B1> + PackedField<Scalar = F> + BinaryField,
 {
 	/// Create a new ring switched PCS prover.
 	///
@@ -80,7 +80,7 @@ where
 	) -> Result<(), Error>
 	where
 		TranscriptChallenger: Challenger,
-		F: Field + ExtensionField<FA> + PackedExtension<B1> + BinaryField,
+		F: ExtensionField<FA> + PackedExtension<B1> + BinaryField,
 		FA: BinaryField,
 		NTT: AdditiveNTT<FA> + Sync,
 		MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
@@ -133,13 +133,13 @@ where
 		packed_mle: &FieldBuffer<F>,
 		evaluation_point: &[F],
 	) -> Result<Vec<F>, Error> {
-		let (_, eval_point_high) = evaluation_point.split_at(F::LOG_DEGREE);
+		let (_, eval_point_high) = evaluation_point.split_at(<F as ExtensionField<B1>>::LOG_DEGREE);
 
 		let small_field_mle = <F as PackedExtension<B1>>::cast_bases(packed_mle.as_ref());
 
 		let eq_at_high = eq_ind_partial_eval::<F>(eval_point_high);
 
-		let mut s_hat_v = vec![F::ZERO; 1 << F::LOG_DEGREE];
+		let mut s_hat_v = vec![F::ZERO; 1 << <F as ExtensionField<B1>>::LOG_DEGREE];
 
 		for (packed_elem, eq_at_high_value) in small_field_mle.iter().zip(eq_at_high.as_ref()) {
 			packed_elem.iter().enumerate().for_each(
@@ -185,7 +185,7 @@ where
 		basefold_sumcheck_claim: F,
 	) -> Result<BaseFoldProver<'a, F, FA, NTT, MerkleProver, VCS>, Error>
 	where
-		F: Field + ExtensionField<FA> + PackedExtension<B1> + BinaryField,
+		F: ExtensionField<FA> + PackedExtension<B1> + BinaryField,
 		FA: BinaryField,
 		NTT: AdditiveNTT<FA> + Sync,
 		MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
@@ -319,7 +319,11 @@ mod test {
 		let n_vars = 12;
 		let big_field_n_vars = n_vars - <B128 as ExtensionField<B1>>::LOG_DEGREE;
 
+
 		let packed_mle_values = random_scalars::<B128>(&mut rng, 1 << big_field_n_vars);
+
+		println!("packed_mle_values: {:?}", packed_mle_values.len());
+
 
 		let lifted_small_field_mle = lift_small_to_large_field(
 			&large_field_mle_to_small_field_mle::<B1, B128>(&packed_mle_values),
@@ -329,6 +333,8 @@ mod test {
 			FieldBuffer::from_values(&packed_mle_values).expect("failed to create field buffer");
 
 		let evaluation_point = random_scalars::<B128>(&mut rng, n_vars);
+
+		println!("lifted_small_field_mle: {:?}", lifted_small_field_mle.len());
 
 		let evaluation_claim = inner_product::<B128>(
 			lifted_small_field_mle,
