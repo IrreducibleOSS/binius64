@@ -2,7 +2,7 @@
 
 use binius_math::ntt;
 
-use crate::fri;
+use crate::{fri, pcs};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -12,4 +12,6 @@ pub enum Error {
 	FRI(#[from] fri::Error),
 	#[error("NTT error: {0}")]
 	NTT(#[from] ntt::Error),
+	#[error("PCS error: {0}")]
+	PCS(#[from] pcs::Error),
 }

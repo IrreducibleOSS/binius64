@@ -14,9 +14,10 @@ use binius_utils::{
 
 use super::error::Error;
 use crate::{
-	fields::B128,
-	fri::{FRIParams, estimate_optimal_arity, verify::FRIVerifier},
+	fields::{B1, B128},
+	fri::{FRIParams, estimate_optimal_arity},
 	merkle_tree::MerkleTreeScheme,
+	pcs::verifier::verify_transcript,
 };
 
 /// The protocol proves constraint systems over 64-bit words.
@@ -100,43 +101,21 @@ where
 	// Receive the trace commitment.
 	let trace_commitment = transcript.message().read::<MTScheme::Digest>()?;
 
-	// Run the FRI proximity test protocol on the trace commitment.
-	run_fri(params.fri_params(), params.merkle_scheme(), trace_commitment, transcript)?;
-	Ok(())
-}
+	let small_field_log_n_vars =
+		params.log_witness_elems() + <B128 as ExtensionField<B1>>::LOG_DEGREE;
 
-fn run_fri<F, Challenger_, MTScheme>(
-	params: &FRIParams<F, B128>,
-	merkle_scheme: &MTScheme,
-	commitment: MTScheme::Digest,
-	transcript: &mut VerifierTranscript<Challenger_>,
-) -> Result<(), Error>
-where
-	F: BinaryField + ExtensionField<B128>,
-	Challenger_: Challenger,
-	MTScheme: MerkleTreeScheme<F>,
-	MTScheme::Digest: DeserializeBytes,
-{
-	// FRI folding phase
-	let mut challenges = Vec::with_capacity(params.n_fold_rounds());
-	let mut round_commitments = Vec::with_capacity(params.n_oracles());
-	for &round_arity in params.fold_arities() {
-		for _ in 0..round_arity {
-			challenges.push(transcript.sample());
-		}
+	let evaluation_point: Vec<B128> = transcript.sample_vec(small_field_log_n_vars);
+	let evaluation_claim = transcript.message().read::<B128>()?;
 
-		let commitment = transcript.message().read()?;
-		round_commitments.push(commitment);
-	}
-
-	for _ in 0..params.n_final_challenges() {
-		challenges.push(transcript.sample());
-	}
-
-	// FRI query phase
-	let verifier =
-		FRIVerifier::new(params, merkle_scheme, &commitment, &round_commitments, &challenges)?;
-	verifier.verify(transcript)?;
+	// verify ring switched pcs
+	verify_transcript(
+		transcript,
+		evaluation_claim,
+		&evaluation_point,
+		trace_commitment,
+		params.fri_params(),
+		params.merkle_scheme(),
+	)?;
 
 	Ok(())
 }

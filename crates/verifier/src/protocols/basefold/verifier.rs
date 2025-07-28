@@ -76,7 +76,7 @@ pub fn verify_transcript<F, FA, VCS, TranscriptChallenger>(
 where
 	F: Field + BinaryField + ExtensionField<FA>,
 	FA: BinaryField,
-	TranscriptChallenger: Challenger + Clone,
+	TranscriptChallenger: Challenger,
 	VCS: MerkleTreeScheme<F, Digest: DeserializeBytes>,
 {
 	let mut challenges = Vec::with_capacity(n_vars);
