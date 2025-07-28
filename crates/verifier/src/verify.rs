@@ -113,7 +113,7 @@ where
 		evaluation_claim,
 		&evaluation_point,
 		trace_commitment,
-		&params.fri_params(),
+		params.fri_params(),
 		params.merkle_scheme(),
 	)
 	.unwrap();
