@@ -3,7 +3,6 @@
 use std::fmt::Debug;
 
 use bytemuck::{NoUninit, Zeroable};
-use subtle::ConstantTimeEq;
 
 use crate::Random;
 
@@ -16,7 +15,6 @@ pub trait UnderlierType:
 	+ Eq
 	+ PartialOrd
 	+ Ord
-	+ ConstantTimeEq
 	+ Copy
 	+ Random
 	+ NoUninit

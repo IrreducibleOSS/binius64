@@ -16,7 +16,6 @@ use rand::{
 	Rng,
 	distr::{Distribution, StandardUniform},
 };
-use subtle::ConstantTimeEq;
 
 use crate::{
 	Field, PackedField,
@@ -145,12 +144,6 @@ where
 unsafe impl<PT: Zeroable, const N: usize> Zeroable for ScaledPackedField<PT, N> {}
 
 unsafe impl<PT: Pod, const N: usize> Pod for ScaledPackedField<PT, N> {}
-
-impl<PT: ConstantTimeEq, const N: usize> ConstantTimeEq for ScaledPackedField<PT, N> {
-	fn ct_eq(&self, other: &Self) -> subtle::Choice {
-		self.0.ct_eq(&other.0)
-	}
-}
 
 impl<PT: Copy + Add<Output = PT>, const N: usize> Add for ScaledPackedField<PT, N>
 where

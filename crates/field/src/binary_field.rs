@@ -12,7 +12,6 @@ use binius_utils::{
 	bytes::{Buf, BufMut},
 };
 use bytemuck::{Pod, Zeroable};
-use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
 use super::{
 	binary_field_arithmetic::TowerFieldArithmetic, error::Error, extension::ExtensionField,
@@ -293,17 +292,6 @@ macro_rules! binary_field {
 			}
 		}
 
-		impl ConstantTimeEq for $name {
-			fn ct_eq(&self, other: &Self) -> Choice {
-				self.0.ct_eq(&other.0)
-			}
-		}
-
-		impl ConditionallySelectable for $name {
-			fn conditional_select(a: &Self, b: &Self, choice: Choice) -> Self {
-				Self(ConditionallySelectable::conditional_select(&a.0, &b.0, choice))
-			}
-		}
 
 		impl crate::arithmetic_traits::Square for $name {
 			fn square(self) -> Self {
@@ -794,12 +782,6 @@ serialize_deserialize!(BinaryField32b);
 serialize_deserialize!(BinaryField64b);
 serialize_deserialize!(BinaryField128b);
 
-impl From<BinaryField1b> for Choice {
-	fn from(val: BinaryField1b) -> Self {
-		Self::from(val.val().val())
-	}
-}
-
 impl BinaryField1b {
 	/// Creates value without checking that it is within valid range (0 or 1)
 	///
@@ -1248,13 +1230,6 @@ pub(crate) mod tests {
 		#[test]
 		fn test_mul_primitive_128b(val in 0u128.., iota in 0usize..8) {
 			test_mul_primitive::<BinaryField128b>(val.into(), iota)
-		}
-	}
-
-	#[test]
-	fn test_1b_to_choice() {
-		for i in 0..2 {
-			assert_eq!(Choice::from(BinaryField1b::from(i)).unwrap_u8(), i);
 		}
 	}
 

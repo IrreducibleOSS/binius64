@@ -11,7 +11,6 @@ use rand::{
 	Rng,
 	distr::{Distribution, StandardUniform},
 };
-use subtle::{Choice, ConstantTimeEq};
 
 use super::{Divisible, NumCast, UnderlierType, UnderlierWithBitOps};
 use crate::{Random, tower_levels::TowerLevel};
@@ -49,12 +48,6 @@ impl<T, U: From<T>, const N: usize> From<[T; N]> for ScaledUnderlier<U, N> {
 impl<T: Copy, U: From<[T; 2]>> From<[T; 4]> for ScaledUnderlier<U, 2> {
 	fn from(value: [T; 4]) -> Self {
 		Self([[value[0], value[1]], [value[2], value[3]]].map(Into::into))
-	}
-}
-
-impl<U: ConstantTimeEq, const N: usize> ConstantTimeEq for ScaledUnderlier<U, N> {
-	fn ct_eq(&self, other: &Self) -> Choice {
-		self.0.ct_eq(&other.0)
 	}
 }
 

@@ -18,7 +18,6 @@ use rand::{
 	Rng,
 	distr::{Distribution, StandardUniform},
 };
-use subtle::{ConditionallySelectable, ConstantTimeEq};
 
 use super::{UnderlierType, underlier_with_bit_ops::UnderlierWithBitOps};
 
@@ -96,18 +95,6 @@ impl<const N: usize> Hash for SmallU<N> {
 	#[inline]
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		self.val().hash(state);
-	}
-}
-
-impl<const N: usize> ConstantTimeEq for SmallU<N> {
-	fn ct_eq(&self, other: &Self) -> subtle::Choice {
-		self.val().ct_eq(&other.val())
-	}
-}
-
-impl<const N: usize> ConditionallySelectable for SmallU<N> {
-	fn conditional_select(a: &Self, b: &Self, choice: subtle::Choice) -> Self {
-		Self(u8::conditional_select(&a.0, &b.0, choice))
 	}
 }
 

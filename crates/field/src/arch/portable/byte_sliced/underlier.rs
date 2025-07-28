@@ -6,7 +6,6 @@ use rand::{
 	Rng,
 	distr::{Distribution, StandardUniform},
 };
-use subtle::{Choice, ConstantTimeEq};
 
 use crate::{
 	Random,
@@ -23,12 +22,6 @@ pub struct ByteSlicedUnderlier<U, const N: usize>(ScaledUnderlier<U, N>);
 impl<U: Random, const N: usize> Distribution<ByteSlicedUnderlier<U, N>> for StandardUniform {
 	fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ByteSlicedUnderlier<U, N> {
 		ByteSlicedUnderlier(rng.random())
-	}
-}
-
-impl<U: ConstantTimeEq, const N: usize> ConstantTimeEq for ByteSlicedUnderlier<U, N> {
-	fn ct_eq(&self, other: &Self) -> Choice {
-		self.0.ct_eq(&other.0)
 	}
 }
 

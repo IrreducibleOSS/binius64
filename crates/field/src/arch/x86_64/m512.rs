@@ -17,7 +17,6 @@ use rand::{
 	distr::{Distribution, StandardUniform},
 };
 use seq_macro::seq;
-use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
 use crate::{
 	BinaryField,
@@ -349,28 +348,6 @@ impl PartialOrd for M512 {
 impl Ord for M512 {
 	fn cmp(&self, other: &Self) -> std::cmp::Ordering {
 		<[u128; 4]>::from(*self).cmp(&<[u128; 4]>::from(*other))
-	}
-}
-
-impl ConstantTimeEq for M512 {
-	#[inline(always)]
-	fn ct_eq(&self, other: &Self) -> Choice {
-		unsafe {
-			let pcmp = _mm512_cmpeq_epi32_mask(self.0, other.0);
-			pcmp.ct_eq(&0xFFFF)
-		}
-	}
-}
-
-impl ConditionallySelectable for M512 {
-	fn conditional_select(a: &Self, b: &Self, choice: Choice) -> Self {
-		let a = <[u128; 4]>::from(*a);
-		let b = <[u128; 4]>::from(*b);
-		let result: [u128; 4] = std::array::from_fn(|i| {
-			ConditionallySelectable::conditional_select(&a[i], &b[i], choice)
-		});
-
-		result.into()
 	}
 }
 

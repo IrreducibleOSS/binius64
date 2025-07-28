@@ -14,7 +14,6 @@ cfg-if.workspace = true
 derive_more.workspace = true
 rand.workspace = true
 seq-macro.workspace = true
-subtle.workspace = true
 thiserror.workspace = true
 transpose.workspace = true
 tracing.workspace = true

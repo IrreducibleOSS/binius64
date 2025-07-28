@@ -20,7 +20,6 @@ use rand::{
 	Rng,
 	distr::{Distribution, StandardUniform},
 };
-use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
 use super::{
 	arithmetic_traits::InvertOrZero,
@@ -239,20 +238,6 @@ impl<'a> Product<&'a Self> for BinaryField128bGhash {
 	}
 }
 
-impl ConstantTimeEq for BinaryField128bGhash {
-	#[inline]
-	fn ct_eq(&self, other: &Self) -> Choice {
-		self.0.ct_eq(&other.0)
-	}
-}
-
-impl ConditionallySelectable for BinaryField128bGhash {
-	#[inline]
-	fn conditional_select(a: &Self, b: &Self, choice: Choice) -> Self {
-		Self(ConditionallySelectable::conditional_select(&a.0, &b.0, choice))
-	}
-}
-
 impl Square for BinaryField128bGhash {
 	#[inline]
 	fn square(self) -> Self {
@@ -316,9 +301,13 @@ impl TryInto<BinaryField1b> for BinaryField128bGhash {
 
 	#[inline]
 	fn try_into(self) -> Result<BinaryField1b, Self::Error> {
-		let result = CtOption::new(BinaryField1b::ZERO, self.ct_eq(&Self::ZERO))
-			.or_else(|| CtOption::new(BinaryField1b::ONE, self.ct_eq(&Self::ONE)));
-		Option::from(result).ok_or(())
+		if self == Self::ZERO {
+			Ok(BinaryField1b::ZERO)
+		} else if self == Self::ONE {
+			Ok(BinaryField1b::ONE)
+		} else {
+			Err(())
+		}
 	}
 }
 

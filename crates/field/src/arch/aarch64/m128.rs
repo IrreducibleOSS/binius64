@@ -16,7 +16,6 @@ use rand::{
 	distr::{Distribution, StandardUniform},
 };
 use seq_macro::seq;
-use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
 use super::super::portable::{
 	packed::{PackedPrimitiveType, impl_pack_scalar},
@@ -291,18 +290,6 @@ impl Shl<usize> for M128 {
 	#[inline]
 	fn shl(self, rhs: usize) -> Self::Output {
 		Self::from(u128::from(self) << rhs)
-	}
-}
-
-impl ConstantTimeEq for M128 {
-	fn ct_eq(&self, other: &Self) -> subtle::Choice {
-		u128::from(*self).ct_eq(&u128::from(*other))
-	}
-}
-
-impl ConditionallySelectable for M128 {
-	fn conditional_select(a: &Self, b: &Self, choice: Choice) -> Self {
-		ConditionallySelectable::conditional_select(&u128::from(*a), &u128::from(*b), choice).into()
 	}
 }
 

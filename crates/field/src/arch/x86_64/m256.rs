@@ -18,7 +18,6 @@ use rand::{
 	distr::{Distribution, StandardUniform},
 };
 use seq_macro::seq;
-use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
 use crate::{
 	BinaryField,
@@ -297,29 +296,6 @@ impl PartialOrd for M256 {
 impl Ord for M256 {
 	fn cmp(&self, other: &Self) -> std::cmp::Ordering {
 		<[u128; 2]>::from(*self).cmp(&<[u128; 2]>::from(*other))
-	}
-}
-
-impl ConstantTimeEq for M256 {
-	#[inline(always)]
-	fn ct_eq(&self, other: &Self) -> Choice {
-		unsafe {
-			let pcmp = _mm256_cmpeq_epi32(self.0, other.0);
-			let bitmask = _mm256_movemask_epi8(pcmp) as u32;
-			bitmask.ct_eq(&0xffffffff)
-		}
-	}
-}
-
-impl ConditionallySelectable for M256 {
-	fn conditional_select(a: &Self, b: &Self, choice: Choice) -> Self {
-		let a = <[u128; 2]>::from(*a);
-		let b = <[u128; 2]>::from(*b);
-		let result: [u128; 2] = std::array::from_fn(|i| {
-			ConditionallySelectable::conditional_select(&a[i], &b[i], choice)
-		});
-
-		result.into()
 	}
 }
 

@@ -13,7 +13,6 @@ use binius_utils::{
 	bytes::{Buf, BufMut},
 };
 use bytemuck::{Pod, Zeroable};
-use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
 use super::{
 	BinaryField8b, Error, PackedExtension, PackedSubfield,

@@ -19,7 +19,6 @@ use rand::{
 	Rng,
 	distr::{Distribution, StandardUniform},
 };
-use subtle::{Choice, ConstantTimeEq};
 
 use super::packed_arithmetic::UnderlierWithBitConstants;
 use crate::{
@@ -141,12 +140,6 @@ impl<U: UnderlierType, Scalar: BinaryField> From<U> for PackedPrimitiveType<U, S
 	#[inline]
 	fn from(val: U) -> Self {
 		Self(val, PhantomData)
-	}
-}
-
-impl<U: UnderlierType, Scalar: BinaryField> ConstantTimeEq for PackedPrimitiveType<U, Scalar> {
-	fn ct_eq(&self, other: &Self) -> Choice {
-		self.0.ct_eq(&other.0)
 	}
 }
 

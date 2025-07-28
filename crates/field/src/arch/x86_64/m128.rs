@@ -17,7 +17,6 @@ use rand::{
 	distr::{Distribution, StandardUniform},
 };
 use seq_macro::seq;
-use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
 use crate::{
 	BinaryField,
@@ -296,21 +295,6 @@ impl PartialOrd for M128 {
 impl Ord for M128 {
 	fn cmp(&self, other: &Self) -> std::cmp::Ordering {
 		u128::from(*self).cmp(&u128::from(*other))
-	}
-}
-
-impl ConstantTimeEq for M128 {
-	fn ct_eq(&self, other: &Self) -> Choice {
-		unsafe {
-			let neq = _mm_xor_si128(self.0, other.0);
-			Choice::from(_mm_test_all_zeros(neq, neq) as u8)
-		}
-	}
-}
-
-impl ConditionallySelectable for M128 {
-	fn conditional_select(a: &Self, b: &Self, choice: Choice) -> Self {
-		ConditionallySelectable::conditional_select(&u128::from(*a), &u128::from(*b), choice).into()
 	}
 }
 
