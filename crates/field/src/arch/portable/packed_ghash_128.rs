@@ -5,8 +5,10 @@
 use std::ops::Mul;
 
 use super::{
-	nibble_invert_128b::nibble_invert_128b, packed::PackedPrimitiveType,
+	nibble_invert_128b::nibble_invert_128b,
+	packed::PackedPrimitiveType,
 	packed_macros::impl_broadcast,
+	univariate_mul_utils_128::{bmul64, join_u64s, split_u128},
 };
 use crate::{
 	BinaryField128bGhash,
@@ -16,28 +18,57 @@ use crate::{
 	underlier::WithUnderlier,
 };
 
-/// GHASH field multiplication using the standard bit-by-bit algorithm.
-/// This implements multiplication in GF(2^128) with the irreducible polynomial
-/// x^128 + x^7 + x^2 + x + 1, represented as 0xe1000000000000000000000000000000.
-/// This is a straightforward implementation portable version of russian peasant multiplication.
-/// We most probably won't use this field for the platforms that don't have caryless
-/// multiplication instruction, so no need to optimize this for now.
-pub fn ghash_mul(mut x: u128, mut y: u128) -> u128 {
-	let poly = 0b10000111;
-	let mut z = 0u128;
+/// Multiply two GHASH field elements using software implementation.
+///
+/// Method described at:
+/// * <https://www.bearssl.org/constanttime.html#ghash-for-gcm>
+/// * <https://crypto.stackexchange.com/questions/66448/how-does-bearssls-gcm-modular-reduction-work/66462#66462>
+///
+/// This code does not conform to the bit-endianness requirements of the GCM specification, but is
+/// a valid GHASH field multiplication with the modified representation.
+pub fn ghash_mul(x: u128, y: u128) -> u128 {
+	// Convert to U64x2 representation
+	let (x1, x0) = split_u128(x);
+	let (y1, y0) = split_u128(y);
 
-	for _ in 0..128 {
-		if (y & 1) != 0 {
-			z ^= x;
-		}
-		let msb = x & (1 << 127);
-		x <<= 1;
-		if msb != 0 {
-			x ^= poly;
-		}
-		y >>= 1;
-	}
-	z
+	// Perform multiplication
+	let x0r = x0.reverse_bits();
+	let x1r = x1.reverse_bits();
+	let x2 = x0 ^ x1;
+	let x2r = x0r ^ x1r;
+
+	let y0r = y0.reverse_bits();
+	let y1r = y1.reverse_bits();
+	let y2 = y0 ^ y1;
+	let y2r = y0r ^ y1r;
+
+	let z0 = bmul64(y0, x0);
+	let z1 = bmul64(y1, x1);
+	let mut z2 = bmul64(y2, x2);
+
+	let mut z0h = bmul64(y0r, x0r);
+	let mut z1h = bmul64(y1r, x1r);
+	let mut z2h = bmul64(y2r, x2r);
+
+	z2 ^= z0 ^ z1;
+	z2h ^= z0h ^ z1h;
+	z0h = z0h.reverse_bits() >> 1;
+	z1h = z1h.reverse_bits() >> 1;
+	z2h = z2h.reverse_bits() >> 1;
+
+	let mut v0 = z0;
+	let mut v1 = z0h ^ z2;
+	let mut v2 = z1 ^ z2h;
+	let v3 = z1h;
+
+	// Reduce modulo X^128 + X^7 + X^2 + X + 1.
+	v1 ^= v3 ^ (v3 << 1) ^ (v3 << 2) ^ (v3 << 7);
+	v2 ^= (v3 >> 63) ^ (v3 >> 62) ^ (v3 >> 57);
+	v0 ^= v2 ^ (v2 << 1) ^ (v2 << 2) ^ (v2 << 7);
+	v1 ^= (v2 >> 63) ^ (v2 >> 62) ^ (v2 >> 57);
+
+	// Convert back to u128
+	join_u64s(v1, v0)
 }
 
 pub type PackedBinaryGhash1x128b = PackedPrimitiveType<u128, BinaryField128bGhash>;
