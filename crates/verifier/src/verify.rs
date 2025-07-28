@@ -2,9 +2,7 @@
 
 use binius_field::{BinaryField, ExtensionField};
 use binius_frontend::{constraint_system::ConstraintSystem, word::Word};
-use binius_math::{
-	inner_product::inner_product, multilinear::eq::eq_ind_partial_eval, ntt::SingleThreadedNTT,
-};
+use binius_math::ntt::SingleThreadedNTT;
 use binius_transcript::{
 	VerifierTranscript,
 	fiat_shamir::{CanSample, Challenger},
@@ -17,7 +15,7 @@ use binius_utils::{
 use super::error::Error;
 use crate::{
 	fields::{B1, B128},
-	fri::{FRIParams, estimate_optimal_arity, verify::FRIVerifier},
+	fri::{FRIParams, estimate_optimal_arity},
 	merkle_tree::MerkleTreeScheme,
 	pcs::verifier::verify_transcript,
 };
