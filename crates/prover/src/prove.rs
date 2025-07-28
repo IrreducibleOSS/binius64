@@ -66,6 +66,8 @@ where
 			.collect::<Vec<_>>(),
 	);
 
+	transcript.message().write(&evaluation);
+
 	let ring_switch_pcs_prover =
 		OneBitPCSProver::new(witness_packed, evaluation, evaluation_point.clone())?;
 

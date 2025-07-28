@@ -9,6 +9,7 @@ use binius_math::ntt::SingleThreadedNTT;
 use binius_prover::{merkle_tree::prover::BinaryMerkleTreeProver, prove};
 use binius_transcript::{ProverTranscript, fiat_shamir::HasherChallenger};
 use binius_verifier::{
+	fields::B128,
 	Params,
 	hash::{StdCompression, StdDigest},
 	merkle_tree::BinaryMerkleTreeScheme,
