@@ -12,6 +12,11 @@ use binius_frontend::{
 use binius_math::{
 	BinarySubspace, FieldBuffer, multilinear::eq::eq_ind_partial_eval, ntt::AdditiveNTT,
 };
+// Copyright 2025 Irreducible Inc.
+
+use binius_field::{ExtensionField, PackedExtension, PackedField};
+use binius_frontend::{constraint_system::ValueVec, word::Word};
+use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval, ntt::AdditiveNTT};
 use binius_transcript::{
 	ProverTranscript,
 	fiat_shamir::{CanSample, Challenger},
@@ -107,7 +112,12 @@ where
 
 	// PCS opening
 	let evaluation_point = [z_challenge, y_challenge].concat();
-	let pcs_prover = OneBitPCSProver::new(witness_packed, witness_eval, evaluation_point)?;
+	let pcs_prover = OneBitPCSProver::new(
+		witness_packed,
+		witness_eval,
+		evaluation_point,
+		<B128 as ExtensionField<B1>>::LOG_DEGREE,
+	)?; // !
 	pcs_prover.prove_with_transcript(
 		transcript,
 		ntt,

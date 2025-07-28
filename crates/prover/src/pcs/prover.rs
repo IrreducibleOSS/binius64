@@ -1,4 +1,6 @@
-use binius_field::{BinaryField, ExtensionField, Field, PackedExtension, PackedField};
+// Copyright 2025 Irreducible Inc.
+
+use binius_field::{BinaryField, Field, PackedExtension, PackedField};
 use binius_math::{
 	FieldBuffer, inner_product::inner_product, multilinear::eq::eq_ind_partial_eval,
 	ntt::AdditiveNTT, tensor_algebra::TensorAlgebra,
@@ -22,19 +24,22 @@ use crate::{
 /// at a large field point. The prover first performs the ring switching phase of the proof,
 /// establishing completeness. Then, the large field pcs (basefold) is invoked to establish
 /// soundness.
-pub struct OneBitPCSProver<F>
+pub struct OneBitPCSProver<F, P>
 where
-	F: BinaryField + PackedExtension<B1>,
+	F: BinaryField,
+	P: PackedExtension<B1> + PackedField<Scalar = F>,
 {
+	pub packed_mle: FieldBuffer<P>,
 	pub small_field_evaluation_claim: F,
 	pub evaluation_claim: F,
 	pub evaluation_point: Vec<F>,
-	pub packed_mle: FieldBuffer<F>,
+	pub packing_degree: usize,
 }
 
-impl<F> OneBitPCSProver<F>
+impl<F, P> OneBitPCSProver<F, P>
 where
-	F: BinaryField + PackedExtension<B1> + PackedField<Scalar = F>,
+	F: BinaryField,
+	P: PackedExtension<B1> + PackedField<Scalar = F>,
 {
 	/// Create a new ring switched PCS prover.
 	///
@@ -44,15 +49,17 @@ where
 	/// * `evaluation_claim` - the evaluation claim of the small field multilinear
 	/// * `evaluation_point` - the evaluation point of the small field multilinear
 	pub fn new(
-		packed_mle: FieldBuffer<F>,
+		packed_mle: FieldBuffer<P>,
 		evaluation_claim: F,
 		evaluation_point: Vec<F>,
+		packing_degree: usize,
 	) -> Result<Self, Error> {
 		Ok(Self {
+			packed_mle,
 			small_field_evaluation_claim: evaluation_claim,
 			evaluation_claim,
 			evaluation_point,
-			packed_mle,
+			packing_degree,
 		})
 	}
 
@@ -75,30 +82,34 @@ where
 		ntt: &'a NTT,
 		merkle_prover: &'a MerkleProver,
 		fri_params: &'a FRIParams<F, F>,
-		committed_codeword: &'a [F],
+		committed_codeword: &'a [P],
 		committed: &'a MerkleProver::Committed,
 	) -> Result<(), Error>
 	where
+		F: BinaryField + PackedExtension<B1> + PackedField<Scalar = F>,
+		P: PackedExtension<B1> + PackedField<Scalar = F>,
 		TranscriptChallenger: Challenger,
-		F: ExtensionField<F> + PackedExtension<B1> + BinaryField,
 		NTT: AdditiveNTT<F> + Sync,
 		MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 		VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 	{
 		// packed mle partial evals of at high variables
-		let s_hat_v = Self::initialize_proof(&self.packed_mle, &self.evaluation_point)?;
+		let s_hat_v =
+			Self::initialize_proof(&self.packed_mle, &self.evaluation_point, self.packing_degree)?;
 
 		transcript.message().write_scalar_slice(&s_hat_v);
 
 		// basis decompose/recombine s_hat_v across opposite dimension
 		let s_hat_u = <TensorAlgebra<B1, F>>::new(s_hat_v).transpose().elems;
 
-		let r_double_prime = transcript.sample_vec(<F as ExtensionField<B1>>::LOG_DEGREE);
+		let r_double_prime = transcript.sample_vec(self.packing_degree);
 
-		let eq_r_double_prime = eq_ind_partial_eval(&r_double_prime);
+		let eq_r_double_prime = eq_ind_partial_eval::<F>(r_double_prime.as_ref());
 
-		let computed_sumcheck_claim =
+		let computed_sumcheck_claim: F =
 			inner_product(s_hat_u, eq_r_double_prime.as_ref().iter().copied());
+
+		let computed_sumcheck_claim: F = computed_sumcheck_claim.iter().collect::<Vec<F>>()[0];
 
 		let big_field_basefold_prover = self.setup_for_fri_sumcheck(
 			&r_double_prime,
@@ -129,16 +140,22 @@ where
 	///
 	/// * `s_hat_v` - the initial message to the verifier
 	fn initialize_proof(
-		packed_mle: &FieldBuffer<F>,
+		packed_mle: &FieldBuffer<P>,
 		evaluation_point: &[F],
-	) -> Result<Vec<F>, Error> {
-		let (_, eval_point_high) = evaluation_point.split_at(F::LOG_DEGREE);
+		packing_degree: usize,
+	) -> Result<Vec<F>, Error>
+	where
+		F: BinaryField,
+		P: PackedExtension<B1> + PackedField<Scalar = F>,
+	{
+		let (_, eval_point_high) = evaluation_point.split_at(packing_degree);
 
-		let small_field_mle = <F as PackedExtension<B1>>::cast_bases(packed_mle.as_ref());
+		let small_field_mle = <P as PackedExtension<B1>>::cast_bases(packed_mle.as_ref());
 
+		// todo maybe use packed field indexible to create the eq?
 		let eq_at_high = eq_ind_partial_eval::<F>(eval_point_high);
 
-		let mut s_hat_v = vec![F::ZERO; 1 << F::LOG_DEGREE];
+		let mut s_hat_v = vec![F::zero(); 1 << packing_degree];
 
 		for (packed_elem, eq_at_high_value) in small_field_mle.iter().zip(eq_at_high.as_ref()) {
 			packed_elem.iter().enumerate().for_each(
@@ -179,25 +196,27 @@ where
 		ntt: &'a NTT,
 		merkle_prover: &'a MerkleProver,
 		fri_params: &'a FRIParams<F, F>,
-		committed_codeword: &'a [F],
+		committed_codeword: &'a [P],
 		committed: &'a MerkleProver::Committed,
 		basefold_sumcheck_claim: F,
-	) -> Result<BaseFoldProver<'a, F, F, NTT, MerkleProver, VCS>, Error>
+	) -> Result<BaseFoldProver<'a, F, P, NTT, MerkleProver, VCS>, Error>
 	where
-		F: ExtensionField<F> + PackedExtension<B1> + BinaryField,
+		F: BinaryField,
+		P: PackedExtension<B1> + PackedField<Scalar = F>,
 		NTT: AdditiveNTT<F> + Sync,
 		MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 		VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 	{
-		let (_, eval_point_high) = self
-			.evaluation_point
-			.split_at(<F as ExtensionField<B1>>::LOG_DEGREE);
+		let (_, eval_point_high) = self.evaluation_point.split_at(self.packing_degree);
 
-		let rs_eq_ind = rs_eq_ind::<F>(r_double_prime, eval_point_high);
+		let rs_eq_ind: FieldBuffer<F> = rs_eq_ind::<F>(r_double_prime, eval_point_high);
+
+		let rs_eq_ind_buffer: FieldBuffer<P> =
+			FieldBuffer::from_values(rs_eq_ind.as_ref()).unwrap();
 
 		BaseFoldProver::new(
 			self.packed_mle,
-			rs_eq_ind,
+			rs_eq_ind_buffer,
 			basefold_sumcheck_claim,
 			committed_codeword,
 			committed,
@@ -220,7 +239,7 @@ mod test {
 		config::{B1, B128, StdChallenger},
 		fri::FRIParams,
 		hash::{StdCompression, StdDigest},
-		pcs,
+		pcs::verify_transcript,
 	};
 	use itertools::Itertools;
 	use rand::{SeedableRng, rngs::StdRng};
@@ -254,15 +273,15 @@ mod test {
 		packed_mle: FieldBuffer<B128>,
 		evaluation_point: Vec<B128>,
 		evaluation_claim: B128,
+		packing_degree: usize,
 	) -> Result<(), Box<dyn std::error::Error>> {
 		const LOG_INV_RATE: usize = 1;
 		const NUM_TEST_QUERIES: usize = 3;
-		type FA = B128;
 
 		let merkle_prover =
 			BinaryMerkleTreeProver::<B128, StdDigest, _>::new(StdCompression::default());
 
-		let committed_rs_code = ReedSolomonCode::<FA>::new(packed_mle.log_len(), LOG_INV_RATE)?;
+		let committed_rs_code = ReedSolomonCode::<B128>::new(packed_mle.log_len(), LOG_INV_RATE)?;
 
 		let fri_log_batch_size = 0;
 		let fri_arities = vec![1; packed_mle.log_len() - 1];
@@ -281,8 +300,12 @@ mod test {
 		let mut prover_challenger = ProverTranscript::new(StdChallenger::default());
 		prover_challenger.message().write(&codeword_commitment);
 
-		let ring_switch_pcs_prover =
-			OneBitPCSProver::new(packed_mle, evaluation_claim, evaluation_point.clone())?;
+		let ring_switch_pcs_prover = OneBitPCSProver::new(
+			packed_mle,
+			evaluation_claim,
+			evaluation_point.clone(),
+			packing_degree,
+		)?;
 
 		ring_switch_pcs_prover.prove_with_transcript(
 			&mut prover_challenger,
@@ -297,7 +320,7 @@ mod test {
 
 		let retrieved_codeword_commitment = verifier_challenger.message().read()?;
 
-		pcs::verify_transcript(
+		verify_transcript(
 			&mut verifier_challenger,
 			evaluation_claim,
 			&evaluation_point,
@@ -312,9 +335,11 @@ mod test {
 	#[test]
 	fn test_ring_switched_pcs_valid_proof() {
 		let mut rng = StdRng::from_seed([0; 32]);
-
 		let n_vars = 12;
-		let big_field_n_vars = n_vars - <B128 as ExtensionField<B1>>::LOG_DEGREE;
+		let packing_degree = <B128 as ExtensionField<B1>>::LOG_DEGREE;
+		let big_field_n_vars = n_vars - packing_degree;
+
+		assert_eq!(packing_degree, 7);
 
 		let packed_mle_values = random_scalars::<B128>(&mut rng, 1 << big_field_n_vars);
 
@@ -336,8 +361,12 @@ mod test {
 				.collect_vec(),
 		);
 
-		match run_ring_switched_pcs_prove_and_verify(packed_mle, evaluation_point, evaluation_claim)
-		{
+		match run_ring_switched_pcs_prove_and_verify(
+			packed_mle,
+			evaluation_point,
+			evaluation_claim,
+			packing_degree,
+		) {
 			Ok(()) => {}
 			Err(_) => panic!("expected valid proof"),
 		}
@@ -348,7 +377,8 @@ mod test {
 		let mut rng = StdRng::from_seed([0; 32]);
 
 		let n_vars = 12;
-		let big_field_n_vars = n_vars - <B128 as ExtensionField<B1>>::LOG_DEGREE;
+		let packing_degree = <B128 as ExtensionField<B1>>::LOG_DEGREE;
+		let big_field_n_vars = n_vars - packing_degree;
 
 		let packed_mle_values = random_scalars::<B128>(&mut rng, 1 << big_field_n_vars);
 		let packed_mle =
@@ -363,6 +393,7 @@ mod test {
 			packed_mle,
 			evaluation_point,
 			incorrect_evaluation_claim,
+			packing_degree,
 		) {
 			panic!("expected error")
 		}
