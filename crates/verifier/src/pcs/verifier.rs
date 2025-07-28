@@ -44,7 +44,7 @@ pub fn verify_transcript<F, FA, TranscriptChallenger, VCS>(
 where
 	F: Field + BinaryField + PackedField<Scalar = F> + ExtensionField<FA> + PackedExtension<B1>,
 	FA: BinaryField,
-	TranscriptChallenger: Challenger + Clone,
+	TranscriptChallenger: Challenger,
 	VCS: MerkleTreeScheme<F, Digest: DeserializeBytes>,
 {
 	let packing_degree = <F as ExtensionField<B1>>::LOG_DEGREE;

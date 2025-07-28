@@ -94,7 +94,7 @@ pub fn verify<Challenger_, MTScheme>(
 	transcript: &mut VerifierTranscript<Challenger_>,
 ) -> Result<(), Error>
 where
-	Challenger_: Challenger + Clone,
+	Challenger_: Challenger,
 	MTScheme: MerkleTreeScheme<B128>,
 	MTScheme::Digest: DeserializeBytes,
 {
