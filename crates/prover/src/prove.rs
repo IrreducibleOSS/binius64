@@ -63,8 +63,7 @@ where
 
 	transcript.message().write(&evaluation);
 
-	let pcs_prover =
-		OneBitPCSProver::new(witness_packed, evaluation, evaluation_point)?;
+	let pcs_prover = OneBitPCSProver::new(witness_packed, evaluation, evaluation_point)?;
 
 	pcs_prover.prove_with_transcript(
 		transcript,
