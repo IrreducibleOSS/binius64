@@ -31,7 +31,7 @@ pub mod packed_ghash_256;
 pub mod packed_ghash_512;
 
 mod nibble_invert_128b;
-mod univariate_mul_utils_128;
+pub(crate) mod univariate_mul_utils_128;
 
 pub mod byte_sliced;
 

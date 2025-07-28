@@ -36,6 +36,16 @@ impl M128 {
 	pub(super) const fn from_u128(value: u128) -> Self {
 		Self(u64x2(value as u64, (value >> 64) as u64))
 	}
+
+	#[inline]
+	pub fn from_lanes_u64(lo: u64, hi: u64) -> Self {
+		Self(u64x2(lo, hi))
+	}
+
+	#[inline]
+	pub fn split_lanes_u64(self) -> (u64, u64) {
+		(u64x2_extract_lane::<0>(self.0), u64x2_extract_lane::<1>(self.0))
+	}
 }
 
 impl Default for M128 {
@@ -281,19 +291,75 @@ impl UnderlierWithBitOps for M128 {
 	const ONE: Self = { Self(u64x2(1, 0)) };
 	const ONES: Self = { Self(u64x2(u64::MAX, u64::MAX)) };
 
-	#[inline]
+	#[inline(always)]
 	fn fill_with_bit(val: u8) -> Self {
 		Self(u64x2_splat(u64::fill_with_bit(val)))
 	}
 
-	#[inline]
+	#[inline(always)]
 	fn shl_128b_lanes(self, shift: usize) -> Self {
 		self << shift
 	}
 
-	#[inline]
+	#[inline(always)]
 	fn shr_128b_lanes(self, shift: usize) -> Self {
 		self >> shift
+	}
+
+	#[inline]
+	unsafe fn get_subvalue<T>(&self, i: usize) -> T
+	where
+		T: UnderlierType + NumCast<Self>,
+	{
+		match T::LOG_BITS {
+			0..4 => {
+				let byte = match i >> (3 - T::LOG_BITS) {
+					0 => u8x16_extract_lane::<0>(self.0),
+					1 => u8x16_extract_lane::<1>(self.0),
+					2 => u8x16_extract_lane::<2>(self.0),
+					3 => u8x16_extract_lane::<3>(self.0),
+					4 => u8x16_extract_lane::<4>(self.0),
+					5 => u8x16_extract_lane::<5>(self.0),
+					6 => u8x16_extract_lane::<6>(self.0),
+					7 => u8x16_extract_lane::<7>(self.0),
+					8 => u8x16_extract_lane::<8>(self.0),
+					9 => u8x16_extract_lane::<9>(self.0),
+					10 => u8x16_extract_lane::<10>(self.0),
+					11 => u8x16_extract_lane::<11>(self.0),
+					12 => u8x16_extract_lane::<12>(self.0),
+					13 => u8x16_extract_lane::<13>(self.0),
+					14 => u8x16_extract_lane::<14>(self.0),
+					15 => u8x16_extract_lane::<15>(self.0),
+					_ => unreachable!(),
+				};
+
+				T::num_cast_from(Self::from(byte))
+			}
+			4 => match i {
+				0 => T::num_cast_from(Self::from(u16x8_extract_lane::<0>(self.0))),
+				1 => T::num_cast_from(Self::from(u16x8_extract_lane::<1>(self.0))),
+				2 => T::num_cast_from(Self::from(u16x8_extract_lane::<2>(self.0))),
+				3 => T::num_cast_from(Self::from(u16x8_extract_lane::<3>(self.0))),
+				4 => T::num_cast_from(Self::from(u16x8_extract_lane::<4>(self.0))),
+				5 => T::num_cast_from(Self::from(u16x8_extract_lane::<5>(self.0))),
+				6 => T::num_cast_from(Self::from(u16x8_extract_lane::<6>(self.0))),
+				7 => T::num_cast_from(Self::from(u16x8_extract_lane::<7>(self.0))),
+				_ => unreachable!(),
+			},
+			5 => match i {
+				0 => T::num_cast_from(Self::from(u32x4_extract_lane::<0>(self.0))),
+				1 => T::num_cast_from(Self::from(u32x4_extract_lane::<1>(self.0))),
+				2 => T::num_cast_from(Self::from(u32x4_extract_lane::<2>(self.0))),
+				3 => T::num_cast_from(Self::from(u32x4_extract_lane::<3>(self.0))),
+				_ => unreachable!(),
+			},
+			6 => match i {
+				0 => T::num_cast_from(Self::from(u64x2_extract_lane::<0>(self.0))),
+				1 => T::num_cast_from(Self::from(u64x2_extract_lane::<1>(self.0))),
+				_ => unreachable!(),
+			},
+			_ => unreachable!(),
+		}
 	}
 }
 
@@ -358,7 +424,7 @@ impl UnderlierWithBitConstants for M128 {
 		Self::from_u128(interleave_mask_odd!(u128, 6)),
 	];
 
-	#[inline]
+	#[inline(always)]
 	fn interleave(self, other: Self, log_block_len: usize) -> (Self, Self) {
 		match log_block_len {
 			// Bitwise/masked interleave

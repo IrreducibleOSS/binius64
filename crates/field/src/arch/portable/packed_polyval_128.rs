@@ -14,7 +14,7 @@ use super::{
 	nibble_invert_128b::nibble_invert_128b,
 	packed::PackedPrimitiveType,
 	packed_macros::impl_broadcast,
-	univariate_mul_utils_128::{bmul64, join_u64s, split_u128},
+	univariate_mul_utils_128::{Underlier128bLanes, bmul64},
 };
 use crate::{
 	BinaryField128bPolyval,
@@ -66,13 +66,13 @@ impl_transformation_with_strategy!(PackedBinaryPolyval1x128b, PairwiseStrategy);
 ///
 /// [1]: <https://datatracker.ietf.org/doc/html/rfc8452>
 fn montgomery_multiply(a: u128, b: u128) -> u128 {
-	let (h1, h0) = split_u128(a);
+	let (h1, h0) = a.split_hi_lo_64();
 	let h0r = h0.reverse_bits();
 	let h1r = h1.reverse_bits();
 	let h2 = h0 ^ h1;
 	let h2r = h0r ^ h1r;
 
-	let (y1, y0) = split_u128(b);
+	let (y1, y0) = b.split_hi_lo_64();
 	let y0r = y0.reverse_bits();
 	let y1r = y1.reverse_bits();
 	let y2 = y0 ^ y1;
@@ -101,7 +101,7 @@ fn montgomery_multiply(a: u128, b: u128) -> u128 {
 	v3 ^= v1 ^ (v1 >> 1) ^ (v1 >> 2) ^ (v1 >> 7);
 	v2 ^= (v1 << 63) ^ (v1 << 62) ^ (v1 << 57);
 
-	join_u64s(v3, v2)
+	u128::join_u64s(v3, v2)
 }
 
 /// Table where `value[i][k][j] = BinaryField128bPolyval(j << 4 * k) ^ (2^(i+1))`

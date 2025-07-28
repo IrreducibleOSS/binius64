@@ -8,7 +8,7 @@ use super::{
 	nibble_invert_128b::nibble_invert_128b,
 	packed::PackedPrimitiveType,
 	packed_macros::impl_broadcast,
-	univariate_mul_utils_128::{bmul64, join_u64s, split_u128},
+	univariate_mul_utils_128::{Underlier64bLanes, Underlier128bLanes, bmul64},
 };
 use crate::{
 	BinaryField128bGhash,
@@ -26,19 +26,20 @@ use crate::{
 ///
 /// This code does not conform to the bit-endianness requirements of the GCM specification, but is
 /// a valid GHASH field multiplication with the modified representation.
-pub fn ghash_mul(x: u128, y: u128) -> u128 {
+#[inline]
+pub fn ghash_mul<U: Underlier128bLanes>(x: U, y: U) -> U {
 	// Convert to U64x2 representation
-	let (x1, x0) = split_u128(x);
-	let (y1, y0) = split_u128(y);
+	let (x1, x0) = U::split_hi_lo_64(x);
+	let (y1, y0) = U::split_hi_lo_64(y);
 
 	// Perform multiplication
-	let x0r = x0.reverse_bits();
-	let x1r = x1.reverse_bits();
+	let x0r = x0.reverse_bits_64();
+	let x1r = x1.reverse_bits_64();
 	let x2 = x0 ^ x1;
 	let x2r = x0r ^ x1r;
 
-	let y0r = y0.reverse_bits();
-	let y1r = y1.reverse_bits();
+	let y0r = y0.reverse_bits_64();
+	let y1r = y1.reverse_bits_64();
 	let y2 = y0 ^ y1;
 	let y2r = y0r ^ y1r;
 
@@ -52,9 +53,9 @@ pub fn ghash_mul(x: u128, y: u128) -> u128 {
 
 	z2 ^= z0 ^ z1;
 	z2h ^= z0h ^ z1h;
-	z0h = z0h.reverse_bits() >> 1;
-	z1h = z1h.reverse_bits() >> 1;
-	z2h = z2h.reverse_bits() >> 1;
+	z0h = z0h.reverse_bits_64().shr_64(1);
+	z1h = z1h.reverse_bits_64().shr_64(1);
+	z2h = z2h.reverse_bits_64().shr_64(1);
 
 	let mut v0 = z0;
 	let mut v1 = z0h ^ z2;
@@ -62,13 +63,13 @@ pub fn ghash_mul(x: u128, y: u128) -> u128 {
 	let v3 = z1h;
 
 	// Reduce modulo X^128 + X^7 + X^2 + X + 1.
-	v1 ^= v3 ^ (v3 << 1) ^ (v3 << 2) ^ (v3 << 7);
-	v2 ^= (v3 >> 63) ^ (v3 >> 62) ^ (v3 >> 57);
-	v0 ^= v2 ^ (v2 << 1) ^ (v2 << 2) ^ (v2 << 7);
-	v1 ^= (v2 >> 63) ^ (v2 >> 62) ^ (v2 >> 57);
+	v1 ^= v3 ^ v3.shl_64(1) ^ v3.shl_64(2) ^ v3.shl_64(7);
+	v2 ^= v3.shr_64(63) ^ v3.shr_64(62) ^ v3.shr_64(57);
+	v0 ^= v2 ^ v2.shl_64(1) ^ v2.shl_64(2) ^ v2.shl_64(7);
+	v1 ^= v2.shr_64(63) ^ v2.shr_64(62) ^ v2.shr_64(57);
 
 	// Convert back to u128
-	join_u64s(v1, v0)
+	U::join_u64s(v1, v0)
 }
 
 pub type PackedBinaryGhash1x128b = PackedPrimitiveType<u128, BinaryField128bGhash>;
@@ -80,6 +81,7 @@ impl_broadcast!(u128, BinaryField128bGhash);
 impl Mul for PackedBinaryGhash1x128b {
 	type Output = Self;
 
+	#[inline]
 	fn mul(self, rhs: Self) -> Self::Output {
 		crate::tracing::trace_multiplication!(PackedBinaryGhash1x128b);
 
