@@ -12,10 +12,13 @@ use super::{super::portable::packed::PackedPrimitiveType, m128::M128};
 use crate::{
 	BinaryField128bGhash,
 	arch::{
-		PairwiseStrategy, ReuseMultiplyStrategy,
-		portable::{packed_ghash_128::ghash_mul, univariate_mul_utils_128::Underlier128bLanes},
+		PairwiseStrategy,
+		portable::{
+			packed_ghash_128::ghash_mul,
+			univariate_mul_utils_128::{Underlier128bLanes, spread_bits_64},
+		},
 	},
-	arithmetic_traits::{InvertOrZero, impl_square_with, impl_transformation_with_strategy},
+	arithmetic_traits::{InvertOrZero, Square, impl_transformation_with_strategy},
 	packed::PackedField,
 };
 
@@ -48,10 +51,23 @@ impl Underlier128bLanes for M128 {
 	fn broadcast_64(val: u64) -> Self {
 		M128::from(u64x2_splat(val))
 	}
+
+	#[inline(always)]
+	fn spread_bits_128(self) -> (Self, Self) {
+		let (hi, lo) = self.split_hi_lo_64();
+
+		(Self::from(spread_bits_64(hi)), Self::from(spread_bits_64(lo)))
+	}
 }
 
-// Define square
-impl_square_with!(PackedBinaryGhash1x128b @ ReuseMultiplyStrategy);
+impl Square for PackedBinaryGhash1x128b {
+	#[inline]
+	fn square(self) -> Self {
+		Self::from_underlier(crate::arch::portable::packed_ghash_128::ghash_square(
+			self.to_underlier(),
+		))
+	}
+}
 
 // Define invert
 impl InvertOrZero for PackedBinaryGhash1x128b {

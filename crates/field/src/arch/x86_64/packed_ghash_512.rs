@@ -116,6 +116,8 @@ cfg_if! {
 			}
 		}
 	} else {
+		// Potentially we could  use an optimized square implementation here with a scaled underlier.
+		// But this case (an architecture with AVX512 but without VPCLMULQDQ) is pretty rare, doesn't worth spending time on it.
 		crate::arithmetic_traits::impl_square_with!(PackedBinaryGhash4x128b @ crate::arch::ReuseMultiplyStrategy);
 	}
 }

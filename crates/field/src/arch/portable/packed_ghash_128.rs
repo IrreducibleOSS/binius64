@@ -12,8 +12,8 @@ use super::{
 };
 use crate::{
 	BinaryField128bGhash,
-	arch::{PairwiseStrategy, ReuseMultiplyStrategy},
-	arithmetic_traits::{InvertOrZero, impl_square_with, impl_transformation_with_strategy},
+	arch::PairwiseStrategy,
+	arithmetic_traits::{InvertOrZero, Square, impl_transformation_with_strategy},
 	packed::PackedField,
 	underlier::WithUnderlier,
 };
@@ -57,18 +57,40 @@ pub fn ghash_mul<U: Underlier128bLanes>(x: U, y: U) -> U {
 	z1h = z1h.reverse_bits_64().shr_64(1);
 	z2h = z2h.reverse_bits_64().shr_64(1);
 
-	let mut v0 = z0;
-	let mut v1 = z0h ^ z2;
-	let mut v2 = z1 ^ z2h;
+	let v0 = z0;
+	let v1 = z0h ^ z2;
+	let v2 = z1 ^ z2h;
 	let v3 = z1h;
 
-	// Reduce modulo X^128 + X^7 + X^2 + X + 1.
+	reduce_64(v0, v1, v2, v3)
+}
+
+#[inline]
+pub fn ghash_square<U: Underlier128bLanes>(x: U) -> U {
+	// Squared value in the polynomial basis is just a value with bits interleaved with zeroes.
+	let (hi, lo) = x.spread_bits_128();
+
+	let (v3, v2) = hi.split_hi_lo_64();
+	let (v1, v0) = lo.split_hi_lo_64();
+
+	reduce_64(v0, v1, v2, v3)
+}
+
+/// Reduce a 256-bit value represented as four 64-bit values by the GHASH polynomial.
+#[inline]
+fn reduce_64<U: Underlier128bLanes>(
+	mut v0: U::U64,
+	mut v1: U::U64,
+	mut v2: U::U64,
+	v3: U::U64,
+) -> U {
+	// Reduce modulo X^64 + X^7 + X^2 + X + 1.
 	v1 ^= v3 ^ v3.shl_64(1) ^ v3.shl_64(2) ^ v3.shl_64(7);
 	v2 ^= v3.shr_64(63) ^ v3.shr_64(62) ^ v3.shr_64(57);
 	v0 ^= v2 ^ v2.shl_64(1) ^ v2.shl_64(2) ^ v2.shl_64(7);
 	v1 ^= v2.shr_64(63) ^ v2.shr_64(62) ^ v2.shr_64(57);
 
-	// Convert back to u128
+	// Convert back to 128-bit lanes
 	U::join_u64s(v1, v0)
 }
 
@@ -102,7 +124,12 @@ impl InvertOrZero for PackedBinaryGhash1x128b {
 }
 
 // Implement squaring using the default strategy
-impl_square_with!(PackedBinaryGhash1x128b @ ReuseMultiplyStrategy);
+impl Square for PackedBinaryGhash1x128b {
+	#[inline]
+	fn square(self) -> Self {
+		ghash_square(self.0).into()
+	}
+}
 
 // Implement pairwise strategy for efficient batch operations
 impl_transformation_with_strategy!(PackedBinaryGhash1x128b, PairwiseStrategy);

@@ -11,7 +11,11 @@ use std::ops::Mul;
 use cfg_if::cfg_if;
 
 use super::{super::portable::packed::PackedPrimitiveType, m128::M128};
-use crate::{BinaryField128bGhash, arithmetic_traits::InvertOrZero, packed::PackedField};
+use crate::{
+	BinaryField128bGhash,
+	arithmetic_traits::{InvertOrZero, Square},
+	packed::PackedField,
+};
 
 #[cfg(target_feature = "pclmulqdq")]
 impl crate::arch::shared::ghash::ClMulUnderlier for M128 {
@@ -45,7 +49,7 @@ cfg_if! {
 			}
 		}
 
-		impl crate::arithmetic_traits::Square for PackedBinaryGhash1x128b {
+		impl Square for PackedBinaryGhash1x128b {
 			#[inline]
 			fn square(self) -> Self {
 				Self::from_underlier(crate::arch::shared::ghash::square_clmul(
@@ -71,8 +75,16 @@ cfg_if! {
 			}
 		}
 
-		// Define square
-		crate::arithmetic_traits::impl_square_with!(PackedBinaryGhash1x128b @ crate::arch::ReuseMultiplyStrategy);
+		impl Square for PackedBinaryGhash1x128b {
+			#[inline]
+			fn square(self) -> Self {
+				use super::super::portable::packed_ghash_128::PackedBinaryGhash1x128b as PortablePackedBinaryGhash1x128b;
+
+				let portable_val = PortablePackedBinaryGhash1x128b::from(u128::from(self.to_underlier()));
+
+				Self::from_underlier(Square::square(portable_val).to_underlier().into())
+			}
+		}
 	}
 }
 

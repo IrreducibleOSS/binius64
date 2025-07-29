@@ -79,6 +79,10 @@ pub trait Underlier128bLanes: UnderlierWithBitOps {
 	fn join_u64s(high: Self::U64, low: Self::U64) -> Self;
 	/// Broadcast a 64-bit value to all lanes.
 	fn broadcast_64(val: u64) -> Self;
+
+	/// Interleave the bits of the 128-bit lanes with zeroes doubling the size of the lanes.
+	/// Eg. for 0b1110 returns (0b1010, 0b1000).
+	fn spread_bits_128(self) -> (Self, Self);
 }
 
 impl Underlier128bLanes for u128 {
@@ -97,6 +101,13 @@ impl Underlier128bLanes for u128 {
 	#[inline(always)]
 	fn broadcast_64(val: u64) -> Self {
 		val as u128
+	}
+
+	#[inline(always)]
+	fn spread_bits_128(self) -> (Self, Self) {
+		let (hi, lo) = self.split_hi_lo_64();
+
+		(spread_bits_64(hi), spread_bits_64(lo))
 	}
 }
 
@@ -129,8 +140,22 @@ pub fn bmul64<U: Underlier64bLanes>(x: U, y: U) -> U {
 	z0 | z1 | z2 | z3
 }
 
+/// Spread bits of a 64-bit value into a 128-bit value by interleaving zeroes.
+#[inline]
+pub fn spread_bits_64(val: u64) -> u128 {
+	let mut x = val as u128;
+	x = (x | (x << 32)) & 0x00000000FFFFFFFF00000000FFFFFFFF;
+	x = (x | (x << 16)) & 0x0000FFFF0000FFFF0000FFFF0000FFFF;
+	x = (x | (x << 8)) & 0x00FF00FF00FF00FF00FF00FF00FF00FF;
+	x = (x | (x << 4)) & 0x0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F;
+	x = (x | (x << 2)) & 0x33333333333333333333333333333333;
+	x = (x | (x << 1)) & 0x55555555555555555555555555555555;
+	x
+}
 #[cfg(test)]
 mod tests {
+	use rand::{Rng, SeedableRng, rngs::StdRng};
+
 	use super::*;
 
 	#[test]
@@ -172,5 +197,35 @@ mod tests {
 				"bmul64 not commutative for 0x{a:016x} and 0x{b:016x}",
 			);
 		}
+	}
+
+	#[test]
+	fn test_spread_bits_64() {
+		let value: u64 = StdRng::seed_from_u64(0).random();
+		let spread = spread_bits_64(value);
+
+		let expected = (0..64)
+			.map(|i| {
+				if (value & (1 << i)) != 0 {
+					1u128 << (i * 2)
+				} else {
+					0u128
+				}
+			})
+			.sum::<u128>();
+
+		assert_eq!(spread, expected, "spread bits failed for 0x{value:016x}");
+	}
+
+	#[test]
+	fn test_spread_bits_128() {
+		let value: u128 = StdRng::seed_from_u64(0).random();
+		let (hi, lo) = value.spread_bits_128();
+
+		let expected_hi = spread_bits_64((value >> 64) as u64);
+		let expected_lo = spread_bits_64(value as u64);
+
+		assert_eq!(hi, expected_hi, "spread bits failed for high part of 0x{value:032x}");
+		assert_eq!(lo, expected_lo, "spread bits failed for low part of 0x{value:032x}");
 	}
 }
