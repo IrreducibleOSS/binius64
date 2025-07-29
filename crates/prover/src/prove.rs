@@ -147,8 +147,14 @@ fn pack_witness<P: PackedField<Scalar = B128>>(
 	Ok(padded_witness_elems)
 }
 
+// fn and_check_round<F: Field>(witness: &AndCheckWitness) -> ProveAndReductionOutput<F> {
+// 	const DETERMINISTIC_CHALLENGES: [AESTowerField8b; 3] = [
+// 		AESTowerField8b::new(0x02),
+// 		AESTowerField8b::new(0x04),
+// 		AESTowerField8b::new(0x10),
+// 	];
+// }
 
-// TODO: This struct will be used in a future implementation of witness checking
 #[allow(dead_code)]
 struct AndCheckWitness {
 	a: Vec<Word>,
