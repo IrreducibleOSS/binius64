@@ -83,9 +83,7 @@ jobs:
             rustflags: "-C debug-assertions"
           - name: "wasm-build"
             command: |
-              ALL_FEATURES_WO_BAIL_PANIC=$(.github/scripts/get-features-without-bail-panic.sh | tail -1)
-              echo "ALL_FEATURES_WO_BAIL_PANIC: $ALL_FEATURES_WO_BAIL_PANIC"
-              cargo build --all --features "$ALL_FEATURES_WO_BAIL_PANIC" --tests --benches --examples --target wasm32-wasip1
+              cargo build -p binius-prover -p binius-verifier --tests --all-features --examples --target wasm32-wasip1
             rust-target: "wasm32-wasip1"
     steps:
       - name: Checkout Repository
