@@ -1,5 +1,10 @@
 use binius_field::{PackedExtension, PackedField};
-use binius_frontend::{constraint_system::ValueVec, word::Word};
+use binius_frontend::{
+	constraint_system::{
+		AndConstraint, ConstraintSystem, Operand, ShiftVariant, ShiftedValueIndex, ValueVec,
+	},
+	word::Word,
+};
 use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval, ntt::AdditiveNTT};
 use binius_transcript::{
 	ProverTranscript,
@@ -28,6 +33,7 @@ use crate::{
 #[allow(clippy::too_many_arguments)]
 pub fn prove<P, Challenger_, NTT, MTScheme, MTProver>(
 	params: &Params<MTScheme>,
+	cs: &ConstraintSystem,
 	witness: ValueVec,
 	transcript: &mut ProverTranscript<Challenger_>,
 	ntt: &NTT,
@@ -64,6 +70,8 @@ where
 		codeword: trace_codeword,
 	} = fri::commit_interleaved(params.fri_params(), ntt, merkle_prover, witness_packed.to_ref())?;
 	transcript.message().write(&trace_commitment);
+
+	let _and_witness = build_and_check_witness(&cs.and_constraints, witness.combined_witness());
 
 	// Sample a challenge point during the shift reduction.
 	let z_challenge = transcript.sample_vec(LOG_WORD_SIZE_BITS);
@@ -137,4 +145,57 @@ fn pack_witness<P: PackedField<Scalar = B128>>(
 		.for_each(|(dst, elem)| *dst = elem);
 
 	Ok(padded_witness_elems)
+}
+
+#[allow(dead_code)]
+struct AndCheckWitness {
+	a: Vec<Word>,
+	b: Vec<Word>,
+	c: Vec<Word>,
+}
+
+#[inline]
+fn build_operand_value(operand: &Operand, witness: &[Word]) -> Word {
+	operand.iter().fold(
+		Word::ZERO,
+		|acc,
+		 ShiftedValueIndex {
+		     value_index,
+		     shift_variant,
+		     amount,
+		 }| {
+			let word = witness[value_index.0 as usize];
+			let shifted_word = match shift_variant {
+				ShiftVariant::Sll => word << (*amount as u32),
+				ShiftVariant::Slr => word >> (*amount as u32),
+				ShiftVariant::Sar => word.sar(*amount as u32),
+			};
+			acc ^ shifted_word
+		},
+	)
+}
+
+fn build_and_check_witness(and_constraints: &[AndConstraint], witness: &[Word]) -> AndCheckWitness {
+	let n_constraints = and_constraints.len();
+
+	let mut a = Vec::with_capacity(n_constraints);
+	let mut b = Vec::with_capacity(n_constraints);
+	let mut c = Vec::with_capacity(n_constraints);
+
+	(and_constraints, a.spare_capacity_mut(), b.spare_capacity_mut(), c.spare_capacity_mut())
+		.into_par_iter()
+		.for_each(|(constraint, a_i, b_i, c_i)| {
+			a_i.write(build_operand_value(&constraint.a, witness));
+			b_i.write(build_operand_value(&constraint.b, witness));
+			c_i.write(build_operand_value(&constraint.c, witness));
+		});
+
+	// Safety: all entries in a, b, c are initialized in the parallel loop above.
+	unsafe {
+		a.set_len(n_constraints);
+		b.set_len(n_constraints);
+		c.set_len(n_constraints);
+	}
+
+	AndCheckWitness { a, b, c }
 }
