@@ -168,7 +168,7 @@ impl ConstraintSystem {
 }
 
 /// Description of a layout of the value vector for a particular circuit.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ValueVecLayout {
 	/// The number of the constants declared by the circuit.
 	pub n_const: usize,
