@@ -12,10 +12,7 @@ use cfg_if::cfg_if;
 
 use super::{super::portable::packed::PackedPrimitiveType, m256::M256};
 use crate::{
-	BinaryField128bGhash,
-	arch::ReuseMultiplyStrategy,
-	arithmetic_traits::{InvertOrZero, impl_square_with},
-	packed::PackedField,
+	BinaryField128bGhash, arithmetic_traits::InvertOrZero, packed::PackedField,
 	underlier::UnderlierWithBitOps,
 };
 
@@ -88,7 +85,20 @@ cfg_if! {
 }
 
 // Define square
-impl_square_with!(PackedBinaryGhash2x128b @ ReuseMultiplyStrategy);
+cfg_if! {
+	if #[cfg(all(target_feature = "vpclmulqdq", target_feature = "avx2"))] {
+		impl crate::arithmetic_traits::Square for PackedBinaryGhash2x128b {
+			#[inline]
+			fn square(self) -> Self {
+				Self::from_underlier(crate::arch::shared::ghash::square_clmul(
+					self.to_underlier(),
+				))
+			}
+		}
+	} else {
+		crate::arithmetic_traits::impl_square_with!(PackedBinaryGhash2x128b @ crate::arch::ReuseMultiplyStrategy);
+	}
+}
 
 // Define invert
 impl InvertOrZero for PackedBinaryGhash2x128b {

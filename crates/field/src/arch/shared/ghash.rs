@@ -44,11 +44,32 @@ pub fn mul_clmul<U: ClMulUnderlier>(x: U, y: U) -> U {
 	t0
 }
 
+/// The version of the multiplication for optimized suqare operation.
+#[inline]
+#[allow(dead_code)]
+pub fn square_clmul<U: ClMulUnderlier>(x: U) -> U {
+	// t1 from the previous function is always zero for squaring
+	// t2 = x.hi * x.hi
+	let t2 = U::clmulepi64::<0x11>(x, x);
+
+	// Calculate t1 * x^64
+	let t1 = gf2_128_shift_reduce(t2);
+
+	// t0 = x.lo * x.lo
+	let mut t0 = U::clmulepi64::<0x00>(x, x);
+
+	// Final reduction
+	t0 = gf2_128_reduce(t0, t1);
+
+	t0
+}
+
+// The reduction polynomial x^128 + x^7 + x^2 + x + 1 is represented as 0x87
+const POLY: u128 = 0x87;
+
 /// Performs reduction step: returns t0 + x^64 * t1
 #[inline]
 fn gf2_128_reduce<U: ClMulUnderlier>(mut t0: U, t1: U) -> U {
-	// The reduction polynomial x^128 + x^7 + x^2 + x + 1 is represented as 0x87
-	const POLY: u128 = 0x87;
 	let poly = <U as UnderlierWithBitOps>::broadcast_subvalue(POLY);
 
 	// t0 = t0 XOR (t1 << 64)
@@ -60,4 +81,14 @@ fn gf2_128_reduce<U: ClMulUnderlier>(mut t0: U, t1: U) -> U {
 	t0 ^= U::clmulepi64::<0x01>(t1, poly);
 
 	t0
+}
+
+/// Returns a `x^64 * t` after reduction.
+fn gf2_128_shift_reduce<U: ClMulUnderlier>(t: U) -> U {
+	let poly = <U as UnderlierWithBitOps>::broadcast_subvalue(POLY);
+	let mut result = U::move_64_to_hi(t);
+
+	result ^= U::clmulepi64::<0x01>(t, poly);
+
+	result
 }

@@ -12,8 +12,8 @@ use std::ops::Mul;
 use super::{super::portable::packed::PackedPrimitiveType, m128::M128};
 use crate::{
 	BinaryField128bGhash,
-	arch::{PairwiseStrategy, ReuseMultiplyStrategy, shared::ghash::ClMulUnderlier},
-	arithmetic_traits::{InvertOrZero, impl_square_with, impl_transformation_with_strategy},
+	arch::{PairwiseStrategy, shared::ghash::ClMulUnderlier},
+	arithmetic_traits::{InvertOrZero, Square, impl_transformation_with_strategy},
 	packed::PackedField,
 };
 
@@ -63,7 +63,12 @@ impl Mul for PackedBinaryGhash1x128b {
 }
 
 // Define square
-impl_square_with!(PackedBinaryGhash1x128b @ ReuseMultiplyStrategy);
+impl Square for PackedBinaryGhash1x128b {
+	#[inline]
+	fn square(self) -> Self {
+		Self::from_underlier(crate::arch::shared::ghash::square_clmul(self.to_underlier()))
+	}
+}
 
 // Define invert
 impl InvertOrZero for PackedBinaryGhash1x128b {

@@ -11,12 +11,7 @@ use std::ops::Mul;
 use cfg_if::cfg_if;
 
 use super::{super::portable::packed::PackedPrimitiveType, m128::M128};
-use crate::{
-	BinaryField128bGhash,
-	arch::ReuseMultiplyStrategy,
-	arithmetic_traits::{InvertOrZero, impl_square_with},
-	packed::PackedField,
-};
+use crate::{BinaryField128bGhash, arithmetic_traits::InvertOrZero, packed::PackedField};
 
 #[cfg(target_feature = "pclmulqdq")]
 impl crate::arch::shared::ghash::ClMulUnderlier for M128 {
@@ -49,6 +44,16 @@ cfg_if! {
 				))
 			}
 		}
+
+		impl crate::arithmetic_traits::Square for PackedBinaryGhash1x128b {
+			#[inline]
+			fn square(self) -> Self {
+				Self::from_underlier(crate::arch::shared::ghash::square_clmul(
+					self.to_underlier(),
+				))
+			}
+		}
+
 	} else {
 		impl Mul for PackedBinaryGhash1x128b {
 			type Output = Self;
@@ -65,11 +70,11 @@ cfg_if! {
 				Self::from_underlier(Mul::mul(portable_lhs, portable_rhs).to_underlier().into())
 			}
 		}
+
+		// Define square
+		crate::arithmetic_traits::impl_square_with!(PackedBinaryGhash1x128b @ crate::arch::ReuseMultiplyStrategy);
 	}
 }
-
-// Define square
-impl_square_with!(PackedBinaryGhash1x128b @ ReuseMultiplyStrategy);
 
 // Define invert
 impl InvertOrZero for PackedBinaryGhash1x128b {
