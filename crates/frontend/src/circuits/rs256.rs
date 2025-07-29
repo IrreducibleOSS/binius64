@@ -101,10 +101,10 @@ impl Rs256Verify {
 		let modulus_bignum = fixedbytevec_be_to_bignum(&modulus);
 		builder.assert_eq("modulus_bytes_len", modulus.len, builder.add_constant_64(256));
 
-		let mut sha256_builder = builder.subcircuit("sha256");
+		let sha256_builder = builder.subcircuit("sha256");
 		let expected_hash_wires: [Wire; 4] = std::array::from_fn(|_| sha256_builder.add_witness());
 		let sha256 = Sha256::new(
-			&mut sha256_builder,
+			&sha256_builder,
 			message.max_len,
 			message.len,
 			expected_hash_wires,

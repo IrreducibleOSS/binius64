@@ -76,7 +76,7 @@ impl Sha256 {
 	/// 3. Computes the hash through chained compression functions
 	/// 4. Verifies the computed digest matches the expected digest
 	pub fn new(
-		builder: &mut CircuitBuilder,
+		builder: &CircuitBuilder,
 		max_len: usize,
 		len: Wire,
 		digest: [Wire; 4],
@@ -142,7 +142,7 @@ impl Sha256 {
 		states.push(State::iv(builder));
 		for block_no in 0..n_blocks {
 			let c = Compress::new(
-				&mut builder.subcircuit(format!("compress[{block_no}]")),
+				&builder.subcircuit(format!("compress[{block_no}]")),
 				states[block_no].clone(),
 				padded_message[block_no],
 			);

@@ -32,20 +32,20 @@ impl State {
 		State(wires)
 	}
 
-	pub fn public(builder: &mut CircuitBuilder) -> Self {
+	pub fn public(builder: &CircuitBuilder) -> Self {
 		State(std::array::from_fn(|_| builder.add_inout()))
 	}
 
-	pub fn private(builder: &mut CircuitBuilder) -> Self {
+	pub fn private(builder: &CircuitBuilder) -> Self {
 		State(std::array::from_fn(|_| builder.add_witness()))
 	}
 
-	pub fn iv(builder: &mut CircuitBuilder) -> Self {
+	pub fn iv(builder: &CircuitBuilder) -> Self {
 		State(std::array::from_fn(|i| builder.add_constant(Word(IV[i] as u64))))
 	}
 
 	/// Packs the state into 4 x 64-bit words.
-	pub fn pack_4x64b(&self, builder: &mut CircuitBuilder) -> [Wire; 4] {
+	pub fn pack_4x64b(&self, builder: &CircuitBuilder) -> [Wire; 4] {
 		fn pack_pair(b: &CircuitBuilder, hi: Wire, lo: Wire) -> Wire {
 			b.bxor(lo, b.shl(hi, 32))
 		}
@@ -67,7 +67,7 @@ pub struct Compress {
 }
 
 impl Compress {
-	pub fn new(builder: &mut CircuitBuilder, state_in: State, m: [Wire; 16]) -> Self {
+	pub fn new(builder: &CircuitBuilder, state_in: State, m: [Wire; 16]) -> Self {
 		// ---- message-schedule ----
 		// W[0..15] = block_words & M32
 		// for t = 16 .. 63:
@@ -135,7 +135,7 @@ impl Compress {
 	}
 }
 
-fn round(builder: &mut CircuitBuilder, round: usize, state: State, w: &[Wire; 64]) -> State {
+fn round(builder: &CircuitBuilder, round: usize, state: State, w: &[Wire; 64]) -> State {
 	let State([a, b, c, d, e, f, g, h]) = state;
 
 	let big_sigma_e = big_sigma_1(builder, e);
@@ -163,7 +163,7 @@ fn round(builder: &mut CircuitBuilder, round: usize, state: State, w: &[Wire; 64
 }
 
 /// Ch(e,f,g)   = XOR( AND(e,f), AND( NOT(e), g ) )
-fn ch(builder: &mut CircuitBuilder, e: Wire, f: Wire, g: Wire) -> Wire {
+fn ch(builder: &CircuitBuilder, e: Wire, f: Wire, g: Wire) -> Wire {
 	let a = builder.band(e, f);
 	let a1 = builder.bnot(e);
 	let b1 = builder.band(a1, g);
@@ -171,7 +171,7 @@ fn ch(builder: &mut CircuitBuilder, e: Wire, f: Wire, g: Wire) -> Wire {
 }
 
 /// Maj(a,b,c)  = XOR( XOR( AND(a,b), AND(a,c) ), AND(b,c) )
-fn maj(builder: &mut CircuitBuilder, a: Wire, b: Wire, c: Wire) -> Wire {
+fn maj(builder: &CircuitBuilder, a: Wire, b: Wire, c: Wire) -> Wire {
 	let a1 = builder.band(a, b);
 	let a2 = builder.band(a, c);
 	let a3 = builder.bxor(a1, a2);
@@ -180,7 +180,7 @@ fn maj(builder: &mut CircuitBuilder, a: Wire, b: Wire, c: Wire) -> Wire {
 }
 
 /// Σ0(a)       = XOR( XOR( ROTR(a,  2), ROTR(a, 13) ), ROTR(a, 22) )
-fn big_sigma_0(b: &mut CircuitBuilder, a: Wire) -> Wire {
+fn big_sigma_0(b: &CircuitBuilder, a: Wire) -> Wire {
 	let r1 = b.rotr_32(a, 2);
 	let r2 = b.rotr_32(a, 13);
 	let r3 = b.rotr_32(a, 22);
@@ -189,7 +189,7 @@ fn big_sigma_0(b: &mut CircuitBuilder, a: Wire) -> Wire {
 }
 
 /// Σ1(e)       = XOR( XOR( ROTR(e,  6), ROTR(e, 11) ), ROTR(e, 25) )
-fn big_sigma_1(b: &mut CircuitBuilder, e: Wire) -> Wire {
+fn big_sigma_1(b: &CircuitBuilder, e: Wire) -> Wire {
 	let r1 = b.rotr_32(e, 6);
 	let r2 = b.rotr_32(e, 11);
 	let r3 = b.rotr_32(e, 25);
@@ -198,7 +198,7 @@ fn big_sigma_1(b: &mut CircuitBuilder, e: Wire) -> Wire {
 }
 
 /// σ0(x)       = XOR( XOR( ROTR(x,  7), ROTR(x, 18) ), SHR(x,  3) )
-fn small_sigma_0(b: &mut CircuitBuilder, x: Wire) -> Wire {
+fn small_sigma_0(b: &CircuitBuilder, x: Wire) -> Wire {
 	let r1 = b.rotr_32(x, 7);
 	let r2 = b.rotr_32(x, 18);
 	let s1 = b.shr_32(x, 3);
@@ -207,7 +207,7 @@ fn small_sigma_0(b: &mut CircuitBuilder, x: Wire) -> Wire {
 }
 
 /// σ1(x)       = XOR( XOR( ROTR(x, 17), ROTR(x, 19) ), SHR(x, 10) )
-fn small_sigma_1(b: &mut CircuitBuilder, x: Wire) -> Wire {
+fn small_sigma_1(b: &CircuitBuilder, x: Wire) -> Wire {
 	let r1 = b.rotr_32(x, 17);
 	let r2 = b.rotr_32(x, 19);
 	let s1 = b.shr_32(x, 10);
@@ -243,11 +243,11 @@ mod tests {
 			0xb00361a3, 0x96177a9c, 0xb410ff61, 0xf20015ad,
 		];
 
-		let mut circuit = compiler::CircuitBuilder::new();
-		let state = State::iv(&mut circuit);
+		let circuit = compiler::CircuitBuilder::new();
+		let state = State::iv(&circuit);
 		let input: [Wire; 16] = std::array::from_fn(|_| circuit.add_witness());
 		let output: [Wire; 8] = std::array::from_fn(|_| circuit.add_inout());
-		let compress = Compress::new(&mut circuit, state, input);
+		let compress = Compress::new(&circuit, state, input);
 
 		// Mask to only low 32-bit.
 		let mask32 = circuit.add_constant(Word::MASK_32);
@@ -282,18 +282,18 @@ mod tests {
 		// This creates ~100 layers with a lot of computations and a very large number of layers
 		// (hundreds of thousands) with a few gates each.
 		const N: usize = 1 << 10;
-		let mut circuit = compiler::CircuitBuilder::new();
+		let circuit = compiler::CircuitBuilder::new();
 
 		println!("{N} sha256 compress512 invocations");
 
 		let mut compress_vec = Vec::with_capacity(N);
 
 		// First, declare the initial state.
-		let mut state = State::iv(&mut circuit);
+		let mut state = State::iv(&circuit);
 		for i in 0..N {
 			// Create a new subcircuit builder. This is not necessary but can improve readability
 			// and diagnostics.
-			let mut sha256_builder = circuit.subcircuit(format!("sha256[{i}]"));
+			let sha256_builder = circuit.subcircuit(format!("sha256[{i}]"));
 
 			// Build a new instance of the sha256 verification subcircuit, passing the inputs `m` to
 			// it. For the first compression `m` is public but everything else if private.
@@ -302,7 +302,7 @@ mod tests {
 			} else {
 				std::array::from_fn(|_| sha256_builder.add_witness())
 			};
-			let compress = Compress::new(&mut sha256_builder, state, m);
+			let compress = Compress::new(&sha256_builder, state, m);
 			state = compress.state_out.clone();
 
 			compress_vec.push(compress);
@@ -332,12 +332,12 @@ mod tests {
 
 		for i in 0..N {
 			// Create a new subcircuit builder
-			let mut sha256_builder = circuit.subcircuit(format!("sha256[{i}]"));
+			let sha256_builder = circuit.subcircuit(format!("sha256[{i}]"));
 
 			// Each SHA-256 instance gets its own IV and input (all committed)
-			let state = State::iv(&mut sha256_builder);
+			let state = State::iv(&sha256_builder);
 			let m: [compiler::Wire; 16] = std::array::from_fn(|_| sha256_builder.add_inout());
-			let compress = Compress::new(&mut sha256_builder, state, m);
+			let compress = Compress::new(&sha256_builder, state, m);
 
 			compress_vec.push(compress);
 		}

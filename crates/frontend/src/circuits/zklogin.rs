@@ -168,7 +168,7 @@ impl ZkLogin {
 		);
 
 		let _zkaddr_sha256 = Sha256::new(
-			&mut b.subcircuit("zkaddr_sha256"),
+			&b.subcircuit("zkaddr_sha256"),
 			zkaddr_preimage.max_len,
 			zkaddr_preimage.len,
 			zkaddr,
@@ -207,7 +207,7 @@ impl ZkLogin {
 			],
 		);
 		let _nonce_sha256 = Sha256::new(
-			&mut b.subcircuit("nonce_sha256"),
+			&b.subcircuit("nonce_sha256"),
 			nonce_preimage.max_len,
 			nonce_preimage.len,
 			nonce,
