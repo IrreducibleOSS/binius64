@@ -67,6 +67,7 @@ use binius_verifier::and_reduction::{
 ///
 /// - `P`: The packed field type used for storing precomputed values. Must implement `PackedField`
 ///   with a scalar type that is a binary field.
+#[derive(Clone)]
 pub struct NTTLookup<P>(Vec<Vec<Vec<P>>>);
 
 impl<PNTTDomain> NTTLookup<PNTTDomain>
