@@ -16,6 +16,7 @@ binius-verifier = { path = "../verifier" }
 binius-utils = { path = "../utils" }
 bytemuck.workspace = true
 bytes.workspace = true
+derive_more.workspace = true
 digest.workspace = true
 either.workspace = true
 getset.workspace = true

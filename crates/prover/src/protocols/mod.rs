@@ -2,6 +2,7 @@
 
 pub mod basefold;
 mod inout_check;
+pub mod intmul;
 pub mod sumcheck;
 
 pub use inout_check::InOutCheckProver;
