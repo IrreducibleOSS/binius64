@@ -1,0 +1,286 @@
+use binius_field::{
+	BinaryField, Field, PackedBinaryField128x1b, PackedExtension,
+	packed::{get_packed_slice, iter_packed_slice_with_offset},
+};
+use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval};
+use binius_utils::rayon::prelude::{IntoParallelIterator, ParallelIterator};
+use binius_verifier::{
+	and_reduction::utils::constants::{ROWS_PER_HYPERCUBE_VERTEX, SKIPPED_VARS},
+	fields::B1,
+};
+
+use super::{univariate::ntt_lookup::NTTLookup, utils::multivariate::OneBitOblongMultilinear};
+
+const BYTES_PER_HYPERCUBE_VERTEX: usize = 1 << (SKIPPED_VARS - 3);
+
+/// Generates a univariate polynomial for the sumcheck protocol in AND constraint reduction.
+///
+/// Let our oblong polynomials be A(Z, X₀, ...), B(Z, X₀, ...), and C(Z, X₀, ...)
+///
+/// Let our zerocheck challenges be (r₀, ...)
+///
+/// It turns out that the first k zerocheck challenges can actually be deterministic, since our
+/// polynomials have 1-bit coefficients as long as their tensor product expansion is an
+/// F2-linearly-independent set.
+///
+/// Note: Deterministic here means that the first k zerocheck challenges are a compile-time
+/// agreed-upon parameter to the proof, and not sampled randomly by the verifier
+///
+///
+/// We choose k=3 because we want them to be in a field isomorphic to the 8-bit NTT domain field
+///
+/// Computes a univariate polynomial:
+/// R₀(Z) = ∑_{X₀,...,Xₙ₋₁ ∈ {0,1}} (A·B - C)·eq(X₀,...,Xₙ₋₁; r₀,...,rₙ₋₁)
+///
+/// This is zero at every point on the hypercube IFF A*B-C evaluates to zero at (r₀,...,rₙ₋₁)
+/// for every Z on the univariate domain. Since R₀(Z) is 0 on the univariate domain, the prover
+/// sends only enough values such that the verifier learns a domain of evaluations of size >
+/// deg(R₀(Z))
+///
+/// # Arguments
+///
+/// * `first_col` - First multiplicand (a) as a one-bit oblong multilinear polynomial
+/// * `second_col` - Second multiplicand (b) as a one-bit oblong multilinear polynomial
+/// * `third_col` - Product constraint (c) as a one-bit oblong multilinear polynomial
+/// * `eq_ind_big_field_challenges` - Partial equality indicator evaluations for big field variables
+/// * `prover_message_domain_with_ntt_lookup` - Domain and NTT lookup tables for efficient
+///   computation
+/// * `small_field_zerocheck_challenges` - Zerocheck challenges for the small field variables (3
+///   vars). These are a parameter to the proof, agreed on ahead of time by prover and verifier.
+///   Their tensor product expansion must be an F2-basis of PNTTDomain::Scalar
+/// * `univariate_zerocheck_challenge` - Zerocheck challenge for the univariate variable
+///
+/// # Returns
+///
+/// The evaluations of R₀(Z), a univariate polynomial of degree at most 2*(|D| - 1) where |D| is the
+/// domain size, on another, disjoint |D|-sized domain. This allows the verifier to construct R₀(Z),
+/// since it must equal zero on D.
+///
+/// # Type Parameters
+///
+/// * `FChallenge` - The challenge field type (must be a binary field)
+/// * `PNTTDomain` - The packed extension field type for NTT operations (width must be 16)
+#[allow(clippy::too_many_arguments)]
+pub fn univariate_round_message_extension_domain<FChallenge, PNTTDomain>(
+	first_col: &OneBitOblongMultilinear,
+	second_col: &OneBitOblongMultilinear,
+	third_col: &OneBitOblongMultilinear,
+	eq_ind_big_field_challenges: &FieldBuffer<FChallenge>,
+	ntt_lookup: &NTTLookup<PNTTDomain>,
+	small_field_zerocheck_challenges: &[PNTTDomain::Scalar],
+) -> [FChallenge; ROWS_PER_HYPERCUBE_VERTEX]
+where
+	FChallenge: Field + From<PNTTDomain::Scalar> + BinaryField,
+	PNTTDomain: PackedExtension<B1, PackedSubfield = PackedBinaryField128x1b>,
+	PNTTDomain::Scalar: BinaryField,
+	u8: From<PNTTDomain::Scalar>,
+{
+	// This assertion is used as a workaround for Rust's limited support for const-generics,
+	// ideally we would just use PNTTDomain::WIDTH everywhere instead, but since this function only
+	// supports 128b underliers, this is set to a constant. We would need to rethink for support of
+	// multiple underlier sizes
+	assert_eq!(PNTTDomain::WIDTH, 16);
+
+	let log_num_rows = first_col.log_num_rows;
+	let num_vars_on_hypercube = log_num_rows - SKIPPED_VARS;
+
+	let col_1_bytes = <PNTTDomain as PackedExtension<B1>>::cast_exts(&first_col.packed_evals);
+	let col_2_bytes = <PNTTDomain as PackedExtension<B1>>::cast_exts(&second_col.packed_evals);
+	let col_3_bytes = <PNTTDomain as PackedExtension<B1>>::cast_exts(&third_col.packed_evals);
+
+	let eq_ind_small: Vec<PNTTDomain> = eq_ind_partial_eval(small_field_zerocheck_challenges)
+		.as_ref()
+		.iter()
+		.map(|&item| PNTTDomain::broadcast(item))
+		.collect();
+
+	// Accumulate resulting polynomial evals by iterating over each hypercube vertex
+	(0..1 << (num_vars_on_hypercube - 3))
+		.into_par_iter()
+		.map(|subcube_idx| {
+			let mut summed_ntt = [PNTTDomain::zero(); ROWS_PER_HYPERCUBE_VERTEX / 16];
+
+			for point_idx_within_subcube in 0..1 << 3 {
+				let hypercube_point_idx = subcube_idx << 3 | point_idx_within_subcube;
+				let byte_offset = hypercube_point_idx * BYTES_PER_HYPERCUBE_VERTEX;
+
+				let first_col_ntt = ntt_lookup.ntt(
+					iter_packed_slice_with_offset(col_1_bytes, byte_offset)
+						.take(BYTES_PER_HYPERCUBE_VERTEX)
+						.map(u8::from),
+				);
+				let second_col_ntt = ntt_lookup.ntt(
+					iter_packed_slice_with_offset(col_2_bytes, byte_offset)
+						.take(BYTES_PER_HYPERCUBE_VERTEX)
+						.map(u8::from),
+				);
+				let third_col_ntt = ntt_lookup.ntt(
+					iter_packed_slice_with_offset(col_3_bytes, byte_offset)
+						.take(BYTES_PER_HYPERCUBE_VERTEX)
+						.map(u8::from),
+				);
+
+				let weight = eq_ind_small[point_idx_within_subcube];
+				for i in 0..ROWS_PER_HYPERCUBE_VERTEX / 16 {
+					summed_ntt[i] +=
+						(first_col_ntt[i] * second_col_ntt[i] - third_col_ntt[i]) * weight;
+				}
+			}
+
+			let eq_weight = eq_ind_big_field_challenges.as_ref()[subcube_idx];
+			let mut result = [FChallenge::ZERO; ROWS_PER_HYPERCUBE_VERTEX];
+
+			for (i, val) in result.iter_mut().enumerate() {
+				*val = eq_weight * FChallenge::from(get_packed_slice(&summed_ntt, i));
+			}
+
+			result
+		})
+		.reduce(
+			|| [FChallenge::ZERO; ROWS_PER_HYPERCUBE_VERTEX],
+			|mut acc, array_to_add| {
+				for (i, val) in array_to_add.into_iter().enumerate() {
+					acc[i] += val;
+				}
+				acc
+			},
+		)
+}
+
+#[cfg(test)]
+mod test {
+	use binius_field::{
+		AESTowerField8b, Field, PackedAESBinaryField16x8b, PackedBinaryField128x1b, Random,
+	};
+	use binius_math::{BinarySubspace, FieldBuffer, multilinear::eq::eq_ind_partial_eval};
+	use binius_verifier::{
+		and_reduction::{
+			univariate::univariate_poly::{GenericPo2UnivariatePoly, UnivariatePolyIsomorphic},
+			utils::constants::{ROWS_PER_HYPERCUBE_VERTEX, SKIPPED_VARS},
+		},
+		fields::B128,
+	};
+	use itertools::izip;
+	use rand::{Rng, SeedableRng, rngs::StdRng};
+
+	use super::univariate_round_message_extension_domain;
+	use crate::and_reduction::{
+		fold_lookup::FoldLookup, prover_setup::ntt_lookup_from_prover_message_domain,
+		utils::multivariate::OneBitOblongMultilinear,
+	};
+
+	fn random_one_bit_multivariate(
+		log_num_rows: usize,
+		mut rng: impl Rng,
+	) -> OneBitOblongMultilinear {
+		OneBitOblongMultilinear {
+			log_num_rows,
+			packed_evals: (0..1 << (log_num_rows - PackedBinaryField128x1b::LOG_WIDTH))
+				.map(|_| PackedBinaryField128x1b::random(&mut rng))
+				.collect(),
+		}
+	}
+
+	// Sends the sum claim from first multilinear round (second overall round)
+	pub fn sum_claim<BF: Field + From<B128>>(
+		first_col: &FieldBuffer<BF>,
+		second_col: &FieldBuffer<BF>,
+		third_col: &FieldBuffer<BF>,
+		eq_ind: &FieldBuffer<BF>,
+	) -> BF {
+		izip!(first_col.as_ref(), second_col.as_ref(), third_col.as_ref(), eq_ind.as_ref())
+			.map(|(a, b, c, eq)| (*a * *b - *c) * *eq)
+			.sum()
+	}
+
+	#[test]
+	fn test_first_round_message_matches_next_round_sum_claim() {
+		// Setup
+		let log_num_rows = 10;
+		let mut rng = StdRng::from_seed([0; 32]);
+
+		let big_field_zerocheck_challenges =
+			vec![B128::random(&mut rng); (log_num_rows - SKIPPED_VARS - 3) + 1];
+
+		let small_field_zerocheck_challenges = [
+			AESTowerField8b::new(2),
+			AESTowerField8b::new(4),
+			AESTowerField8b::new(16),
+		];
+
+		let mlv_1 = random_one_bit_multivariate(log_num_rows, &mut rng);
+		let mlv_2 = random_one_bit_multivariate(log_num_rows, &mut rng);
+		let mlv_3 = OneBitOblongMultilinear {
+			log_num_rows,
+			packed_evals: (0..1 << (log_num_rows - PackedBinaryField128x1b::LOG_WIDTH))
+				.map(|i| mlv_1.packed_evals[i] * mlv_2.packed_evals[i])
+				.collect(),
+		};
+
+		let eq_ind_only_big = eq_ind_partial_eval(&big_field_zerocheck_challenges);
+
+		// Agreed-upon proof parameter
+
+		let prover_message_domain = BinarySubspace::with_dim(SKIPPED_VARS + 1).unwrap();
+		let ntt_lookup = ntt_lookup_from_prover_message_domain::<PackedAESBinaryField16x8b>(
+			prover_message_domain.clone(),
+		);
+
+		let verifier_message_domain = prover_message_domain.isomorphic::<B128>();
+
+		// Prover generates first round message
+		let first_round_message_on_ext_domain = univariate_round_message_extension_domain::<B128, _>(
+			&mlv_1,
+			&mlv_2,
+			&mlv_3,
+			&eq_ind_only_big,
+			&ntt_lookup,
+			&small_field_zerocheck_challenges,
+		);
+
+		let mut first_round_message_coeffs = vec![B128::ZERO; 2 * ROWS_PER_HYPERCUBE_VERTEX];
+
+		first_round_message_coeffs[ROWS_PER_HYPERCUBE_VERTEX..2 * ROWS_PER_HYPERCUBE_VERTEX]
+			.copy_from_slice(&first_round_message_on_ext_domain);
+
+		let first_round_message = GenericPo2UnivariatePoly::new(
+			first_round_message_coeffs,
+			verifier_message_domain.clone(),
+		);
+
+		// Verifier checks the accuracy of the message by challenging the prover and folding
+		// polynomials transparently
+
+		let verifier_input_domain: BinarySubspace<B128> = verifier_message_domain
+			.reduce_dim(verifier_message_domain.dim() - 1)
+			.unwrap();
+
+		let first_sumcheck_challenge = B128::random(&mut rng);
+		let expected_next_round_sum =
+			first_round_message.evaluate_at_challenge(first_sumcheck_challenge);
+
+		let lookup =
+			FoldLookup::<_, SKIPPED_VARS>::new(&verifier_input_domain, first_sumcheck_challenge);
+
+		let folded_first_mle = mlv_1.fold(&lookup);
+		let folded_second_mle = mlv_2.fold(&lookup);
+		let folded_third_mle = mlv_3.fold(&lookup);
+
+		let upcasted_small_field_challenges: Vec<_> = small_field_zerocheck_challenges
+			.into_iter()
+			.map(B128::from)
+			.collect();
+
+		let verifier_field_zerocheck_challenges: Vec<_> = upcasted_small_field_challenges
+			.iter()
+			.chain(big_field_zerocheck_challenges.iter())
+			.copied()
+			.collect();
+
+		let verifier_field_eq = eq_ind_partial_eval(&verifier_field_zerocheck_challenges);
+		let actual_next_round_sum =
+			sum_claim(&folded_first_mle, &folded_second_mle, &folded_third_mle, &verifier_field_eq);
+
+		assert_eq!(expected_next_round_sum, actual_next_round_sum);
+	}
+}
