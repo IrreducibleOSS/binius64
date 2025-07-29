@@ -11,7 +11,7 @@ use crate::{
 		univariate::univariate_poly::{GenericPo2UnivariatePoly, UnivariatePolyIsomorphic},
 		utils::constants::ROWS_PER_HYPERCUBE_VERTEX,
 	},
-	protocols::sumcheck::{SumcheckOutput, verify},
+	protocols::{mlecheck::verify, sumcheck::SumcheckOutput},
 };
 
 pub struct AndReductionOutput<F: Field> {
@@ -84,7 +84,7 @@ pub struct AndReductionOutput<F: Field> {
 /// - `sumcheck_output`: The reduced claim (evaluation and challenge point) from the sumcheck
 ///   protocol
 pub fn verify_with_transcript<F, TranscriptChallenger>(
-	n_vars: usize,
+	all_zerocheck_challenges: &[F],
 	transcript: &mut VerifierTranscript<TranscriptChallenger>,
 	round_message_univariate_domain: BinarySubspace<F>,
 ) -> Result<AndReductionOutput<F>, Error>
@@ -110,7 +110,7 @@ where
 	let sumcheck_claim = univariate_message.evaluate_at_challenge(univariate_sumcheck_challenge);
 
 	Ok(AndReductionOutput {
-		sumcheck_output: verify(n_vars, 3, sumcheck_claim, transcript)?,
+		sumcheck_output: verify(all_zerocheck_challenges, 2, sumcheck_claim, transcript)?,
 		univariate_sumcheck_challenge,
 	})
 }

@@ -17,7 +17,7 @@ use super::{
 	utils::multivariate::OneBitOblongMultilinear,
 };
 use crate::protocols::sumcheck::{
-	Error, ProveSingleOutput, and_reduction::prover::AndReductionProver, prove_single,
+	Error, ProveSingleOutput, prove_single_mlecheck, quadratic_mle::QuadraticMleCheckProver,
 };
 
 /// Prover for the AND constraint reduction protocol via oblong univariate zerocheck.
@@ -152,7 +152,7 @@ where
 	///
 	/// # Returns
 	///
-	/// Returns an `AndReductionProver` configured to prove the sumcheck claim:
+	/// Returns an `QuadraticMleCheckProver` configured to prove the sumcheck claim:
 	/// R₀(z) = ∑_{X₀,...,Xₙ₋₁ ∈ {0,1}} (A(z,X₀,...,Xₙ₋₁)·B(z,X₀,...,Xₙ₋₁) -
 	/// C(z,X₀,...,Xₙ₋₁))·eq(X₀,...,Xₙ₋₁; r₀,...,rₙ₋₁)
 	///
@@ -167,7 +167,12 @@ where
 		self,
 		round_message_domain: BinarySubspace<FChallenge>,
 		challenge: FChallenge,
-	) -> AndReductionProver<FChallenge> {
+	) -> QuadraticMleCheckProver<
+		FChallenge,
+		impl Fn([FChallenge; 3]) -> FChallenge,
+		impl Fn([FChallenge; 3]) -> FChallenge,
+		3,
+	> {
 		let univariate_domain = round_message_domain
 			.reduce_dim(round_message_domain.dim() - 1)
 			.expect("message domain should have dim>=1");
@@ -191,8 +196,6 @@ where
 			.copied()
 			.collect();
 
-		let sumcheck_n_vars = verifier_field_zerocheck_challenges.len();
-
 		let mut first_round_message_coeffs = vec![FChallenge::ZERO; 2 * ROWS_PER_HYPERCUBE_VERTEX];
 
 		first_round_message_coeffs[ROWS_PER_HYPERCUBE_VERTEX..2 * ROWS_PER_HYPERCUBE_VERTEX]
@@ -201,12 +204,14 @@ where
 		let first_round_message =
 			GenericPo2UnivariatePoly::new(first_round_message_coeffs, round_message_domain);
 
-		AndReductionProver::new(
-			proving_polys.to_vec(),
-			verifier_field_zerocheck_challenges,
+		QuadraticMleCheckProver::new(
+			proving_polys,
+			|[a, b, c]| a * b - c,
+			|[a, b, _]| a * b,
+			&verifier_field_zerocheck_challenges,
 			first_round_message.evaluate_at_challenge(challenge),
-			sumcheck_n_vars,
 		)
+		.expect("multilinears should have consistent dimensions")
 	}
 
 	/// Executes the complete AND reduction protocol with a Fiat-Shamir transcript.
@@ -258,7 +263,7 @@ where
 		);
 
 		Ok(ProveAndReductionOutput {
-			sumcheck_output: prove_single(sumcheck_prover, transcript)?,
+			sumcheck_output: prove_single_mlecheck(sumcheck_prover, transcript)?,
 			univariate_sumcheck_challenge,
 		})
 	}
@@ -268,9 +273,7 @@ where
 mod test {
 	use binius_field::{AESTowerField8b, PackedAESBinaryField16x8b, PackedBinaryField128x1b};
 	use binius_math::{
-		BinarySubspace,
-		multilinear::{eq::eq_ind, evaluate::evaluate},
-		test_utils::random_field_buffer,
+		BinarySubspace, multilinear::evaluate::evaluate, test_utils::random_field_buffer,
 	};
 	use binius_transcript::{ProverTranscript, fiat_shamir::CanSample};
 	use binius_verifier::{
@@ -367,7 +370,7 @@ mod test {
 		}
 
 		let output = verify_with_transcript(
-			all_zerocheck_challenges.len(),
+			&all_zerocheck_challenges,
 			&mut verifier_challenger,
 			verifier_message_domain.clone(),
 		)
@@ -375,7 +378,7 @@ mod test {
 
 		let verifier_mle_eval_claims = verifier_challenger
 			.message()
-			.read_scalar_slice::<B128>(4)
+			.read_scalar_slice::<B128>(3)
 			.unwrap();
 
 		let verifier_univariate_domain = verifier_message_domain
@@ -398,15 +401,8 @@ mod test {
 		}
 
 		assert_eq!(
-			verifier_mle_eval_claims[3],
-			eq_ind(&l2h_query_for_evaluation_point, &all_zerocheck_challenges)
-		);
-
-		assert_eq!(
 			output.sumcheck_output.eval,
-			(verifier_mle_eval_claims[0] * verifier_mle_eval_claims[1]
-				- verifier_mle_eval_claims[2])
-				* verifier_mle_eval_claims[3]
+			verifier_mle_eval_claims[0] * verifier_mle_eval_claims[1] - verifier_mle_eval_claims[2]
 		);
 
 		// Sanity checks, but not necessary verifier assertions
