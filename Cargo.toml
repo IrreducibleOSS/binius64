@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/*"]
+members = ["crates/*", "crates/frontend/ceck"]
 resolver = "2"
 
 [workspace.package]
@@ -20,6 +20,7 @@ inherits = "release"
 debug = true
 
 [workspace.dependencies]
+anyhow = "1.0.98"
 assert_matches = "1.5.0"
 auto_impl = "1.2.0"
 blake2 = "0.10.6"
@@ -30,6 +31,7 @@ bytemuck = { version = "1.18.0", features = [
 ] }
 bytes = "1.7.2"
 cfg-if = "1.0.0"
+clap = { version = "4.5", features = ["derive"] }
 cranelift-entity = "0.121.1"
 criterion = { version = "0.6.0", default-features = false }
 derive_more = "0.99.17"
@@ -45,8 +47,13 @@ num-bigint = "0.4.6"
 num-integer = "0.1.46"
 num-traits = "0.2.19"
 paste = "1.0.15"
+pest = "2.8.1"
+pest_derive = "2.8.1"
 proptest = { version = "1.2.0", default-features = false, features = ["std"] }
-rand = { version = "0.9.1", default-features = false, features = ["std"] }
+rand = { version = "0.9.1", default-features = false, features = [
+    "std",
+    "std_rng",
+] }
 rayon = "1.10.0"
 regex = "1.10"
 # Uses RC because latest stable rsa-0.9.8 API requires RNG from rand=0.6
@@ -59,11 +66,12 @@ thiserror = "2.0.3"
 transpose = "0.2.2"
 tracing = "0.1.38"
 trait-set = "0.3.0"
+z3 = "0.13.3"
 
 
 [workspace.lints.clippy]
 needless_range_loop = "allow"
 
 [workspace.metadata.typos]
-default.extend-words = { "typ" = "typ", "Toom" = "Toom", "inouts" = "inouts" }
+default.extend-words = { "typ" = "typ", "Toom" = "Toom", "inouts" = "inouts", "ceck" = "ceck" }
 default.extend-ignore-re = ["(?Rm)^.*(#|//)\\s*spellchecker:disable-line$"]
