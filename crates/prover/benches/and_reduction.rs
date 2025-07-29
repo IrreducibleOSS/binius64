@@ -10,7 +10,7 @@ use binius_prover::{
 		sumcheck_round_messages::univariate_round_message_extension_domain,
 		utils::multivariate::OneBitOblongMultilinear,
 	},
-	protocols::sumcheck::{and_reduction::prover::AndReductionProver, common::SumcheckProver},
+	protocols::sumcheck::{common::SumcheckProver, quadratic_mle::QuadraticMleCheckProver},
 };
 use binius_verifier::{
 	and_reduction::{
@@ -151,18 +151,20 @@ fn bench(c: &mut Criterion) {
 				.copied()
 				.collect();
 
-			let proving_polys = vec![
+			let proving_polys = [
 				first_mlv.fold(&fold_lookup),
 				second_mlv.fold(&fold_lookup),
 				third_mlv.fold(&fold_lookup),
 			];
 
-			let mut prover = AndReductionProver::new(
+			let mut prover = QuadraticMleCheckProver::new(
 				proving_polys,
-				multilinear_zerocheck_challenges.clone(),
+				|[a, b, c]| a * b - c,
+				|[a, b, _]| a * b,
+				&multilinear_zerocheck_challenges,
 				next_round_claim,
-				log_num_rows - SKIPPED_VARS,
-			);
+			)
+			.expect("multilinears should have consistent dimensions");
 
 			for _ in multilinear_zerocheck_challenges {
 				let _ = prover.execute().unwrap();
