@@ -34,11 +34,11 @@ use super::error::Error;
 #[derive(Getters)]
 #[getset(get = "pub")]
 pub struct Witness<P: PackedField, B: Bitwise, S: AsRef<[B]>> {
-	a: BinaryTree<P, B, S>,
-	b: BinaryTree<P, B, S>,
-	c_lo: BinaryTree<P, B, S>,
-	c_hi: BinaryTree<P, B, S>,
-	c_root: FieldBuffer<P>,
+	pub a: BinaryTree<P, B, S>,
+	pub b: BinaryTree<P, B, S>,
+	pub c_lo: BinaryTree<P, B, S>,
+	pub c_hi: BinaryTree<P, B, S>,
+	pub c_root: FieldBuffer<P>,
 }
 
 impl<F, P, B, S> Witness<P, B, S>
@@ -106,7 +106,6 @@ where
 /// Tree is laid out from root to the leaves. `IntoIterator` follows this convention.
 #[derive(Debug, IntoIterator)]
 pub struct BinaryTree<P: PackedField, B: Bitwise, S: AsRef<[B]>> {
-	#[allow(dead_code)]
 	exponents: S,
 	#[into_iterator(owned)]
 	tree: Vec<Vec<FieldBuffer<P>>>,
@@ -202,7 +201,11 @@ where
 		}
 	}
 
-	fn root(&self) -> &FieldBuffer<P> {
+	pub fn log_bits(&self) -> usize {
+		self.tree.len() - 1
+	}
+
+	pub fn root(&self) -> &FieldBuffer<P> {
 		let first_layer = self
 			.tree
 			.first()
@@ -210,6 +213,13 @@ where
 		assert_eq!(first_layer.len(), 1);
 
 		first_layer.first().expect("first_layer.len() == 1")
+	}
+
+	pub fn split(mut self) -> (S, FieldBuffer<P>, Vec<Vec<FieldBuffer<P>>>) {
+		let rest = self.tree.split_off(1);
+		let mut root_layer = self.tree.pop().expect("exactly one element");
+		let root = root_layer.pop().expect("exactly one element");
+		(self.exponents, root, rest)
 	}
 }
 

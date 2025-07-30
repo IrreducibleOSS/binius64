@@ -220,14 +220,14 @@ where
 
 		let mut multilinear_evals = Vec::with_capacity(self.gruen34s.len() + 1);
 
-		debug_assert_eq!(self.selected.log_len(), 0);
-		multilinear_evals.push(self.selected.get(0).expect("multilinear.len() == 1"));
-
 		for selector in self.switchover.finalize()? {
 			debug_assert_eq!(selector.log_len(), 0);
 			let eval = selector.get(0).expect("selector.len() == 1");
 			multilinear_evals.push(eval);
 		}
+
+		debug_assert_eq!(self.selected.log_len(), 0);
+		multilinear_evals.push(self.selected.get(0).expect("multilinear.len() == 1"));
 
 		Ok(multilinear_evals)
 	}
