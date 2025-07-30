@@ -643,6 +643,12 @@ macro_rules! impl_field_extension {
 					$subfield_name::from_underlier(self.to_underlier().get_subvalue(i))
 				}
 			}
+
+			#[inline]
+			fn square_transpose(values: &mut [Self]) -> Result<(), Error> {
+				crate::transpose::square_transforms_extension_field::<$subfield_name, Self>(values)
+					.map_err(|_| Error::ExtensionDegreeMismatch)
+			}
 		}
 	};
 }

@@ -83,6 +83,9 @@ pub trait ExtensionField<F: Field>:
 	/// # Safety
 	/// `i` must be less than `DEGREE`.
 	unsafe fn get_base_unchecked(&self, i: usize) -> F;
+
+	/// Transpose square block of subfield elements within `values` in place.
+	fn square_transpose(values: &mut [Self]) -> Result<(), Error>;
 }
 
 impl<F: Field> ExtensionField<F> for F {
@@ -126,5 +129,14 @@ impl<F: Field> ExtensionField<F> for F {
 	unsafe fn get_base_unchecked(&self, i: usize) -> F {
 		debug_assert_eq!(i, 0);
 		*self
+	}
+
+	#[inline]
+	fn square_transpose(values: &mut [Self]) -> Result<(), Error> {
+		if values.len() != 1 {
+			return Err(Error::MismatchedLengths);
+		}
+
+		Ok(())
 	}
 }

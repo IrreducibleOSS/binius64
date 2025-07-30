@@ -3,6 +3,7 @@
 use binius_utils::checked_arithmetics::log2_strict_usize;
 
 use super::packed::PackedField;
+use crate::{ExtensionField, Field, PackedExtension};
 
 /// Error thrown when a transpose operation fails.
 #[derive(Clone, thiserror::Error, Debug)]
@@ -66,6 +67,12 @@ pub fn square_transpose<P: PackedField>(log_n: usize, elems: &mut [P]) -> Result
 	}
 
 	Ok(())
+}
+
+pub fn square_transforms_extension_field<F: Field, FE: ExtensionField<F> + PackedExtension<F>>(
+	values: &mut [FE],
+) -> Result<(), Error> {
+	square_transpose(FE::LOG_DEGREE, FE::cast_bases_mut(values))
 }
 
 #[cfg(test)]
