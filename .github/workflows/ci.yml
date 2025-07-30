@@ -39,8 +39,8 @@ jobs:
         env:
           SKIP: "clippy"
 
-  rust-clippy:
-    name: rust-clippy-${{ matrix.expand.name }}
+  rust-checks:
+    name: rust-checks-${{ matrix.expand.name }}
     runs-on: ${{ matrix.expand.runner }}
     strategy:
       fail-fast: false
@@ -57,29 +57,64 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: clippy
-      - name: Run clippy
+      - name: Run clippy (all-features)
         run: cargo clippy --all --all-features --tests --benches --examples -- -D warnings
 
-  rust-wasm-wasi:
-    name: rust-wasm-wasi-${{ matrix.expand.name }}
-    runs-on: ${{ matrix.expand.runner }}
+  rust-tests:
+    name: rust-${{ matrix.test.name }}-${{ matrix.machine.name }}
+    runs-on: ${{ matrix.machine.runner }}
     strategy:
       fail-fast: false
       matrix:
-        expand:
-          - runner: "ubuntu-arm64-2core-8gb"
+        machine:
+          - runner: "r8g-2xlarge"
             name: "arm64"
-          - runner: "ubuntu-24.04"
+          - runner: "r7a-2xlarge"
             name: "x86_64"
+        test:
+          - name: "test"
+            command: "cargo nextest run --workspace --release --no-fail-fast"
+            rustflags: "-C debug-assertions"
+          - name: "test-all-features"
+            command: |
+              ALL_FEATURES_WO_BAIL_PANIC=$(.github/scripts/get-features-without-bail-panic.sh | tail -1)
+              echo "ALL_FEATURES_WO_BAIL_PANIC: $ALL_FEATURES_WO_BAIL_PANIC"
+              cargo nextest run --workspace --release --features "$ALL_FEATURES_WO_BAIL_PANIC" --no-fail-fast
+            rustflags: "-C debug-assertions"
+          - name: "wasm-build"
+            command: |
+              ALL_FEATURES_WO_BAIL_PANIC=$(.github/scripts/get-features-without-bail-panic.sh | tail -1)
+              echo "ALL_FEATURES_WO_BAIL_PANIC: $ALL_FEATURES_WO_BAIL_PANIC"
+              cargo build --all --features "$ALL_FEATURES_WO_BAIL_PANIC" --tests --benches --examples --target wasm32-wasip1
+            rust-target: "wasm32-wasip1"
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+      - name: Install deps
+        run: sudo yum -y install gcc openssl-devel curl jq
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          target: wasm32-wasip1
-      - name: Run WASM build
-        run: cargo build --all --all-features --tests --benches --examples --target wasm32-wasip1
+          target: ${{ matrix.test.rust-target || '' }}
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.machine.name }}-${{ matrix.test.name }}
+          cache-on-failure: true
+      - name: Run platform diagnostics
+        run: cargo test -p binius-utils --features platform-diagnostics test_platform_diagnostics -- --nocapture
+      - name: Run platform diagnostics (target-cpu=native)
+        run: cargo test -p binius-utils --features platform-diagnostics test_platform_diagnostics -- --nocapture
+        env:
+          RUSTFLAGS: "-C target-cpu=native"
+      - name: Run command
+        run: ${{ matrix.test.command }}
+        env:
+          RUSTFLAGS: ${{ matrix.test.rustflags || '' }}
 
   rust-doc:
     name: rust-doc
