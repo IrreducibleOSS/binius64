@@ -193,11 +193,12 @@ where
 	#[inline]
 	pub fn ntt(
 		&self,
-		coeffs_in_byte_chunks: impl Iterator<Item = u8>,
+		coeffs_in_byte_chunks: impl IntoIterator<Item = u8>,
 	) -> [PNTTDomain; ROWS_PER_HYPERCUBE_VERTEX / 16] {
 		let mut result = [PNTTDomain::zero(); ROWS_PER_HYPERCUBE_VERTEX / 16];
 
-		for (eight_bit_chunk_idx, eight_bit_chunk) in coeffs_in_byte_chunks.enumerate() {
+		for (eight_bit_chunk_idx, eight_bit_chunk) in coeffs_in_byte_chunks.into_iter().enumerate()
+		{
 			for j in 0..ROWS_PER_HYPERCUBE_VERTEX / 16 {
 				result[j] += self.0[eight_bit_chunk_idx][eight_bit_chunk as usize][j];
 			}
@@ -246,7 +247,7 @@ mod test {
 
 		let mut slice_to_ntt: [u8; _] = [0; ROWS_PER_HYPERCUBE_VERTEX / 8];
 		slice_to_ntt[0] = 1;
-		let results: [PackedAESBinaryField16x8b; _] = lookup.ntt(slice_to_ntt.into_iter());
+		let results: [PackedAESBinaryField16x8b; _] = lookup.ntt(slice_to_ntt);
 
 		for (i, input) in output_domain.iter().enumerate() {
 			let expected_result = (1..ROWS_PER_HYPERCUBE_VERTEX)

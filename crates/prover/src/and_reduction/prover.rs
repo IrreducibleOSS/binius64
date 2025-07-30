@@ -271,10 +271,11 @@ where
 
 #[cfg(test)]
 mod test {
-	use binius_field::{AESTowerField8b, PackedAESBinaryField16x8b, PackedBinaryField128x1b};
-	use binius_math::{
-		BinarySubspace, multilinear::evaluate::evaluate, test_utils::random_field_buffer,
-	};
+	use std::{iter, iter::repeat_with};
+
+	use binius_field::{AESTowerField8b, PackedAESBinaryField16x8b};
+	use binius_frontend::word::Word;
+	use binius_math::{BinarySubspace, multilinear::evaluate::evaluate};
 	use binius_transcript::{ProverTranscript, fiat_shamir::CanSample};
 	use binius_verifier::{
 		and_reduction::{utils::constants::SKIPPED_VARS, verifier::verify_with_transcript},
@@ -290,10 +291,15 @@ mod test {
 		utils::multivariate::OneBitOblongMultilinear,
 	};
 
-	fn random_one_bit_multivariate(log_num_rows: usize, rng: impl Rng) -> OneBitOblongMultilinear {
+	fn random_one_bit_multivariate(
+		log_num_rows: usize,
+		mut rng: impl Rng,
+	) -> OneBitOblongMultilinear {
 		OneBitOblongMultilinear {
 			log_num_rows,
-			packed_evals: random_field_buffer(rng, log_num_rows).as_ref().to_vec(),
+			packed_evals: repeat_with(|| Word(rng.random()))
+				.take(1 << (log_num_rows - SKIPPED_VARS))
+				.collect(),
 		}
 	}
 
@@ -312,8 +318,8 @@ mod test {
 		let second_mlv = random_one_bit_multivariate(log_num_rows, &mut rng);
 		let third_mlv = OneBitOblongMultilinear {
 			log_num_rows,
-			packed_evals: (0..1 << (log_num_rows - PackedBinaryField128x1b::LOG_WIDTH))
-				.map(|i| first_mlv.packed_evals[i] * second_mlv.packed_evals[i])
+			packed_evals: iter::zip(&first_mlv.packed_evals, &second_mlv.packed_evals)
+				.map(|(&a, &b)| a & b)
 				.collect(),
 		};
 		// Agreed-upon proof parameter
@@ -392,7 +398,7 @@ mod test {
 		for (i, eval) in verifier_mle_eval_claims.iter().enumerate().take(3) {
 			assert_eq!(
 				evaluate(
-					&one_bit_mlvs[i].fold::<B128, SKIPPED_VARS>(&verifier_transparent_fold_lookup),
+					&one_bit_mlvs[i].fold(&verifier_transparent_fold_lookup),
 					&l2h_query_for_evaluation_point
 				)
 				.unwrap(),

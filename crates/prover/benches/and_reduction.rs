@@ -1,9 +1,8 @@
-use binius_field::{
-	AESTowerField8b, Field, PackedAESBinaryField16x8b, PackedBinaryField128x1b, Random,
-};
-use binius_math::{
-	BinarySubspace, multilinear::eq::eq_ind_partial_eval, test_utils::random_field_buffer,
-};
+use std::{iter, iter::repeat_with};
+
+use binius_field::{AESTowerField8b, Field, PackedAESBinaryField16x8b, Random};
+use binius_frontend::word::Word;
+use binius_math::{BinarySubspace, multilinear::eq::eq_ind_partial_eval};
 use binius_prover::{
 	and_reduction::{
 		fold_lookup::FoldLookup, prover_setup::ntt_lookup_from_prover_message_domain,
@@ -20,7 +19,7 @@ use binius_verifier::{
 	fields::B128,
 };
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
-use rand::{SeedableRng, rngs::StdRng};
+use rand::{Rng, SeedableRng, rngs::StdRng};
 
 fn bench(c: &mut Criterion) {
 	let log_num_rows = 27;
@@ -34,22 +33,22 @@ fn bench(c: &mut Criterion) {
 	];
 	let first_mlv = OneBitOblongMultilinear {
 		log_num_rows,
-		packed_evals: random_field_buffer(&mut rng, log_num_rows)
-			.as_ref()
-			.to_vec(),
+		packed_evals: repeat_with(|| Word(rng.random()))
+			.take(1 << (log_num_rows - SKIPPED_VARS))
+			.collect(),
 	};
 
 	let second_mlv = OneBitOblongMultilinear {
 		log_num_rows,
-		packed_evals: random_field_buffer(&mut rng, log_num_rows)
-			.as_ref()
-			.to_vec(),
+		packed_evals: repeat_with(|| Word(rng.random()))
+			.take(1 << (log_num_rows - SKIPPED_VARS))
+			.collect(),
 	};
 
 	let third_mlv = OneBitOblongMultilinear {
 		log_num_rows,
-		packed_evals: (0..1 << (log_num_rows - PackedBinaryField128x1b::LOG_WIDTH))
-			.map(|i| first_mlv.packed_evals[i] * second_mlv.packed_evals[i])
+		packed_evals: iter::zip(&first_mlv.packed_evals, &second_mlv.packed_evals)
+			.map(|(&a, &b)| a & b)
 			.collect(),
 	};
 

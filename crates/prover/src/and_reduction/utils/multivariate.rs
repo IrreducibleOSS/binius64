@@ -1,11 +1,8 @@
-use binius_field::{
-	BinaryField1b, Field, PackedAESBinaryField16x8b, PackedBinaryField128x1b, PackedExtension,
-	packed::iter_packed_slice_with_offset,
-};
+use binius_field::Field;
+use binius_frontend::word::Word;
 use binius_math::FieldBuffer;
-use binius_utils::rayon::prelude::{
-	IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator,
-};
+use binius_utils::rayon::prelude::*;
+use binius_verifier::LOG_WORD_SIZE_BITS;
 
 use crate::and_reduction::fold_lookup::FoldLookup;
 
@@ -22,7 +19,7 @@ pub struct OneBitOblongMultilinear {
 	pub log_num_rows: usize,
 	/// Packed binary field elements storing the polynomial evaluations.
 	/// Each element contains 128 binary values packed together for SIMD efficiency.
-	pub packed_evals: Vec<PackedBinaryField128x1b>,
+	pub packed_evals: Vec<Word>,
 }
 
 impl OneBitOblongMultilinear {
@@ -35,8 +32,6 @@ impl OneBitOblongMultilinear {
 	///
 	/// # Type Parameters
 	/// * `F` - The field type for the evaluation result
-	/// * `LOG_FIRST_VARIABLE_DEGREE_BOUND` - The logarithm base 2 of the degree bound for the first
-	///   variable
 	///
 	/// # Arguments
 	/// * `lookup` - The precomputed lookup table for the evaluation point
@@ -45,59 +40,39 @@ impl OneBitOblongMultilinear {
 	/// A `FieldBuffer` containing the evaluations of the partially evaluated polynomial
 	/// over the remaining variables.
 	#[allow(clippy::modulo_one)]
-	pub fn fold<F, const LOG_FIRST_VARIABLE_DEGREE_BOUND: usize>(
-		&self,
-		lookup: &FoldLookup<F, LOG_FIRST_VARIABLE_DEGREE_BOUND>,
-	) -> FieldBuffer<F>
-	where
-		F: Field + std::iter::Sum<F>,
-	{
+	pub fn fold<F: Field>(&self, lookup: &FoldLookup<F, LOG_WORD_SIZE_BITS>) -> FieldBuffer<F> {
 		let _span = tracing::debug_span!("fold").entered();
 
-		let new_n_vars = self.log_num_rows - LOG_FIRST_VARIABLE_DEGREE_BOUND;
-
-		#[allow(non_snake_case)]
-		let FIRST_VARIABLE_DEGREE_BOUND = 1 << LOG_FIRST_VARIABLE_DEGREE_BOUND;
-
-		let mut multilin = FieldBuffer::zeros(new_n_vars);
-
-		let bytes_per_group = FIRST_VARIABLE_DEGREE_BOUND / 8;
-
-		let packed_evals_as_bytes =
-			<PackedAESBinaryField16x8b as PackedExtension<BinaryField1b>>::cast_exts(
-				&self.packed_evals,
-			);
-
-		multilin.as_mut().par_iter_mut().enumerate().for_each(
-			|(group_idx, hypercube_vertex_val)| {
-				let this_group_byte_chunks = iter_packed_slice_with_offset(
-					packed_evals_as_bytes,
-					group_idx * bytes_per_group,
-				)
-				.take(bytes_per_group);
-
-				*hypercube_vertex_val =
-					lookup.fold_one_bit_univariate(this_group_byte_chunks.map(u8::from));
-			},
-		);
-		multilin
+		let new_n_vars = self.log_num_rows - LOG_WORD_SIZE_BITS;
+		let multilin_vals = self
+			.packed_evals
+			.par_iter()
+			.map(|word| {
+				let word_bytes = word.as_u64().to_le_bytes();
+				lookup.fold_one_bit_univariate(word_bytes.into_iter())
+			})
+			.collect();
+		FieldBuffer::new(new_n_vars, multilin_vals)
+			.expect("packed_evals has 2^new_n_vars items by struct invariant")
 	}
 }
 
 #[cfg(test)]
 mod test {
-	use binius_field::{
-		BinaryField, Field, PackedBinaryField128x1b, Random, packed::iter_packed_slice_with_offset,
-	};
+	use std::{iter, iter::repeat_with};
+
+	use binius_field::{BinaryField, PackedField, Random};
+	use binius_frontend::word::Word;
 	use binius_math::{BinarySubspace, FieldBuffer};
 	use binius_verifier::{
+		LOG_WORD_SIZE_BITS, WORD_SIZE_BITS,
 		and_reduction::{
 			univariate::univariate_lagrange::lexicographic_lagrange_basis_vectors,
 			utils::constants::SKIPPED_VARS,
 		},
 		fields::B128,
 	};
-	use rand::{SeedableRng, rngs::StdRng};
+	use rand::{Rng, SeedableRng, rngs::StdRng};
 
 	use super::OneBitOblongMultilinear;
 	use crate::and_reduction::fold_lookup::FoldLookup;
@@ -123,53 +98,47 @@ mod test {
 	/// A `FieldBuffer` containing the evaluations of the partially evaluated polynomial
 	/// over the remaining variables.
 	#[allow(clippy::modulo_one)]
-	pub fn fold_naive<F, const LOG_FIRST_VARIABLE_DEGREE_BOUND: usize>(
+	pub fn fold_naive<F: BinaryField>(
 		one_bit_oblong: &OneBitOblongMultilinear,
 		univariate_domain: &BinarySubspace<F>,
 		challenge: F,
-	) -> FieldBuffer<F>
-	where
-		F: BinaryField + Field,
-	{
-		let new_n_vars = one_bit_oblong.log_num_rows - LOG_FIRST_VARIABLE_DEGREE_BOUND;
-
-		#[allow(non_snake_case)]
-		let FIRST_VARIABLE_DEGREE_BOUND = 1 << LOG_FIRST_VARIABLE_DEGREE_BOUND;
-
-		let mut multilin = FieldBuffer::zeros(new_n_vars);
+	) -> FieldBuffer<F> {
+		let new_n_vars = one_bit_oblong.log_num_rows - LOG_WORD_SIZE_BITS;
 
 		let lagrange_basis_vectors =
 			lexicographic_lagrange_basis_vectors::<F, F>(challenge, univariate_domain);
 
-		multilin
-			.as_mut()
-			.iter_mut()
-			.enumerate()
-			.for_each(|(group_idx, hypercube_vertex_val)| {
-				let this_group_bit_coefficients = iter_packed_slice_with_offset(
-					&one_bit_oblong.packed_evals,
-					group_idx * FIRST_VARIABLE_DEGREE_BOUND,
-				);
+		let result_vals = one_bit_oblong
+			.packed_evals
+			.iter()
+			.map(|word| {
+				let word_bits = (0..WORD_SIZE_BITS).map(|i| (word.as_u64() >> i) & 1 == 1);
+				iter::zip(&lagrange_basis_vectors, word_bits)
+					.map(|(&elem, bit)| if bit { elem } else { F::zero() })
+					.sum()
+			})
+			.collect();
+		FieldBuffer::new(new_n_vars, result_vals)
+			.expect("packed_evals has 2^new_n_vars items by struct invariant")
+	}
 
-				*hypercube_vertex_val = lagrange_basis_vectors
-					.iter()
-					.zip(this_group_bit_coefficients)
-					.map(|(basis_vec, coeff)| *basis_vec * coeff)
-					.sum();
-			});
-		multilin
+	fn random_one_bit_multivariate(
+		log_num_rows: usize,
+		mut rng: impl Rng,
+	) -> OneBitOblongMultilinear {
+		OneBitOblongMultilinear {
+			log_num_rows,
+			packed_evals: repeat_with(|| Word(rng.random()))
+				.take(1 << (log_num_rows - LOG_WORD_SIZE_BITS))
+				.collect(),
+		}
 	}
 
 	#[test]
 	fn test_lookup_fold() {
 		let log_num_rows = 10;
 		let mut rng = StdRng::from_seed([0; 32]);
-		let mlv = OneBitOblongMultilinear {
-			log_num_rows,
-			packed_evals: (0..1 << log_num_rows)
-				.map(|_| PackedBinaryField128x1b::random(&mut rng))
-				.collect(),
-		};
+		let mlv = random_one_bit_multivariate(log_num_rows, &mut rng);
 
 		let challenge = B128::random(&mut rng);
 
@@ -177,7 +146,7 @@ mod test {
 
 		let lookup = FoldLookup::<_, SKIPPED_VARS>::new(&univariate_domain, challenge);
 
-		let folded_naive = fold_naive::<B128, SKIPPED_VARS>(&mlv, &univariate_domain, challenge);
+		let folded_naive = fold_naive(&mlv, &univariate_domain, challenge);
 
 		let folded_smart = mlv.fold(&lookup);
 

@@ -1,6 +1,7 @@
+use std::array;
+
 use binius_field::{
-	BinaryField, Field, PackedBinaryField128x1b, PackedExtension,
-	packed::{get_packed_slice, iter_packed_slice_with_offset},
+	BinaryField, Field, PackedBinaryField128x1b, PackedExtension, packed::get_packed_slice,
 };
 use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval};
 use binius_utils::rayon::prelude::{IntoParallelIterator, ParallelIterator};
@@ -10,8 +11,6 @@ use binius_verifier::{
 };
 
 use super::{univariate::ntt_lookup::NTTLookup, utils::multivariate::OneBitOblongMultilinear};
-
-const BYTES_PER_HYPERCUBE_VERTEX: usize = 1 << (SKIPPED_VARS - 3);
 
 /// Generates a univariate polynomial for the sumcheck protocol in AND constraint reduction.
 ///
@@ -84,10 +83,6 @@ where
 	let log_num_rows = first_col.log_num_rows;
 	let num_vars_on_hypercube = log_num_rows - SKIPPED_VARS;
 
-	let col_1_bytes = <PNTTDomain as PackedExtension<B1>>::cast_exts(&first_col.packed_evals);
-	let col_2_bytes = <PNTTDomain as PackedExtension<B1>>::cast_exts(&second_col.packed_evals);
-	let col_3_bytes = <PNTTDomain as PackedExtension<B1>>::cast_exts(&third_col.packed_evals);
-
 	let eq_ind_small: Vec<PNTTDomain> = eq_ind_partial_eval(small_field_zerocheck_challenges)
 		.as_ref()
 		.iter()
@@ -102,23 +97,20 @@ where
 
 			for point_idx_within_subcube in 0..1 << 3 {
 				let hypercube_point_idx = subcube_idx << 3 | point_idx_within_subcube;
-				let byte_offset = hypercube_point_idx * BYTES_PER_HYPERCUBE_VERTEX;
 
-				let first_col_ntt = ntt_lookup.ntt(
-					iter_packed_slice_with_offset(col_1_bytes, byte_offset)
-						.take(BYTES_PER_HYPERCUBE_VERTEX)
-						.map(u8::from),
-				);
-				let second_col_ntt = ntt_lookup.ntt(
-					iter_packed_slice_with_offset(col_2_bytes, byte_offset)
-						.take(BYTES_PER_HYPERCUBE_VERTEX)
-						.map(u8::from),
-				);
-				let third_col_ntt = ntt_lookup.ntt(
-					iter_packed_slice_with_offset(col_3_bytes, byte_offset)
-						.take(BYTES_PER_HYPERCUBE_VERTEX)
-						.map(u8::from),
-				);
+				let col_1_bytes = first_col.packed_evals[hypercube_point_idx]
+					.as_u64()
+					.to_le_bytes();
+				let col_2_bytes = second_col.packed_evals[hypercube_point_idx]
+					.as_u64()
+					.to_le_bytes();
+				let col_3_bytes = third_col.packed_evals[hypercube_point_idx]
+					.as_u64()
+					.to_le_bytes();
+
+				let first_col_ntt = ntt_lookup.ntt(col_1_bytes);
+				let second_col_ntt = ntt_lookup.ntt(col_2_bytes);
+				let third_col_ntt = ntt_lookup.ntt(col_3_bytes);
 
 				let weight = eq_ind_small[point_idx_within_subcube];
 				for i in 0..ROWS_PER_HYPERCUBE_VERTEX / 16 {
@@ -128,13 +120,9 @@ where
 			}
 
 			let eq_weight = eq_ind_big_field_challenges.as_ref()[subcube_idx];
-			let mut result = [FChallenge::ZERO; ROWS_PER_HYPERCUBE_VERTEX];
-
-			for (i, val) in result.iter_mut().enumerate() {
-				*val = eq_weight * FChallenge::from(get_packed_slice(&summed_ntt, i));
-			}
-
-			result
+			array::from_fn::<_, ROWS_PER_HYPERCUBE_VERTEX, _>(|i| {
+				eq_weight * FChallenge::from(get_packed_slice(&summed_ntt, i))
+			})
 		})
 		.reduce(
 			|| [FChallenge::ZERO; ROWS_PER_HYPERCUBE_VERTEX],
@@ -149,11 +137,13 @@ where
 
 #[cfg(test)]
 mod test {
-	use binius_field::{
-		AESTowerField8b, Field, PackedAESBinaryField16x8b, PackedBinaryField128x1b, Random,
-	};
+	use std::iter::repeat_with;
+
+	use binius_field::{AESTowerField8b, Field, PackedAESBinaryField16x8b, Random};
+	use binius_frontend::word::Word;
 	use binius_math::{BinarySubspace, FieldBuffer, multilinear::eq::eq_ind_partial_eval};
 	use binius_verifier::{
+		LOG_WORD_SIZE_BITS,
 		and_reduction::{
 			univariate::univariate_poly::{GenericPo2UnivariatePoly, UnivariatePolyIsomorphic},
 			utils::constants::{ROWS_PER_HYPERCUBE_VERTEX, SKIPPED_VARS},
@@ -175,8 +165,8 @@ mod test {
 	) -> OneBitOblongMultilinear {
 		OneBitOblongMultilinear {
 			log_num_rows,
-			packed_evals: (0..1 << (log_num_rows - PackedBinaryField128x1b::LOG_WIDTH))
-				.map(|_| PackedBinaryField128x1b::random(&mut rng))
+			packed_evals: repeat_with(|| Word(rng.random()))
+				.take(1 << (log_num_rows - LOG_WORD_SIZE_BITS))
 				.collect(),
 		}
 	}
@@ -212,8 +202,8 @@ mod test {
 		let mlv_2 = random_one_bit_multivariate(log_num_rows, &mut rng);
 		let mlv_3 = OneBitOblongMultilinear {
 			log_num_rows,
-			packed_evals: (0..1 << (log_num_rows - PackedBinaryField128x1b::LOG_WIDTH))
-				.map(|i| mlv_1.packed_evals[i] * mlv_2.packed_evals[i])
+			packed_evals: (0..1 << (log_num_rows - LOG_WORD_SIZE_BITS))
+				.map(|i| mlv_1.packed_evals[i] & mlv_2.packed_evals[i])
 				.collect(),
 		};
 
