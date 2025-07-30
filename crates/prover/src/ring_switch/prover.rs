@@ -152,12 +152,7 @@ use binius_verifier::fields::B1;
 /// [DP24]: <https://eprint.iacr.org/2024/504>
 pub fn rs_eq_ind<F>(batching_challenges: &[F], z_vals: &[F]) -> FieldBuffer<F>
 where
-<<<<<<< Updated upstream
-	F: Field,
-	FE: Field + binius_field::ExtensionField<F>,
-=======
 	F: BinaryField,
->>>>>>> Stashed changes
 {
 	assert_eq!(batching_challenges.len(), F::LOG_DEGREE);
 
