@@ -4,11 +4,9 @@ use binius_field::{
 	BinaryField, Field, PackedBinaryField128x1b, PackedExtension, packed::get_packed_slice,
 };
 use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval};
-use binius_utils::rayon::prelude::{IntoParallelIterator, ParallelIterator};
-use binius_verifier::{
-	and_reduction::utils::constants::{ROWS_PER_HYPERCUBE_VERTEX, SKIPPED_VARS},
-	fields::B1,
-};
+use binius_utils::rayon::prelude::*;
+use binius_verifier::{and_reduction::utils::constants::ROWS_PER_HYPERCUBE_VERTEX, fields::B1};
+use itertools::izip;
 
 use super::{univariate::ntt_lookup::NTTLookup, utils::multivariate::OneBitOblongMultilinear};
 
@@ -80,9 +78,6 @@ where
 	// multiple underlier sizes
 	assert_eq!(PNTTDomain::WIDTH, 16);
 
-	let log_num_rows = first_col.log_num_rows;
-	let num_vars_on_hypercube = log_num_rows - SKIPPED_VARS;
-
 	let eq_ind_small: Vec<PNTTDomain> = eq_ind_partial_eval(small_field_zerocheck_challenges)
 		.as_ref()
 		.iter()
@@ -90,36 +85,32 @@ where
 		.collect();
 
 	// Accumulate resulting polynomial evals by iterating over each hypercube vertex
-	(0..1 << (num_vars_on_hypercube - 3))
+	let chunk_size = eq_ind_small.len();
+	(
+		first_col.packed_evals.par_chunks(chunk_size),
+		second_col.packed_evals.par_chunks(chunk_size),
+		third_col.packed_evals.par_chunks(chunk_size),
+		eq_ind_big_field_challenges.as_ref(),
+	)
 		.into_par_iter()
-		.map(|subcube_idx| {
+		.map(|(a_chunk, b_chunk, c_chunk, &eq_weight)| {
 			let mut summed_ntt = [PNTTDomain::zero(); ROWS_PER_HYPERCUBE_VERTEX / 16];
 
-			for point_idx_within_subcube in 0..1 << 3 {
-				let hypercube_point_idx = subcube_idx << 3 | point_idx_within_subcube;
-
-				let col_1_bytes = first_col.packed_evals[hypercube_point_idx]
-					.as_u64()
-					.to_le_bytes();
-				let col_2_bytes = second_col.packed_evals[hypercube_point_idx]
-					.as_u64()
-					.to_le_bytes();
-				let col_3_bytes = third_col.packed_evals[hypercube_point_idx]
-					.as_u64()
-					.to_le_bytes();
+			for (a_i, b_i, c_i, &weight) in izip!(a_chunk, b_chunk, c_chunk, &eq_ind_small) {
+				let col_1_bytes = a_i.0.to_le_bytes();
+				let col_2_bytes = b_i.0.to_le_bytes();
+				let col_3_bytes = c_i.0.to_le_bytes();
 
 				let first_col_ntt = ntt_lookup.ntt(col_1_bytes);
 				let second_col_ntt = ntt_lookup.ntt(col_2_bytes);
 				let third_col_ntt = ntt_lookup.ntt(col_3_bytes);
 
-				let weight = eq_ind_small[point_idx_within_subcube];
 				for i in 0..ROWS_PER_HYPERCUBE_VERTEX / 16 {
 					summed_ntt[i] +=
 						(first_col_ntt[i] * second_col_ntt[i] - third_col_ntt[i]) * weight;
 				}
 			}
 
-			let eq_weight = eq_ind_big_field_challenges.as_ref()[subcube_idx];
 			array::from_fn::<_, ROWS_PER_HYPERCUBE_VERTEX, _>(|i| {
 				eq_weight * FChallenge::from(get_packed_slice(&summed_ntt, i))
 			})
