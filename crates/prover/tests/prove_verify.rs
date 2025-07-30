@@ -33,7 +33,7 @@ fn test_prove_verify_sha256_preimage() {
 	];
 
 	let mut circuit = compiler::CircuitBuilder::new();
-	let state = State::iv(&mut circuit);
+	let state = State::iv(&circuit);
 	let input: [Wire; 16] = std::array::from_fn(|_| circuit.add_witness());
 	let output: [Wire; 8] = std::array::from_fn(|_| circuit.add_inout());
 	let compress = Compress::new(&mut circuit, state, input);
