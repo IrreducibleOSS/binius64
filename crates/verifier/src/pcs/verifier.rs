@@ -1,6 +1,6 @@
 // Copyright 2025 Irreducible Inc.
 
-use binius_field::{BinaryField, ExtensionField, Field, PackedExtension, PackedField};
+use binius_field::{BinaryField, ExtensionField, Field, PackedField};
 use binius_math::{
 	field_buffer::FieldBuffer,
 	multilinear::{eq::eq_ind_partial_eval, evaluate::evaluate},
@@ -42,7 +42,7 @@ pub fn verify_transcript<F, FA, TranscriptChallenger, VCS>(
 	vcs: &VCS,
 ) -> Result<(), Error>
 where
-	F: Field + BinaryField + PackedField<Scalar = F> + ExtensionField<FA> + PackedExtension<B1>,
+	F: Field + BinaryField + PackedField<Scalar = F> + ExtensionField<FA>,
 	FA: BinaryField,
 	TranscriptChallenger: Challenger,
 	VCS: MerkleTreeScheme<F, Digest: DeserializeBytes>,
@@ -97,7 +97,7 @@ where
 
 	let (_, eval_point_high) = eval_point.split_at(packing_degree);
 
-	let rs_eq_at_basefold_challenges = eval_rs_eq(
+	let rs_eq_at_basefold_challenges = eval_rs_eq::<B1, F>(
 		eval_point_high,
 		&sumcheck_output.challenges,
 		eq_ind_partial_eval(&batching_scalars).as_ref(),

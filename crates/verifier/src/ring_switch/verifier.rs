@@ -1,6 +1,6 @@
 use std::iter;
 
-use binius_field::{ExtensionField, Field, PackedExtension};
+use binius_field::{ExtensionField, Field};
 use binius_math::tensor_algebra::TensorAlgebra;
 
 /// Evaluate the ring switching equality indicator at a given point.
@@ -26,7 +26,7 @@ use binius_math::tensor_algebra::TensorAlgebra;
 pub fn eval_rs_eq<F, FE>(z_vals: &[FE], query: &[FE], expanded_row_batch_query: &[FE]) -> FE
 where
 	F: Field,
-	FE: Field + ExtensionField<F> + PackedExtension<F>,
+	FE: Field + ExtensionField<F>,
 {
 	assert_eq!(z_vals.len(), query.len()); // pre-condition
 	assert_eq!(expanded_row_batch_query.len(), FE::DEGREE); // pre-condition
