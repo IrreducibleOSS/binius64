@@ -63,9 +63,11 @@ fn test_prove_verify_sha256_preimage() {
 	let params = Params::new(&cs, LOG_INV_RATE, merkle_scheme).unwrap();
 
 	let ntt = SingleThreadedNTT::with_subspace(params.fri_params().rs_code().subspace()).unwrap();
-	let merkle_prover = BinaryMerkleTreeProver::<_, StdDigest, _>::new(StdCompression::default());
+
+    let merkle_prover = BinaryMerkleTreeProver::<_, StdDigest, _>::new(StdCompression::default());
 	let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
-	prove::<OptimalPackedB128, _, _, _, _>(
+
+    prove::<OptimalPackedB128, _, _, _, _>(
 		&params,
 		&cs,
 		witness.clone(),
