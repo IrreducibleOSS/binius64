@@ -45,6 +45,7 @@ impl<F, FE> TensorAlgebra<F, FE>
 where
 	F: Field,
 	FE: ExtensionField<F>,
+	
 {
 	/// Constructs an element from a vector of vertical subring elements.
 	///
