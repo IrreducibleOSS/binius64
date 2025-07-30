@@ -64,7 +64,7 @@ fn bench(c: &mut Criterion) {
 	);
 
 	let mut group = c.benchmark_group("evaluate");
-	group.throughput(Throughput::Elements(1 << log_num_rows));
+	group.throughput(Throughput::Elements(1 << (log_num_rows - SKIPPED_VARS)));
 
 	group.bench_function(format!("univariate_round_message 2^{log_num_rows}"), |bench| {
 		bench.iter(|| {
