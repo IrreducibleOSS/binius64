@@ -1,0 +1,317 @@
+---
+name: Mobile Tests
+
+"on":
+  schedule:
+    # Run every day at 2 AM UTC (9 PM EST/10 PM EDT, 3 AM Berlin/CET)
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      device_pool:
+        description: 'AWS Device Farm device pool'
+        required: false
+        default: '01-android-baseline-and-flagship'
+        type: choice
+        options:
+          - '00-android-base'
+          - '01-android-baseline-and-flagship'
+          - 'android-google-pixel-6a'
+          - 'android-google-pixel-7'
+          - 'android-google-pixel-8'
+          - 'android-google-pixel-9-pro'
+          - 'android-samsung-a14'
+          - 'android-samsung-a34'
+          - 'android-samsung-s23'
+          - 'android-samsung-s24-ultra'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mobile-test:
+    runs-on: [self-hosted, c7a-4xl-android]
+
+    permissions:
+      id-token: write    # For AWS OIDC authentication
+      contents: read     # For checking out code
+
+    steps:
+      - name: Checkout monbijou repository
+        uses: actions/checkout@v4
+
+      - name: Checkout mobilebench repository
+        uses: actions/checkout@v4
+        with:
+          repository: IrreducibleOSS/mobilebench
+          token: ${{ secrets.MOBILEBENCH_ACCESS_TOKEN }}
+          path: mobilebench
+
+      - name: Check versions and environment
+        run: |
+          echo "=== Build Environment ==="
+          echo "Python: $(python --version)"
+          echo "Java: $(java -version 2>&1 | head -1)"
+          echo "Rust: $(rustc --version)"
+          echo "Cargo: $(cargo --version)"
+          echo "Gradle: $(gradle --version | grep Gradle)"
+          echo "Android SDK: $ANDROID_HOME"
+          echo "Android NDK: $ANDROID_NDK_HOME"
+          echo ""
+          echo "=== NDK Toolchain Check ==="
+          # Check for x86_64 NDK toolchain (not aarch64)
+          ls -la $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android*-clang | head -5 || echo "NDK toolchain not found at expected path"
+          echo ""
+          echo "=== Rust Android Targets ==="
+          rustup target list --installed | grep android || echo "No Android targets installed"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::788825212508:role/GitHubMonbijouRole
+          role-session-name: github-actions-mobile-benchmark
+          aws-region: us-west-2
+
+      - name: Install Python dependencies
+        working-directory: mobilebench
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r scripts/requirements.txt
+
+      - name: Set up mobilebench
+        run: |
+          echo "${{ github.workspace }}/mobilebench" >> $GITHUB_PATH
+          chmod +x ./mobilebench/mobilebench
+
+      - name: Verify mobilebench
+        run: |
+          mobilebench --help
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: mobile-test-android
+          cache-on-failure: true
+
+      - name: Build Rust binaries for Android
+        run: |
+          echo "Building Rust binaries for Android ARM64..."
+          mobilebench build rust --build-type test --target aarch64-linux-android
+          echo ""
+          echo "=== Build artifacts ==="
+          ls -la mobile/android_binaries/*/
+
+      - name: Remove subprocess-dependent tests
+        run: |
+          echo "=== Removing tests that require subprocess execution ==="
+          # The ceck testsuite tests require spawning the 'ceck' binary as a subprocess
+          # This is not currently supported on Android due to additional setup complexity
+          # TODO: Add support for deploying and executing helper binaries on Android devices
+
+          if ls mobile/android_binaries/*/test.testsuite-* 1> /dev/null 2>&1; then
+            echo "Found ceck testsuite binaries:"
+            ls -la mobile/android_binaries/*/test.testsuite-*
+            rm -f mobile/android_binaries/*/test.testsuite-*
+            echo "Removed subprocess-dependent test binaries"
+          else
+            echo "No subprocess-dependent test binaries found"
+          fi
+
+          # Show remaining test binaries
+          echo ""
+          echo "=== Remaining test binaries ==="
+          ls -la mobile/android_binaries/*/ || echo "No test binaries found"
+
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            mobilebench/android/.gradle
+            mobilebench/android/build
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: Build Android APK
+        run: |
+          echo "Building Android APK..."
+          mobilebench build apk
+          echo ""
+          echo "=== APK artifacts ==="
+          ls -la mobile/android_apk/
+
+      - name: Run benchmarks on AWS Device Farm
+        run: |
+          # Determine device pool (use input for manual trigger, default for PR)
+          DEVICE_POOL="${{ github.event.inputs.device_pool || '01-android-baseline-and-flagship' }}"
+          echo "=== Running benchmarks on AWS Device Farm ==="
+          echo "Device pool: $DEVICE_POOL"
+          echo ""
+
+          # Run on AWS Device Farm with specified device pool
+          mobilebench aws run --device-pool "$DEVICE_POOL"
+
+          # Save the result directory path for the next step
+          echo "Checking for results..."
+          RESULT_DIR=$(find ./mobile/results -type d -mindepth 1 -maxdepth 1 | head -n 1)
+          if [ -n "$RESULT_DIR" ]; then
+            echo "RESULT_DIR=${RESULT_DIR}" >> $GITHUB_ENV
+            echo "Results found in: $RESULT_DIR"
+          else
+            echo "RESULT_DIR=" >> $GITHUB_ENV
+            echo "Warning: No results directory found"
+          fi
+
+      - name: Parse test results
+        if: always()
+        run: |
+          if [ -n "$RESULT_DIR" ] && [ -d "$RESULT_DIR" ]; then
+            echo "=== Generating test result files ==="
+
+            # Generate console format for S3 archival with fail-on-error flag
+            # This will exit with non-zero if any tests failed
+            mobilebench results parse "$RESULT_DIR" --format console --fail-on-error > "$RESULT_DIR/test_results_summary.txt"
+            PARSE_EXIT_CODE=$?
+
+            # Generate JSON report for programmatic access
+            mobilebench results parse "$RESULT_DIR" --format json > "$RESULT_DIR/test_results.json"
+
+            # Output GitHub format for environment variables
+            mobilebench results parse "$RESULT_DIR" --format github >> $GITHUB_ENV
+
+            # Exit with the parse exit code (will be non-zero if tests failed)
+            if [ $PARSE_EXIT_CODE -ne 0 ]; then
+              echo "::error::Some tests failed"
+              exit 1
+            fi
+          else
+            echo "::error::No results directory found"
+            exit 1
+          fi
+
+
+      - name: Upload results to S3
+        if: always() && env.RESULT_DIR != ''
+        run: |
+          # Create metadata file with context
+          cat > "$RESULT_DIR/github_context.json" << EOF
+          {
+            "workflow_run_id": "${{ github.run_id }}",
+            "workflow_run_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+            "repository": "${{ github.repository }}",
+            "branch": "${{ github.ref_name }}",
+            "commit_sha": "${{ github.sha }}",
+            "pr_number": "${{ github.event.pull_request.number }}",
+            "pr_title": "${{ github.event.pull_request.title }}",
+            "device_pool": "${{ github.event.inputs.device_pool || '01-android-baseline-and-flagship' }}",
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "triggered_by": "${{ github.event_name }}",
+            "actor": "${{ github.actor }}"
+          }
+          EOF
+
+          # Define S3 path structure for easy querying
+          REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
+          DATETIME=$(date +%Y-%m-%d-%H%M%S)
+          COMMIT_SHORT=$(echo "${{ github.sha }}" | cut -c1-8)
+
+          # Determine the context (PR or branch)
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # For PRs, use pr/ subdirectory
+            PR_NUMBER="${{ github.event.pull_request.number }}"
+            HEAD_BRANCH=$(echo "${{ github.event.pull_request.head.ref }}" | sed 's/\//_/g')
+            S3_CONTEXT="pr/${PR_NUMBER}-${HEAD_BRANCH}"
+          else
+            # For direct pushes or manual runs
+            BRANCH_NAME=$(echo "${{ github.ref_name }}" | sed 's/\//_/g')
+            if [ "${BRANCH_NAME}" = "main" ]; then
+              # Special case: main branch at root level
+              S3_CONTEXT="main"
+            else
+              # Other branches in branch/ subdirectory
+              S3_CONTEXT="branch/${BRANCH_NAME}"
+            fi
+          fi
+
+          S3_PREFIX="s3://mobilebench-7f4a9d2c/${REPO_NAME}-tests"
+          S3_PATH="${S3_PREFIX}/${S3_CONTEXT}/${DATETIME}-${COMMIT_SHORT}"
+
+          # Upload to S3
+          echo "Uploading results to S3: ${S3_PATH}"
+          if aws s3 sync "$RESULT_DIR" "${S3_PATH}/" --no-progress; then
+            echo "Results uploaded to S3: ${S3_PATH}"
+            echo "S3_RESULTS_PATH=${S3_PATH}" >> $GITHUB_ENV
+          else
+            echo "::warning::Failed to upload results to S3"
+            echo "S3_RESULTS_PATH=" >> $GITHUB_ENV
+          fi
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results-${{ github.run_id }}
+          path: |
+            mobile/results/
+          retention-days: 30
+
+      - name: Job summary
+        if: always()
+        run: |
+          echo "## 📱 Mobile Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Quick status summary
+          if [ -n "${TOTAL_SUITES:-}" ]; then
+            if [ "${FAILED_SUITES:-0}" -eq 0 ]; then
+              echo "### ✅ All tests passed!" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "### ❌ ${FAILED_SUITES} test suite(s) failed" >> $GITHUB_STEP_SUMMARY
+            fi
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            # Compact summary line
+            echo "**Summary**: ${TOTAL_SUITES} suites | ${PASSED_SUITES} passed | ${FAILED_SUITES} failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Test results from mobilebench
+          if [ -n "${TEST_RESULTS:-}" ]; then
+            echo "### Test Suite Results" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "${TEST_RESULTS}" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Failed tests if any
+          if [ "${FAILED_SUITES:-0}" -gt 0 ] && [ -n "${FAILED_SUITE_NAMES:-}" ]; then
+            echo "<details>" >> $GITHUB_STEP_SUMMARY
+            echo "<summary>❌ Failed Test Suites</summary>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "${FAILED_SUITE_NAMES}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "</details>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Environment and artifacts
+          echo "<details>" >> $GITHUB_STEP_SUMMARY
+          echo "<summary>📋 Details</summary>" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Runner: c7a-4xl-android (x86_64)" >> $GITHUB_STEP_SUMMARY
+          echo "- Device Pool: ${{ github.event.inputs.device_pool || '01-android-baseline-and-flagship' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Artifacts:**" >> $GITHUB_STEP_SUMMARY
+          if [ -n "$RESULT_DIR" ] && [ -d "$RESULT_DIR" ]; then
+            echo "- GitHub Actions: [benchmark-results-${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
+            if [ -n "${S3_RESULTS_PATH:-}" ]; then
+              echo "- S3: \`${S3_RESULTS_PATH}\`" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "</details>" >> $GITHUB_STEP_SUMMARY
