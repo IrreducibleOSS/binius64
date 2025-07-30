@@ -1,4 +1,4 @@
-use binius_field::Field;
+use binius_field::{BinaryField, PackedField};
 use binius_math::FieldBuffer;
 use binius_utils::rayon::{
 	iter::{IntoParallelIterator, ParallelIterator},
@@ -13,13 +13,21 @@ use crate::protocols::sumcheck::{Error, common::SumcheckProver};
 ///
 /// This struct provides a round-by-round interface to prove the sum of A(X) * B(X)
 /// for multilinears A and B over all hypercube points X.
-pub struct MultilinearSumcheckProver<F: Field> {
-	multilinears: [FieldBuffer<F>; 2],
+pub struct MultilinearSumcheckProver<F, P>
+where
+	F: BinaryField,
+	P: PackedField<Scalar = F>,
+{
+	multilinears: [FieldBuffer<P>; 2],
 	current_round_claim: F,
 	round_message: Option<RoundCoeffs<F>>,
 }
 
-impl<F: Field> MultilinearSumcheckProver<F> {
+impl<F, P> MultilinearSumcheckProver<F, P>
+where
+	F: BinaryField,
+	P: PackedField<Scalar = F>,
+{
 	/// Creates a new multilinear sumcheck prover.
 	///
 	/// ## Arguments
@@ -31,7 +39,7 @@ impl<F: Field> MultilinearSumcheckProver<F> {
 	/// ## Preconditions
 	///
 	/// * both multilinears in the composition have the same log_len
-	pub fn new(multilinears: [FieldBuffer<F>; 2], overall_claim: F, log_n: usize) -> Self {
+	pub fn new(multilinears: [FieldBuffer<P>; 2], overall_claim: F, log_n: usize) -> Self {
 		assert_eq!(multilinears[0].log_len(), log_n);
 		assert_eq!(multilinears[1].log_len(), log_n);
 
@@ -43,19 +51,28 @@ impl<F: Field> MultilinearSumcheckProver<F> {
 	}
 }
 
-fn fold_low_to_high<F: Field>(
-	multilinear_extension: FieldBuffer<F>,
+fn fold_low_to_high<F, P>(
+	multilinear_extension: &FieldBuffer<P>,
 	challenge: F,
-) -> Result<FieldBuffer<F>, Error> {
-	let mut out = FieldBuffer::<F>::zeros(multilinear_extension.log_len() - 1);
+) -> Result<FieldBuffer<P>, Error>
+where
+	F: BinaryField,
+	P: PackedField<Scalar = F>,
+{
+	let mut out = FieldBuffer::<P>::zeros(multilinear_extension.log_len() - 1);
+	let challenge_packed = P::broadcast(challenge);
 	out.as_mut()
 		.par_iter_mut()
 		.zip(multilinear_extension.as_ref().par_chunks(2))
-		.for_each(|(output, chunk)| *output = chunk[0] + challenge * (chunk[1] - chunk[0]));
+		.for_each(|(output, chunk)| *output = chunk[0] + challenge_packed * (chunk[1] - chunk[0]));
 	Ok(out)
 }
 
-impl<F: Field> SumcheckProver<F> for MultilinearSumcheckProver<F> {
+impl<F, P> SumcheckProver<F> for MultilinearSumcheckProver<F, P>
+where
+	F: BinaryField,
+	P: PackedField<Scalar = F>,
+{
 	fn n_vars(&self) -> usize {
 		self.multilinears[0].log_len()
 	}
@@ -96,7 +113,7 @@ impl<F: Field> SumcheckProver<F> for MultilinearSumcheckProver<F> {
 
 	fn fold(&mut self, challenge: F) -> Result<(), Error> {
 		for m in self.multilinears.iter_mut() {
-			*m = fold_low_to_high(m.clone(), challenge)?;
+			*m = fold_low_to_high::<F, P>(m, challenge)?;
 		}
 
 		self.current_round_claim = self
@@ -115,15 +132,17 @@ impl<F: Field> SumcheckProver<F> for MultilinearSumcheckProver<F> {
 
 #[cfg(test)]
 pub mod test {
-	use binius_field::{BinaryField128b, Random};
+	use binius_field::{BinaryField, Field, Random, arch::OptimalB128};
 	use binius_math::{multilinear::eq::eq_ind_partial_eval, test_utils::random_field_buffer};
 	use rand::{SeedableRng, rngs::StdRng};
 
 	use super::*;
 
-	type F = BinaryField128b;
-
-	fn sum_composition(a: &FieldBuffer<F>, b: &FieldBuffer<F>) -> Result<F, Error> {
+	fn sum_composition<F, P>(a: &FieldBuffer<P>, b: &FieldBuffer<P>) -> Result<F, Error>
+	where
+		F: BinaryField,
+		P: PackedField<Scalar = F>,
+	{
 		Ok((0..a.len())
 			.map(|i| Ok(a.get(i)? * b.get(i)?))
 			.collect::<Result<Vec<_>, Error>>()?
@@ -131,14 +150,21 @@ pub mod test {
 			.sum())
 	}
 
-	fn random_challenge() -> F {
+	fn random_challenge<F>() -> F
+	where
+		F: BinaryField,
+	{
 		let mut rng = StdRng::from_seed([0; 32]);
 		F::random(&mut rng)
 	}
 
-	pub fn sumcheck_interactive_protocol(
-		prover: &mut MultilinearSumcheckProver<F>,
-	) -> Result<(F, Vec<F>), Error> {
+	pub fn sumcheck_interactive_protocol<F, P>(
+		prover: &mut MultilinearSumcheckProver<F, P>,
+	) -> Result<(F, Vec<F>), Error>
+	where
+		F: BinaryField,
+		P: PackedField<Scalar = F>,
+	{
 		let log_n = prover.n_vars();
 
 		let mut expected_next_round_claim = prover.current_round_claim;
@@ -162,12 +188,19 @@ pub mod test {
 		Ok((expected_next_round_claim, sumcheck_challenges))
 	}
 
-	fn run_sumcheck_interactive_protocol(multilinears: [FieldBuffer<F>; 2]) -> Result<(), Error> {
+	fn run_sumcheck_interactive_protocol<F, P>(
+		multilinears: [FieldBuffer<P>; 2],
+	) -> Result<(), Error>
+	where
+		F: BinaryField,
+		P: PackedField<Scalar = F>,
+	{
 		let log_n = multilinears[0].log_len();
 
-		let overall_claim = sum_composition(&multilinears[0], &multilinears[1])?;
+		let overall_claim = sum_composition::<F, P>(&multilinears[0], &multilinears[1])?;
 
-		let mut prover = MultilinearSumcheckProver::new(multilinears.clone(), overall_claim, log_n);
+		let mut prover =
+			MultilinearSumcheckProver::<F, P>::new(multilinears.clone(), overall_claim, log_n);
 
 		let (final_sumcheck_msg, sumcheck_challenges) = sumcheck_interactive_protocol(&mut prover)?;
 
@@ -189,16 +222,20 @@ pub mod test {
 	fn test_sumcheck_low_to_high() {
 		let rng = StdRng::from_seed([0; 32]);
 
+		type P = OptimalB128;
+
 		let log_n = 5;
 		let a = random_field_buffer(rng.clone(), log_n);
 		let b = random_field_buffer(rng, log_n);
-		let multilinears = [a, b];
-		run_sumcheck_interactive_protocol(multilinears).expect("sumcheck failed");
+		let multilinears: [FieldBuffer<P>; 2] = [a, b];
+		run_sumcheck_interactive_protocol::<_, P>(multilinears).expect("sumcheck failed");
 	}
 
 	#[test]
 	fn test_composition_even_odd_sum() -> Result<(), Error> {
 		let mut rng = StdRng::from_seed([0; 32]);
+
+		type F = OptimalB128;
 
 		let log_n = 5;
 		let n = 1 << log_n;
