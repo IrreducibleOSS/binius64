@@ -6,6 +6,7 @@ use binius_field::{
 use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval};
 use binius_utils::rayon::prelude::*;
 use binius_verifier::{and_reduction::utils::constants::ROWS_PER_HYPERCUBE_VERTEX, fields::B1};
+use bytemuck::must_cast_ref;
 use itertools::izip;
 
 use super::{univariate::ntt_lookup::NTTLookup, utils::multivariate::OneBitOblongMultilinear};
@@ -97,13 +98,13 @@ where
 			let mut summed_ntt = [PNTTDomain::zero(); ROWS_PER_HYPERCUBE_VERTEX / 16];
 
 			for (a_i, b_i, c_i, &weight) in izip!(a_chunk, b_chunk, c_chunk, &eq_ind_small) {
-				let col_1_bytes = a_i.0.to_le_bytes();
-				let col_2_bytes = b_i.0.to_le_bytes();
-				let col_3_bytes = c_i.0.to_le_bytes();
+				let col_1_bytes = must_cast_ref::<_, [u8; 8]>(&a_i.0);
+				let col_2_bytes = must_cast_ref::<_, [u8; 8]>(&b_i.0);
+				let col_3_bytes = must_cast_ref::<_, [u8; 8]>(&c_i.0);
 
-				let first_col_ntt = ntt_lookup.ntt(col_1_bytes);
-				let second_col_ntt = ntt_lookup.ntt(col_2_bytes);
-				let third_col_ntt = ntt_lookup.ntt(col_3_bytes);
+				let first_col_ntt = ntt_lookup.ntt(col_1_bytes.iter().copied());
+				let second_col_ntt = ntt_lookup.ntt(col_2_bytes.iter().copied());
+				let third_col_ntt = ntt_lookup.ntt(col_3_bytes.iter().copied());
 
 				for i in 0..ROWS_PER_HYPERCUBE_VERTEX / 16 {
 					summed_ntt[i] +=
