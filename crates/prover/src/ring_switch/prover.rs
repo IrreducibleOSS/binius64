@@ -127,8 +127,7 @@
 // 	}
 // }
 
-
-use binius_field::{Field, BinaryField, ExtensionField};
+use binius_field::{BinaryField, ExtensionField, Field};
 use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval};
 use binius_verifier::fields::B1;
 
