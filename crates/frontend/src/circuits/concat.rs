@@ -826,12 +826,10 @@ mod tests {
 					.flat_map(|(data, _)| data.clone())
 					.collect();
 
+				prop_assume!(!correct_joined.is_empty());
+
 				// Create joined data that's too short
-				let short_joined = if correct_joined.len() > 1 {
-					correct_joined[..correct_joined.len() - 1].to_vec()
-				} else {
-					vec![]
-				};
+				let short_joined = correct_joined[..correct_joined.len() - 1].to_vec();
 
 				run_concat_test(term_specs, Some(short_joined), false);
 			}
