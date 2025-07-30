@@ -74,7 +74,6 @@ where
 		});
 	}
 
-	// TODO: Pack witness using P, not B128
 	let witness_packed = pack_witness::<B128>(params.log_witness_elems(), &witness)?;
 
 	// Commit the witness.
@@ -112,6 +111,7 @@ where
 
 	// PCS opening
 	let evaluation_point = [z_challenge, y_challenge].concat();
+
 	let pcs_prover = OneBitPCSProver::new(
 		witness_packed,
 		witness_eval,
