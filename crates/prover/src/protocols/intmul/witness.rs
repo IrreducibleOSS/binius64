@@ -31,7 +31,7 @@ use super::error::Error;
 /// Protocol proves that ${(G^a)}^b = G^{c\\_lo} \times (G^{2^{2^m}})^{c\\_hi}$, which is equivalent
 /// to $a \times b = c$ modulo $2^{2^{m+1}} - 1$. The special case of `0 * 0 = 1` is handled
 /// separately.
-#[derive(Getters)]
+#[derive(Clone, Getters)]
 #[getset(get = "pub")]
 pub struct Witness<P: PackedField, B: Bitwise, S: AsRef<[B]>> {
 	pub a: BinaryTree<P, B, S>,
@@ -104,7 +104,7 @@ where
 /// base raised to the power of the corresponding exponent.
 ///
 /// Tree is laid out from root to the leaves. `IntoIterator` follows this convention.
-#[derive(Debug, IntoIterator)]
+#[derive(Clone, Debug, IntoIterator)]
 pub struct BinaryTree<P: PackedField, B: Bitwise, S: AsRef<[B]>> {
 	exponents: S,
 	#[into_iterator(owned)]

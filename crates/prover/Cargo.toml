@@ -50,7 +50,10 @@ harness = false
 name = "and_reduction"
 harness = false
 
+[[bench]]
+name = "intmul"
+harness = false
+
 [features]
 default = ["rayon"]
 rayon = ["binius-utils/rayon"]
-
