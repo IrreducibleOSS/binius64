@@ -223,10 +223,11 @@ fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger
 
 	let verifier_mle_eval_claims = transcript.message().read_scalar_slice::<F>(3)?;
 
-	assert_eq!(
-		output.sumcheck_output.eval,
-		verifier_mle_eval_claims[0] * verifier_mle_eval_claims[1] - verifier_mle_eval_claims[2]
-	);
-
-	Ok(output)
+	if output.sumcheck_output.eval
+		== verifier_mle_eval_claims[0] * verifier_mle_eval_claims[1] - verifier_mle_eval_claims[2]
+	{
+		Ok(output)
+	} else {
+		Err(VerificationError::AndReductionMLECheckFailed.into())
+	}
 }
