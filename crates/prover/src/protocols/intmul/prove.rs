@@ -9,12 +9,9 @@ use binius_transcript::{
 	fiat_shamir::{CanSample, Challenger},
 };
 use binius_utils::bitwise::Bitwise;
-use binius_verifier::protocols::{
-	intmul::common::{
-		IntMulOutput, Phase1Output, Phase2Output, Phase3Output, Phase4Output, Phase5Output,
-		frobenius_twist, make_phase_3_output, normalize_a_c_exponent_evals,
-	},
-	sumcheck::common::BatchSumcheckOutput,
+use binius_verifier::protocols::intmul::common::{
+	IntMulOutput, Phase1Output, Phase2Output, Phase3Output, Phase4Output, Phase5Output,
+	frobenius_twist, make_phase_3_output, normalize_a_c_exponent_evals,
 };
 use either::Either;
 use itertools::{Itertools, izip};
@@ -22,7 +19,7 @@ use itertools::{Itertools, izip};
 use super::{error::Error, witness::Witness};
 use crate::protocols::sumcheck::{
 	MleToSumCheckDecorator,
-	batch::batch_prove,
+	batch::{BatchSumcheckOutput, batch_prove},
 	bivariate_product_mle::BivariateProductMlecheckProver,
 	bivariate_product_multi_mle::BivariateProductMultiMlecheckProver,
 	rerand_mle::RerandMlecheckProver,

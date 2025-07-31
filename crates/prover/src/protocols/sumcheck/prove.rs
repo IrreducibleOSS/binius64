@@ -133,5 +133,6 @@ pub struct ProveSingleOutput<F: Field> {
 	///
 	/// One challenge is generated per variable in the multivariate polynomial,
 	/// with challenges\[i\] corresponding to the i-th round of the protocol.
+	/// NB: reverse when folding high-to-low to obtain evaluation claim.
 	pub challenges: Vec<F>,
 }
