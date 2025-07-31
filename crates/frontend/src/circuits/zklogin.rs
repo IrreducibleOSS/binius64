@@ -1,6 +1,6 @@
 use crate::{
 	circuits::{
-		base64::{Base64UrlSafe, PaddingMode},
+		base64::Base64UrlSafe,
 		concat::{Concat, Term},
 		fixed_byte_vec::FixedByteVec,
 		jwt_claims::{Attribute, JwtClaims},
@@ -112,7 +112,6 @@ impl ZkLogin {
 			jwt_header.data.clone(),
 			base64_jwt_header.data.clone(),
 			jwt_header.len,
-			PaddingMode::NoPadding,
 		);
 		let _base64decode_check_payload = Base64UrlSafe::new(
 			&b.subcircuit("base64_check_payload"),
@@ -120,7 +119,6 @@ impl ZkLogin {
 			jwt_payload.data.clone(),
 			base64_jwt_payload.data.clone(),
 			jwt_payload.len,
-			PaddingMode::NoPadding,
 		);
 		let _base64decode_check_signature = Base64UrlSafe::new(
 			&b.subcircuit("base64_check_signature"),
@@ -128,7 +126,6 @@ impl ZkLogin {
 			jwt_signature.data.clone(),
 			base64_jwt_signature.data.clone(),
 			jwt_signature.len,
-			PaddingMode::NoPadding,
 		);
 
 		// We need to check
@@ -228,13 +225,15 @@ impl ZkLogin {
 			.try_into()
 			.expect("an array of size 6");
 
+		// The zklogin nonce claim is Base64 URL encoded without padding (i.e.
+		// in the same way as JWS components)
+		// <https://github.com/MystenLabs/ts-sdks/blob/eb23fc1c122a1495e52d0bd613bf5e8e6eb816cc/packages/typescript/src/zklogin/nonce.ts#L33>
 		let _base64decode_check_nonce = Base64UrlSafe::new(
 			&b.subcircuit("base64_check_nonce"),
 			base64_decoded_nonce.len() * 8,
 			base64_decoded_nonce.to_vec(),
 			base64_jwt_payload_nonce.to_vec(),
 			b.add_constant_64(32),
-			PaddingMode::Standard,
 		);
 
 		// Check signing payload. The JWT signed payload L is a concatenation of:
