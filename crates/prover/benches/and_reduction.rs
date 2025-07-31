@@ -66,7 +66,7 @@ fn bench(c: &mut Criterion) {
 	let mut group = c.benchmark_group("evaluate");
 	group.throughput(Throughput::Elements(1 << (log_num_rows - SKIPPED_VARS)));
 
-	group.bench_function(format!("NTT lookup precompute"), |bench| {
+	group.bench_function("NTT lookup precompute", |bench| {
 		bench.iter(|| {
 			ntt_lookup_from_prover_message_domain::<PackedAESBinaryField16x8b>(
 				prover_message_domain.clone(),
