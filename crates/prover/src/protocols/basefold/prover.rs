@@ -180,9 +180,7 @@ where
 
 #[cfg(test)]
 mod test {
-	use binius_field::{
-		BinaryField, ExtensionField, PackedExtension, PackedField, arch::OptimalPackedB128,
-	};
+	use binius_field::{BinaryField, PackedExtension, PackedField, arch::OptimalPackedB128};
 	use binius_math::{
 		FieldBuffer, ReedSolomonCode,
 		inner_product::inner_product_buffers,
@@ -297,7 +295,7 @@ mod test {
 		(multilinear, evaluation_point, evaluation_claim)
 	}
 
-	fn dubiously_modidy_claim<F, P>(claim: &mut F)
+	fn dubiously_modify_claim<F, P>(claim: &mut F)
 	where
 		F: BinaryField,
 		P: PackedField<Scalar = F>,
@@ -330,12 +328,11 @@ mod test {
 		let n_vars = 8;
 
 		let (multilinear, evaluation_point, mut evaluation_claim) = test_setup::<_, P>(n_vars);
-		dubiously_modidy_claim::<_, P>(&mut evaluation_claim);
-		if let Ok(()) = run_basefold_prove_and_verify::<_, P, B128>(
-			multilinear,
-			evaluation_point,
-			evaluation_claim,
-		) {
+
+		dubiously_modify_claim::<_, P>(&mut evaluation_claim);
+		if let Ok(()) =
+			run_basefold_prove_and_verify::<_, P>(multilinear, evaluation_point, evaluation_claim)
+		{
 			panic!("expected error")
 		}
 	}
