@@ -57,8 +57,6 @@ where
 	let new_log_len = multilinear_extension.log_len() - 1;
 	let mut out = FieldBuffer::<P>::zeros(new_log_len);
 	
-	// We need to fold by pairing consecutive scalar elements, not packed elements
-	// Unfortunately this means we need to use get/set for now
 	for i in 0..(1 << new_log_len) {
 		let even = multilinear_extension.get(2 * i)?;
 		let odd = multilinear_extension.get(2 * i + 1)?;
@@ -85,7 +83,6 @@ where
 		let a = &self.multilinears[0];
 		let b = &self.multilinears[1];
 
-		// We need to pair consecutive scalar elements
 		let mut g_of_zero = F::ZERO;
 		let mut g_of_one = F::ZERO;
 		let mut g_leading = F::ZERO;
@@ -122,7 +119,6 @@ where
 	}
 
 	fn finish(self) -> Result<Vec<F>, Error> {
-		// The multilinears should have log_len = 0 at this point, containing a single scalar
 		let a_val = self.multilinears[0].as_ref()
 			.first()
 			.and_then(|packed| packed.iter().next())
