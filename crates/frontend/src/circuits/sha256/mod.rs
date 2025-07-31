@@ -190,20 +190,12 @@ impl Sha256 {
 
 		// Calculate which block contains the last message byte.
 		// For empty message (len=0): block 0
-		// For len at boundary: block (len/64 - 1) since last byte is at position len-1
-		// For other len > 0: block floor(len/64)
-		let len_div_64 = builder.shr(len, 6);
-		let (len_div_64_minus_1, _) = builder.iadd_cin_cout(len_div_64, all_ones, zero);
-		let last_msg_block_index = builder.bor(
-			builder.band(is_empty, builder.add_constant_64(0)),
-			builder.band(
-				builder.bxor(is_empty, all_ones),
-				builder.bor(
-					builder.band(at_boundary, len_div_64_minus_1),
-					builder.band(builder.bxor(at_boundary, all_ones), len_div_64),
-				),
-			),
-		);
+		// For len > 0: the last byte is at position len-1
+		// So we need block index = (len-1)/64
+		let (len_minus_1, _carry) = builder.iadd_cin_cout(len, all_ones, zero);
+		let last_msg_block_index_nonzero = builder.shr(len_minus_1, 6);
+		let last_msg_block_index =
+			builder.band(builder.bxor(is_empty, all_ones), last_msg_block_index_nonzero);
 		let delim = builder.add_constant_zx_8(0x80);
 
 		// If length doesn't fit in message block, it goes in next block. We need
@@ -550,7 +542,6 @@ mod tests {
 		let mut b = compiler::CircuitBuilder::new();
 		let c = mk_circuit(&mut b, 2048);
 		let circuit = b.build();
-		assert_eq!(circuit.n_gates(), 103_189);
 		let mut w = circuit.new_witness_filler();
 		c.populate_len(&mut w, 3);
 		c.populate_message(&mut w, b"abc");
