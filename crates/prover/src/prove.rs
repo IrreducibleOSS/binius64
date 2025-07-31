@@ -117,8 +117,8 @@ where
 		witness_eval,
 		evaluation_point,
 		<B128 as ExtensionField<B1>>::LOG_DEGREE,
-	)?; 
-    
+	)?;
+
 	pcs_prover.prove_with_transcript(
 		transcript,
 		ntt,
