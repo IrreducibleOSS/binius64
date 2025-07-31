@@ -232,7 +232,6 @@ mod test {
 		let fri_params: FRIParams<F, F> =
 			FRIParams::new(rs_code, fri_log_batch_size, fri_arities, NUM_TEST_QUERIES)?;
 
-		// let ntt = SingleThreadedNTT::new(fri_params.rs_code().log_len())?;
 		let ntt = SingleThreadedNTT::with_subspace(fri_params.rs_code().subspace()).unwrap();
 
 		let CommitOutput {
