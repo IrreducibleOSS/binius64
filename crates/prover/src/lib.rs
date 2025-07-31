@@ -1,6 +1,6 @@
 pub mod and_reduction;
 mod error;
-mod fold_word;
+pub mod fold_word;
 mod formatting;
 pub mod fri;
 pub mod hash;

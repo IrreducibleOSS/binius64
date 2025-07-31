@@ -20,7 +20,6 @@ use binius_verifier::WORD_SIZE_BITS;
 /// * `words` has a power-of-two length
 ///
 /// [Method of Four Russians]: <https://en.wikipedia.org/wiki/Method_of_Four_Russians>
-#[allow(dead_code)]
 pub fn fold_words<F, P>(words: &[Word], vec: &[F]) -> FieldBuffer<P>
 where
 	F: Field,
@@ -54,9 +53,9 @@ where
 					.sum()
 			}))
 		})
-		.collect();
+		.collect::<Vec<_>>();
 
-	FieldBuffer::new(log_n, values)
+	FieldBuffer::new(log_n, values.into_boxed_slice())
 		.expect("log_n is calculated from words.len() and values is constructed from words")
 }
 

@@ -54,6 +54,10 @@ harness = false
 name = "intmul"
 harness = false
 
+[[bench]]
+name = "fold_words"
+harness = false
+
 [features]
 default = ["rayon"]
 rayon = ["binius-utils/rayon"]
