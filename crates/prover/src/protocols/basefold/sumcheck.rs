@@ -1,8 +1,6 @@
 use binius_field::{BinaryField, PackedField};
 use binius_math::{FieldBuffer, line::extrapolate_line_packed};
-use binius_utils::rayon::{
-	iter::{IntoParallelIterator, ParallelIterator},
-};
+use binius_utils::rayon::iter::{IntoParallelIterator, ParallelIterator};
 use binius_verifier::protocols::sumcheck::RoundCoeffs;
 
 use crate::protocols::sumcheck::{Error, common::SumcheckProver};
@@ -59,11 +57,11 @@ where
 {
 	let new_log_len = multilinear_extension.log_len() - 1;
 	let out = (0..(1 << new_log_len))
-	.into_par_iter()
-	.map(|i| {
-		let even = multilinear_extension.get(2 * i).expect("out of bounds");
-		let odd = multilinear_extension.get(2 * i + 1).expect("out of bounds");
-		extrapolate_line_packed(even, odd, challenge)
+		.into_par_iter()
+		.map(|i| {
+			let even = multilinear_extension.get(2 * i).expect("out of bounds");
+			let odd = multilinear_extension.get(2 * i + 1).expect("out of bounds");
+			extrapolate_line_packed(even, odd, challenge)
 		})
 		.collect::<Vec<_>>();
 
