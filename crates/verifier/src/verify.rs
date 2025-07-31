@@ -128,7 +128,7 @@ where
 	let trace_commitment = transcript.message().read::<MTScheme::Digest>()?;
 
 	// verify the and reduction
-	let _output: AndReductionOutput<B128> = run_and_check(params.log_witness_words(), transcript);
+	let _output: AndReductionOutput<B128> = run_and_check(params.log_witness_words(), transcript)?;
 
 	// Sample a challenge point during the shift reduction.
 	let z_challenge = transcript.sample_vec(LOG_WORD_SIZE_BITS);
@@ -191,7 +191,7 @@ fn evaluate_public_mle<F: BinaryField>(public: &[Word], z_coords: &[F], y_coords
 fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger>(
 	log_witness_words: usize,
 	transcript: &mut VerifierTranscript<Challenger_>,
-) -> AndReductionOutput<F> {
+) -> Result<AndReductionOutput<F>, Error> {
 	let big_field_zerocheck_challenges = transcript.sample_vec(log_witness_words - 3);
 
 	let mut all_zerocheck_challenges = vec![];
@@ -219,8 +219,7 @@ fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger
 		&all_zerocheck_challenges,
 		transcript,
 		verifier_message_domain.clone(),
-	)
-	.unwrap();
+	)?;
 
 	let verifier_mle_eval_claims = transcript.message().read_scalar_slice::<F>(3).unwrap();
 
@@ -229,5 +228,5 @@ fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger
 		verifier_mle_eval_claims[0] * verifier_mle_eval_claims[1] - verifier_mle_eval_claims[2]
 	);
 
-	output
+	Ok(output)
 }
