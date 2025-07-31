@@ -208,7 +208,7 @@ fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger
 			.isomorphic();
 
 	for small_field_challenge in small_field_zerocheck_challenges {
-		all_zerocheck_challenges.push(F::from(small_field_challenge));
+		all_zerocheck_challenges.push(small_field_challenge);
 	}
 
 	for big_field_challenge in &big_field_zerocheck_challenges {

@@ -164,7 +164,7 @@ fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger
 	transcript: &mut ProverTranscript<Challenger_>,
 ) -> Result<AndCheckOutput<F>, Error> {
 	let prover_message_domain = BinarySubspace::<AESTowerField8b>::with_dim(LOG_WORD_SIZE_BITS + 1)
-		.expect("dimension always positive");
+		.expect("B8::DEGREE is at least LOG_WORD_SIZE_BITS + 1");
 	let AndCheckWitness {
 		mut a,
 		mut b,
@@ -207,7 +207,7 @@ fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger
 		prover_message_domain.isomorphic(),
 	);
 
-	let prove_output = prover.prove_with_transcript(transcript).unwrap();
+	let prove_output = prover.prove_with_transcript(transcript)?;
 
 	let mle_claims = prove_output.sumcheck_output.multilinear_evals;
 
