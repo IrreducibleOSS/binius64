@@ -7,9 +7,7 @@ use std::{
 	ops::{Add, AddAssign, Sub, SubAssign},
 };
 
-use binius_field::{
-	ExtensionField, Field, PackedExtension, square_transpose, util::inner_product_unchecked,
-};
+use binius_field::{ExtensionField, Field, util::inner_product_unchecked};
 
 /// An element of the tensor algebra defined as the tensor product of `FE` and `FE` as fields.
 ///
@@ -123,7 +121,7 @@ where
 	}
 }
 
-impl<F: Field, FE: ExtensionField<F> + PackedExtension<F>> TensorAlgebra<F, FE> {
+impl<F: Field, FE: ExtensionField<F>> TensorAlgebra<F, FE> {
 	/// Multiply by an element from the vertical subring.
 	///
 	/// Internally, this performs a transpose, vertical scaling, then transpose sequence. If
@@ -137,7 +135,7 @@ impl<F: Field, FE: ExtensionField<F> + PackedExtension<F>> TensorAlgebra<F, FE> 
 	///
 	/// A transpose flips the vertical and horizontal subring elements.
 	pub fn transpose(mut self) -> Self {
-		square_transpose(Self::kappa(), FE::cast_bases_mut(&mut self.elems))
+		FE::square_transpose(&mut self.elems)
 			.expect("transpose dimensions are square by struct invariant");
 		self
 	}
