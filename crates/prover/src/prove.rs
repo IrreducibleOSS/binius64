@@ -1,4 +1,4 @@
-use binius_field::{PackedExtension, PackedField};
+use binius_field::{BinaryField, PackedExtension, PackedField};
 use binius_frontend::{
 	constraint_system::{
 		AndConstraint, ConstraintSystem, Operand, ShiftVariant, ShiftedValueIndex, ValueVec,
@@ -71,7 +71,8 @@ where
 	} = fri::commit_interleaved(params.fri_params(), ntt, merkle_prover, witness_packed.to_ref())?;
 	transcript.message().write(&trace_commitment);
 
-	let _and_witness = build_and_check_witness(&cs.and_constraints, witness.combined_witness());
+	let and_witness = build_and_check_witness(&cs.and_constraints, witness.combined_witness());
+	let _output = run_and_check::<B128, _>(params.log_witness_words(), and_witness, transcript);
 
 	// Sample a challenge point during the shift reduction.
 	let z_challenge = transcript.sample_vec(LOG_WORD_SIZE_BITS);
@@ -151,7 +152,7 @@ fn pack_witness<P: PackedField<Scalar = B128>>(
 // 	const DETERMINISTIC_CHALLENGES: [AESTowerField8b; 3] = [
 // 		AESTowerField8b::new(0x02),
 // 		AESTowerField8b::new(0x04),
-// 		AESTowerField8b::new(0x10),
+// 		AESTowerField8b::new(0x08),
 // 	];
 // }
 
@@ -162,6 +163,16 @@ struct AndCheckWitness {
 	c: Vec<Word>,
 }
 
+#[allow(dead_code)]
+struct AndCheckOutput<F> {
+	a_eval: F,
+	b_eval: F,
+	c_eval: F,
+	/// The challenge for the bit-index variable.
+	z_challenge: F,
+	/// Evaluation point of the word-index variables.
+	eval_point: Vec<F>,
+}
 
 #[inline]
 fn build_operand_value(operand: &Operand, witness: &[Word]) -> Word {
