@@ -147,12 +147,15 @@ fn pack_witness<P: PackedField<Scalar = B128>>(
 	Ok(padded_witness_elems)
 }
 
+
+// TODO: This struct will be used in a future implementation of witness checking
 #[allow(dead_code)]
 struct AndCheckWitness {
 	a: Vec<Word>,
 	b: Vec<Word>,
 	c: Vec<Word>,
 }
+
 
 #[inline]
 fn build_operand_value(operand: &Operand, witness: &[Word]) -> Word {
