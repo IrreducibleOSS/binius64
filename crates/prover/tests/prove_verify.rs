@@ -7,16 +7,14 @@ use binius_frontend::{
 };
 use binius_math::ntt::SingleThreadedNTT;
 use binius_prover::{merkle_tree::prover::BinaryMerkleTreeProver, prove};
-use binius_transcript::{ProverTranscript, fiat_shamir::HasherChallenger};
+use binius_transcript::ProverTranscript;
 use binius_verifier::{
 	Params,
+	config::StdChallenger,
 	hash::{StdCompression, StdDigest},
 	merkle_tree::BinaryMerkleTreeScheme,
 	verify,
 };
-use blake2::{Blake2b, digest::consts::U32};
-
-type Blake2b256 = Blake2b<U32>;
 
 #[test]
 fn test_prove_verify_sha256_preimage() {
@@ -64,7 +62,7 @@ fn test_prove_verify_sha256_preimage() {
 
 	let ntt = SingleThreadedNTT::with_subspace(params.fri_params().rs_code().subspace()).unwrap();
 	let merkle_prover = BinaryMerkleTreeProver::<_, StdDigest, _>::new(StdCompression::default());
-	let mut prover_transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::default();
+	let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
 	prove::<OptimalPackedB128, _, _, _, _>(
 		&params,
 		witness.clone(),
