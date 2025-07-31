@@ -228,13 +228,14 @@ fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger
 	})
 }
 
-#[allow(dead_code)]
 struct AndCheckWitness {
 	a: Vec<Word>,
 	b: Vec<Word>,
 	c: Vec<Word>,
 }
 
+// These fields will be read once the shift reduction is used to prove these claims against the
+// witness
 #[allow(dead_code)]
 struct AndCheckOutput<F> {
 	a_eval: F,
