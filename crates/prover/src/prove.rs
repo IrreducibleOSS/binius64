@@ -1,11 +1,17 @@
-use binius_field::{BinaryField, PackedExtension, PackedField};
+use std::iter::repeat_with;
+
+use binius_field::{
+	AESTowerField8b, BinaryField, PackedAESBinaryField16x8b, PackedExtension, PackedField,
+};
 use binius_frontend::{
 	constraint_system::{
 		AndConstraint, ConstraintSystem, Operand, ShiftVariant, ShiftedValueIndex, ValueVec,
 	},
 	word::Word,
 };
-use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval, ntt::AdditiveNTT};
+use binius_math::{
+	BinarySubspace, FieldBuffer, multilinear::eq::eq_ind_partial_eval, ntt::AdditiveNTT,
+};
 use binius_transcript::{
 	ProverTranscript,
 	fiat_shamir::{CanSample, Challenger},
@@ -19,6 +25,10 @@ use binius_verifier::{
 
 use super::error::Error;
 use crate::{
+	and_reduction::{
+		prover::OblongZerocheckProver, prover_setup::ntt_lookup_from_prover_message_domain,
+		utils::multivariate::OneBitOblongMultilinear,
+	},
 	fold_word::fold_words,
 	fri,
 	fri::CommitOutput,
@@ -148,13 +158,72 @@ fn pack_witness<P: PackedField<Scalar = B128>>(
 	Ok(padded_witness_elems)
 }
 
-// fn and_check_round<F: Field>(witness: &AndCheckWitness) -> ProveAndReductionOutput<F> {
-// 	const DETERMINISTIC_CHALLENGES: [AESTowerField8b; 3] = [
-// 		AESTowerField8b::new(0x02),
-// 		AESTowerField8b::new(0x04),
-// 		AESTowerField8b::new(0x08),
-// 	];
-// }
+fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger>(
+	log_witness_words: usize,
+	witness: AndCheckWitness,
+	transcript: &mut ProverTranscript<Challenger_>,
+) -> AndCheckOutput<F> {
+	let prover_message_domain = BinarySubspace::<AESTowerField8b>::with_dim(LOG_WORD_SIZE_BITS + 1)
+		.expect("dimension always positive");
+	let AndCheckWitness {
+		mut a,
+		mut b,
+		mut c,
+	} = witness;
+
+	// TODO: Move NTT lookup to some precompute setup function
+	let ntt_lookup = ntt_lookup_from_prover_message_domain::<PackedAESBinaryField16x8b>(
+		prover_message_domain.clone(),
+	);
+
+	assert!(log_witness_words >= 3);
+	let small_field_zerocheck_challenges = [
+		AESTowerField8b::from(0x2),
+		AESTowerField8b::from(0x4),
+		AESTowerField8b::from(0x10),
+	];
+	let big_field_zerocheck_challenges = transcript.sample_vec(log_witness_words - 3);
+
+	println!("a len: {}", a.len());
+	println!("b len: {}", b.len());
+
+	println!("c len: {}", c.len());
+	println!("log_witness_words + LOG_WORD_SIZE_BITS: {}", log_witness_words + LOG_WORD_SIZE_BITS);
+
+	a.extend(repeat_with(|| Word(0)).take((1 << log_witness_words) - a.len()));
+	b.extend(repeat_with(|| Word(0)).take((1 << log_witness_words) - b.len()));
+	c.extend(repeat_with(|| Word(0)).take((1 << log_witness_words) - c.len()));
+
+	let prover = OblongZerocheckProver::new(
+		OneBitOblongMultilinear {
+			log_num_rows: log_witness_words + LOG_WORD_SIZE_BITS,
+			packed_evals: a,
+		},
+		OneBitOblongMultilinear {
+			log_num_rows: log_witness_words + LOG_WORD_SIZE_BITS,
+			packed_evals: b,
+		},
+		OneBitOblongMultilinear {
+			log_num_rows: log_witness_words + LOG_WORD_SIZE_BITS,
+			packed_evals: c,
+		},
+		big_field_zerocheck_challenges.to_vec(),
+		&ntt_lookup,
+		small_field_zerocheck_challenges.to_vec(),
+		prover_message_domain.isomorphic(),
+	);
+
+	let prove_output = prover.prove_with_transcript(transcript).unwrap();
+
+	let mle_claims = prove_output.sumcheck_output.multilinear_evals;
+	AndCheckOutput {
+		a_eval: mle_claims[0],
+		b_eval: mle_claims[1],
+		c_eval: mle_claims[2],
+		z_challenge: prove_output.univariate_sumcheck_challenge,
+		eval_point: prove_output.sumcheck_output.challenges,
+	}
+}
 
 #[allow(dead_code)]
 struct AndCheckWitness {
