@@ -54,7 +54,7 @@ pub fn prove<P, Challenger_, NTT, MTScheme, MTProver>(
 	merkle_prover: &MTProver,
 ) -> Result<(), Error>
 where
-	P: PackedField<Scalar = B128> + PackedExtension<B128>,
+	P: PackedField<Scalar = B128> + PackedExtension<B128> + PackedExtension<B1>,
 	Challenger_: Challenger,
 	NTT: AdditiveNTT<B128> + Sync,
 	MTScheme: MerkleTreeScheme<B128>,
@@ -74,7 +74,7 @@ where
 		});
 	}
 
-	let witness_packed = pack_witness::<B128>(params.log_witness_elems(), &witness)?;
+	let witness_packed = pack_witness::<P>(params.log_witness_elems(), &witness)?;
 
 	// Commit the witness.
 	let CommitOutput {
