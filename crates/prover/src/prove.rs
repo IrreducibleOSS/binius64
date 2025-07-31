@@ -82,7 +82,7 @@ where
 	transcript.message().write(&trace_commitment);
 
 	let and_witness = build_and_check_witness(&cs.and_constraints, witness.combined_witness());
-	let _output = run_and_check::<B128, _>(params.log_witness_words(), and_witness, transcript);
+	let _output = run_and_check::<B128, _>(params.log_witness_words(), and_witness, transcript)?;
 
 	// Sample a challenge point during the shift reduction.
 	let z_challenge = transcript.sample_vec(LOG_WORD_SIZE_BITS);
@@ -162,7 +162,7 @@ fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger
 	log_witness_words: usize,
 	witness: AndCheckWitness,
 	transcript: &mut ProverTranscript<Challenger_>,
-) -> AndCheckOutput<F> {
+) -> Result<AndCheckOutput<F>, Error> {
 	let prover_message_domain = BinarySubspace::<AESTowerField8b>::with_dim(LOG_WORD_SIZE_BITS + 1)
 		.expect("dimension always positive");
 	let AndCheckWitness {
@@ -220,14 +220,14 @@ fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger
 		.collect::<Vec<_>>();
 
 	transcript.message().write_slice(&mle_claims);
-	AndCheckOutput {
+	Ok(AndCheckOutput {
 		a_eval: mle_claims[0],
 		b_eval: mle_claims[1],
 		c_eval: mle_claims[2],
 		z_challenge: prove_output.univariate_sumcheck_challenge,
 		// Q: should this be high to low or low to high order?
 		eval_point: l2h_query_for_evaluation_point,
-	}
+	})
 }
 
 #[allow(dead_code)]
