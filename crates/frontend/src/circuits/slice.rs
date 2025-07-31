@@ -64,8 +64,8 @@ impl Slice {
 		assert!(max_n_slice < (1u64 << 32) as usize, "max_n_slice must be < 2^32");
 
 		// Ensure all values fit in 32 bits to prevent overflow in iadd_32
-		// Check upper 32 bits are zero by ANDing with 0xFFFFFFFF00000000
-		let upper_32_mask = Word(0xFFFFFFFF00000000);
+		// Check upper 32 bits are zero by ANDing with 0xffffffff00000000
+		let upper_32_mask = Word(0xffffffff00000000);
 		b.assert_band_0("offset_32bit", offset, upper_32_mask);
 		b.assert_band_0("len_slice_32bit", len_slice, upper_32_mask);
 		b.assert_band_0("len_input_32bit", len_input, upper_32_mask);
@@ -89,8 +89,6 @@ impl Slice {
 
 			// Check if this word is within the actual slice
 			let word_start = b.add_constant(Word((slice_idx * 8) as u64));
-			let word_end = b.add_constant(Word(((slice_idx + 1) * 8) as u64));
-			let word_fully_valid_mask = b.icmp_ult(word_end, len_slice);
 			let word_partially_valid_mask = b.icmp_ult(word_start, len_slice);
 
 			// Calculate which input word(s) we need
@@ -99,27 +97,45 @@ impl Slice {
 			let extracted_word =
 				extract_word(&b, &input, input_word_idx, byte_offset, is_aligned_mask);
 
-			// Handle partial last word
-			if slice_idx == slice.len() - 1 {
-				// Calculate valid bytes in last word
-				let last_word_offset = slice_idx * 8;
-				let neg_offset = b.add_constant(Word((-(last_word_offset as i64)) as u64));
-				let valid_bytes = b.iadd_32(len_slice, neg_offset);
-				let mask = create_byte_mask(&b, valid_bytes);
+			// For every word, calculate how many bytes are valid and apply appropriate mask
+			let word_start_bytes = slice_idx * 8;
 
-				let masked_slice = b.band(slice_word, mask);
-				let masked_extracted = b.band(extracted_word, mask);
+			// Calculate valid bytes in this word: min(len_slice - word_start, 8)
+			// First calculate len_slice - word_start
+			let neg_start = b.add_constant(Word((-(word_start_bytes as i64)) as u64));
+			let bytes_remaining = b.iadd_32(len_slice, neg_start);
 
-				b.assert_eq_cond(
-					"partial_word",
-					masked_slice,
-					masked_extracted,
-					word_partially_valid_mask,
-				);
-			} else {
-				// Full word comparison
-				b.assert_eq_cond("full_word", slice_word, extracted_word, word_fully_valid_mask);
-			}
+			// The mask will handle clamping to 8 bytes internally
+			let mask = create_byte_mask(&b, bytes_remaining);
+
+			// For partial words, we need to ensure:
+			// 1. The valid bytes match the extracted word
+			// 2. The invalid bytes are zero
+
+			// First, check that invalid bytes in slice are zero
+			// We do this by asserting that slice_word & ~mask == 0
+			// Which is equivalent to asserting slice_word & ~mask == 0 & ~mask
+			let invalid_mask = b.bnot(mask);
+			let invalid_bytes = b.band(slice_word, invalid_mask);
+			let zero = b.add_constant(Word::ZERO);
+			b.assert_eq_cond(
+				format!("slice_word_{slice_idx}_padding"),
+				invalid_bytes,
+				zero,
+				word_partially_valid_mask,
+			);
+
+			// Then check that valid bytes match
+			let masked_slice = b.band(slice_word, mask);
+			let masked_extracted = b.band(extracted_word, mask);
+
+			// Assert they are equal (only if word is at least partially valid)
+			b.assert_eq_cond(
+				format!("slice_word_{slice_idx}"),
+				masked_slice,
+				masked_extracted,
+				word_partially_valid_mask,
+			);
 		}
 
 		Slice {
@@ -286,15 +302,21 @@ fn extract_word(
 /// - n_bytes = 2: 0x000000000000FFFF
 /// - ...
 /// - n_bytes = 8: 0xFFFFFFFFFFFFFFFF
+/// - n_bytes > 8: 0xFFFFFFFFFFFFFFFF (clamped to full mask)
 ///
 /// # Arguments
 /// * `b` - Circuit builder
-/// * `n_bytes` - Number of bytes to include in the mask (0-8)
+/// * `n_bytes` - Number of bytes to include in the mask (0-8 or more)
 ///
 /// # Returns
 /// A wire containing the byte mask
 fn create_byte_mask(b: &CircuitBuilder, n_bytes: Wire) -> Wire {
 	let mut byte_mask = b.add_constant(Word::ZERO);
+
+	// Handle values > 8 by treating them as 8
+	let eight = b.add_constant(Word(8));
+	let is_gt_eight = b.icmp_ult(eight, n_bytes);
+	let all_ones = b.add_constant(Word(u64::MAX));
 
 	for i in 0..=8 {
 		let i_wire = b.add_constant(Word(i as u64));
@@ -311,6 +333,10 @@ fn create_byte_mask(b: &CircuitBuilder, n_bytes: Wire) -> Wire {
 		let this_mask = b.band(mask_value, is_this_count_mask);
 		byte_mask = b.bor(byte_mask, this_mask);
 	}
+
+	// If n_bytes > 8, use all ones
+	let gt_eight_mask = b.band(all_ones, is_gt_eight);
+	byte_mask = b.bor(byte_mask, gt_eight_mask);
 
 	byte_mask
 }
@@ -655,6 +681,194 @@ mod tests {
 	}
 
 	#[test]
+	fn test_full_word_assert_vulnerability_fixed() {
+		let b = CircuitBuilder::new();
+
+		// Set up circuit with specific sizes
+		// max_n_slice = 16 (2 words) but we'll use len_slice = 12 (1.5 words)
+		let max_n_input = 24; // 3 words
+		let max_n_slice = 16; // 2 words
+
+		let len_input = b.add_inout();
+		let len_slice = b.add_inout();
+		let offset = b.add_inout();
+
+		let input: Vec<Wire> = (0..max_n_input / 8).map(|_| b.add_inout()).collect();
+		let slice: Vec<Wire> = (0..max_n_slice / 8).map(|_| b.add_inout()).collect();
+
+		let verifier = Slice::new(
+			&b,
+			max_n_input,
+			max_n_slice,
+			len_input,
+			len_slice,
+			input.clone(),
+			slice.clone(),
+			offset,
+		);
+		let circuit = b.build();
+
+		// Test case: len_slice = 12 bytes (1.5 words)
+		// This test verifies that the fix correctly validates partial words
+		let mut filler = circuit.new_witness_filler();
+
+		verifier.populate_len_input(&mut filler, 20);
+		verifier.populate_len_slice(&mut filler, 12); // 1.5 words
+		verifier.populate_offset(&mut filler, 0);
+
+		// Input data
+		let input_data = vec![
+			0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // word 0
+			0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, // word 1
+			0x10, 0x11, 0x12, 0x13, // partial word 2
+		];
+		verifier.populate_input(&mut filler, &input_data);
+
+		// Try to provide malicious slice data:
+		// First word: correct
+		// Second word: only first 4 bytes need to be correct, last 4 are garbage
+		// Directly set the slice words to bypass populate_slice
+		filler[slice[0]] = Word(0x0706050403020100); // Correct first word
+		filler[slice[1]] = Word(0xffffffff0b0a0908); // Wrong last 4 bytes!
+
+		// This should now fail with the fix
+		let result = circuit.populate_wire_witness(&mut filler);
+		assert!(result.is_err(), "Fixed circuit should reject invalid slice data");
+
+		// Now test with correct data to ensure the fix doesn't break valid cases
+		let mut filler2 = circuit.new_witness_filler();
+		verifier.populate_len_input(&mut filler2, 20);
+		verifier.populate_len_slice(&mut filler2, 12);
+		verifier.populate_offset(&mut filler2, 0);
+		verifier.populate_input(&mut filler2, &input_data);
+
+		// Correct slice data
+		let correct_slice = [
+			0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // word 0
+			0x08, 0x09, 0x0a, 0x0b, 0x00, 0x00, 0x00, 0x00, // word 1 (padded correctly)
+		];
+		verifier.populate_slice(&mut filler2, &correct_slice[..12]); // Only 12 bytes
+
+		// This should succeed
+		let result2 = circuit.populate_wire_witness(&mut filler2);
+		assert!(result2.is_ok(), "Fixed circuit should accept valid slice data");
+
+		// Verify constraints
+		let cs = circuit.constraint_system();
+		verify_constraints(&cs, &filler2.into_value_vec()).unwrap();
+	}
+
+	#[test]
+	fn test_simple_partial_word() {
+		// Simplest test case: 1 word slice with only 4 valid bytes
+		let b = CircuitBuilder::new();
+
+		let max_n_input = 8;
+		let max_n_slice = 8;
+
+		let len_input = b.add_inout();
+		let len_slice = b.add_inout();
+		let offset = b.add_inout();
+
+		let input: Vec<Wire> = (0..1).map(|_| b.add_inout()).collect();
+		let slice: Vec<Wire> = (0..1).map(|_| b.add_inout()).collect();
+
+		let verifier = Slice::new(
+			&b,
+			max_n_input,
+			max_n_slice,
+			len_input,
+			len_slice,
+			input.clone(),
+			slice.clone(),
+			offset,
+		);
+		let circuit = b.build();
+
+		// Test with 4 bytes
+		let mut filler = circuit.new_witness_filler();
+		verifier.populate_len_input(&mut filler, 8);
+		verifier.populate_len_slice(&mut filler, 4); // Only 4 bytes
+		verifier.populate_offset(&mut filler, 0);
+
+		// Input: full 8 bytes
+		filler[input[0]] = Word(0x0706050403020100);
+
+		// Slice with wrong data in upper 4 bytes
+		// The slice should contain bytes 0x00, 0x01, 0x02, 0x03 from input
+		filler[slice[0]] = Word(0xffffffff03020100); // Correct lower 4 bytes, wrong upper 4
+
+		let result = circuit.populate_wire_witness(&mut filler);
+		assert!(result.is_err(), "Should reject slice with wrong upper bytes");
+
+		// Now test with correct data
+		let mut filler2 = circuit.new_witness_filler();
+		verifier.populate_len_input(&mut filler2, 8);
+		verifier.populate_len_slice(&mut filler2, 4);
+		verifier.populate_offset(&mut filler2, 0);
+
+		filler2[input[0]] = Word(0x0706050403020100);
+		filler2[slice[0]] = Word(0x0000000003020100); // Correct: upper 4 bytes are 0
+
+		let result2 = circuit.populate_wire_witness(&mut filler2);
+		assert!(result2.is_ok(), "Should accept correct partial word: {result2:?}");
+
+		// Additional test: verify constraints
+		let cs = circuit.constraint_system();
+		verify_constraints(&cs, &filler2.into_value_vec()).unwrap();
+
+		// Test 3: Verify populate_slice handles this correctly
+		let mut filler3 = circuit.new_witness_filler();
+		verifier.populate_len_input(&mut filler3, 8);
+		verifier.populate_len_slice(&mut filler3, 4);
+		verifier.populate_offset(&mut filler3, 0);
+
+		let input_bytes = vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07];
+		let slice_bytes = vec![0x00, 0x01, 0x02, 0x03]; // Only 4 bytes
+
+		verifier.populate_input(&mut filler3, &input_bytes);
+		verifier.populate_slice(&mut filler3, &slice_bytes);
+
+		let result3 = circuit.populate_wire_witness(&mut filler3);
+		assert!(result3.is_ok(), "populate_slice should handle partial words correctly");
+
+		// Test 4: Now manually set wrong upper bytes and it should fail
+		let mut filler4 = circuit.new_witness_filler();
+		verifier.populate_len_input(&mut filler4, 8);
+		verifier.populate_len_slice(&mut filler4, 4);
+		verifier.populate_offset(&mut filler4, 0);
+		verifier.populate_input(&mut filler4, &input_bytes);
+		verifier.populate_slice(&mut filler4, &slice_bytes);
+
+		// Corrupt the upper bytes
+		filler4[slice[0]] = Word(filler4[slice[0]].0 | 0xffffffff00000000);
+
+		let result4 = circuit.populate_wire_witness(&mut filler4);
+		assert!(result4.is_err(), "Should reject corrupted upper bytes");
+	}
+
+	#[test]
+	fn test_direct_masking_logic() {
+		// Test the masking logic directly
+		let slice_word = Word(0xffffffff_0b0a0908); // Wrong upper 4 bytes
+		let extracted_word = Word(0x00000000_0b0a0908); // Correct upper 4 bytes
+		let mask = Word(0x00000000_ffffffff); // Mask for 4 valid bytes
+
+		let masked_slice = slice_word & mask;
+		let masked_extracted = extracted_word & mask;
+
+		assert_eq!(
+			masked_slice, masked_extracted,
+			"Masked values should be equal: slice=0x{:016x}, extracted=0x{:016x}",
+			masked_slice.0, masked_extracted.0
+		);
+
+		// This is what the constraint checks
+		let xor_result = masked_slice ^ masked_extracted;
+		assert_eq!(xor_result, Word::ZERO, "XOR of masked values should be zero");
+	}
+
+	#[test]
 	fn test_large_offset_overflow() {
 		let b = CircuitBuilder::new();
 
@@ -726,7 +940,7 @@ mod tests {
 
 		// Test 2: len_input with upper bits set
 		let mut filler = circuit.new_witness_filler();
-		filler[len_input] = Word(0xFFFFFFFF00000010); // Upper 32 bits set
+		filler[len_input] = Word(0xffffffff00000010); // Upper 32 bits set
 		verifier.populate_len_slice(&mut filler, 5);
 		verifier.populate_offset(&mut filler, 0);
 		verifier.populate_input(&mut filler, &input_data);
