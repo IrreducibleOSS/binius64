@@ -330,10 +330,8 @@ mod test {
 		let (multilinear, evaluation_point, mut evaluation_claim) = test_setup::<_, P>(n_vars);
 
 		dubiously_modify_claim::<_, P>(&mut evaluation_claim);
-		if let Ok(()) =
-			run_basefold_prove_and_verify::<_, P>(multilinear, evaluation_point, evaluation_claim)
-		{
-			panic!("expected error")
-		}
+		let result =
+			run_basefold_prove_and_verify::<_, P>(multilinear, evaluation_point, evaluation_claim);
+		assert!(result.is_err());
 	}
 }
