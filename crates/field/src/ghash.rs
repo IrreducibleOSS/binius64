@@ -36,6 +36,7 @@ use crate::{
 		invert_or_zero_using_packed, multiple_using_packed, square_using_packed,
 	},
 	linear_transformation::{FieldLinearTransformation, Transformation},
+	transpose::square_transforms_extension_field,
 	underlier::{IterationMethods, IterationStrategy, NumCast, U1, UnderlierWithBitOps},
 };
 
@@ -439,6 +440,12 @@ impl ExtensionField<BinaryField1b> for BinaryField128bGhash {
 	#[inline]
 	unsafe fn get_base_unchecked(&self, i: usize) -> BinaryField1b {
 		BinaryField1b(U1::num_cast_from(self.0 >> i))
+	}
+
+	#[inline]
+	fn square_transpose(values: &mut [Self]) -> Result<(), Error> {
+		square_transforms_extension_field::<BinaryField1b, Self>(values)
+			.map_err(|_| Error::ExtensionDegreeMismatch)
 	}
 }
 
