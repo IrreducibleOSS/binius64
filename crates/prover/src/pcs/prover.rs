@@ -209,14 +209,13 @@ where
 	{
 		let (_, eval_point_high) = self.evaluation_point.split_at(self.packing_degree);
 
-		let rs_eq_ind: FieldBuffer<F> = rs_eq_ind::<F>(r_double_prime, eval_point_high);
-
-		let rs_eq_ind_buffer: FieldBuffer<P> =
-			FieldBuffer::from_values(rs_eq_ind.as_ref()).unwrap();
+		let rs_eq_ind: FieldBuffer<P> =
+			FieldBuffer::from_values(rs_eq_ind::<F>(r_double_prime, eval_point_high).as_ref())
+				.expect("failed to create field buffer");
 
 		BaseFoldProver::new(
 			self.packed_mle,
-			rs_eq_ind_buffer,
+			rs_eq_ind,
 			basefold_sumcheck_claim,
 			committed_codeword,
 			committed,
