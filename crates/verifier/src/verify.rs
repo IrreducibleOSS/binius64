@@ -13,13 +13,16 @@ use binius_transcript::{
 	fiat_shamir::{CanSample, Challenger},
 };
 use binius_utils::{DeserializeBytes, checked_arithmetics::log2_ceil_usize};
+use itertools::Itertools;
 
 use super::{
 	ConstraintSystemError, VerificationError, config::LOG_WORDS_PER_ELEM, error::Error, pcs,
 };
 use crate::{
 	and_reduction::verifier::{AndReductionOutput, verify_with_transcript},
-	config::{B1, B128, LOG_WORD_SIZE_BITS, WORD_SIZE_BITS},
+	config::{
+		B1, B128, LOG_WORD_SIZE_BITS, PROVER_SMALL_FIELD_ZEROCHECK_CHALLENGES, WORD_SIZE_BITS,
+	},
 	fri::{FRIParams, estimate_optimal_arity},
 	merkle_tree::MerkleTreeScheme,
 	protocols::pubcheck,
@@ -196,11 +199,10 @@ fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger
 
 	let mut all_zerocheck_challenges = vec![];
 
-	let small_field_zerocheck_challenges = [
-		F::from(AESTowerField8b::from(0x2)),
-		F::from(AESTowerField8b::from(0x4)),
-		F::from(AESTowerField8b::from(0x10)),
-	];
+	let small_field_zerocheck_challenges = PROVER_SMALL_FIELD_ZEROCHECK_CHALLENGES
+		.into_iter()
+		.map(F::from)
+		.collect_vec();
 
 	let verifier_message_domain =
 		BinarySubspace::<AESTowerField8b>::with_dim(LOG_WORD_SIZE_BITS + 1)

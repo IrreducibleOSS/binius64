@@ -19,7 +19,7 @@ use binius_transcript::{
 use binius_utils::{SerializeBytes, rayon::prelude::*};
 use binius_verifier::{
 	Params,
-	config::{B128, LOG_WORD_SIZE_BITS, LOG_WORDS_PER_ELEM},
+	config::{B128, LOG_WORD_SIZE_BITS, LOG_WORDS_PER_ELEM, PROVER_SMALL_FIELD_ZEROCHECK_CHALLENGES},
 	merkle_tree::MerkleTreeScheme,
 };
 
@@ -177,11 +177,7 @@ fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger
 	);
 
 	assert!(log_witness_words >= 3);
-	let small_field_zerocheck_challenges = [
-		AESTowerField8b::from(0x2),
-		AESTowerField8b::from(0x4),
-		AESTowerField8b::from(0x10),
-	];
+
 	let big_field_zerocheck_challenges = transcript.sample_vec(log_witness_words - 3);
 
 	a.extend(repeat_with(|| Word(0)).take((1 << log_witness_words) - a.len()));
@@ -203,7 +199,7 @@ fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger
 		},
 		big_field_zerocheck_challenges.to_vec(),
 		&ntt_lookup,
-		small_field_zerocheck_challenges.to_vec(),
+		PROVER_SMALL_FIELD_ZEROCHECK_CHALLENGES.to_vec(),
 		prover_message_domain.isomorphic(),
 	);
 
