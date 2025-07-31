@@ -113,9 +113,3 @@ impl<F: Field> RoundProof<F> {
 		&self.0.0
 	}
 }
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct BatchSumcheckOutput<F: Field> {
-	pub challenges: Vec<F>,
-	pub multilinear_evals: Vec<Vec<F>>,
-}

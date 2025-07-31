@@ -15,9 +15,7 @@ use super::{
 	},
 	error::Error,
 };
-use crate::protocols::sumcheck::{
-	SumcheckOutput, common::BatchSumcheckOutput, verify as verify_sumcheck,
-};
+use crate::protocols::sumcheck::{BatchSumcheckOutput, batch_verify};
 
 fn read_scalar<F: Field, C: Challenger>(
 	transcript: &mut VerifierTranscript<C>,
@@ -38,52 +36,30 @@ fn read_scalar_slice<F: Field, C: Challenger>(
 		.map_err(Error::from_transcript_read)
 }
 
-struct BatchVerifyOutput<F: Field> {
-	batch_coeff: F,
+struct BivariateProductMleLayerOutput<F: Field> {
 	challenges: Vec<F>,
-	eval: F,
-}
-
-fn batch_verify<F: Field, C: Challenger>(
-	n_vars: usize,
-	degree: usize,
-	evals: &[F],
-	transcript: &mut VerifierTranscript<C>,
-) -> Result<BatchVerifyOutput<F>, Error> {
-	let batch_coeff: F = transcript.sample();
-	let eval = evaluate_univariate(evals, batch_coeff);
-
-	let SumcheckOutput {
-		eval,
-		mut challenges,
-	} = verify_sumcheck(n_vars, degree, eval, transcript).map_err(Error::from_sumcheck_verify)?;
-
-	challenges.reverse();
-
-	Ok(BatchVerifyOutput {
-		batch_coeff,
-		challenges,
-		eval,
-	})
+	multilinear_evals: Vec<F>,
 }
 
 fn verify_multi_bivariate_product_mle_layer<F: Field, C: Challenger>(
 	eval_point: &[F],
 	evals: &[F],
 	transcript: &mut VerifierTranscript<C>,
-) -> Result<BatchSumcheckOutput<F>, Error> {
+) -> Result<BivariateProductMleLayerOutput<F>, Error> {
 	let n_vars = eval_point.len();
 
-	let BatchVerifyOutput {
+	let BatchSumcheckOutput {
 		batch_coeff,
-		challenges,
+		mut challenges,
 		eval,
 	} = batch_verify(n_vars, 3, evals, transcript)?;
 
-	let final_evals = read_scalar_slice(transcript, 2 * evals.len())?;
+	challenges.reverse();
+
+	let multilinear_evals = read_scalar_slice(transcript, 2 * evals.len())?;
 
 	let eq_ind_eval = eq_ind(eval_point, &challenges);
-	let expected_unbatched_terms = final_evals
+	let expected_unbatched_terms = multilinear_evals
 		.iter()
 		.tuples()
 		.map(|(&left, &right)| eq_ind_eval * left * right)
@@ -94,9 +70,9 @@ fn verify_multi_bivariate_product_mle_layer<F: Field, C: Challenger>(
 		return Err(Error::CompositionClaimMismatch);
 	}
 
-	Ok(BatchSumcheckOutput {
+	Ok(BivariateProductMleLayerOutput {
 		challenges,
-		multilinear_evals: vec![final_evals],
+		multilinear_evals,
 	})
 }
 
@@ -112,14 +88,13 @@ fn verify_phase_1<F: Field, C: Challenger>(
 	for depth in 0..log_bits {
 		assert_eq!(evals.len(), 1 << depth);
 
-		let BatchSumcheckOutput {
+		let BivariateProductMleLayerOutput {
 			challenges,
-			mut multilinear_evals,
+			multilinear_evals,
 		} = verify_multi_bivariate_product_mle_layer::<F, C>(&eval_point, &evals, transcript)?;
 
-		assert_eq!(multilinear_evals.len(), 1);
 		eval_point = challenges;
-		evals = multilinear_evals.pop().expect("exactly one prover");
+		evals = multilinear_evals;
 	}
 
 	assert_eq!(evals.len(), 1 << log_bits);
@@ -159,11 +134,12 @@ fn verify_phase_3<F: Field, C: Challenger>(
 	evals.extend(twisted_evals);
 	evals.push(c_eval);
 
-	let BatchVerifyOutput {
+	let BatchSumcheckOutput {
 		batch_coeff,
-		challenges,
+		mut challenges,
 		eval,
-	} = batch_verify::<F, C>(n_vars, 3, &evals, transcript)?;
+	} = batch_verify(n_vars, 3, &evals, transcript)?;
+	challenges.reverse();
 
 	let selector_prover_evals = read_scalar_slice::<F, _>(transcript, (1 << log_bits) + 1)?;
 	let c_root_prover_evals = read_scalar_slice::<F, _>(transcript, 2)?;
@@ -216,14 +192,13 @@ fn verify_phase_4<F: Field, C: Challenger>(
 	for depth in 0..log_bits - 1 {
 		assert_eq!(evals.len(), 3 << depth);
 
-		let BatchSumcheckOutput {
+		let BivariateProductMleLayerOutput {
 			challenges,
-			mut multilinear_evals,
+			multilinear_evals,
 		} = verify_multi_bivariate_product_mle_layer(&eval_point, &evals, transcript)?;
 
-		assert_eq!(multilinear_evals.len(), 1);
 		eval_point = challenges;
-		evals = multilinear_evals.pop().expect("there is one prover");
+		evals = multilinear_evals;
 	}
 
 	assert_eq!(evals.len(), 3 << (log_bits - 1));
@@ -264,11 +239,12 @@ fn verify_phase_5<F: Field, C: Challenger>(
 
 	let evals = [a_evals, c_lo_evals, c_hi_evals, b_exponent_evals].concat();
 
-	let BatchVerifyOutput {
+	let BatchSumcheckOutput {
 		batch_coeff,
-		challenges,
+		mut challenges,
 		eval,
-	} = batch_verify::<F, C>(n_vars, 3, &evals, transcript)?;
+	} = batch_verify(n_vars, 3, &evals, transcript)?;
+	challenges.reverse();
 
 	let scaled_a_c_exponent_evals = read_scalar_slice(transcript, 64 + 128)?;
 	let b_exponent_evals = read_scalar_slice(transcript, 64)?;
