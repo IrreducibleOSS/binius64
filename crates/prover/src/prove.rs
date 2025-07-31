@@ -19,7 +19,9 @@ use binius_transcript::{
 use binius_utils::{SerializeBytes, rayon::prelude::*};
 use binius_verifier::{
 	Params,
-	config::{B128, LOG_WORD_SIZE_BITS, LOG_WORDS_PER_ELEM, PROVER_SMALL_FIELD_ZEROCHECK_CHALLENGES},
+	config::{
+		B128, LOG_WORD_SIZE_BITS, LOG_WORDS_PER_ELEM, PROVER_SMALL_FIELD_ZEROCHECK_CHALLENGES,
+	},
 	merkle_tree::MerkleTreeScheme,
 };
 
@@ -171,11 +173,12 @@ fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger
 		mut c,
 	} = witness;
 
-	// TODO: Move NTT lookup to some precompute setup function
 	let ntt_lookup = ntt_lookup_from_prover_message_domain::<PackedAESBinaryField16x8b>(
 		prover_message_domain.clone(),
 	);
 
+	// The structure of the AND reduction requires that it proves at least 2^3 word-level
+	// constraints, you can zero-pad if necessary to reach this minimum
 	assert!(log_witness_words >= 3);
 
 	let big_field_zerocheck_challenges = transcript.sample_vec(log_witness_words - 3);

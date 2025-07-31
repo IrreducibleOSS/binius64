@@ -195,6 +195,10 @@ fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger
 	log_witness_words: usize,
 	transcript: &mut VerifierTranscript<Challenger_>,
 ) -> Result<AndReductionOutput<F>, Error> {
+	// The structure of the AND reduction requires that it verifies at least 2^3 word-level
+	// constraints, you can zero-pad if necessary to reach this minimum
+	assert!(log_witness_words >= 3);
+
 	let big_field_zerocheck_challenges = transcript.sample_vec(log_witness_words - 3);
 
 	let mut all_zerocheck_challenges = vec![];
