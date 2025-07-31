@@ -1,20 +1,28 @@
 // Copyright 2025 Irreducible Inc.
 
-use binius_field::ExtensionField;
+use binius_field::BinaryField;
 use binius_frontend::{constraint_system::ConstraintSystem, word::Word};
-use binius_math::ntt::SingleThreadedNTT;
+use binius_math::{
+	FieldBuffer,
+	inner_product::inner_product_subfield,
+	multilinear::{eq::eq_ind_partial_eval, evaluate::evaluate_inplace},
+	ntt::SingleThreadedNTT,
+};
 use binius_transcript::{
 	VerifierTranscript,
 	fiat_shamir::{CanSample, Challenger},
 };
 use binius_utils::{DeserializeBytes, checked_arithmetics::log2_ceil_usize};
 
-use super::{ConstraintSystemError, config::LOG_WORDS_PER_ELEM, error::Error};
+use super::{
+	ConstraintSystemError, VerificationError, config::LOG_WORDS_PER_ELEM, error::Error, pcs,
+};
 use crate::{
+	config::{LOG_WORD_SIZE_BITS, WORD_SIZE_BITS},
 	fields::{B1, B128},
 	fri::{FRIParams, estimate_optimal_arity},
 	merkle_tree::MerkleTreeScheme,
-	pcs::verifier::verify_transcript,
+	protocols::pubcheck,
 };
 
 pub const SECURITY_BITS: usize = 96;
@@ -108,7 +116,7 @@ where
 	MTScheme: MerkleTreeScheme<B128>,
 	MTScheme::Digest: DeserializeBytes,
 {
-	// Check that inout length is correct
+	// Check that the public input length is correct
 	if public.len() != 1 << params.log_public_words() {
 		return Err(Error::IncorrectPublicInputLength {
 			expected: 1 << params.log_public_words(),
@@ -119,16 +127,27 @@ where
 	// Receive the trace commitment.
 	let trace_commitment = transcript.message().read::<MTScheme::Digest>()?;
 
-	let small_field_log_n_vars =
-		params.log_witness_elems() + <B128 as ExtensionField<B1>>::LOG_DEGREE;
+	// Sample a challenge point during the shift reduction.
+	let z_challenge = transcript.sample_vec(LOG_WORD_SIZE_BITS);
+	let public_input_challenge = transcript.sample_vec(params.log_public_words());
 
-	let evaluation_point: Vec<B128> = transcript.sample_vec(small_field_log_n_vars);
-	let evaluation_claim = transcript.message().read::<B128>()?;
+	let pubcheck::VerifyOutput {
+		witness_eval,
+		public_eval,
+		eval_point: y_challenge,
+	} = pubcheck::verify(params.log_witness_words(), &public_input_challenge, transcript)?;
 
-	// verify ring switched pcs
-	verify_transcript(
+	let expected_public_eval =
+		evaluate_public_mle(public, &z_challenge, &y_challenge[..params.log_public_words()]);
+	if public_eval != expected_public_eval {
+		return Err(VerificationError::PublicInputCheckFailed.into());
+	}
+
+	// PCS opening
+	let evaluation_point = [z_challenge, y_challenge].concat();
+	pcs::verify_transcript(
 		transcript,
-		evaluation_claim,
+		witness_eval,
 		&evaluation_point,
 		trace_commitment,
 		params.fri_params(),
@@ -136,4 +155,32 @@ where
 	)?;
 
 	Ok(())
+}
+
+/// Evaluate the multilinear extension of the public inputs at a point.
+///
+/// ## Arguments
+///
+/// * `public` - the public input words
+/// * `z_coords` - coordinates for the lower variables, corresponding to bits of words
+/// * `y_coords` - coordinates for the upper variables, corresponding to words
+fn evaluate_public_mle<F: BinaryField>(public: &[Word], z_coords: &[F], y_coords: &[F]) -> F {
+	assert_eq!(public.len(), 1 << y_coords.len()); // precondition
+	assert_eq!(LOG_WORD_SIZE_BITS, z_coords.len()); // precondition
+
+	// First, fold the bits of the word with the z coordinates
+	let z_tensor = eq_ind_partial_eval::<F>(z_coords);
+	let z_folded_words = public
+		.iter()
+		.map(|&word| {
+			let word_bits = (0..WORD_SIZE_BITS).map(|i| B1::from((word.as_u64() >> i) & 1 == 1));
+			inner_product_subfield(word_bits, z_tensor.as_ref().iter().copied())
+		})
+		.collect::<Box<[_]>>();
+	let z_folded_words = FieldBuffer::new(y_coords.len(), z_folded_words)
+		.expect("precondition: public.len() == 1 << y_coords.len()");
+
+	// Then, fold the partial evaluation with the y coordinates
+	evaluate_inplace(z_folded_words, y_coords)
+		.expect("z_folded_words constructed with log_len = y_coords.len()")
 }

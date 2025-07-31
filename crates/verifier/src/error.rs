@@ -23,6 +23,8 @@ pub enum Error {
 	IncorrectPublicInputLength { expected: usize, actual: usize },
 	#[error("constraint system error: {0}")]
 	ConstraintSystem(#[from] ConstraintSystemError),
+	#[error("invalid proof: {0}")]
+	Verification(#[from] VerificationError),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -31,4 +33,10 @@ pub enum ConstraintSystemError {
 	PublicInputPowerOfTwo,
 	#[error("the public input segment must at least 2^{LOG_WORDS_PER_ELEM} words")]
 	PublicInputTooShort,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum VerificationError {
+	#[error("public input check failed")]
+	PublicInputCheckFailed,
 }

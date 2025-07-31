@@ -1,9 +1,6 @@
-use binius_field::{ExtensionField, Field, PackedExtension, PackedField};
+use binius_field::{PackedExtension, PackedField};
 use binius_frontend::{constraint_system::ValueVec, word::Word};
-use binius_math::{
-	FieldBuffer, inner_product::inner_product, multilinear::eq::eq_ind_partial_eval,
-	ntt::AdditiveNTT,
-};
+use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval, ntt::AdditiveNTT};
 use binius_transcript::{
 	ProverTranscript,
 	fiat_shamir::{CanSample, Challenger},
@@ -11,13 +8,23 @@ use binius_transcript::{
 use binius_utils::{SerializeBytes, rayon::prelude::*};
 use binius_verifier::{
 	Params,
-	config::LOG_WORDS_PER_ELEM,
-	fields::{B1, B128},
+	config::{LOG_WORD_SIZE_BITS, LOG_WORDS_PER_ELEM},
+	fields::B128,
 	merkle_tree::MerkleTreeScheme,
 };
 
 use super::error::Error;
-use crate::{fri, fri::CommitOutput, merkle_tree::MerkleTreeProver, pcs::prover::OneBitPCSProver};
+use crate::{
+	fold_word::fold_words,
+	fri,
+	fri::CommitOutput,
+	merkle_tree::MerkleTreeProver,
+	pcs::prover::OneBitPCSProver,
+	protocols::{
+		InOutCheckProver,
+		sumcheck::{ProveSingleOutput, prove_single_mlecheck},
+	},
+};
 
 #[allow(clippy::too_many_arguments)]
 pub fn prove<P, Challenger_, NTT, MTScheme, MTProver>(
@@ -35,9 +42,21 @@ where
 	MTScheme::Digest: SerializeBytes,
 	MTProver: MerkleTreeProver<B128, Scheme = MTScheme>,
 {
-	let witness_packed = pack_witness::<B128>(params.log_witness_elems(), witness)?;
+	// Check that the public input length is correct
+	let public = witness.public().to_vec();
+	if public.len() != 1 << params.log_public_words() {
+		return Err(Error::ArgumentError {
+			arg: "witness".to_string(),
+			msg: format!(
+				"witness layout has {} words, expected {}",
+				public.len(),
+				1 << params.log_public_words()
+			),
+		});
+	}
 
-	let log_witness_elems = params.log_witness_elems();
+	// TODO: Pack witness using P, not B128
+	let witness_packed = pack_witness::<B128>(params.log_witness_elems(), &witness)?;
 
 	// Commit the witness.
 	let CommitOutput {
@@ -47,25 +66,31 @@ where
 	} = fri::commit_interleaved(params.fri_params(), ntt, merkle_prover, witness_packed.to_ref())?;
 	transcript.message().write(&trace_commitment);
 
-	// ! slow
-	let lifted_small_field_mle = lift_small_to_large_field(&large_field_mle_to_small_field_mle::<
-		B1,
-		B128,
-	>(witness_packed.as_ref()));
+	// Sample a challenge point during the shift reduction.
+	let z_challenge = transcript.sample_vec(LOG_WORD_SIZE_BITS);
+	let public_input_challenge = transcript.sample_vec(params.log_public_words());
 
-	let small_field_log_n_vars = log_witness_elems + <B128 as ExtensionField<B1>>::LOG_DEGREE;
+	let z_tensor = eq_ind_partial_eval(&z_challenge);
+	let witness_z_folded = fold_words::<_, P>(witness.combined_witness(), z_tensor.as_ref());
+	let public_z_folded = fold_words::<_, P>(&public, z_tensor.as_ref());
 
-	let evaluation_point: Vec<B128> = transcript.sample_vec(small_field_log_n_vars);
+	let public_check_prover =
+		InOutCheckProver::new(witness_z_folded, public_z_folded, &public_input_challenge)?;
+	let ProveSingleOutput {
+		multilinear_evals,
+		challenges: mut y_challenge,
+	} = prove_single_mlecheck(public_check_prover, transcript)?;
 
-	let evaluation = inner_product::<B128>(
-		lifted_small_field_mle,
-		eq_ind_partial_eval(&evaluation_point).as_ref().to_vec(),
-	);
+	y_challenge.reverse();
 
-	transcript.message().write(&evaluation);
+	// Public input check prover returns the witness evaluation.
+	assert_eq!(multilinear_evals.len(), 1);
+	let witness_eval = multilinear_evals[0];
+	transcript.message().write(&witness_eval);
 
-	let pcs_prover = OneBitPCSProver::new(witness_packed, evaluation, evaluation_point)?;
-
+	// PCS opening
+	let evaluation_point = [z_challenge, y_challenge].concat();
+	let pcs_prover = OneBitPCSProver::new(witness_packed, witness_eval, evaluation_point)?;
 	pcs_prover.prove_with_transcript(
 		transcript,
 		ntt,
@@ -78,28 +103,9 @@ where
 	Ok(())
 }
 
-fn large_field_mle_to_small_field_mle<F, FE>(large_field_mle: &[FE]) -> Vec<F>
-where
-	F: Field,
-	FE: Field + ExtensionField<F> + PackedExtension<F>,
-{
-	large_field_mle
-		.iter()
-		.flat_map(|elm| ExtensionField::<F>::iter_bases(elm))
-		.collect()
-}
-
-fn lift_small_to_large_field<F, FE>(small_field_elms: &[F]) -> Vec<FE>
-where
-	F: Field,
-	FE: Field + ExtensionField<F> + PackedExtension<F>,
-{
-	small_field_elms.iter().map(|&elm| FE::from(elm)).collect()
-}
-
 fn pack_witness<P: PackedField<Scalar = B128>>(
 	log_witness_elems: usize,
-	witness: ValueVec,
+	witness: &ValueVec,
 ) -> Result<FieldBuffer<P>, Error> {
 	// The number of field elements that constitute the packed witness.
 	let n_witness_elems = witness.size().div_ceil(1 << LOG_WORDS_PER_ELEM);

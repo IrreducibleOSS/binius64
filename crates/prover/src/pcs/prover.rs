@@ -223,7 +223,7 @@ mod test {
 		fields::{B1, B128},
 		fri::FRIParams,
 		hash::{StdCompression, StdDigest},
-		pcs::verifier::verify_transcript,
+		pcs,
 	};
 	use itertools::Itertools;
 	use rand::{SeedableRng, rngs::StdRng};
@@ -300,7 +300,7 @@ mod test {
 
 		let retrieved_codeword_commitment = verifier_challenger.message().read()?;
 
-		verify_transcript(
+		pcs::verify_transcript(
 			&mut verifier_challenger,
 			evaluation_claim,
 			&evaluation_point,
