@@ -89,7 +89,9 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
       - name: Install deps
-        run: sudo yum -y install gcc openssl-devel curl jq z3-devel clang pkg-config
+        run: |
+          sudo yum -y install gcc openssl-devel curl jq z3-devel clang pkg-config
+          pkg-config --libs --cflags-only-I z3
       - name: Install cargo-nextest
         uses: taiki-e/install-action@v2
         with:
@@ -113,6 +115,9 @@ jobs:
         run: ${{ matrix.test.command }}
         env:
           RUSTFLAGS: ${{ matrix.test.rustflags || '' }}
+          Z3_SYS_Z3_HEADER: /usr/include/z3/z3.h
+          CFLAGS: -I/usr/include/z3
+          LDFLAGS: -L/usr/lib64 -lz3
 
   rust-doc:
     name: rust-doc
