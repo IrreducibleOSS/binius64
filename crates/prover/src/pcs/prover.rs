@@ -215,8 +215,9 @@ where
 
 		// Convert PackedSubfield<P, B1> to P
 		let large_field_mle: &[P] = <P as PackedExtension<B1>>::cast_exts(self.mle.as_ref());
-        let large_field_mle: Vec<F> = large_field_mle.iter().flat_map(|p| p.iter()).collect();
-        let large_field_mle_buffer: FieldBuffer<P> = FieldBuffer::from_values(&large_field_mle).expect("failed to create field buffer");
+		let large_field_mle: Vec<F> = large_field_mle.iter().flat_map(|p| p.iter()).collect();
+		let large_field_mle_buffer: FieldBuffer<P> =
+			FieldBuffer::from_values(&large_field_mle).expect("failed to create field buffer");
 
 		BaseFoldProver::new(
 			large_field_mle_buffer,
@@ -274,14 +275,14 @@ mod test {
 	}
 
 	/// Helper function to convert cast_bases result to FieldBuffer
-	fn cast_bases_to_buffer<P>(packed: &FieldBuffer<P>) -> FieldBuffer<<P as PackedExtension<B1>>::PackedSubfield>
+	fn cast_bases_to_buffer<P>(
+		packed: &FieldBuffer<P>,
+	) -> FieldBuffer<<P as PackedExtension<B1>>::PackedSubfield>
 	where
 		P: PackedExtension<B1>,
 	{
 		let subfield = <P as PackedExtension<B1>>::cast_bases(packed.as_ref());
-		let values: Vec<_> = subfield.iter()
-			.flat_map(|p| p.iter())
-			.collect();
+		let values: Vec<_> = subfield.iter().flat_map(|p| p.iter()).collect();
 		FieldBuffer::from_values(&values).unwrap()
 	}
 
@@ -292,7 +293,7 @@ mod test {
 		packing_degree: usize,
 	) -> Result<(), Box<dyn std::error::Error>>
 	where
-        P: PackedField<Scalar = B128> + PackedExtension<B128> + PackedExtension<B1>,
+		P: PackedField<Scalar = B128> + PackedExtension<B128> + PackedExtension<B1>,
 	{
 		const LOG_INV_RATE: usize = 1;
 		const NUM_TEST_QUERIES: usize = 3;

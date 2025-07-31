@@ -135,14 +135,14 @@ where
 }
 
 /// Helper function to convert cast_bases result to FieldBuffer
-fn cast_bases_to_buffer<P>(packed: &FieldBuffer<P>) -> FieldBuffer<<P as PackedExtension<B1>>::PackedSubfield>
+fn cast_bases_to_buffer<P>(
+	packed: &FieldBuffer<P>,
+) -> FieldBuffer<<P as PackedExtension<B1>>::PackedSubfield>
 where
 	P: PackedExtension<B1>,
 {
 	let subfield = <P as PackedExtension<B1>>::cast_bases(packed.as_ref());
-	let values: Vec<_> = subfield.iter()
-		.flat_map(|p| p.iter())
-		.collect();
+	let values: Vec<_> = subfield.iter().flat_map(|p| p.iter()).collect();
 	FieldBuffer::from_values(&values).expect("cast_bases should produce power-of-2 length")
 }
 
