@@ -65,6 +65,7 @@ fn test_prove_verify_sha256_preimage() {
 	let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
 	prove::<OptimalPackedB128, _, _, _, _>(
 		&params,
+		&cs,
 		witness.clone(),
 		&mut prover_transcript,
 		&ntt,

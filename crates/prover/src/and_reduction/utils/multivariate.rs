@@ -18,7 +18,7 @@ pub struct OneBitOblongMultilinear {
 	/// The total number of evaluations is 2^log_num_rows.
 	pub log_num_rows: usize,
 	/// Packed binary field elements storing the polynomial evaluations.
-	/// Each element contains 128 binary values packed together for SIMD efficiency.
+	/// Each element contains 64 binary values packed together to create 64-bit words.
 	pub packed_evals: Vec<Word>,
 }
 
