@@ -89,7 +89,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
       - name: Install deps
-        run: sudo yum -y install gcc openssl-devel curl jq
+        run: sudo yum -y install gcc openssl-devel curl jq z3-devel clang pkg-config
       - name: Install cargo-nextest
         uses: taiki-e/install-action@v2
         with:
@@ -113,6 +113,12 @@ jobs:
         run: ${{ matrix.test.command }}
         env:
           RUSTFLAGS: ${{ matrix.test.rustflags || '' }}
+          # Seems like z3-devel pkg-config config is broken and has wrong path to include files.
+          # This was fixed upstream but the fix seems to be not available in the present CI
+          # environment. Therefore, we workaround this by overriding the env flags manually.
+          Z3_SYS_Z3_HEADER: /usr/include/z3/z3.h
+          CFLAGS: -I/usr/include/z3
+          LDFLAGS: -L/usr/lib64 -lz3
 
   rust-doc:
     name: rust-doc
