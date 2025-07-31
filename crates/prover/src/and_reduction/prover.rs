@@ -13,8 +13,8 @@ use binius_verifier::{
 };
 
 use super::{
-	fold_lookup::FoldLookup, sumcheck_round_messages, univariate::ntt_lookup::NTTLookup,
-	utils::multivariate::OneBitOblongMultilinear,
+	fold_lookup::FoldLookup, prover_setup::ntt_lookup_from_prover_message_domain,
+	sumcheck_round_messages, utils::multivariate::OneBitOblongMultilinear,
 };
 use crate::protocols::sumcheck::{
 	Error, ProveSingleOutput, prove_single_mlecheck, quadratic_mle::QuadraticMleCheckProver,
@@ -89,10 +89,11 @@ where
 		second_col: OneBitOblongMultilinear,
 		third_col: OneBitOblongMultilinear,
 		big_field_zerocheck_challenges: Vec<FChallenge>,
-		ntt_lookup: &NTTLookup<PNTTDomain>,
 		small_field_zerocheck_challenges: Vec<PNTTDomain::Scalar>,
-		univariate_round_message_domain: BinarySubspace<FChallenge>,
+		prover_message_domain: BinarySubspace<PNTTDomain::Scalar>,
 	) -> Self {
+		let ntt_lookup =
+			ntt_lookup_from_prover_message_domain::<PNTTDomain>(prover_message_domain.clone());
 		let eq_ind_big_field_challenges = eq_ind_partial_eval(&big_field_zerocheck_challenges);
 
 		let univariate_round_message =
@@ -101,7 +102,7 @@ where
 				&second_col,
 				&third_col,
 				&eq_ind_big_field_challenges,
-				ntt_lookup,
+				&ntt_lookup,
 				&small_field_zerocheck_challenges,
 			);
 
@@ -112,7 +113,7 @@ where
 			small_field_zerocheck_challenges,
 			univariate_round_message,
 			big_field_zerocheck_challenges,
-			univariate_round_message_domain,
+			univariate_round_message_domain: prover_message_domain.isomorphic(),
 		}
 	}
 
@@ -286,8 +287,7 @@ mod test {
 
 	use super::OblongZerocheckProver;
 	use crate::and_reduction::{
-		fold_lookup::FoldLookup, prover_setup::ntt_lookup_from_prover_message_domain,
-		utils::multivariate::OneBitOblongMultilinear,
+		fold_lookup::FoldLookup, utils::multivariate::OneBitOblongMultilinear,
 	};
 
 	fn random_one_bit_multivariate(
@@ -323,24 +323,20 @@ mod test {
 		};
 		// Agreed-upon proof parameter
 
-		let prover_message_domain = BinarySubspace::with_dim(SKIPPED_VARS + 1).unwrap();
+		let prover_message_domain =
+			BinarySubspace::<AESTowerField8b>::with_dim(SKIPPED_VARS + 1).unwrap();
 		let verifier_message_domain = prover_message_domain.isomorphic();
-
-		let ntt_lookup = ntt_lookup_from_prover_message_domain::<PackedAESBinaryField16x8b>(
-			prover_message_domain,
-		);
 
 		// Prover is instantiated
 		let big_field_zerocheck_challenges =
 			prover_challenger.sample_vec(log_num_rows - SKIPPED_VARS - 3);
-		let prover = OblongZerocheckProver::new(
+		let prover = OblongZerocheckProver::<_, PackedAESBinaryField16x8b>::new(
 			first_mlv.clone(),
 			second_mlv.clone(),
 			third_mlv.clone(),
 			big_field_zerocheck_challenges.to_vec(),
-			&ntt_lookup,
 			small_field_zerocheck_challenges.to_vec(),
-			verifier_message_domain.clone(),
+			prover_message_domain.clone(),
 		);
 
 		let prove_output = prover
