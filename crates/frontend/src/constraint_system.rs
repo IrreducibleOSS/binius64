@@ -238,11 +238,9 @@ impl ValueVec {
 		self.data[index] = value;
 	}
 
-	/// Returns the inout portion of the values vector.
-	pub fn inout(&self) -> &[Word] {
-		let start = self.layout.offset_inout;
-		let end = start + self.layout.n_inout;
-		&self.data[start..end]
+	/// Returns the public portion of the values vector.
+	pub fn public(&self) -> &[Word] {
+		&self.data[..self.layout.offset_witness]
 	}
 
 	/// Returns the witness portion of the values vector.

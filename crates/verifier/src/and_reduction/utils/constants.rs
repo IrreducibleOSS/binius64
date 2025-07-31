@@ -1,4 +1,4 @@
-use crate::{LOG_WORD_SIZE_BITS, WORD_SIZE_BITS};
+use crate::config::{LOG_WORD_SIZE_BITS, WORD_SIZE_BITS};
 
 /// log2 size of the univariate domain
 pub const SKIPPED_VARS: usize = LOG_WORD_SIZE_BITS;

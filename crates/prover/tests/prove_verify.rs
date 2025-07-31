@@ -75,6 +75,6 @@ fn test_prove_verify_sha256_preimage() {
 	.unwrap();
 
 	let mut verifier_transcript = prover_transcript.into_verifier();
-	verify(&params, &cs, witness.inout(), &mut verifier_transcript).unwrap();
+	verify(&params, &cs, witness.public(), &mut verifier_transcript).unwrap();
 	verifier_transcript.finalize().unwrap();
 }

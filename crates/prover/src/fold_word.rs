@@ -4,7 +4,7 @@ use binius_field::{Field, PackedField};
 use binius_frontend::word::Word;
 use binius_math::FieldBuffer;
 use binius_utils::{checked_arithmetics::log2_strict_usize, rayon::prelude::*};
-use binius_verifier::WORD_SIZE_BITS;
+use binius_verifier::config::WORD_SIZE_BITS;
 
 /// Computes a [`FieldBuffer`] where each element is the inner product of the bits of a word and a
 /// vector of field elements.

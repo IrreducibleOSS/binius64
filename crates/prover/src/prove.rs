@@ -10,7 +10,8 @@ use binius_transcript::{
 };
 use binius_utils::{SerializeBytes, rayon::prelude::*};
 use binius_verifier::{
-	LOG_WORDS_PER_ELEM, Params,
+	Params,
+	config::LOG_WORDS_PER_ELEM,
 	fields::{B1, B128},
 	merkle_tree::MerkleTreeScheme,
 };

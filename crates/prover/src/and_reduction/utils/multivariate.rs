@@ -2,7 +2,7 @@ use binius_field::Field;
 use binius_frontend::word::Word;
 use binius_math::FieldBuffer;
 use binius_utils::rayon::prelude::*;
-use binius_verifier::LOG_WORD_SIZE_BITS;
+use binius_verifier::config::LOG_WORD_SIZE_BITS;
 
 use crate::and_reduction::fold_lookup::FoldLookup;
 
@@ -65,11 +65,11 @@ mod test {
 	use binius_frontend::word::Word;
 	use binius_math::{BinarySubspace, FieldBuffer};
 	use binius_verifier::{
-		LOG_WORD_SIZE_BITS, WORD_SIZE_BITS,
 		and_reduction::{
 			univariate::univariate_lagrange::lexicographic_lagrange_basis_vectors,
 			utils::constants::SKIPPED_VARS,
 		},
+		config::{LOG_WORD_SIZE_BITS, WORD_SIZE_BITS},
 		fields::B128,
 	};
 	use rand::{Rng, SeedableRng, rngs::StdRng};

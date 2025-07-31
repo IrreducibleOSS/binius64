@@ -135,11 +135,11 @@ mod test {
 	use binius_frontend::word::Word;
 	use binius_math::{BinarySubspace, FieldBuffer, multilinear::eq::eq_ind_partial_eval};
 	use binius_verifier::{
-		LOG_WORD_SIZE_BITS,
 		and_reduction::{
 			univariate::univariate_poly::{GenericPo2UnivariatePoly, UnivariatePolyIsomorphic},
 			utils::constants::{ROWS_PER_HYPERCUBE_VERTEX, SKIPPED_VARS},
 		},
+		config::LOG_WORD_SIZE_BITS,
 		fields::B128,
 	};
 	use itertools::izip;
