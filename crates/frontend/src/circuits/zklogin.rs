@@ -1,6 +1,6 @@
 use crate::{
 	circuits::{
-		base64::Base64UrlSafe,
+		base64::{Base64UrlSafe, PaddingMode},
 		concat::{Concat, Term},
 		fixed_byte_vec::FixedByteVec,
 		jwt_claims::{Attribute, JwtClaims},
@@ -112,6 +112,7 @@ impl ZkLogin {
 			jwt_header.data.clone(),
 			base64_jwt_header.data.clone(),
 			jwt_header.len,
+			PaddingMode::NoPadding,
 		);
 		let _base64decode_check_payload = Base64UrlSafe::new(
 			&b.subcircuit("base64_check_payload"),
@@ -119,6 +120,7 @@ impl ZkLogin {
 			jwt_payload.data.clone(),
 			base64_jwt_payload.data.clone(),
 			jwt_payload.len,
+			PaddingMode::NoPadding,
 		);
 		let _base64decode_check_signature = Base64UrlSafe::new(
 			&b.subcircuit("base64_check_signature"),
@@ -126,6 +128,7 @@ impl ZkLogin {
 			jwt_signature.data.clone(),
 			base64_jwt_signature.data.clone(),
 			jwt_signature.len,
+			PaddingMode::NoPadding,
 		);
 
 		// We need to check
@@ -231,6 +234,7 @@ impl ZkLogin {
 			base64_decoded_nonce.to_vec(),
 			base64_jwt_payload_nonce.to_vec(),
 			b.add_constant_64(32),
+			PaddingMode::Standard,
 		);
 
 		// Check signing payload. The JWT signed payload L is a concatenation of:

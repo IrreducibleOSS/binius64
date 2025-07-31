@@ -3,6 +3,17 @@ use crate::{
 	word::Word,
 };
 
+/// Specifies how base64 padding should be handled.
+#[derive(Debug, Clone, Copy)]
+pub enum PaddingMode {
+	/// Standard base64 padding with '=' characters.
+	/// Encoded strings must be padded to make their length a multiple of 4.
+	Standard,
+	/// No padding characters.
+	/// Unused positions in the encoded array must be filled with zeros.
+	NoPadding,
+}
+
 /// Base64 URL-safe encoding verification.
 ///
 /// Verifies that encoded data is a valid base64 URL-safe encoding of decoded data.
@@ -20,6 +31,12 @@ use crate::{
 /// - encoded is valid base64 URL-safe encoding of decoded
 /// - len_decoded is the actual length of data in decoded (in bytes)
 /// - len_decoded ≤ max_len_decoded (compile-time maximum)
+///
+/// # Padding
+///
+/// This circuit supports both padded and unpadded base64 variants:
+/// - Padded: Base64 strings must be padded with '=' to make length a multiple of 4
+/// - Unpadded: No padding characters; unused array positions must be zero
 ///
 /// # Input Packing
 ///
@@ -48,6 +65,7 @@ impl Base64UrlSafe {
 	/// * `decoded` - Decoded byte array wires (must have length = max_len_decoded/8)
 	/// * `encoded` - Base64 encoded array wires (must have length = max_len_decoded/6)
 	/// * `len_decoded` - Wire containing actual length of decoded data in bytes
+	/// * `padding_mode` - Specifies how base64 padding should be handled
 	///
 	/// # Panics
 	///
@@ -67,6 +85,7 @@ impl Base64UrlSafe {
 		decoded: Vec<Wire>,
 		encoded: Vec<Wire>,
 		len_decoded: Wire,
+		padding_mode: PaddingMode,
 	) -> Self {
 		// Ensure max_len_decoded is a multiple of 24 (LCM of 8 and 3)
 		assert!(
@@ -94,9 +113,14 @@ impl Base64UrlSafe {
 		// Process groups of 3 bytes -> 4 base64 chars
 		let groups = max_len_decoded / 3;
 
+		let padding_char = match padding_mode {
+			PaddingMode::Standard => builder.add_constant_64(b'=' as u64),
+			PaddingMode::NoPadding => builder.add_constant_64(0),
+		};
+
 		for group_idx in 0..groups {
 			let b = builder.subcircuit(format!("group[{group_idx}]"));
-			verify_base64_group(&b, &decoded, &encoded, len_decoded, group_idx);
+			verify_base64_group(&b, &decoded, &encoded, len_decoded, group_idx, padding_char);
 		}
 
 		Self {
@@ -217,6 +241,7 @@ fn verify_base64_group(
 	encoded: &[Wire],
 	len_decoded: Wire,
 	group_idx: usize,
+	padding_char: Wire,
 ) {
 	let base_byte_idx = group_idx * 3;
 
@@ -260,11 +285,25 @@ fn verify_base64_group(
 
 	// For char2: encode if we have more than 1 byte (i.e., at least 2 bytes)
 	let should_encode_char2 = has_byte2;
-	verify_base64_char_or_padding(builder, val2, char2, is_active, should_encode_char2);
+	verify_base64_char_or_padding(
+		builder,
+		val2,
+		char2,
+		is_active,
+		should_encode_char2,
+		padding_char,
+	);
 
 	// For char3: encode if we have more than 2 bytes (i.e., all 3 bytes)
 	let should_encode_char3 = has_byte3;
-	verify_base64_char_or_padding(builder, val3, char3, is_active, should_encode_char3);
+	verify_base64_char_or_padding(
+		builder,
+		val3,
+		char3,
+		is_active,
+		should_encode_char3,
+		padding_char,
+	);
 }
 
 /// Extracts a byte from a word array at the given byte index.
@@ -414,15 +453,15 @@ fn verify_base64_char(
 /// * `char_val` - The actual character value found
 /// * `is_active` - Whether this group is active
 /// * `should_encode` - Whether this position should contain encoded data (vs padding)
+/// * `padding_char` - The character to use for padding
 fn verify_base64_char_or_padding(
 	builder: &CircuitBuilder,
 	six_bit_val: Wire,
 	char_val: Wire,
 	is_active: Wire,
 	should_encode: Wire,
+	padding_char: Wire,
 ) {
-	// Check if char is '=' (61 in ASCII)
-	let padding_char = builder.add_constant_64(b'=' as u64);
 	let is_padding = builder.icmp_eq(char_val, padding_char);
 
 	// If should_encode, verify normal base64 char
@@ -486,11 +525,11 @@ fn compute_expected_base64_char(builder: &CircuitBuilder, six_bit_val: Wire) -> 
 
 #[cfg(test)]
 mod tests {
-	use super::{Base64UrlSafe, Wire};
+	use super::{Base64UrlSafe, PaddingMode, Wire};
 	use crate::{compiler::CircuitBuilder, constraint_verifier::verify_constraints};
 
-	/// Encodes bytes to base64 using URL-safe alphabet.
-	fn encode_base64(input: &[u8]) -> Vec<u8> {
+	/// Encodes bytes to base64 using URL-safe alphabet with specified padding mode.
+	fn encode_base64(input: &[u8], padding_mode: PaddingMode) -> Vec<u8> {
 		const BASE64_CHARS: &[u8] =
 			b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
@@ -505,23 +544,29 @@ mod tests {
 
 			output.push(BASE64_CHARS[((n >> 18) & 63) as usize]);
 			output.push(BASE64_CHARS[((n >> 12) & 63) as usize]);
-			output.push(if chunk.len() > 1 {
-				BASE64_CHARS[((n >> 6) & 63) as usize]
-			} else {
-				b'='
-			});
-			output.push(if chunk.len() > 2 {
-				BASE64_CHARS[(n & 63) as usize]
-			} else {
-				b'='
-			});
+
+			if chunk.len() > 1 {
+				output.push(BASE64_CHARS[((n >> 6) & 63) as usize]);
+			} else if matches!(padding_mode, PaddingMode::Standard) {
+				output.push(b'=');
+			}
+
+			if chunk.len() > 2 {
+				output.push(BASE64_CHARS[(n & 63) as usize]);
+			} else if matches!(padding_mode, PaddingMode::Standard) {
+				output.push(b'=');
+			}
 		}
 
 		output
 	}
 
-	/// Helper to create base64 circuit with given max size.
-	fn create_base64_circuit(builder: &CircuitBuilder, max_len_decoded: usize) -> Base64UrlSafe {
+	/// Helper to create base64 circuit with given max size and padding mode.
+	fn create_base64_circuit(
+		builder: &CircuitBuilder,
+		max_len_decoded: usize,
+		padding_mode: PaddingMode,
+	) -> Base64UrlSafe {
 		// Create input wires
 		let decoded: Vec<Wire> = (0..max_len_decoded / 8)
 			.map(|_| builder.add_inout())
@@ -533,15 +578,18 @@ mod tests {
 
 		let len_decoded = builder.add_inout();
 
-		Base64UrlSafe::new(builder, max_len_decoded, decoded, encoded, len_decoded)
+		Base64UrlSafe::new(builder, max_len_decoded, decoded, encoded, len_decoded, padding_mode)
 	}
 
-	/// Helper to test base64 encoding verification.
-	fn test_base64_encoding(input: &[u8], max_len_decoded: usize) {
-		let expected_base64 = encode_base64(input);
-
+	/// Core helper that tests base64 encoding verification and returns a Result.
+	fn check_base64_encoding(
+		input: &[u8],
+		encoded: &[u8],
+		max_len_decoded: usize,
+		padding_mode: PaddingMode,
+	) -> Result<(), Box<dyn std::error::Error>> {
 		let builder = CircuitBuilder::new();
-		let circuit = create_base64_circuit(&builder, max_len_decoded);
+		let circuit = create_base64_circuit(&builder, max_len_decoded, padding_mode);
 		let compiled = builder.build();
 
 		// Create witness
@@ -549,59 +597,70 @@ mod tests {
 
 		circuit.populate_len_decoded(&mut witness, input.len());
 		circuit.populate_decoded(&mut witness, input);
-		circuit.populate_encoded(&mut witness, &expected_base64);
+		circuit.populate_encoded(&mut witness, encoded);
 
 		// Verify circuit
-		compiled.populate_wire_witness(&mut witness).unwrap();
+		compiled.populate_wire_witness(&mut witness)?;
 
 		// Verify constraints
 		let cs = compiled.constraint_system();
-		verify_constraints(&cs, &witness.into_value_vec()).unwrap();
+		verify_constraints(&cs, &witness.into_value_vec())?;
+
+		Ok(())
+	}
+
+	/// Helper to test base64 encoding verification with specified padding mode.
+	fn test_base64_encoding(input: &[u8], max_len_decoded: usize, padding_mode: PaddingMode) {
+		let expected_base64 = encode_base64(input, padding_mode);
+		assert!(
+			check_base64_encoding(input, &expected_base64, max_len_decoded, padding_mode).is_ok()
+		);
+	}
+
+	/// Assert that the base64 circuit fails to verify the specified inputs
+	fn assert_base64_failure(
+		input: &[u8],
+		encoded: &[u8],
+		max_len_decoded: usize,
+		padding_mode: PaddingMode,
+	) {
+		assert!(check_base64_encoding(input, encoded, max_len_decoded, padding_mode).is_err());
 	}
 
 	#[test]
 	fn test_base64_hello_world() {
-		test_base64_encoding(b"Hello World!", 1512);
+		test_base64_encoding(b"Hello World!", 1512, PaddingMode::Standard);
+		test_base64_encoding(b"Hello World!", 1512, PaddingMode::NoPadding);
 	}
 
 	#[test]
 	fn test_base64_empty() {
-		test_base64_encoding(b"", 1512);
+		test_base64_encoding(b"", 1512, PaddingMode::Standard);
+		test_base64_encoding(b"", 1512, PaddingMode::NoPadding);
 	}
 
 	#[test]
 	fn test_base64_padding() {
 		// Test cases that require padding
-		test_base64_encoding(b"A", 1512); // Requires == padding
-		test_base64_encoding(b"AB", 1512); // Requires = padding
-		test_base64_encoding(b"ABC", 1512); // No padding
+		test_base64_encoding(b"A", 1512, PaddingMode::Standard); // Requires == padding
+		test_base64_encoding(b"AB", 1512, PaddingMode::Standard); // Requires = padding
+		test_base64_encoding(b"ABC", 1512, PaddingMode::Standard); // No padding
 	}
 
 	#[test]
 	fn test_base64_long_input() {
 		let input =
 			b"The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog.";
-		test_base64_encoding(input, 1512);
+		test_base64_encoding(input, 1512, PaddingMode::Standard);
+		test_base64_encoding(input, 1512, PaddingMode::NoPadding);
 	}
 
 	#[test]
 	fn test_invalid_base64() {
-		// Test that invalid base64 encoding fails
-		let builder = CircuitBuilder::new();
-		let circuit = create_base64_circuit(&builder, 120);
-		let compiled = builder.build();
-
 		let input = b"ABC";
 		let invalid_base64 = b"XXXX"; // Invalid base64 for "ABC"
-
-		let mut witness = compiled.new_witness_filler();
-
-		circuit.populate_len_decoded(&mut witness, input.len());
-		circuit.populate_decoded(&mut witness, input);
-		circuit.populate_encoded(&mut witness, invalid_base64);
-
-		// Should fail verification
-		assert!(compiled.populate_wire_witness(&mut witness).is_err());
+		assert_base64_failure(input, invalid_base64, 120, PaddingMode::Standard);
+		assert_base64_failure(input, invalid_base64, 120, PaddingMode::NoPadding);
 	}
 
 	#[test]
@@ -611,24 +670,51 @@ mod tests {
 
 		// For 111110 (62): we need top 6 bits = 111110
 		let input1 = &[0b11111000]; // Top 6 bits = 111110 = 62
-		let expected1 = encode_base64(input1);
-		assert_eq!(expected1[0], b'-', "Index 62 should map to '-' not '+'");
+		let expected1_standard = encode_base64(input1, PaddingMode::Standard);
+		let expected1_no_padding = encode_base64(input1, PaddingMode::NoPadding);
+		assert_eq!(expected1_standard[0], b'-', "Index 62 should map to '-' not '+'");
+		assert_eq!(expected1_no_padding[0], b'-', "Index 62 should map to '-' not '+'");
 
 		// For 111111 (63): we need top 6 bits = 111111
 		let input2 = &[0b11111100]; // Top 6 bits = 111111 = 63
-		let expected2 = encode_base64(input2);
-		assert_eq!(expected2[0], b'_', "Index 63 should map to '_' not '/'");
+		let expected2_standard = encode_base64(input2, PaddingMode::Standard);
+		let expected2_no_padding = encode_base64(input2, PaddingMode::NoPadding);
+		assert_eq!(expected2_standard[0], b'_', "Index 63 should map to '_' not '/'");
+		assert_eq!(expected2_no_padding[0], b'_', "Index 63 should map to '_' not '/'");
 
 		// Now test with the circuit
-		test_base64_encoding(input1, 120);
-		test_base64_encoding(input2, 120);
+		test_base64_encoding(input1, 120, PaddingMode::Standard);
+		test_base64_encoding(input1, 120, PaddingMode::NoPadding);
+		test_base64_encoding(input2, 120, PaddingMode::Standard);
+		test_base64_encoding(input2, 120, PaddingMode::NoPadding);
 	}
 
 	#[test]
 	#[should_panic(expected = "max_len_decoded must be a multiple of 24")]
-	fn test_panic_when_max_len_not_multiple_of_24() {
+	fn test_panic_when_max_len_not_multiple_of_24_standard() {
 		// This test verifies that max_len_decoded must be a multiple of 24
 		// Testing with max_len_decoded = 100 which is not a multiple of 24
-		test_base64_encoding(b"test", 100);
+		test_base64_encoding(b"test", 100, PaddingMode::Standard);
+	}
+
+	#[test]
+	#[should_panic(expected = "max_len_decoded must be a multiple of 24")]
+	fn test_panic_when_max_len_not_multiple_of_24_no_padding() {
+		// This test verifies that max_len_decoded must be a multiple of 24
+		// Testing with max_len_decoded = 100 which is not a multiple of 24
+		test_base64_encoding(b"test", 100, PaddingMode::NoPadding);
+	}
+
+	#[test]
+	fn test_wrong_padding_mode_fails() {
+		let input = b"A"; // This requires padding in standard base64
+
+		// Standard mode should reject no-padding encoding
+		let no_padding_encoded = encode_base64(input, PaddingMode::NoPadding);
+		assert_base64_failure(input, &no_padding_encoded, 120, PaddingMode::Standard);
+
+		// NoPadding mode should reject padded encoding
+		let standard_encoded = encode_base64(input, PaddingMode::Standard);
+		assert_base64_failure(input, &standard_encoded, 120, PaddingMode::NoPadding);
 	}
 }
