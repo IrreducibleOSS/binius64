@@ -221,7 +221,7 @@ fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger
 		verifier_message_domain.clone(),
 	)?;
 
-	let verifier_mle_eval_claims = transcript.message().read_scalar_slice::<F>(3).unwrap();
+	let verifier_mle_eval_claims = transcript.message().read_scalar_slice::<F>(3)?;
 
 	assert_eq!(
 		output.sumcheck_output.eval,
