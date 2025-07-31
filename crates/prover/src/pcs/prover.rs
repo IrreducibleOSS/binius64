@@ -1,6 +1,8 @@
 // Copyright 2025 Irreducible Inc.
 
-use binius_field::{BinaryField, Field, PackedExtension, PackedField, PackedSubfield};
+use binius_field::{
+	BinaryField, ExtensionField, Field, PackedExtension, PackedField, PackedSubfield,
+};
 use binius_math::{
 	FieldBuffer, inner_product::inner_product, multilinear::eq::eq_ind_partial_eval,
 	ntt::AdditiveNTT, tensor_algebra::TensorAlgebra,
@@ -26,19 +28,18 @@ use crate::{
 /// soundness.
 pub struct OneBitPCSProver<F, P>
 where
-	F: BinaryField,
+	F: BinaryField + ExtensionField<B1>,
 	P: PackedExtension<B1> + PackedField<Scalar = F>,
 {
 	pub mle: FieldBuffer<PackedSubfield<P, B1>>,
 	pub small_field_evaluation_claim: F,
 	pub evaluation_claim: F,
 	pub evaluation_point: Vec<F>,
-	pub packing_degree: usize,
 }
 
 impl<F, P> OneBitPCSProver<F, P>
 where
-	F: BinaryField,
+	F: BinaryField + ExtensionField<B1>,
 	P: PackedExtension<B1> + PackedField<Scalar = F>,
 {
 	/// Create a new ring switched PCS prover.
@@ -52,14 +53,12 @@ where
 		mle: FieldBuffer<PackedSubfield<P, B1>>,
 		evaluation_claim: F,
 		evaluation_point: Vec<F>,
-		packing_degree: usize,
 	) -> Result<Self, Error> {
 		Ok(Self {
 			mle,
 			small_field_evaluation_claim: evaluation_claim,
 			evaluation_claim,
 			evaluation_point,
-			packing_degree,
 		})
 	}
 
@@ -86,23 +85,24 @@ where
 		committed: &'a MerkleProver::Committed,
 	) -> Result<(), Error>
 	where
-		F: BinaryField + PackedExtension<B1> + PackedField<Scalar = F>,
+		F: BinaryField + ExtensionField<B1> + PackedExtension<B1> + PackedField<Scalar = F>,
 		P: PackedExtension<B1> + PackedField<Scalar = F>,
 		TranscriptChallenger: Challenger,
 		NTT: AdditiveNTT<F> + Sync,
 		MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 		VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 	{
+		let packing_degree = <F as ExtensionField<B1>>::LOG_DEGREE;
+
 		// packed mle partial evals of at high variables
-		let s_hat_v =
-			Self::initialize_proof(&self.mle, &self.evaluation_point, self.packing_degree)?;
+		let s_hat_v = Self::initialize_proof(&self.mle, &self.evaluation_point, packing_degree)?;
 
 		transcript.message().write_scalar_slice(&s_hat_v);
 
 		// basis decompose/recombine s_hat_v across opposite dimension
 		let s_hat_u = <TensorAlgebra<B1, F>>::new(s_hat_v).transpose().elems;
 
-		let r_double_prime = transcript.sample_vec(self.packing_degree);
+		let r_double_prime = transcript.sample_vec(packing_degree);
 
 		let eq_r_double_prime = eq_ind_partial_eval::<F>(r_double_prime.as_ref());
 
@@ -207,7 +207,8 @@ where
 		MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 		VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 	{
-		let (_, eval_point_high) = self.evaluation_point.split_at(self.packing_degree);
+		let packing_degree = <F as ExtensionField<B1>>::LOG_DEGREE;
+		let (_, eval_point_high) = self.evaluation_point.split_at(packing_degree);
 
 		let rs_eq_ind: FieldBuffer<P> =
 			FieldBuffer::from_values(rs_eq_ind::<F>(r_double_prime, eval_point_high).as_ref())
@@ -290,7 +291,6 @@ mod test {
 		packed_mle: FieldBuffer<P>,
 		evaluation_point: Vec<B128>,
 		evaluation_claim: B128,
-		packing_degree: usize,
 	) -> Result<(), Box<dyn std::error::Error>>
 	where
 		P: PackedField<Scalar = B128> + PackedExtension<B128> + PackedExtension<B1>,
@@ -327,7 +327,6 @@ mod test {
 			packed_subfield_buffer,
 			evaluation_claim,
 			evaluation_point.clone(),
-			packing_degree,
 		)?;
 
 		ring_switch_pcs_prover.prove_with_transcript(
@@ -388,7 +387,6 @@ mod test {
 			packed_mle,
 			evaluation_point,
 			evaluation_claim,
-			packing_degree,
 		) {
 			Ok(()) => {}
 			Err(_) => panic!("expected valid proof"),
@@ -412,13 +410,12 @@ mod test {
 		// dubious evaluation claim
 		let incorrect_evaluation_claim = B128::from(42u128);
 
-		if let Ok(()) = run_ring_switched_pcs_prove_and_verify::<B128, B128>(
+		let result = run_ring_switched_pcs_prove_and_verify::<B128, B128>(
 			packed_mle,
 			evaluation_point,
 			incorrect_evaluation_claim,
-			packing_degree,
-		) {
-			panic!("expected error")
-		}
+		);
+
+        assert!(result.is_err());
 	}
 }

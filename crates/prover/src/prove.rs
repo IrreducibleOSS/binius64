@@ -14,7 +14,7 @@ use binius_math::{
 };
 // Copyright 2025 Irreducible Inc.
 
-use binius_field::{ExtensionField, PackedExtension, PackedField};
+use binius_field::{PackedExtension, PackedField};
 use binius_frontend::{constraint_system::ValueVec, word::Word};
 use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval, ntt::AdditiveNTT};
 use binius_transcript::{
@@ -115,12 +115,8 @@ where
 	// Convert witness_packed to PackedSubfield view for OneBitPCSProver
 	let witness_packed_subfield_buffer = cast_bases_to_buffer(&witness_packed);
 
-	let pcs_prover = OneBitPCSProver::new(
-		witness_packed_subfield_buffer,
-		witness_eval,
-		evaluation_point,
-		<B128 as ExtensionField<B1>>::LOG_DEGREE,
-	)?;
+	let pcs_prover =
+		OneBitPCSProver::new(witness_packed_subfield_buffer, witness_eval, evaluation_point)?;
 
 	pcs_prover.prove_with_transcript(
 		transcript,
