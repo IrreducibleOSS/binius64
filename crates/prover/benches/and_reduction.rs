@@ -16,7 +16,7 @@ use binius_verifier::{
 		univariate::univariate_poly::{GenericPo2UnivariatePoly, UnivariatePolyIsomorphic},
 		utils::constants::{ROWS_PER_HYPERCUBE_VERTEX, SKIPPED_VARS},
 	},
-	fields::B128,
+	config::B128,
 };
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use rand::{Rng, SeedableRng, rngs::StdRng};

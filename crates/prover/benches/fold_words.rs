@@ -2,7 +2,7 @@ use binius_field::arch::OptimalPackedB128;
 use binius_frontend::word::Word;
 use binius_math::test_utils::random_scalars;
 use binius_prover::fold_word::fold_words;
-use binius_verifier::{config::WORD_SIZE_BITS, fields::B128};
+use binius_verifier::config::{B128, WORD_SIZE_BITS};
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use rand::Rng;
 

@@ -9,7 +9,7 @@ use binius_verifier::{
 		univariate::univariate_poly::{GenericPo2UnivariatePoly, UnivariatePolyIsomorphic},
 		utils::constants::{ROWS_PER_HYPERCUBE_VERTEX, SKIPPED_VARS},
 	},
-	fields::B1,
+	config::B1,
 };
 
 use super::{
@@ -279,8 +279,7 @@ mod test {
 	use binius_transcript::{ProverTranscript, fiat_shamir::CanSample};
 	use binius_verifier::{
 		and_reduction::{utils::constants::SKIPPED_VARS, verifier::verify_with_transcript},
-		config::StdChallenger,
-		fields::B128,
+		config::{B128, StdChallenger},
 	};
 	use itertools::Itertools;
 	use rand::{Rng, SeedableRng, rngs::StdRng};

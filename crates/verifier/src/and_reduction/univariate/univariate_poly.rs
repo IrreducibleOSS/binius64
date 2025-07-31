@@ -143,7 +143,7 @@ mod test {
 			univariate::univariate_poly::UnivariatePolyIsomorphic,
 			utils::constants::{ROWS_PER_HYPERCUBE_VERTEX, SKIPPED_VARS},
 		},
-		fields::B128,
+		config::B128,
 		protocols::sumcheck::RoundCoeffs,
 	};
 

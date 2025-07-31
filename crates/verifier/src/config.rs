@@ -1,10 +1,14 @@
 //! Specifies standard trait implementations and parameters.
 
-use binius_field::BinaryField;
+use binius_field::{BinaryField, BinaryField1b, BinaryField128bGhash};
 use binius_transcript::fiat_shamir::HasherChallenger;
 use binius_utils::checked_arithmetics::checked_log_2;
 
-use super::{fields::B128, hash::StdDigest};
+use super::hash::StdDigest;
+
+// Exports the binary fields that this system uses
+pub type B1 = BinaryField1b;
+pub type B128 = BinaryField128bGhash;
 
 /// The default [`binius_transcript::fiat_shamir::Challenger`] implementation.
 pub type StdChallenger = HasherChallenger<StdDigest>;

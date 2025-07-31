@@ -5,7 +5,7 @@ use binius_field::{
 };
 use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval};
 use binius_utils::rayon::prelude::*;
-use binius_verifier::{and_reduction::utils::constants::ROWS_PER_HYPERCUBE_VERTEX, fields::B1};
+use binius_verifier::{and_reduction::utils::constants::ROWS_PER_HYPERCUBE_VERTEX, config::B1};
 use bytemuck::must_cast_ref;
 use itertools::izip;
 
@@ -139,8 +139,7 @@ mod test {
 			univariate::univariate_poly::{GenericPo2UnivariatePoly, UnivariatePolyIsomorphic},
 			utils::constants::{ROWS_PER_HYPERCUBE_VERTEX, SKIPPED_VARS},
 		},
-		config::LOG_WORD_SIZE_BITS,
-		fields::B128,
+		config::{B128, LOG_WORD_SIZE_BITS},
 	};
 	use itertools::izip;
 	use rand::{Rng, SeedableRng, rngs::StdRng};

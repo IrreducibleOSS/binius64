@@ -76,7 +76,7 @@ fn subset_sum<F: Field>(set: &[F], subset_idx: usize) -> F {
 #[cfg(test)]
 mod tests {
 	use binius_math::test_utils::random_scalars;
-	use binius_verifier::fields::B128;
+	use binius_verifier::config::B128;
 	use rand::{Rng, SeedableRng, rngs::StdRng};
 
 	use super::*;

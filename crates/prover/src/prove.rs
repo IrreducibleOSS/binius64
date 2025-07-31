@@ -8,8 +8,7 @@ use binius_transcript::{
 use binius_utils::{SerializeBytes, rayon::prelude::*};
 use binius_verifier::{
 	Params,
-	config::{LOG_WORD_SIZE_BITS, LOG_WORDS_PER_ELEM},
-	fields::B128,
+	config::{B128, LOG_WORD_SIZE_BITS, LOG_WORDS_PER_ELEM},
 	merkle_tree::MerkleTreeScheme,
 };
 

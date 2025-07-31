@@ -5,7 +5,7 @@ use std::iter::repeat_with;
 use binius_field::Random;
 use binius_prover::merkle_tree::{MerkleTreeProver, prover::BinaryMerkleTreeProver};
 use binius_verifier::{
-	fields::B128,
+	config::B128,
 	hash::{StdCompression, StdDigest},
 };
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};

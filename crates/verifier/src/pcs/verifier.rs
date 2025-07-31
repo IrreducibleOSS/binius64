@@ -14,7 +14,7 @@ use binius_utils::DeserializeBytes;
 
 use super::{Error, VerificationError};
 use crate::{
-	fields::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme,
+	config::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme,
 	protocols::basefold::verifier::verify_transcript as verify_basefold_transcript,
 	ring_switch::verifier::eval_rs_eq,
 };

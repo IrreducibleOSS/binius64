@@ -18,8 +18,7 @@ use super::{
 	ConstraintSystemError, VerificationError, config::LOG_WORDS_PER_ELEM, error::Error, pcs,
 };
 use crate::{
-	config::{LOG_WORD_SIZE_BITS, WORD_SIZE_BITS},
-	fields::{B1, B128},
+	config::{B1, B128, LOG_WORD_SIZE_BITS, WORD_SIZE_BITS},
 	fri::{FRIParams, estimate_optimal_arity},
 	merkle_tree::MerkleTreeScheme,
 	protocols::pubcheck,

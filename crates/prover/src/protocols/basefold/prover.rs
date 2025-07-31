@@ -190,8 +190,7 @@ mod test {
 	};
 	use binius_transcript::ProverTranscript;
 	use binius_verifier::{
-		config::StdChallenger,
-		fields::B128,
+		config::{B128, StdChallenger},
 		fri::FRIParams,
 		hash::{StdCompression, StdDigest},
 		protocols::basefold::verifier::{sumcheck_fri_consistency, verify_transcript},

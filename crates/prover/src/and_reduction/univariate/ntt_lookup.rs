@@ -221,7 +221,7 @@ mod test {
 		BinarySubspace,
 		ntt::{AdditiveNTT, NTTShape, SingleThreadedNTT},
 	};
-	use binius_verifier::{and_reduction::utils::constants::SKIPPED_VARS, fields::B1};
+	use binius_verifier::{and_reduction::utils::constants::SKIPPED_VARS, config::B1};
 	use itertools::Itertools;
 	use rand::{SeedableRng, rngs::StdRng};
 

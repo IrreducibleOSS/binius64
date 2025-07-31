@@ -8,7 +8,7 @@ use binius_transcript::{
 	fiat_shamir::{CanSample, Challenger},
 };
 use binius_utils::SerializeBytes;
-use binius_verifier::{fields::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme};
+use binius_verifier::{config::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme};
 
 use crate::{
 	Error, merkle_tree::MerkleTreeProver, protocols::basefold::prover::BaseFoldProver,
@@ -219,8 +219,7 @@ mod test {
 	};
 	use binius_transcript::ProverTranscript;
 	use binius_verifier::{
-		config::StdChallenger,
-		fields::{B1, B128},
+		config::{B1, B128, StdChallenger},
 		fri::FRIParams,
 		hash::{StdCompression, StdDigest},
 		pcs,

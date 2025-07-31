@@ -125,7 +125,7 @@ mod tests {
 	use rand::prelude::*;
 
 	use super::*;
-	use crate::fields::B128;
+	use crate::config::B128;
 
 	fn test_recover_with_degree<F: Field>(mut rng: impl Rng, alpha: F, degree: usize) {
 		let coeffs = RoundCoeffs(random_scalars(&mut rng, degree + 1));

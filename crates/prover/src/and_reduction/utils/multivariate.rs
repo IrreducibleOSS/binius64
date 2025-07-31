@@ -69,8 +69,7 @@ mod test {
 			univariate::univariate_lagrange::lexicographic_lagrange_basis_vectors,
 			utils::constants::SKIPPED_VARS,
 		},
-		config::{LOG_WORD_SIZE_BITS, WORD_SIZE_BITS},
-		fields::B128,
+		config::{B128, LOG_WORD_SIZE_BITS, WORD_SIZE_BITS},
 	};
 	use rand::{Rng, SeedableRng, rngs::StdRng};
 
