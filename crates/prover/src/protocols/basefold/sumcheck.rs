@@ -2,8 +2,6 @@ use binius_field::{BinaryField, PackedField};
 use binius_math::{FieldBuffer, line::extrapolate_line_packed};
 use binius_utils::rayon::{
 	iter::{IntoParallelIterator, ParallelIterator},
-	prelude::{IndexedParallelIterator, IntoParallelRefMutIterator},
-	slice::ParallelSlice,
 };
 use binius_verifier::protocols::sumcheck::RoundCoeffs;
 
@@ -60,13 +58,16 @@ where
 	P: PackedField<Scalar = F>,
 {
 	let new_log_len = multilinear_extension.log_len() - 1;
-	let mut out = FieldBuffer::<P>::zeros(new_log_len);
+	let out = (0..(1 << new_log_len))
+	.into_par_iter()
+	.map(|i| {
+		let even = multilinear_extension.get(2 * i).expect("out of bounds");
+		let odd = multilinear_extension.get(2 * i + 1).expect("out of bounds");
+		extrapolate_line_packed(even, odd, challenge)
+		})
+		.collect::<Vec<_>>();
 
-	for i in 0..(1 << new_log_len) {
-		let even = multilinear_extension.get(2 * i)?;
-		let odd = multilinear_extension.get(2 * i + 1)?;
-		out.set(i, extrapolate_line_packed(even, odd, challenge))?;
-	}
+	let out = FieldBuffer::<P>::from_values(&out)?;
 
 	Ok(out)
 }
