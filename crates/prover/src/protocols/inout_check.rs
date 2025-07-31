@@ -15,18 +15,7 @@ use crate::protocols::sumcheck::{
 
 /// An MLE-check prover instance for the argument of public input/witness consistency.
 ///
-/// This MLE-check instance is used to argue that the witness multilinear agrees with the public
-/// input/output (inout) multilinear on a subdomain. The witness $w$ is $\ell$-variate, and the
-/// inout multilinear $p$ is $m$-variate, where $m \le \ell$. The interactive reduction argues that
-/// for all $v \in B_m$
-///
-/// $$
-/// w(v_0, \ldots, v_{m-1}, 0^{\ell - m}) = p(v_0, \ldots, v_{m-1})
-/// $$
-///
-/// The protocol is a zerocheck on the multilinear $w - p$, using a truncated challenge point. It
-/// begins with an $m$-dimensional challenge point $r$ and reduces to an MLE-check that
-/// $(w - p)(r || 0) = 0$.
+/// See [`binius_verifier::protocols::pubcheck::verify`] for protocol details.
 pub struct InOutCheckProver<P: PackedField> {
 	witness: FieldBuffer<P>,
 	inout: FieldBuffer<P>,
@@ -284,7 +273,7 @@ enum RoundCoeffsOrEval<F: Field> {
 #[cfg(test)]
 mod tests {
 	use binius_field::{
-		Field, PackedField,
+		PackedField,
 		arch::{OptimalB128, OptimalPackedB128},
 	};
 	use binius_math::{
@@ -293,7 +282,7 @@ mod tests {
 		test_utils::{random_field_buffer, random_scalars},
 	};
 	use binius_transcript::ProverTranscript;
-	use binius_verifier::{config::StdChallenger, protocols::mlecheck};
+	use binius_verifier::{config::StdChallenger, protocols::pubcheck};
 	use rand::{SeedableRng, prelude::StdRng};
 
 	use super::*;
@@ -336,36 +325,24 @@ mod tests {
 		// Convert to verifier transcript and run verification
 		let mut verifier_transcript = prover_transcript.into_verifier();
 
-		// The MLE-check verifier checks an evaluation at the zero-padded point.
-		let zero_padded_eval_point =
-			[eval_point, vec![F::ZERO; n_witness_vars - n_inout_vars]].concat();
-
-		let sumcheck_output = mlecheck::verify(
-			&zero_padded_eval_point,
-			1, // degree 1 for multilinear evaluation
-			F::ZERO,
-			&mut verifier_transcript,
-		)
-		.unwrap();
-
-		// The prover binds variables from high to low, but evaluate expects them from low to high
-		let mut reduced_eval_point = sumcheck_output.challenges.clone();
-		reduced_eval_point.reverse();
-
-		// Read the witness evaluation from the transcript
-		let witness_eval = verifier_transcript.message().read_scalar::<F>().unwrap();
+		let pubcheck::VerifyOutput {
+			witness_eval,
+			public_eval,
+			eval_point: reduced_eval_point,
+		} = pubcheck::verify(n_witness_vars, &eval_point, &mut verifier_transcript).unwrap();
 
 		// Verifier computes the input/output evaluation and checks the reduced evaluation.
 		let inout_eval = evaluate(&inout, &reduced_eval_point[..n_inout_vars]).unwrap();
-		assert_eq!(witness_eval - inout_eval, sumcheck_output.eval);
+		assert_eq!(public_eval, inout_eval);
 
 		// Check that the original multilinears evaluate to the claimed values at the challenge.
 		let expected_witness_eval = evaluate(&witness, &reduced_eval_point).unwrap();
 		assert_eq!(witness_eval, expected_witness_eval);
 
 		// Also verify the challenges match what the prover saw
+		let verifier_challenges = reduced_eval_point.into_iter().rev().collect::<Vec<_>>();
 		assert_eq!(
-			output.challenges, sumcheck_output.challenges,
+			output.challenges, verifier_challenges,
 			"Prover and verifier challenges should match"
 		);
 	}
