@@ -1,9 +1,9 @@
 // Copyright 2025 Irreducible Inc.
 
-use binius_field::BinaryField;
+use binius_field::{AESTowerField8b, BinaryField};
 use binius_frontend::{constraint_system::ConstraintSystem, word::Word};
 use binius_math::{
-	FieldBuffer,
+	BinarySubspace, FieldBuffer,
 	inner_product::inner_product_subfield,
 	multilinear::{eq::eq_ind_partial_eval, evaluate::evaluate_inplace},
 	ntt::SingleThreadedNTT,
@@ -18,6 +18,7 @@ use super::{
 	ConstraintSystemError, VerificationError, config::LOG_WORDS_PER_ELEM, error::Error, pcs,
 };
 use crate::{
+	and_reduction::verifier::{AndReductionOutput, verify_with_transcript},
 	config::{B1, B128, LOG_WORD_SIZE_BITS, WORD_SIZE_BITS},
 	fri::{FRIParams, estimate_optimal_arity},
 	merkle_tree::MerkleTreeScheme,
@@ -126,6 +127,9 @@ where
 	// Receive the trace commitment.
 	let trace_commitment = transcript.message().read::<MTScheme::Digest>()?;
 
+	// verify the and reduction
+	let _output: AndReductionOutput<B128> = run_and_check(params.log_witness_words(), transcript);
+
 	// Sample a challenge point during the shift reduction.
 	let z_challenge = transcript.sample_vec(LOG_WORD_SIZE_BITS);
 	let public_input_challenge = transcript.sample_vec(params.log_public_words());
@@ -182,4 +186,48 @@ fn evaluate_public_mle<F: BinaryField>(public: &[Word], z_coords: &[F], y_coords
 	// Then, fold the partial evaluation with the y coordinates
 	evaluate_inplace(z_folded_words, y_coords)
 		.expect("z_folded_words constructed with log_len = y_coords.len()")
+}
+
+fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger>(
+	log_witness_words: usize,
+	transcript: &mut VerifierTranscript<Challenger_>,
+) -> AndReductionOutput<F> {
+	let big_field_zerocheck_challenges = transcript.sample_vec(log_witness_words - 3);
+
+	let mut all_zerocheck_challenges = vec![];
+
+	let small_field_zerocheck_challenges = [
+		F::from(AESTowerField8b::from(0x2)),
+		F::from(AESTowerField8b::from(0x4)),
+		F::from(AESTowerField8b::from(0x10)),
+	];
+
+	let verifier_message_domain =
+		BinarySubspace::<AESTowerField8b>::with_dim(LOG_WORD_SIZE_BITS + 1)
+			.expect("dim is positive and less than field dim")
+			.isomorphic();
+
+	for small_field_challenge in small_field_zerocheck_challenges {
+		all_zerocheck_challenges.push(F::from(small_field_challenge));
+	}
+
+	for big_field_challenge in &big_field_zerocheck_challenges {
+		all_zerocheck_challenges.push(*big_field_challenge);
+	}
+
+	let output = verify_with_transcript(
+		&all_zerocheck_challenges,
+		transcript,
+		verifier_message_domain.clone(),
+	)
+	.unwrap();
+
+	let verifier_mle_eval_claims = transcript.message().read_scalar_slice::<F>(3).unwrap();
+
+	assert_eq!(
+		output.sumcheck_output.eval,
+		verifier_mle_eval_claims[0] * verifier_mle_eval_claims[1] - verifier_mle_eval_claims[2]
+	);
+
+	output
 }

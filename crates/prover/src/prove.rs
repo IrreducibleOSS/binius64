@@ -184,12 +184,6 @@ fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger
 	];
 	let big_field_zerocheck_challenges = transcript.sample_vec(log_witness_words - 3);
 
-	println!("a len: {}", a.len());
-	println!("b len: {}", b.len());
-
-	println!("c len: {}", c.len());
-	println!("log_witness_words + LOG_WORD_SIZE_BITS: {}", log_witness_words + LOG_WORD_SIZE_BITS);
-
 	a.extend(repeat_with(|| Word(0)).take((1 << log_witness_words) - a.len()));
 	b.extend(repeat_with(|| Word(0)).take((1 << log_witness_words) - b.len()));
 	c.extend(repeat_with(|| Word(0)).take((1 << log_witness_words) - c.len()));
@@ -216,12 +210,23 @@ fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger
 	let prove_output = prover.prove_with_transcript(transcript).unwrap();
 
 	let mle_claims = prove_output.sumcheck_output.multilinear_evals;
+
+	let l2h_query_for_evaluation_point = prove_output
+		.sumcheck_output
+		.challenges
+		.clone()
+		.into_iter()
+		.rev()
+		.collect::<Vec<_>>();
+
+	transcript.message().write_slice(&mle_claims);
 	AndCheckOutput {
 		a_eval: mle_claims[0],
 		b_eval: mle_claims[1],
 		c_eval: mle_claims[2],
 		z_challenge: prove_output.univariate_sumcheck_challenge,
-		eval_point: prove_output.sumcheck_output.challenges,
+		// Q: should this be high to low or low to high order?
+		eval_point: l2h_query_for_evaluation_point,
 	}
 }
 
