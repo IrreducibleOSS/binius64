@@ -1,5 +1,10 @@
 use binius_field::{BinaryField, PackedField};
 use binius_math::{FieldBuffer, line::extrapolate_line_packed};
+use binius_utils::rayon::{
+	iter::{IntoParallelIterator, ParallelIterator},
+	prelude::{IndexedParallelIterator, IntoParallelRefMutIterator},
+	slice::ParallelSlice,
+};
 use binius_verifier::protocols::sumcheck::RoundCoeffs;
 
 use crate::protocols::sumcheck::{Error, common::SumcheckProver};
@@ -56,13 +61,13 @@ where
 {
 	let new_log_len = multilinear_extension.log_len() - 1;
 	let mut out = FieldBuffer::<P>::zeros(new_log_len);
-	
+
 	for i in 0..(1 << new_log_len) {
 		let even = multilinear_extension.get(2 * i)?;
 		let odd = multilinear_extension.get(2 * i + 1)?;
 		out.set(i, extrapolate_line_packed(even, odd, challenge))?;
 	}
-	
+
 	Ok(out)
 }
 
@@ -79,24 +84,29 @@ where
 		let log_n = self.multilinears[0].log_len();
 		let n = 1 << log_n;
 		let n_half = n >> 1;
-		
+
 		let a = &self.multilinears[0];
 		let b = &self.multilinears[1];
 
-		let mut g_of_zero = F::ZERO;
-		let mut g_of_one = F::ZERO;
-		let mut g_leading = F::ZERO;
-		
-		for i in 0..n_half {
-			let a_even = a.get(2 * i)?;
-			let a_odd = a.get(2 * i + 1)?;
-			let b_even = b.get(2 * i)?;
-			let b_odd = b.get(2 * i + 1)?;
-			
-			g_of_zero += a_even * b_even;
-			g_of_one += a_odd * b_odd;
-			g_leading += (a_even - a_odd) * (b_even - b_odd);
-		}
+		let (g_of_zero, g_of_one, g_leading) = (0..n_half)
+			.into_par_iter()
+			.map(|i| {
+				let a_even = a.get(2 * i).expect("a even index out of bounds");
+				let a_odd = a.get(2 * i + 1).expect("a odd index out of bounds");
+
+				let b_even = b.get(2 * i).expect("b even index out of bounds");
+				let b_odd = b.get(2 * i + 1).expect("b odd index out of bounds");
+
+				let even = a_even * b_even;
+				let odd = a_odd * b_odd;
+				let leading = (a_even - a_odd) * (b_even - b_odd);
+
+				(even, odd, leading)
+			})
+			.reduce(
+				|| (F::ZERO, F::ZERO, F::ZERO),
+				|(e1, o1, l1), (e2, o2, l2)| (e1 + e2, o1 + o2, l1 + l2),
+			);
 
 		let round_coeffs =
 			RoundCoeffs(vec![g_of_zero, g_of_one - g_of_zero - g_leading, g_leading]);
@@ -119,23 +129,16 @@ where
 	}
 
 	fn finish(self) -> Result<Vec<F>, Error> {
-		let a_val = self.multilinears[0].as_ref()
-			.first()
-			.and_then(|packed| packed.iter().next())
-			.ok_or_else(|| Error::ArgumentError("multilinear[0] is empty".to_string()))?;
-		
-		let b_val = self.multilinears[1].as_ref()
-			.first()
-			.and_then(|packed| packed.iter().next())
-			.ok_or_else(|| Error::ArgumentError("multilinear[1] is empty".to_string()))?;
-		
-		Ok(vec![a_val, b_val])
+		Ok(vec![self.multilinears[0].get(0)?, self.multilinears[1].get(0)?])
 	}
 }
 
 #[cfg(test)]
 pub mod test {
-	use binius_field::{BinaryField, Field, Random, arch::{OptimalB128, packed_ghash_256::PackedBinaryGhash2x128b}};
+	use binius_field::{
+		BinaryField, Field, Random,
+		arch::{OptimalB128, packed_ghash_256::PackedBinaryGhash2x128b},
+	};
 	use binius_math::{multilinear::eq::eq_ind_partial_eval, test_utils::random_field_buffer};
 	use rand::{SeedableRng, rngs::StdRng};
 
