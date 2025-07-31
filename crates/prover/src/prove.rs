@@ -225,7 +225,6 @@ fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger
 		b_eval: mle_claims[1],
 		c_eval: mle_claims[2],
 		z_challenge: prove_output.univariate_sumcheck_challenge,
-		// Q: should this be high to low or low to high order?
 		eval_point: l2h_query_for_evaluation_point,
 	})
 }
