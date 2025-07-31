@@ -112,8 +112,11 @@ where
 	// PCS opening
 	let evaluation_point = [z_challenge, y_challenge].concat();
 
+	// Convert witness_packed to PackedSubfield view for OneBitPCSProver
+	let witness_packed_subfield_buffer = cast_bases_to_buffer(&witness_packed);
+
 	let pcs_prover = OneBitPCSProver::new(
-		witness_packed,
+		witness_packed_subfield_buffer,
 		witness_eval,
 		evaluation_point,
 		<B128 as ExtensionField<B1>>::LOG_DEGREE,
@@ -129,6 +132,18 @@ where
 	)?;
 
 	Ok(())
+}
+
+/// Helper function to convert cast_bases result to FieldBuffer
+fn cast_bases_to_buffer<P>(packed: &FieldBuffer<P>) -> FieldBuffer<<P as PackedExtension<B1>>::PackedSubfield>
+where
+	P: PackedExtension<B1>,
+{
+	let subfield = <P as PackedExtension<B1>>::cast_bases(packed.as_ref());
+	let values: Vec<_> = subfield.iter()
+		.flat_map(|p| p.iter())
+		.collect();
+	FieldBuffer::from_values(&values).expect("cast_bases should produce power-of-2 length")
 }
 
 fn pack_witness<P: PackedField<Scalar = B128>>(

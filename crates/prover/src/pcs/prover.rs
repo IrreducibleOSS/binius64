@@ -1,6 +1,6 @@
 // Copyright 2025 Irreducible Inc.
 
-use binius_field::{BinaryField, Field, PackedExtension, PackedField};
+use binius_field::{BinaryField, Field, PackedExtension, PackedField, PackedSubfield};
 use binius_math::{
 	FieldBuffer, inner_product::inner_product, multilinear::eq::eq_ind_partial_eval,
 	ntt::AdditiveNTT, tensor_algebra::TensorAlgebra,
@@ -29,7 +29,7 @@ where
 	F: BinaryField,
 	P: PackedExtension<B1> + PackedField<Scalar = F>,
 {
-	pub packed_mle: FieldBuffer<P>,
+	pub mle: FieldBuffer<PackedSubfield<P, B1>>,
 	pub small_field_evaluation_claim: F,
 	pub evaluation_claim: F,
 	pub evaluation_point: Vec<F>,
@@ -49,13 +49,13 @@ where
 	/// * `evaluation_claim` - the evaluation claim of the small field multilinear
 	/// * `evaluation_point` - the evaluation point of the small field multilinear
 	pub fn new(
-		packed_mle: FieldBuffer<P>,
+		mle: FieldBuffer<PackedSubfield<P, B1>>,
 		evaluation_claim: F,
 		evaluation_point: Vec<F>,
 		packing_degree: usize,
 	) -> Result<Self, Error> {
 		Ok(Self {
-			packed_mle,
+			mle,
 			small_field_evaluation_claim: evaluation_claim,
 			evaluation_claim,
 			evaluation_point,
@@ -95,7 +95,7 @@ where
 	{
 		// packed mle partial evals of at high variables
 		let s_hat_v =
-			Self::initialize_proof(&self.packed_mle, &self.evaluation_point, self.packing_degree)?;
+			Self::initialize_proof(&self.mle, &self.evaluation_point, self.packing_degree)?;
 
 		transcript.message().write_scalar_slice(&s_hat_v);
 
@@ -140,7 +140,7 @@ where
 	///
 	/// * `s_hat_v` - the initial message to the verifier
 	fn initialize_proof(
-		packed_mle: &FieldBuffer<P>,
+		mle: &FieldBuffer<PackedSubfield<P, B1>>,
 		evaluation_point: &[F],
 		packing_degree: usize,
 	) -> Result<Vec<F>, Error>
@@ -150,7 +150,7 @@ where
 	{
 		let (_, eval_point_high) = evaluation_point.split_at(packing_degree);
 
-		let small_field_mle = <P as PackedExtension<B1>>::cast_bases(packed_mle.as_ref());
+		let small_field_mle = mle.as_ref();
 
 		// todo maybe use packed field indexible to create the eq?
 		let eq_at_high = eq_ind_partial_eval::<F>(eval_point_high);
@@ -213,8 +213,13 @@ where
 			FieldBuffer::from_values(rs_eq_ind::<F>(r_double_prime, eval_point_high).as_ref())
 				.expect("failed to create field buffer");
 
+		// Convert PackedSubfield<P, B1> to P
+		let large_field_mle: &[P] = <P as PackedExtension<B1>>::cast_exts(self.mle.as_ref());
+        let large_field_mle: Vec<F> = large_field_mle.iter().flat_map(|p| p.iter()).collect();
+        let large_field_mle_buffer: FieldBuffer<P> = FieldBuffer::from_values(&large_field_mle).expect("failed to create field buffer");
+
 		BaseFoldProver::new(
-			self.packed_mle,
+			large_field_mle_buffer,
 			rs_eq_ind,
 			basefold_sumcheck_claim,
 			committed_codeword,
@@ -228,7 +233,7 @@ where
 
 #[cfg(test)]
 mod test {
-	use binius_field::{ExtensionField, Field};
+	use binius_field::{ExtensionField, Field, PackedExtension, PackedField};
 	use binius_math::{
 		FieldBuffer, ReedSolomonCode, inner_product::inner_product,
 		multilinear::eq::eq_ind_partial_eval, ntt::SingleThreadedNTT, test_utils::random_scalars,
@@ -268,12 +273,27 @@ mod test {
 		small_field_elms.iter().map(|&elm| FE::from(elm)).collect()
 	}
 
-	fn run_ring_switched_pcs_prove_and_verify(
-		packed_mle: FieldBuffer<B128>,
+	/// Helper function to convert cast_bases result to FieldBuffer
+	fn cast_bases_to_buffer<P>(packed: &FieldBuffer<P>) -> FieldBuffer<<P as PackedExtension<B1>>::PackedSubfield>
+	where
+		P: PackedExtension<B1>,
+	{
+		let subfield = <P as PackedExtension<B1>>::cast_bases(packed.as_ref());
+		let values: Vec<_> = subfield.iter()
+			.flat_map(|p| p.iter())
+			.collect();
+		FieldBuffer::from_values(&values).unwrap()
+	}
+
+	fn run_ring_switched_pcs_prove_and_verify<F, P>(
+		packed_mle: FieldBuffer<P>,
 		evaluation_point: Vec<B128>,
 		evaluation_claim: B128,
 		packing_degree: usize,
-	) -> Result<(), Box<dyn std::error::Error>> {
+	) -> Result<(), Box<dyn std::error::Error>>
+	where
+        P: PackedField<Scalar = B128> + PackedExtension<B128> + PackedExtension<B1>,
+	{
 		const LOG_INV_RATE: usize = 1;
 		const NUM_TEST_QUERIES: usize = 3;
 
@@ -299,8 +319,11 @@ mod test {
 		let mut prover_challenger = ProverTranscript::new(StdChallenger::default());
 		prover_challenger.message().write(&codeword_commitment);
 
+		// Convert packed_mle to PackedSubfield view for OneBitPCSProver
+		let packed_subfield_buffer = cast_bases_to_buffer(&packed_mle);
+
 		let ring_switch_pcs_prover = OneBitPCSProver::new(
-			packed_mle,
+			packed_subfield_buffer,
 			evaluation_claim,
 			evaluation_point.clone(),
 			packing_degree,
@@ -360,7 +383,7 @@ mod test {
 				.collect_vec(),
 		);
 
-		match run_ring_switched_pcs_prove_and_verify(
+		match run_ring_switched_pcs_prove_and_verify::<B128, B128>(
 			packed_mle,
 			evaluation_point,
 			evaluation_claim,
@@ -388,7 +411,7 @@ mod test {
 		// dubious evaluation claim
 		let incorrect_evaluation_claim = B128::from(42u128);
 
-		if let Ok(()) = run_ring_switched_pcs_prove_and_verify(
+		if let Ok(()) = run_ring_switched_pcs_prove_and_verify::<B128, B128>(
 			packed_mle,
 			evaluation_point,
 			incorrect_evaluation_claim,
