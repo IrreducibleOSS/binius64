@@ -174,20 +174,21 @@ impl Sha256 {
 
 		let zero = builder.add_constant(Word::ZERO);
 		let one = builder.add_constant(Word::ONE);
+		let all_ones = builder.add_constant(Word::ALL_ONE);
 
 		// Check if message ends exactly at a 64-byte block boundary.
 		// This is true when len % 64 == 0 AND len > 0 (empty message is not at boundary).
 		let is_empty = builder.icmp_eq(len, builder.add_constant_64(0));
 		let at_boundary = builder.band(
 			builder.icmp_eq(len_mod_64, builder.add_constant_64(0)),
-			builder.bxor(is_empty, one),
+			builder.bxor(is_empty, all_ones),
 		);
 
 		// Length field fits in same block if we have room for 9 bytes (0x80 + 8-byte length).
 		// This means len % 64 <= 55. But if at_boundary is true, padding goes to next block.
 		let fits_in_block = builder.band(
 			builder.icmp_ult(len_mod_64, builder.add_constant_64(56)),
-			builder.bxor(at_boundary, one),
+			builder.bxor(at_boundary, all_ones),
 		);
 
 		// Calculate which block contains the last message byte.
@@ -367,10 +368,10 @@ impl Sha256 {
 			// 2. NOT the length field location (last 64-bit word of the length block)
 			let is_length_block =
 				builder.icmp_eq(builder.add_constant_64(blk as u64), end_block_index);
-			let is_last_word_pair = if idx == 14 { one } else { zero };
+			let is_last_word_pair = if idx == 14 { all_ones } else { zero };
 			let is_length_field_location = builder.band(is_length_block, is_last_word_pair);
 			let should_be_zero =
-				builder.band(is_past_message, builder.bxor(is_length_field_location, one));
+				builder.band(is_past_message, builder.bxor(is_length_field_location, all_ones));
 			builder.assert_eq_cond("3c.zero_pad", padded_message_word, zero, should_be_zero);
 
 			// ---- 3d. Length field placement
@@ -385,7 +386,7 @@ impl Sha256 {
 				builder.assert_eq_cond("3d.w14_zero", w_lo32, zero, is_length_field_location);
 
 				builder.assert_eq_cond("3d.w15_len", w_hi32, bitlen, is_length_field_location);
-				let not_length_field = builder.bxor(is_length_field_location, one);
+				let not_length_field = builder.bxor(is_length_field_location, all_ones);
 				let not_message = is_past_message;
 				let padding_word = builder.band(not_length_field, not_message);
 				builder.assert_eq_cond("3d.w15_zero", w_hi32, zero, padding_word);
