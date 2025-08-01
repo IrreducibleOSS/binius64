@@ -22,7 +22,7 @@ use crate::{
 /// Ring switched PCS prover for non-interactively proving an evaluation claim of a one bit
 /// polynomial.
 ///
-/// The prover combines ring switching and basefold to prover a small field multilinear evaluation
+/// The prover combines ring switching and basefold to prove a small field multilinear evaluation
 /// at a large field point. The prover first performs the ring switching phase of the proof,
 /// establishing completeness. Then, the large field pcs (basefold) is invoked to establish
 /// soundness.
@@ -46,7 +46,7 @@ where
 	///
 	/// ## Arguments
 	///
-	/// * `packed_mle` - the packed multilinear polynomial
+	/// * `mle` - the multilinear polynomial with elements in the large field
 	/// * `evaluation_claim` - the evaluation claim of the small field multilinear
 	/// * `evaluation_point` - the evaluation point of the small field multilinear
 	pub fn new(
@@ -133,7 +133,7 @@ where
 	///
 	/// ## Arguments
 	///
-	/// * `packed_mle` - the packed multilinear polynomial
+	/// * `mle` - the multilinear polynomial with elements in the large field
 	/// * `evaluation_point` - the evaluation point of the small field multilinear
 	///
 	/// ## Returns
