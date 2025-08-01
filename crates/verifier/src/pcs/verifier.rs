@@ -97,7 +97,7 @@ where
 
 	let (_, eval_point_high) = eval_point.split_at(packing_degree);
 
-	let rs_eq_at_basefold_challenges = eval_rs_eq::<B1, F>(
+	let rs_eq_at_basefold_challenges = eval_rs_eq::<F>(
 		eval_point_high,
 		&sumcheck_output.challenges,
 		eq_ind_partial_eval(&batching_scalars).as_ref(),

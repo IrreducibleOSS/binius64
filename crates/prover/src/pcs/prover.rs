@@ -193,7 +193,7 @@ where
 			.evaluation_point
 			.split_at(<F as ExtensionField<B1>>::LOG_DEGREE);
 
-		let rs_eq_ind = rs_eq_ind::<B1, F>(r_double_prime, eval_point_high);
+		let rs_eq_ind = rs_eq_ind::<F>(r_double_prime, eval_point_high);
 
 		BaseFoldProver::new(
 			self.packed_mle,

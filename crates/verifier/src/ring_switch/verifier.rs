@@ -1,7 +1,9 @@
 use std::iter;
 
-use binius_field::{ExtensionField, Field};
+use binius_field::BinaryField;
 use binius_math::tensor_algebra::TensorAlgebra;
+
+use crate::config::B1;
 
 /// Evaluate the ring switching equality indicator at a given point.
 ///
@@ -23,16 +25,15 @@ use binius_math::tensor_algebra::TensorAlgebra;
 /// * the length of `expanded_row_batch_query` must equal `FE::DEGREE`
 ///
 /// [DP24]: <https://eprint.iacr.org/2024/504>
-pub fn eval_rs_eq<F, FE>(z_vals: &[FE], query: &[FE], expanded_row_batch_query: &[FE]) -> FE
+pub fn eval_rs_eq<F>(z_vals: &[F], query: &[F], expanded_row_batch_query: &[F]) -> F
 where
-	F: Field,
-	FE: Field + ExtensionField<F>,
+	F: BinaryField,
 {
 	assert_eq!(z_vals.len(), query.len()); // pre-condition
-	assert_eq!(expanded_row_batch_query.len(), FE::DEGREE); // pre-condition
+	assert_eq!(expanded_row_batch_query.len(), F::DEGREE); // pre-condition
 
 	let tensor_eval = iter::zip(z_vals, query).fold(
-		<TensorAlgebra<F, FE>>::from_vertical(FE::ONE),
+		<TensorAlgebra<B1, F>>::from_vertical(F::ONE),
 		|eval, (&vert_i, &hztl_i)| {
 			// This formula is specific to characteristic 2 fields
 			// Here we know that $h v + (1 - h) (1 - v) = 1 + h + v$.
