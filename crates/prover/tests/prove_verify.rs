@@ -5,6 +5,7 @@ use binius_frontend::{
 	circuits::sha256::{Compress, State},
 	compiler,
 	compiler::Wire,
+	constraint_system::{ConstraintSystem, ValueVec},
 	word::Word,
 };
 use binius_math::ntt::SingleThreadedNTT;
@@ -17,6 +18,31 @@ use binius_verifier::{
 	merkle_tree::BinaryMerkleTreeScheme,
 	verify,
 };
+
+fn prove_verify(cs: ConstraintSystem, witness: ValueVec) {
+	const LOG_INV_RATE: usize = 1;
+
+	let merkle_scheme = BinaryMerkleTreeScheme::<_, StdDigest, _>::new(StdCompression::default());
+	let params = Params::new(&cs, LOG_INV_RATE, merkle_scheme).unwrap();
+
+	let ntt = SingleThreadedNTT::with_subspace(params.fri_params().rs_code().subspace()).unwrap();
+	let merkle_prover = BinaryMerkleTreeProver::<_, StdDigest, _>::new(StdCompression::default());
+
+	let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
+	prove::<OptimalPackedB128, _, _, _, _>(
+		&params,
+		&cs,
+		witness.clone(),
+		&mut prover_transcript,
+		&ntt,
+		&merkle_prover,
+	)
+	.unwrap();
+
+	let mut verifier_transcript = prover_transcript.into_verifier();
+	verify(&params, &cs, witness.public(), &mut verifier_transcript).unwrap();
+	verifier_transcript.finalize().unwrap();
+}
 
 #[test]
 fn test_prove_verify_sha256_preimage() {
@@ -55,30 +81,5 @@ fn test_prove_verify_sha256_preimage() {
 	}
 	circuit.populate_wire_witness(&mut w).unwrap();
 
-	let cs = circuit.constraint_system();
-	let witness = w.into_value_vec();
-
-	const LOG_INV_RATE: usize = 1;
-	let merkle_scheme = BinaryMerkleTreeScheme::<_, StdDigest, _>::new(StdCompression::default());
-	let params = Params::new(&cs, LOG_INV_RATE, merkle_scheme).unwrap();
-
-	let ntt = SingleThreadedNTT::with_subspace(params.fri_params().rs_code().subspace()).unwrap();
-
-	let merkle_prover = BinaryMerkleTreeProver::<_, StdDigest, _>::new(StdCompression::default());
-	let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
-
-	prove::<OptimalPackedB128, _, _, _, _>(
-		&params,
-		&cs,
-		witness.clone(),
-		&mut prover_transcript,
-		&ntt,
-		&merkle_prover,
-	)
-	.unwrap();
-
-	let mut verifier_transcript = prover_transcript.into_verifier();
-	verify(&params, &cs, witness.public(), &mut verifier_transcript).unwrap();
-
-	verifier_transcript.finalize().unwrap();
+	prove_verify(circuit.constraint_system(), w.into_value_vec())
 }
