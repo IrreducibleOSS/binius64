@@ -58,7 +58,6 @@ use super::{univariate::ntt_lookup::NTTLookup, utils::multivariate::OneBitOblong
 ///
 /// * `FChallenge` - The challenge field type (must be a binary field)
 /// * `PNTTDomain` - The packed extension field type for NTT operations (width must be 16)
-#[allow(clippy::too_many_arguments)]
 pub fn univariate_round_message_extension_domain<FChallenge, PNTTDomain>(
 	first_col: &OneBitOblongMultilinear,
 	second_col: &OneBitOblongMultilinear,
