@@ -28,7 +28,6 @@ fn prove_verify(cs: ConstraintSystem, witness: ValueVec) {
 	let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
 	prove::<OptimalPackedB128, _, _, _, _, _>(
 		&verifier,
-		&cs,
 		witness.clone(),
 		&mut prover_transcript,
 		&ntt,
@@ -38,7 +37,7 @@ fn prove_verify(cs: ConstraintSystem, witness: ValueVec) {
 
 	let mut verifier_transcript = prover_transcript.into_verifier();
 	verifier
-		.verify(&cs, witness.public(), &mut verifier_transcript)
+		.verify(witness.public(), &mut verifier_transcript)
 		.unwrap();
 	verifier_transcript.finalize().unwrap();
 }
