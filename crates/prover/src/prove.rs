@@ -18,7 +18,7 @@ use binius_transcript::{
 };
 use binius_utils::{SerializeBytes, rayon::prelude::*};
 use binius_verifier::{
-	Params,
+	Verifier,
 	config::{
 		B1, B128, LOG_WORD_SIZE_BITS, LOG_WORDS_PER_ELEM, PROVER_SMALL_FIELD_ZEROCHECK_CHALLENGES,
 	},
@@ -43,7 +43,7 @@ use crate::{
 
 #[allow(clippy::too_many_arguments)]
 pub fn prove<P, Challenger_, NTT, MerkleHash, MerkleCompress, ParallelMerkleHasher>(
-	params: &Params<MerkleHash, MerkleCompress>,
+	verifier: &Verifier<MerkleHash, MerkleCompress>,
 	cs: &ConstraintSystem,
 	witness: ValueVec,
 	transcript: &mut ProverTranscript<Challenger_>,
@@ -61,33 +61,33 @@ where
 {
 	// Check that the public input length is correct
 	let public = witness.public().to_vec();
-	if public.len() != 1 << params.log_public_words() {
+	if public.len() != 1 << verifier.log_public_words() {
 		return Err(Error::ArgumentError {
 			arg: "witness".to_string(),
 			msg: format!(
 				"witness layout has {} words, expected {}",
 				public.len(),
-				1 << params.log_public_words()
+				1 << verifier.log_public_words()
 			),
 		});
 	}
 
-	let witness_packed = pack_witness::<P>(params.log_witness_elems(), &witness)?;
+	let witness_packed = pack_witness::<P>(verifier.log_witness_elems(), &witness)?;
 
 	// Commit the witness.
 	let CommitOutput {
 		commitment: trace_commitment,
 		committed: trace_committed,
 		codeword: trace_codeword,
-	} = fri::commit_interleaved(params.fri_params(), ntt, merkle_prover, witness_packed.to_ref())?;
+	} = fri::commit_interleaved(verifier.fri_params(), ntt, merkle_prover, witness_packed.to_ref())?;
 	transcript.message().write(&trace_commitment);
 
 	let and_witness = build_and_check_witness(&cs.and_constraints, witness.combined_witness());
-	let _output = run_and_check::<B128, _>(params.log_witness_words(), and_witness, transcript)?;
+	let _output = run_and_check::<B128, _>(verifier.log_witness_words(), and_witness, transcript)?;
 
 	// Sample a challenge point during the shift reduction.
 	let z_challenge = transcript.sample_vec(LOG_WORD_SIZE_BITS);
-	let public_input_challenge = transcript.sample_vec(params.log_public_words());
+	let public_input_challenge = transcript.sample_vec(verifier.log_public_words());
 
 	let z_tensor = eq_ind_partial_eval(&z_challenge);
 	let witness_z_folded = fold_words::<_, P>(witness.combined_witness(), z_tensor.as_ref());
@@ -120,7 +120,7 @@ where
 		transcript,
 		ntt,
 		merkle_prover,
-		params.fri_params(),
+		verifier.fri_params(),
 		&trace_codeword,
 		&trace_committed,
 	)?;
