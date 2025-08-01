@@ -287,7 +287,7 @@ mod test {
 		FieldBuffer::from_values(&values).unwrap()
 	}
 
-	fn run_ring_switched_pcs_prove_and_verify<F, P>(
+	fn run_ring_switched_pcs_prove_and_verify<P>(
 		packed_mle: FieldBuffer<P>,
 		evaluation_point: Vec<B128>,
 		evaluation_claim: B128,
@@ -383,7 +383,7 @@ mod test {
 				.collect_vec(),
 		);
 
-		match run_ring_switched_pcs_prove_and_verify::<B128, B128>(
+		match run_ring_switched_pcs_prove_and_verify::<B128>(
 			packed_mle,
 			evaluation_point,
 			evaluation_claim,
@@ -410,7 +410,7 @@ mod test {
 		// dubious evaluation claim
 		let incorrect_evaluation_claim = B128::from(42u128);
 
-		let result = run_ring_switched_pcs_prove_and_verify::<B128, B128>(
+		let result = run_ring_switched_pcs_prove_and_verify::<B128>(
 			packed_mle,
 			evaluation_point,
 			incorrect_evaluation_claim,
