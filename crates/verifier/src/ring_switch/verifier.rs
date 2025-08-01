@@ -27,7 +27,7 @@ use crate::config::B1;
 /// [DP24]: <https://eprint.iacr.org/2024/504>
 pub fn eval_rs_eq<F>(z_vals: &[F], query: &[F], expanded_row_batch_query: &[F]) -> F
 where
-	F: BinaryField + PackedExtension<B1>,
+	F: BinaryField,
 {
 	assert_eq!(z_vals.len(), query.len()); // pre-condition
 	assert_eq!(expanded_row_batch_query.len(), F::DEGREE); // pre-condition
