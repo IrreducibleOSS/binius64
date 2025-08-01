@@ -487,7 +487,7 @@ mod tests {
 		populate_circuit(&circuit, &mut w, &signature_bytes, message, &modulus_bytes);
 
 		cs.populate_wire_witness(&mut w).unwrap();
-		verify_constraints(&cs.constraint_system(), &w.into_value_vec()).unwrap();
+		verify_constraints(cs.constraint_system(), &w.into_value_vec()).unwrap();
 	}
 
 	#[test]

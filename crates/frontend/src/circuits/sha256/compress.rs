@@ -271,7 +271,7 @@ mod tests {
 		}
 		circuit.populate_wire_witness(&mut w).unwrap();
 
-		verify_constraints(&cs, &w.into_value_vec()).unwrap();
+		verify_constraints(cs, &w.into_value_vec()).unwrap();
 	}
 
 	#[test]
@@ -317,7 +317,7 @@ mod tests {
 		}
 		circuit.populate_wire_witness(&mut w).unwrap();
 
-		verify_constraints(&cs, &w.into_value_vec()).unwrap();
+		verify_constraints(cs, &w.into_value_vec()).unwrap();
 	}
 
 	#[test]
@@ -351,6 +351,6 @@ mod tests {
 		}
 		circuit.populate_wire_witness(&mut w).unwrap();
 
-		verify_constraints(&cs, &w.into_value_vec()).unwrap();
+		verify_constraints(cs, &w.into_value_vec()).unwrap();
 	}
 }

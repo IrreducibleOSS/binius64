@@ -4,13 +4,14 @@ use std::{
 };
 
 use binius_core::{
-	constraint_system::{ValueIndex, ValueVecLayout},
+	constraint_system::{ConstraintSystem, ValueIndex, ValueVecLayout},
 	word::Word,
 };
 use cranelift_entity::{PrimaryMap, SecondaryMap};
 
 use crate::compiler::{
 	circuit::Circuit,
+	constraint_builder::ConstraintBuilder,
 	gate_graph::{ConstPool, GateGraph, WireKind},
 	pathspec::{PathSpec, PathSpecTree},
 };
@@ -77,8 +78,9 @@ impl CircuitBuilder {
 		let Some(shared) = shared else {
 			panic!("CircuitBuilder::build called twice");
 		};
+		let graph = shared.graph;
 
-		shared.graph.validate();
+		graph.validate();
 
 		// `ValueVec` expects the wires to be in a certain order. Specifically:
 		//
@@ -89,12 +91,12 @@ impl CircuitBuilder {
 		//
 		// So we create a mapping between a `Wire` to the final `ValueIndex`.
 		let mut wire_mapping = SecondaryMap::new();
-		let total_wires = shared.graph.wires.len();
+		let total_wires = graph.wires.len();
 		let mut w_const: Vec<Wire> = Vec::with_capacity(total_wires);
 		let mut w_inout: Vec<Wire> = Vec::with_capacity(total_wires);
 		let mut w_witness: Vec<Wire> = Vec::with_capacity(total_wires);
 		let mut w_internal: Vec<Wire> = Vec::with_capacity(total_wires);
-		for (wire, wire_data) in shared.graph.wires.iter() {
+		for (wire, wire_data) in graph.wires.iter() {
 			match wire_data.kind {
 				WireKind::Constant(_) => w_const.push(wire),
 				WireKind::Inout => w_inout.push(wire),
@@ -141,7 +143,19 @@ impl CircuitBuilder {
 			total_len,
 		};
 
-		Circuit::new(shared, value_vec_layout, wire_mapping)
+		let mut builder = ConstraintBuilder::new();
+		for (gate_id, _) in graph.gates.iter() {
+			gate::constrain(gate_id, &graph, &mut builder);
+		}
+		let (and_constraints, mul_constraints) = builder.build(&wire_mapping);
+		let cs = ConstraintSystem::new(
+			graph.const_pool.pool.keys().cloned().collect::<Vec<_>>(),
+			value_vec_layout,
+			and_constraints,
+			mul_constraints,
+		);
+
+		Circuit::new(graph, cs, wire_mapping)
 	}
 
 	pub fn subcircuit(&self, name: impl Into<String>) -> CircuitBuilder {

@@ -167,7 +167,7 @@ fn prop_check_icmp_ult(a: u64, b: u64, expected_result: Word) {
 	assert_eq!(w[result_wire], expected_result);
 
 	let cs = circuit.constraint_system();
-	verify_constraints(&cs, &w.value_vec).unwrap();
+	verify_constraints(cs, &w.value_vec).unwrap();
 }
 
 fn prop_check_icmp_eq(a: u64, b: u64, expected_result: Word) {
@@ -183,7 +183,7 @@ fn prop_check_icmp_eq(a: u64, b: u64, expected_result: Word) {
 	assert_eq!(w[result_wire], expected_result);
 
 	let cs = circuit.constraint_system();
-	verify_constraints(&cs, &w.value_vec).unwrap();
+	verify_constraints(cs, &w.value_vec).unwrap();
 }
 
 proptest! {
@@ -221,7 +221,7 @@ proptest! {
 		assert_eq!(w[cout2_wire], Word(expected_cout2));
 
 		let cs = circuit.constraint_system();
-		verify_constraints(&cs, &w.value_vec).unwrap();
+		verify_constraints(cs, &w.value_vec).unwrap();
 	}
 
 	#[test]
@@ -254,7 +254,7 @@ proptest! {
 			assert!(result.is_ok());
 			// And constraints should verify
 			let cs = circuit.constraint_system();
-			verify_constraints(&cs, &w.value_vec).unwrap();
+			verify_constraints(cs, &w.value_vec).unwrap();
 		} else {
 			// When values are not equal, witness population should fail
 			assert!(result.is_err());

@@ -129,22 +129,25 @@ mod tests {
 			offset_witness: 4, // next power of 2 after constants
 			total_len: 8,      // next power of 2 after all values
 		};
-		let mut lhs =
-			ConstraintSystem::new(vec![Word(0), Word(u64::MAX)], value_vec_layout.clone());
-		let mut rhs = ConstraintSystem::new(vec![Word(0), Word(u64::MAX)], value_vec_layout);
-
 		// Both implement: v0 & v1 ^ v2 = 0
+		let constraint = AndConstraint::plain_abc(
+			vec![ValueIndex(2)], // v0
+			vec![ValueIndex(3)], // v1
+			vec![ValueIndex(4)], // v2
+		);
 
-		lhs.add_and_constraint(AndConstraint::plain_abc(
-			vec![ValueIndex(2)], // v0
-			vec![ValueIndex(3)], // v1
-			vec![ValueIndex(4)], // v2
-		));
-		rhs.add_and_constraint(AndConstraint::plain_abc(
-			vec![ValueIndex(2)], // v0
-			vec![ValueIndex(3)], // v1
-			vec![ValueIndex(4)], // v2
-		));
+		let lhs = ConstraintSystem::new(
+			vec![Word(0), Word(u64::MAX)],
+			value_vec_layout.clone(),
+			vec![constraint.clone()],
+			vec![],
+		);
+		let rhs = ConstraintSystem::new(
+			vec![Word(0), Word(u64::MAX)],
+			value_vec_layout,
+			vec![constraint],
+			vec![],
+		);
 
 		let mut blaster = RandBlast::new(0);
 		let result = blaster.test_equivalence(&lhs, &rhs, 100);
@@ -165,25 +168,35 @@ mod tests {
 			offset_witness: 4, // next power of 2 after constants
 			total_len: 8,      // next power of 2 after all values
 		};
-		let mut lhs =
-			ConstraintSystem::new(vec![Word(0), Word(u64::MAX)], value_vec_layout.clone());
-		let mut rhs = ConstraintSystem::new(vec![Word(0), Word(u64::MAX)], value_vec_layout);
-
 		// LHS: ZERO & ZERO ^ ZERO = 0 (always satisfied)
-		lhs.add_and_constraint(AndConstraint::plain_abc(
+		let lhs_constraint = AndConstraint::plain_abc(
 			vec![ValueIndex(0)], // ZERO
 			vec![ValueIndex(0)], // ZERO
 			vec![ValueIndex(0)], // ZERO
-		));
+		);
 
 		// RHS: ALL_ONE & ALL_ONE ^ ZERO = 0
-		// This is never satisfied since ALL_ONE & ALL_ONE = ALL_ONE, and ALL_ONE ^ ZERO = ALL_ONE
-		// != 0
-		rhs.add_and_constraint(AndConstraint::plain_abc(
+		// This is never satisfied since:
+		//
+		// ALL_ONE & ALL_ONE = ALL_ONE, and ALL_ONE ^ ZERO = ALL_ONE != 0
+		let rhs_constraint = AndConstraint::plain_abc(
 			vec![ValueIndex(1)], // ALL_ONE
 			vec![ValueIndex(1)], // ALL_ONE
 			vec![ValueIndex(0)], // ZERO
-		));
+		);
+
+		let lhs = ConstraintSystem::new(
+			vec![Word(0), Word(u64::MAX)],
+			value_vec_layout.clone(),
+			vec![lhs_constraint],
+			vec![],
+		);
+		let rhs = ConstraintSystem::new(
+			vec![Word(0), Word(u64::MAX)],
+			value_vec_layout,
+			vec![rhs_constraint],
+			vec![],
+		);
 
 		// LHS is always satisfied, RHS is never satisfied
 		// They are definitely not equivalent

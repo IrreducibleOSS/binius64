@@ -1,15 +1,14 @@
 use std::{error, fmt};
 
 use binius_core::{
-	constraint_system::{ConstraintSystem, ValueIndex, ValueVec, ValueVecLayout},
+	constraint_system::{ConstraintSystem, ValueIndex, ValueVec},
 	word::Word,
 };
 use cranelift_entity::SecondaryMap;
 
-use super::{Shared, gate};
+use super::gate;
 use crate::compiler::{
-	constraint_builder::ConstraintBuilder,
-	gate_graph::{Wire, WireKind},
+	gate_graph::{GateGraph, Wire, WireKind},
 	pathspec::PathSpec,
 };
 
@@ -84,8 +83,8 @@ impl<'a> std::ops::IndexMut<Wire> for WitnessFiller<'a> {
 }
 
 pub struct Circuit {
-	shared: Shared,
-	value_vec_layout: ValueVecLayout,
+	gate_graph: GateGraph,
+	constraint_system: ConstraintSystem,
 	wire_mapping: SecondaryMap<Wire, ValueIndex>,
 }
 
@@ -93,14 +92,13 @@ impl Circuit {
 	/// Creates a new circuit with the given shared data and wire mapping. Only used during building
 	/// by the circuit builder.
 	pub(super) fn new(
-		shared: Shared,
-		value_vec_layout: ValueVecLayout,
+		gate_graph: GateGraph,
+		constraint_system: ConstraintSystem,
 		wire_mapping: SecondaryMap<Wire, ValueIndex>,
 	) -> Self {
-		value_vec_layout.validate();
 		Self {
-			shared,
-			value_vec_layout,
+			gate_graph,
+			constraint_system,
 			wire_mapping,
 		}
 	}
@@ -114,7 +112,7 @@ impl Circuit {
 	pub fn new_witness_filler(&self) -> WitnessFiller<'_> {
 		WitnessFiller {
 			circuit: self,
-			value_vec: ValueVec::new(self.value_vec_layout.clone()),
+			value_vec: ValueVec::new(self.constraint_system.value_vec_layout.clone()),
 			assertion_failed_message_vec: Vec::new(),
 			assertion_failed_count: 0,
 			ignore_assertions: false,
@@ -140,15 +138,15 @@ impl Circuit {
 	/// an error with a list of assertion failure messages.
 	pub fn populate_wire_witness(&self, w: &mut WitnessFiller) -> Result<(), PopulateError> {
 		// Fill constants
-		for (wire, wire_data) in self.shared.graph.wires.iter() {
+		for (wire, wire_data) in self.gate_graph.wires.iter() {
 			if let WireKind::Constant(value) = wire_data.kind {
 				w[wire] = value;
 			}
 		}
 
 		// Evaluate all gates
-		for (gate_id, _) in self.shared.graph.gates.iter() {
-			gate::evaluate(gate_id, &self.shared.graph, w);
+		for (gate_id, _) in self.gate_graph.gates.iter() {
+			gate::evaluate(gate_id, &self.gate_graph, w);
 		}
 
 		if !w.ignore_assertions && w.assertion_failed_count > 0 {
@@ -159,8 +157,7 @@ impl Circuit {
 					.iter()
 					.map(|(path_spec, message)| {
 						let mut full_assertion_msg = String::with_capacity(message.len() + 128);
-						self.shared
-							.graph
+						self.gate_graph
 							.path_spec_tree
 							.stringify(*path_spec, &mut full_assertion_msg);
 						full_assertion_msg.push_str(" failed: ");
@@ -175,30 +172,9 @@ impl Circuit {
 		Ok(())
 	}
 
-	/// Builds a constraint system from this circuit.
-	pub fn constraint_system(&self) -> ConstraintSystem {
-		let mut builder = ConstraintBuilder::new();
-		for (gate_id, _) in self.shared.graph.gates.iter() {
-			gate::constrain(gate_id, &self.shared.graph, &mut builder);
-		}
-		let (and_constraints, mul_constraints) = builder.build(&self.wire_mapping);
-		let mut cs = ConstraintSystem::new(
-			self.shared
-				.graph
-				.const_pool
-				.pool
-				.keys()
-				.cloned()
-				.collect::<Vec<_>>(),
-			self.value_vec_layout.clone(),
-		);
-		for constraint in and_constraints {
-			cs.add_and_constraint(constraint);
-		}
-		for constraint in mul_constraints {
-			cs.add_mul_constraint(constraint);
-		}
-		cs
+	/// Returns the constraint system for this circuit.
+	pub fn constraint_system(&self) -> &ConstraintSystem {
+		&self.constraint_system
 	}
 
 	/// Returns the number of gates in this circuit.
@@ -206,11 +182,11 @@ impl Circuit {
 	/// Depending on what type of gates this circuit uses, the number of constraints might be
 	/// significantly larger.
 	pub fn n_gates(&self) -> usize {
-		self.shared.graph.gates.len()
+		self.gate_graph.gates.len()
 	}
 
 	/// Returns a string with a JSON dump that is useful to profile the circuit.
 	pub fn simple_json_dump(&self) -> String {
-		crate::compiler::dump::dump_composition(&self.shared.graph)
+		crate::compiler::dump::dump_composition(&self.gate_graph)
 	}
 }

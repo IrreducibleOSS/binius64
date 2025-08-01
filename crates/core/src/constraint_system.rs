@@ -136,13 +136,18 @@ pub struct ConstraintSystem {
 }
 
 impl ConstraintSystem {
-	pub fn new(constants: Vec<Word>, value_vec_layout: ValueVecLayout) -> Self {
+	pub fn new(
+		constants: Vec<Word>,
+		value_vec_layout: ValueVecLayout,
+		and_constraints: Vec<AndConstraint>,
+		mul_constraints: Vec<MulConstraint>,
+	) -> Self {
 		assert_eq!(constants.len(), value_vec_layout.n_const);
 		ConstraintSystem {
 			constants,
 			value_vec_layout,
-			and_constraints: Vec::new(),
-			mul_constraints: Vec::new(),
+			and_constraints,
+			mul_constraints,
 		}
 	}
 
