@@ -193,7 +193,7 @@ mod test {
 	};
 	use binius_transcript::ProverTranscript;
 	use binius_verifier::{
-		config::{B128, StdChallenger},
+		config::StdChallenger,
 		fri::FRIParams,
 		hash::{StdCompression, StdDigest},
 		protocols::basefold::verifier::{sumcheck_fri_consistency, verify_transcript},
@@ -313,11 +313,8 @@ mod test {
 
 		let (multilinear, evaluation_point, evaluation_claim) = test_setup::<_, P>(n_vars);
 
-		match run_basefold_prove_and_verify::<_, P>(
-			multilinear,
-			evaluation_point,
-			evaluation_claim,
-		) {
+		match run_basefold_prove_and_verify::<_, P>(multilinear, evaluation_point, evaluation_claim)
+		{
 			Ok(()) => {}
 			Err(_) => panic!("expected valid proof"),
 		}
