@@ -30,7 +30,7 @@ where
 	MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 	VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 {
-	sumcheck_prover: MultilinearSumcheckProver<F>,
+	sumcheck_prover: MultilinearSumcheckProver<F, F>,
 	fri_folder: FRIFolder<'a, F, FA, F, NTT, MerkleProver, VCS>,
 	log_n: usize,
 }
@@ -87,7 +87,7 @@ where
 		let sumcheck_composition = [multilinear, transparent_multilinear];
 
 		let sumcheck_prover =
-			MultilinearSumcheckProver::<F>::new(sumcheck_composition, claim, log_n);
+			MultilinearSumcheckProver::<_, F>::new(sumcheck_composition, claim, log_n);
 
 		Ok(Self {
 			sumcheck_prover,
