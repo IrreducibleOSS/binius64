@@ -47,15 +47,15 @@ use crate::{
 /// given constraint system. Then [`Self::prove`] is called one or more times with individual
 /// instances.
 #[derive(Debug)]
-pub struct Prover<'a, P, MerkleCompress, ParallelMerkleHasher: ParallelDigest> {
-	verifier: &'a Verifier<'a, ParallelMerkleHasher::Digest, MerkleCompress>,
+pub struct Prover<P, MerkleCompress, ParallelMerkleHasher: ParallelDigest> {
+	verifier: Verifier<ParallelMerkleHasher::Digest, MerkleCompress>,
 	ntt: MultiThreadedNTT<B128, PrecomputedTwiddleAccess<B128>>,
 	merkle_prover: BinaryMerkleTreeProver<B128, ParallelMerkleHasher, MerkleCompress>,
 	_p_marker: PhantomData<P>,
 }
 
-impl<'a, P, MerkleHash, MerkleCompress, ParallelMerkleHasher>
-	Prover<'a, P, MerkleCompress, ParallelMerkleHasher>
+impl<P, MerkleHash, MerkleCompress, ParallelMerkleHasher>
+	Prover<P, MerkleCompress, ParallelMerkleHasher>
 where
 	P: PackedField<Scalar = B128> + PackedExtension<B128> + PackedExtension<B1>,
 	MerkleHash: Digest + BlockSizeUser + FixedOutputReset,
@@ -66,9 +66,7 @@ where
 	/// Constructs a prover corresponding to a constraint system verifier.
 	///
 	/// See [`Prover`] struct documentation for details.
-	pub fn setup(
-		verifier: &'a Verifier<'a, ParallelMerkleHasher::Digest, MerkleCompress>,
-	) -> Result<Self, Error> {
+	pub fn setup(verifier: Verifier<MerkleHash, MerkleCompress>) -> Result<Self, Error> {
 		let ntt = SingleThreadedNTT::with_subspace(verifier.fri_params().rs_code().subspace())?
 			.precompute_twiddles()
 			.multithreaded();

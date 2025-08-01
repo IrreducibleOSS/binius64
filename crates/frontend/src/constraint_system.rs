@@ -83,7 +83,7 @@ impl ShiftedValueIndex {
 
 pub type Operand = Vec<ShiftedValueIndex>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AndConstraint {
 	pub a: Operand,
 	pub b: Operand,
@@ -116,7 +116,7 @@ impl AndConstraint {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MulConstraint {
 	pub a: Operand,
 	pub b: Operand,
@@ -124,7 +124,7 @@ pub struct MulConstraint {
 	pub lo: Operand,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ConstraintSystem {
 	pub value_vec_layout: ValueVecLayout,
 	pub constants: Vec<Word>,

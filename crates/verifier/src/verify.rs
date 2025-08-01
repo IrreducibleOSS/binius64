@@ -37,14 +37,14 @@ pub const SECURITY_BITS: usize = 96;
 /// The [`Self::setup`] constructor determines public parameters for proving instances of the given
 /// constraint system. Then [`Self::verify`] is called one or more times with individual instances.
 #[derive(Debug, Clone)]
-pub struct Verifier<'a, MerkleHash, MerkleCompress> {
-	constraint_system: &'a ConstraintSystem,
+pub struct Verifier<MerkleHash, MerkleCompress> {
+	constraint_system: ConstraintSystem,
 	fri_params: FRIParams<B128, B128>,
 	merkle_scheme: BinaryMerkleTreeScheme<B128, MerkleHash, MerkleCompress>,
 	log_public_words: usize,
 }
 
-impl<'a, MerkleHash, MerkleCompress> Verifier<'a, MerkleHash, MerkleCompress>
+impl<MerkleHash, MerkleCompress> Verifier<MerkleHash, MerkleCompress>
 where
 	MerkleHash: Digest + BlockSizeUser,
 	MerkleCompress: PseudoCompressionFunction<Output<MerkleHash>, 2> + Sync,
@@ -54,7 +54,7 @@ where
 	///
 	/// See [`Verifier`] struct documentation for details.
 	pub fn setup(
-		constraint_system: &'a ConstraintSystem,
+		constraint_system: ConstraintSystem,
 		log_inv_rate: usize,
 		compression: MerkleCompress,
 	) -> Result<Self, Error> {
@@ -115,7 +115,7 @@ where
 
 	/// Returns the constraint system.
 	pub fn constraint_system(&self) -> &ConstraintSystem {
-		self.constraint_system
+		&self.constraint_system
 	}
 
 	/// Returns the chosen FRI parameters.

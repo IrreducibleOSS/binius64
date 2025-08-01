@@ -20,9 +20,9 @@ fn prove_verify(cs: ConstraintSystem, witness: ValueVec) {
 	const LOG_INV_RATE: usize = 1;
 
 	let verifier =
-		Verifier::<StdDigest, _>::setup(&cs, LOG_INV_RATE, StdCompression::default()).unwrap();
+		Verifier::<StdDigest, _>::setup(cs, LOG_INV_RATE, StdCompression::default()).unwrap();
 
-	let prover = Prover::<OptimalPackedB128, _, StdDigest>::setup(&verifier).unwrap();
+	let prover = Prover::<OptimalPackedB128, _, StdDigest>::setup(verifier.clone()).unwrap();
 
 	let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
 	prover
