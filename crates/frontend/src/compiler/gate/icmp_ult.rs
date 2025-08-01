@@ -22,10 +22,10 @@
 use crate::{
 	compiler::{
 		circuit,
+		constraint_builder::{ConstraintBuilder, empty, sar, sll, xor2, xor3},
 		gate::opcode::OpcodeShape,
 		gate_graph::{Gate, GateData, GateParam},
 	},
-	constraint_system::{AndConstraint, ConstraintSystem, ShiftedValueIndex},
 	word::Word,
 };
 
@@ -39,12 +39,7 @@ pub fn shape() -> OpcodeShape {
 	}
 }
 
-pub fn constrain(
-	_gate: Gate,
-	data: &GateData,
-	circuit: &circuit::Circuit,
-	cs: &mut ConstraintSystem,
-) {
+pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) {
 	let GateParam {
 		inputs,
 		outputs,
@@ -57,40 +52,23 @@ pub fn constrain(
 	let [out_mask] = outputs else { unreachable!() };
 	let [bout] = internal else { unreachable!() };
 
-	let x_idx = circuit.witness_index(*x);
-	let y_idx = circuit.witness_index(*y);
-	let out_mask_idx = circuit.witness_index(*out_mask);
-	let bout_idx = circuit.witness_index(*bout);
-	let all_1_idx = circuit.witness_index(*all_1);
-
 	// Constraint 1: Carry propagation for comparison
 	// ((x ⊕ all-1) ⊕ (bout << 1)) ∧ (y ⊕ (bout << 1)) = bout ⊕ (bout << 1)
-	cs.add_and_constraint(AndConstraint::abc(
-		[
-			ShiftedValueIndex::plain(x_idx),
-			ShiftedValueIndex::plain(all_1_idx),
-			ShiftedValueIndex::sll(bout_idx, 1),
-		],
-		[
-			ShiftedValueIndex::plain(y_idx),
-			ShiftedValueIndex::sll(bout_idx, 1),
-		],
-		[
-			ShiftedValueIndex::plain(bout_idx),
-			ShiftedValueIndex::sll(bout_idx, 1),
-		],
-	));
+	builder
+		.and()
+		.a(xor3(*x, *all_1, sll(*bout, 1)))
+		.b(xor2(*y, sll(*bout, 1)))
+		.c(xor2(*bout, sll(*bout, 1)))
+		.build();
 
 	// Constraint 2: MSB broadcast
 	// ((bout >> 63) ⊕ out_mask) ∧ all-1 = 0
-	cs.add_and_constraint(AndConstraint::abc(
-		[
-			ShiftedValueIndex::sar(bout_idx, 63),
-			ShiftedValueIndex::plain(out_mask_idx),
-		],
-		[ShiftedValueIndex::plain(all_1_idx)],
-		[],
-	));
+	builder
+		.and()
+		.a(xor2(sar(*bout, 63), *out_mask))
+		.b(*all_1)
+		.c(empty())
+		.build();
 }
 
 pub fn evaluate(_gate: Gate, data: &GateData, w: &mut circuit::WitnessFiller) {

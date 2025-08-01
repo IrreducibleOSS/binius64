@@ -19,6 +19,7 @@ mod gate;
 use gate::Opcode;
 
 pub mod circuit;
+pub mod constraint_builder;
 mod dump;
 mod gate_graph;
 mod pathspec;

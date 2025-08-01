@@ -11,13 +11,11 @@
 ///
 /// The gate generates 1 AND constraint:
 /// - `x ∧ y = x ⊕ y ⊕ z`
-use crate::{
-	compiler::{
-		circuit,
-		gate::opcode::OpcodeShape,
-		gate_graph::{Gate, GateData, GateParam},
-	},
-	constraint_system::{AndConstraint, ConstraintSystem},
+use crate::compiler::{
+	circuit,
+	constraint_builder::{ConstraintBuilder, xor3},
+	gate::opcode::OpcodeShape,
+	gate_graph::{Gate, GateData, GateParam},
 };
 
 pub fn shape() -> OpcodeShape {
@@ -30,26 +28,17 @@ pub fn shape() -> OpcodeShape {
 	}
 }
 
-pub fn constrain(
-	_gate: Gate,
-	data: &GateData,
-	circuit: &circuit::Circuit,
-	cs: &mut ConstraintSystem,
-) {
+pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) {
 	let GateParam {
 		inputs, outputs, ..
 	} = data.gate_param();
 	let [x, y] = inputs else { unreachable!() };
 	let [z] = outputs else { unreachable!() };
 
-	let x_idx = circuit.witness_index(*x);
-	let y_idx = circuit.witness_index(*y);
-	let z_idx = circuit.witness_index(*z);
-
 	// Constraint: Bitwise OR
 	//
 	// x ∧ y = x ⊕ y ⊕ z
-	cs.add_and_constraint(AndConstraint::plain_abc([x_idx], [y_idx], [x_idx, y_idx, z_idx]));
+	builder.and().a(*x).b(*y).c(xor3(*x, *y, *z)).build();
 }
 
 pub fn evaluate(_gate: Gate, data: &GateData, w: &mut circuit::WitnessFiller) {

@@ -5,6 +5,7 @@ use cranelift_entity::SecondaryMap;
 use super::{Shared, gate};
 use crate::{
 	compiler::{
+		constraint_builder::ConstraintBuilder,
 		gate_graph::{Wire, WireKind},
 		pathspec::PathSpec,
 	},
@@ -176,6 +177,11 @@ impl Circuit {
 
 	/// Builds a constraint system from this circuit.
 	pub fn constraint_system(&self) -> ConstraintSystem {
+		let mut builder = ConstraintBuilder::new();
+		for (gate_id, _) in self.shared.graph.gates.iter() {
+			gate::constrain(gate_id, &self.shared.graph, &mut builder);
+		}
+		let (and_constraints, mul_constraints) = builder.build(&self.wire_mapping);
 		let mut cs = ConstraintSystem::new(
 			self.shared
 				.graph
@@ -186,8 +192,11 @@ impl Circuit {
 				.collect::<Vec<_>>(),
 			self.value_vec_layout.clone(),
 		);
-		for (gate_id, _) in self.shared.graph.gates.iter() {
-			gate::constrain(gate_id, &self.shared.graph, self, &mut cs);
+		for constraint in and_constraints {
+			cs.add_and_constraint(constraint);
+		}
+		for constraint in mul_constraints {
+			cs.add_mul_constraint(constraint);
 		}
 		cs
 	}
