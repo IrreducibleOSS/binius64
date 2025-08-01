@@ -14,11 +14,11 @@
 use crate::{
 	compiler::{
 		circuit,
+		constraint_builder::{ConstraintBuilder, empty, xor2},
 		gate::opcode::OpcodeShape,
 		gate_graph::{Gate, GateData, GateParam},
 		pathspec::PathSpec,
 	},
-	constraint_system::{AndConstraint, ConstraintSystem},
 	word::Word,
 };
 
@@ -32,24 +32,15 @@ pub fn shape() -> OpcodeShape {
 	}
 }
 
-pub fn constrain(
-	_gate: Gate,
-	data: &GateData,
-	circuit: &circuit::Circuit,
-	cs: &mut ConstraintSystem,
-) {
+pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) {
 	let GateParam {
 		constants, inputs, ..
 	} = data.gate_param();
 	let [all_1] = constants else { unreachable!() };
 	let [x, y] = inputs else { unreachable!() };
 
-	let x_idx = circuit.witness_index(*x);
-	let y_idx = circuit.witness_index(*y);
-	let all_1_idx = circuit.witness_index(*all_1);
-
 	// Constraint: (x ⊕ y) ∧ all-1 = 0
-	cs.add_and_constraint(AndConstraint::plain_abc([x_idx, y_idx], [all_1_idx], []));
+	builder.and().a(xor2(*x, *y)).b(*all_1).c(empty()).build();
 }
 
 pub fn evaluate(

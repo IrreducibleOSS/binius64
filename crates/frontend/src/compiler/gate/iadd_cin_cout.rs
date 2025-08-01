@@ -28,10 +28,10 @@
 use crate::{
 	compiler::{
 		circuit,
+		constraint_builder::{ConstraintBuilder, sll, srl, xor3, xor4},
 		gate::opcode::OpcodeShape,
 		gate_graph::{Gate, GateData, GateParam},
 	},
-	constraint_system::{AndConstraint, ConstraintSystem, ShiftedValueIndex},
 	word::Word,
 };
 
@@ -45,12 +45,7 @@ pub fn shape() -> OpcodeShape {
 	}
 }
 
-pub fn constrain(
-	_gate: Gate,
-	data: &GateData,
-	circuit: &circuit::Circuit,
-	cs: &mut ConstraintSystem,
-) {
+pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) {
 	let GateParam {
 		constants,
 		inputs,
@@ -61,38 +56,28 @@ pub fn constrain(
 	let [a, b, cin] = inputs else { unreachable!() };
 	let [sum, cout] = outputs else { unreachable!() };
 
-	let a_idx = circuit.witness_index(*a);
-	let b_idx = circuit.witness_index(*b);
-	let cin_idx = circuit.witness_index(*cin);
-	let sum_idx = circuit.witness_index(*sum);
-	let cout_idx = circuit.witness_index(*cout);
-	let all_1_idx = circuit.witness_index(*all_1);
-
-	let cout_sll_1 = ShiftedValueIndex::sll(cout_idx, 1);
+	let cout_sll_1 = sll(*cout, 1);
+	let cin_msb = srl(*cin, 63);
 
 	// Constraint 1: Carry propagation
 	//
 	// (a ⊕ (cout << 1) ⊕ cin_msb) ∧ (b ⊕ (cout << 1) ⊕ cin_msb) = cout ⊕ (cout << 1) ⊕ cin_msb
-	let cin_msb = ShiftedValueIndex::srl(cin_idx, 63);
-	let a_operands = vec![ShiftedValueIndex::plain(a_idx), cout_sll_1, cin_msb];
-	let b_operands = vec![ShiftedValueIndex::plain(b_idx), cout_sll_1, cin_msb];
-	let c_operands = vec![ShiftedValueIndex::plain(cout_idx), cout_sll_1, cin_msb];
-	cs.add_and_constraint(AndConstraint::abc(a_operands, b_operands, c_operands));
+	builder
+		.and()
+		.a(xor3(*a, cout_sll_1, cin_msb))
+		.b(xor3(*b, cout_sll_1, cin_msb))
+		.c(xor3(*cout, cout_sll_1, cin_msb))
+		.build();
 
 	// Constraint 2: Sum equality
 	//
 	// (a ⊕ b ⊕ (cout << 1) ⊕ cin_msb) ∧ all-1 = sum
-	let sum_operands = vec![
-		ShiftedValueIndex::plain(a_idx),
-		ShiftedValueIndex::plain(b_idx),
-		ShiftedValueIndex::sll(cout_idx, 1),
-		cin_msb,
-	];
-	cs.add_and_constraint(AndConstraint::abc(
-		sum_operands,
-		[ShiftedValueIndex::plain(all_1_idx)],
-		[ShiftedValueIndex::plain(sum_idx)],
-	));
+	builder
+		.and()
+		.a(xor4(*a, *b, cout_sll_1, cin_msb))
+		.b(*all_1)
+		.c(*sum)
+		.build();
 }
 
 pub fn evaluate(_gate: Gate, data: &GateData, w: &mut circuit::WitnessFiller) {

@@ -24,10 +24,10 @@
 use crate::{
 	compiler::{
 		circuit,
+		constraint_builder::{ConstraintBuilder, empty, sar, sll, xor2, xor3},
 		gate::opcode::OpcodeShape,
 		gate_graph::{Gate, GateData, GateParam},
 	},
-	constraint_system::{AndConstraint, ConstraintSystem, ShiftedValueIndex},
 	word::Word,
 };
 
@@ -41,12 +41,7 @@ pub fn shape() -> OpcodeShape {
 	}
 }
 
-pub fn constrain(
-	_gate: Gate,
-	data: &GateData,
-	circuit: &circuit::Circuit,
-	cs: &mut ConstraintSystem,
-) {
+pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) {
 	let GateParam {
 		inputs,
 		outputs,
@@ -59,37 +54,25 @@ pub fn constrain(
 	let [out_mask] = outputs else { unreachable!() };
 	let [cout] = internal else { unreachable!() };
 
-	let x_idx = circuit.witness_index(*x);
-	let y_idx = circuit.witness_index(*y);
-	let out_mask_idx = circuit.witness_index(*out_mask);
-	let cout_idx = circuit.witness_index(*cout);
-	let all_1_idx = circuit.witness_index(*all_1);
-
-	let cin = ShiftedValueIndex::sll(cout_idx, 1);
+	let cin = sll(*cout, 1);
 
 	// Constraint 1: Constrain carry-out
 	// (x ⊕ y ⊕ cin) ∧ (all-1 ⊕ cin) = cin ⊕ cout
-	cs.add_and_constraint(AndConstraint::abc(
-		[
-			ShiftedValueIndex::plain(x_idx),
-			ShiftedValueIndex::plain(y_idx),
-			cin,
-		],
-		[ShiftedValueIndex::plain(all_1_idx), cin],
-		[cin, ShiftedValueIndex::plain(cout_idx)],
-	));
+	builder
+		.and()
+		.a(xor3(*x, *y, cin))
+		.b(xor2(*all_1, cin))
+		.c(xor2(cin, *cout))
+		.build();
 
 	// Constraint 2: MSB propagation for equality mask
 	// ((cout >> 63) ⊕ all-1 ⊕ out_mask) ∧ all-1 = 0
-	cs.add_and_constraint(AndConstraint::abc(
-		[
-			ShiftedValueIndex::sar(cout_idx, 63),
-			ShiftedValueIndex::plain(all_1_idx),
-			ShiftedValueIndex::plain(out_mask_idx),
-		],
-		[ShiftedValueIndex::plain(all_1_idx)],
-		[],
-	));
+	builder
+		.and()
+		.a(xor3(sar(*cout, 63), *all_1, *out_mask))
+		.b(*all_1)
+		.c(empty())
+		.build();
 }
 
 pub fn evaluate(_gate: Gate, data: &GateData, w: &mut circuit::WitnessFiller) {

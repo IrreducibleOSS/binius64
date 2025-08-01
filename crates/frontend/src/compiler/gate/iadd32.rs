@@ -16,10 +16,10 @@
 use crate::{
 	compiler::{
 		circuit,
+		constraint_builder::{ConstraintBuilder, sll, xor2, xor3},
 		gate::opcode::OpcodeShape,
 		gate_graph::{Gate, GateData, GateParam},
 	},
-	constraint_system::{AndConstraint, ConstraintSystem, ShiftedValueIndex},
 	word::Word,
 };
 
@@ -33,12 +33,7 @@ pub fn shape() -> OpcodeShape {
 	}
 }
 
-pub fn constrain(
-	_gate: Gate,
-	data: &GateData,
-	circuit: &circuit::Circuit,
-	cs: &mut ConstraintSystem,
-) {
+pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) {
 	let GateParam {
 		constants,
 		inputs,
@@ -51,41 +46,27 @@ pub fn constrain(
 	let [z] = outputs else { unreachable!() };
 	let [cout] = internal else { unreachable!() };
 
-	let x_idx = circuit.witness_index(*x);
-	let y_idx = circuit.witness_index(*y);
-	let z_idx = circuit.witness_index(*z);
-	let cout_idx = circuit.witness_index(*cout);
-	let mask32_idx = circuit.witness_index(*mask32);
+	let cout_sll_1 = sll(*cout, 1);
 
 	// Constraint 1: Carry propagation
 	//
 	// (x ⊕ (cout << 1)) ∧ (y ⊕ (cout << 1)) = cout ⊕ (cout << 1)
-	cs.add_and_constraint(AndConstraint::abc(
-		[
-			ShiftedValueIndex::plain(x_idx),
-			ShiftedValueIndex::sll(cout_idx, 1),
-		],
-		[
-			ShiftedValueIndex::plain(y_idx),
-			ShiftedValueIndex::sll(cout_idx, 1),
-		],
-		[
-			ShiftedValueIndex::plain(cout_idx),
-			ShiftedValueIndex::sll(cout_idx, 1),
-		],
-	));
+	builder
+		.and()
+		.a(xor2(*x, cout_sll_1))
+		.b(xor2(*y, cout_sll_1))
+		.c(xor2(*cout, cout_sll_1))
+		.build();
+
 	// Constraint 2: Result masking
 	//
 	// (x ⊕ y ⊕ (cout << 1)) ∧ MASK_32 = z
-	cs.add_and_constraint(AndConstraint::abc(
-		[
-			ShiftedValueIndex::plain(x_idx),
-			ShiftedValueIndex::plain(y_idx),
-			ShiftedValueIndex::sll(cout_idx, 1),
-		],
-		[ShiftedValueIndex::plain(mask32_idx)],
-		[ShiftedValueIndex::plain(z_idx)],
-	));
+	builder
+		.and()
+		.a(xor3(*x, *y, cout_sll_1))
+		.b(*mask32)
+		.c(*z)
+		.build();
 }
 
 pub fn evaluate(_gate: Gate, data: &GateData, w: &mut circuit::WitnessFiller) {

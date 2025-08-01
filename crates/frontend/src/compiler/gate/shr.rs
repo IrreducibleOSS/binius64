@@ -14,10 +14,10 @@
 use crate::{
 	compiler::{
 		circuit,
+		constraint_builder::{ConstraintBuilder, srl},
 		gate::opcode::OpcodeShape,
 		gate_graph::{Gate, GateData, GateParam},
 	},
-	constraint_system::{AndConstraint, ConstraintSystem, ShiftedValueIndex},
 	word::Word,
 };
 
@@ -31,12 +31,7 @@ pub fn shape() -> OpcodeShape {
 	}
 }
 
-pub fn constrain(
-	_gate: Gate,
-	data: &GateData,
-	circuit: &circuit::Circuit,
-	cs: &mut ConstraintSystem,
-) {
+pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) {
 	let GateParam {
 		constants,
 		inputs,
@@ -49,17 +44,9 @@ pub fn constrain(
 	let [z] = outputs else { unreachable!() };
 	let [n] = imm else { unreachable!() };
 
-	let x_idx = circuit.witness_index(*x);
-	let z_idx = circuit.witness_index(*z);
-	let all_1_idx = circuit.witness_index(*all_1);
-
 	// Constraint: Logical right shift
 	// (x >> n) ∧ all-1 = z
-	cs.add_and_constraint(AndConstraint::abc(
-		[ShiftedValueIndex::srl(x_idx, *n as usize)],
-		[ShiftedValueIndex::plain(all_1_idx)],
-		[ShiftedValueIndex::plain(z_idx)],
-	));
+	builder.and().a(srl(*x, *n)).b(*all_1).c(*z).build();
 }
 
 pub fn evaluate(_gate: Gate, data: &GateData, w: &mut circuit::WitnessFiller) {

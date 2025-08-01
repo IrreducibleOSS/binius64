@@ -14,10 +14,10 @@
 use crate::{
 	compiler::{
 		circuit,
+		constraint_builder::{ConstraintBuilder, xor2},
 		gate::opcode::OpcodeShape,
 		gate_graph::{Gate, GateData, GateParam},
 	},
-	constraint_system::{AndConstraint, ConstraintSystem},
 	word::Word,
 };
 
@@ -31,12 +31,7 @@ pub fn shape() -> OpcodeShape {
 	}
 }
 
-pub fn constrain(
-	_gate: Gate,
-	data: &GateData,
-	circuit: &circuit::Circuit,
-	cs: &mut ConstraintSystem,
-) {
+pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) {
 	let GateParam {
 		constants,
 		inputs,
@@ -47,15 +42,10 @@ pub fn constrain(
 	let [x, y] = inputs else { unreachable!() };
 	let [z] = outputs else { unreachable!() };
 
-	let x_idx = circuit.witness_index(*x);
-	let y_idx = circuit.witness_index(*y);
-	let z_idx = circuit.witness_index(*z);
-	let all_1_idx = circuit.witness_index(*all_1);
-
 	// Constraint: Bitwise XOR
 	//
 	// (x ⊕ y) ∧ all-1 = z
-	cs.add_and_constraint(AndConstraint::plain_abc([x_idx, y_idx], [all_1_idx], [z_idx]));
+	builder.and().a(xor2(*x, *y)).b(*all_1).c(*z).build();
 }
 
 pub fn evaluate(_gate: Gate, data: &GateData, w: &mut circuit::WitnessFiller) {

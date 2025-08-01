@@ -1,9 +1,7 @@
-use crate::{
-	compiler::{
-		circuit,
-		gate_graph::{Gate, GateGraph},
-	},
-	constraint_system::ConstraintSystem,
+use crate::compiler::{
+	circuit,
+	constraint_builder::ConstraintBuilder,
+	gate_graph::{Gate, GateGraph},
 };
 
 pub mod opcode;
@@ -28,31 +26,26 @@ pub mod shl;
 pub mod shr;
 pub mod shr32;
 
-pub fn constrain(
-	gate: Gate,
-	graph: &GateGraph,
-	circuit: &circuit::Circuit,
-	cs: &mut ConstraintSystem,
-) {
+pub fn constrain(gate: Gate, graph: &GateGraph, builder: &mut ConstraintBuilder) {
 	let data = &graph.gates[gate];
 	match data.opcode {
-		Opcode::Band => band::constrain(gate, data, circuit, cs),
-		Opcode::Bxor => bxor::constrain(gate, data, circuit, cs),
-		Opcode::Bor => bor::constrain(gate, data, circuit, cs),
-		Opcode::IaddCinCout => iadd_cin_cout::constrain(gate, data, circuit, cs),
-		Opcode::Iadd32 => iadd32::constrain(gate, data, circuit, cs),
-		Opcode::Shr32 => shr32::constrain(gate, data, circuit, cs),
-		Opcode::Rotr32 => rotr32::constrain(gate, data, circuit, cs),
-		Opcode::AssertEq => assert_eq::constrain(gate, data, circuit, cs),
-		Opcode::Assert0 => assert_0::constrain(gate, data, circuit, cs),
-		Opcode::AssertBand0 => assert_band_0::constrain(gate, data, circuit, cs),
-		Opcode::Imul => imul::constrain(gate, data, circuit, cs),
-		Opcode::AssertEqCond => assert_eq_cond::constrain(gate, data, circuit, cs),
-		Opcode::IcmpUlt => icmp_ult::constrain(gate, data, circuit, cs),
-		Opcode::IcmpEq => icmp_eq::constrain(gate, data, circuit, cs),
-		Opcode::ExtractByte => extract_byte::constrain(gate, data, circuit, cs),
-		Opcode::Shr => shr::constrain(gate, data, circuit, cs),
-		Opcode::Shl => shl::constrain(gate, data, circuit, cs),
+		Opcode::Band => band::constrain(gate, data, builder),
+		Opcode::Bxor => bxor::constrain(gate, data, builder),
+		Opcode::Bor => bor::constrain(gate, data, builder),
+		Opcode::IaddCinCout => iadd_cin_cout::constrain(gate, data, builder),
+		Opcode::Iadd32 => iadd32::constrain(gate, data, builder),
+		Opcode::Shr32 => shr32::constrain(gate, data, builder),
+		Opcode::Rotr32 => rotr32::constrain(gate, data, builder),
+		Opcode::AssertEq => assert_eq::constrain(gate, data, builder),
+		Opcode::Assert0 => assert_0::constrain(gate, data, builder),
+		Opcode::AssertBand0 => assert_band_0::constrain(gate, data, builder),
+		Opcode::Imul => imul::constrain(gate, data, builder),
+		Opcode::AssertEqCond => assert_eq_cond::constrain(gate, data, builder),
+		Opcode::IcmpUlt => icmp_ult::constrain(gate, data, builder),
+		Opcode::IcmpEq => icmp_eq::constrain(gate, data, builder),
+		Opcode::ExtractByte => extract_byte::constrain(gate, data, builder),
+		Opcode::Shr => shr::constrain(gate, data, builder),
+		Opcode::Shl => shl::constrain(gate, data, builder),
 	}
 }
 

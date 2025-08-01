@@ -18,10 +18,10 @@
 use crate::{
 	compiler::{
 		circuit,
+		constraint_builder::{ConstraintBuilder, empty, srl, xor2},
 		gate::opcode::OpcodeShape,
 		gate_graph::{Gate, GateData, GateParam},
 	},
-	constraint_system::{AndConstraint, ConstraintSystem, ShiftedValueIndex},
 	word::Word,
 };
 
@@ -35,12 +35,7 @@ pub fn shape() -> OpcodeShape {
 	}
 }
 
-pub fn constrain(
-	_gate: Gate,
-	data: &GateData,
-	circuit: &circuit::Circuit,
-	cs: &mut ConstraintSystem,
-) {
+pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) {
 	let GateParam {
 		constants,
 		inputs,
@@ -55,25 +50,18 @@ pub fn constrain(
 	let [z] = outputs else { unreachable!() };
 	let [j] = imm else { unreachable!() };
 
-	let word_idx = circuit.witness_index(*word);
-	let z_idx = circuit.witness_index(*z);
-	let mask_ff_idx = circuit.witness_index(*mask_ff);
-	let mask_high56_idx = circuit.witness_index(*mask_high56);
-
 	// Constraint 1: Low byte extraction
 	// ((word >> (8*j)) ⊕ z) ∧ 0xFF = 0
-	cs.add_and_constraint(AndConstraint::abc(
-		[
-			ShiftedValueIndex::srl(word_idx, (8 * *j) as usize),
-			ShiftedValueIndex::plain(z_idx),
-		],
-		[ShiftedValueIndex::plain(mask_ff_idx)],
-		[],
-	));
+	builder
+		.and()
+		.a(xor2(srl(*word, 8 * *j), *z))
+		.b(*mask_ff)
+		.c(empty())
+		.build();
 
 	// Constraint 2: High bits zeroing
 	// z ∧ 0xFFFFFFFFFFFFFF00 = 0
-	cs.add_and_constraint(AndConstraint::plain_abc([z_idx], [mask_high56_idx], []));
+	builder.and().a(*z).b(*mask_high56).c(empty()).build();
 }
 
 pub fn evaluate(_gate: Gate, data: &GateData, w: &mut circuit::WitnessFiller) {
