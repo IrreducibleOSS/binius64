@@ -173,10 +173,6 @@ fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger
 		mut c,
 	} = witness;
 
-	let ntt_lookup = ntt_lookup_from_prover_message_domain::<PackedAESBinaryField16x8b>(
-		prover_message_domain.clone(),
-	);
-
 	// The structure of the AND reduction requires that it proves at least 2^3 word-level
 	// constraints, you can zero-pad if necessary to reach this minimum
 	assert!(log_witness_words >= 3);
@@ -187,7 +183,7 @@ fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger
 	b.extend(repeat_with(|| Word(0)).take((1 << log_witness_words) - b.len()));
 	c.extend(repeat_with(|| Word(0)).take((1 << log_witness_words) - c.len()));
 
-	let prover = OblongZerocheckProver::new(
+	let prover = OblongZerocheckProver::<_, PackedAESBinaryField16x8b>::new(
 		OneBitOblongMultilinear {
 			log_num_rows: log_witness_words + LOG_WORD_SIZE_BITS,
 			packed_evals: a,
@@ -201,7 +197,6 @@ fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger
 			packed_evals: c,
 		},
 		big_field_zerocheck_challenges.to_vec(),
-		&ntt_lookup,
 		PROVER_SMALL_FIELD_ZEROCHECK_CHALLENGES.to_vec(),
 		prover_message_domain.isomorphic(),
 	);
