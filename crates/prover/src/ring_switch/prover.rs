@@ -53,14 +53,14 @@ where
 
 #[cfg(test)]
 mod test {
-	use binius_field::{BinaryField1b, BinaryField128b, ExtensionField, Field};
+	use binius_field::{BinaryField128b, ExtensionField};
 	use binius_math::{
 		FieldBuffer,
 		inner_product::inner_product_buffers,
 		multilinear::eq::eq_ind_partial_eval,
 		test_utils::{index_to_hypercube_point, random_scalars},
 	};
-	use binius_verifier::{fields::B1, ring_switch::verifier::eval_rs_eq};
+	use binius_verifier::{config::B1, ring_switch::verifier::eval_rs_eq};
 	use rand::{SeedableRng, rngs::StdRng};
 
 	use super::rs_eq_ind;
