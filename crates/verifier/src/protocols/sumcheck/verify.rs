@@ -13,6 +13,8 @@ use crate::protocols::sumcheck::{RoundCoeffs, RoundProof};
 ///
 /// The [`verify`] function reduces a claim about the sum of a multivariate polynomial over the
 /// boolean hypercube to its evaluation at a challenge point.
+
+#[derive(Debug, PartialEq)]
 pub struct SumcheckOutput<F: Field> {
 	/// The evaluation of the sumcheck multivariate at the challenge point.
 	pub eval: F,

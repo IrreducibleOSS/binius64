@@ -20,4 +20,6 @@ pub enum Error {
 	FoldLengthMismatch,
 	#[error("cannot split a buffer of length 1")]
 	CannotSplit,
+	#[error("duplicate point in domain")]
+	DuplicateDomainPoint,
 }

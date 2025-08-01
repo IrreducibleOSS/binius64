@@ -5,6 +5,7 @@ use binius_frontend::word::Word;
 use binius_math::FieldBuffer;
 use binius_utils::{checked_arithmetics::log2_strict_usize, rayon::prelude::*};
 use binius_verifier::config::WORD_SIZE_BITS;
+use tracing::instrument;
 
 /// Computes a [`FieldBuffer`] where each element is the inner product of the bits of a word and a
 /// vector of field elements.
@@ -20,6 +21,7 @@ use binius_verifier::config::WORD_SIZE_BITS;
 /// * `words` has a power-of-two length
 ///
 /// [Method of Four Russians]: <https://en.wikipedia.org/wiki/Method_of_Four_Russians>
+#[instrument(skip_all, name = "fold_words")]
 pub fn fold_words<F, P>(words: &[Word], vec: &[F]) -> FieldBuffer<P>
 where
 	F: Field,

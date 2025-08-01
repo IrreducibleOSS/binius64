@@ -129,6 +129,7 @@ impl CircuitBuilder {
 			wire_mapping[wire] = ValueIndex(cur_index);
 			cur_index += 1;
 		}
+		cur_index = cur_index.next_power_of_two();
 		let total_len = (cur_index as usize).next_power_of_two();
 		let value_vec_layout = ValueVecLayout {
 			n_const,

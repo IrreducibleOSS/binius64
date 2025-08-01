@@ -65,6 +65,8 @@ sha2 = "0.10.8"
 thiserror = "2.0.3"
 transpose = "0.2.2"
 tracing = "0.1.38"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt"] }
+tracing-chrome = "0.7.2"
 trait-set = "0.3.0"
 z3 = "0.13.3"
 

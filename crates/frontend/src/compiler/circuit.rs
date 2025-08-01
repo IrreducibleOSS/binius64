@@ -8,7 +8,10 @@ use crate::{
 		gate_graph::{Wire, WireKind},
 		pathspec::PathSpec,
 	},
-	constraint_system::{ConstraintSystem, ValueIndex, ValueVec, ValueVecLayout},
+	constraint_system::{
+		AndConstraint, ConstraintSystem, MulConstraint, ShiftVariant, ShiftedValueIndex,
+		ValueIndex, ValueVec, ValueVecLayout,
+	},
 	word::Word,
 };
 
@@ -189,6 +192,41 @@ impl Circuit {
 		for (gate_id, _) in self.shared.graph.gates.iter() {
 			gate::constrain(gate_id, &self.shared.graph, self, &mut cs);
 		}
+
+		let zero_wire = self
+			.shared
+			.graph
+			.const_pool
+			.get(Word::ZERO)
+			.expect("every circuit has the zero constant... i think");
+		let zero_value_index = self.wire_mapping[zero_wire];
+
+		// Helper to pad constraint vectors to next power of 2 with zero dummy constraints
+		let zero_operand = vec![ShiftedValueIndex {
+			value_index: zero_value_index,
+			shift_variant: ShiftVariant::Sll,
+			amount: 0,
+		}];
+
+		// Pad AND constraints: 0 & 0 = 0
+		let and_target_len = cs.and_constraints.len().next_power_of_two();
+		cs.and_constraints
+			.resize_with(and_target_len, || AndConstraint {
+				a: zero_operand.clone(),
+				b: zero_operand.clone(),
+				c: zero_operand.clone(),
+			});
+
+		// Pad MUL constraints: 0 * 0 = 0 with hi=0, lo=0
+		let mul_target_len = cs.mul_constraints.len().next_power_of_two();
+		cs.mul_constraints
+			.resize_with(mul_target_len, || MulConstraint {
+				a: zero_operand.clone(),
+				b: zero_operand.clone(),
+				hi: zero_operand.clone(),
+				lo: zero_operand.clone(),
+			});
+
 		cs
 	}
 
