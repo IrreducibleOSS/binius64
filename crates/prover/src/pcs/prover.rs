@@ -69,20 +69,19 @@ where
 	/// * `fri_params` - the FRI parameters
 	/// * `committed_codeword` - the committed codeword
 	/// * `committed` - the committed merkle tree
-	pub fn prove_with_transcript<'a, TranscriptChallenger, FA, NTT, MerkleProver, VCS>(
+	pub fn prove_with_transcript<'a, TranscriptChallenger, NTT, MerkleProver, VCS>(
 		self,
 		transcript: &mut ProverTranscript<TranscriptChallenger>,
 		ntt: &'a NTT,
 		merkle_prover: &'a MerkleProver,
-		fri_params: &'a FRIParams<F, FA>,
+		fri_params: &'a FRIParams<F, F>,
 		committed_codeword: &'a [F],
 		committed: &'a MerkleProver::Committed,
 	) -> Result<(), Error>
 	where
 		TranscriptChallenger: Challenger,
-		F: ExtensionField<FA> + PackedExtension<B1> + BinaryField,
-		FA: BinaryField,
-		NTT: AdditiveNTT<FA> + Sync,
+		F: ExtensionField<F> + PackedExtension<B1> + BinaryField,
+		NTT: AdditiveNTT<F> + Sync,
 		MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 		VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 	{
@@ -174,20 +173,19 @@ where
 	///
 	/// * `basefold_prover` - the basefold prover
 	#[allow(clippy::too_many_arguments)]
-	fn setup_for_fri_sumcheck<'a, FA, NTT, MerkleProver, VCS>(
+	fn setup_for_fri_sumcheck<'a, NTT, MerkleProver, VCS>(
 		self,
 		r_double_prime: &[F],
 		ntt: &'a NTT,
 		merkle_prover: &'a MerkleProver,
-		fri_params: &'a FRIParams<F, FA>,
+		fri_params: &'a FRIParams<F, F>,
 		committed_codeword: &'a [F],
 		committed: &'a MerkleProver::Committed,
 		basefold_sumcheck_claim: F,
-	) -> Result<BaseFoldProver<'a, F, FA, NTT, MerkleProver, VCS>, Error>
+	) -> Result<BaseFoldProver<'a, F, F, NTT, MerkleProver, VCS>, Error>
 	where
-		F: ExtensionField<FA> + PackedExtension<B1> + BinaryField,
-		FA: BinaryField,
-		NTT: AdditiveNTT<FA> + Sync,
+		F: ExtensionField<F> + PackedExtension<B1> + BinaryField,
+		NTT: AdditiveNTT<F> + Sync,
 		MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 		VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 	{

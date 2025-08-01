@@ -1,6 +1,6 @@
 use std::vec;
 
-use binius_field::{BinaryField, ExtensionField, Field};
+use binius_field::{BinaryField, PackedField};
 use binius_math::{FieldBuffer, ntt::AdditiveNTT};
 use binius_transcript::{
 	ProverTranscript,
@@ -22,24 +22,24 @@ use crate::{
 ///
 /// The prover executes FRI and Sumcheck in parallel, sampling random challenges
 /// for FRI and Sumcheck from the transcript.
-pub struct BaseFoldProver<'a, F, FA, NTT, MerkleProver, VCS>
+pub struct BaseFoldProver<'a, F, P, NTT, MerkleProver, VCS>
 where
-	F: Field + ExtensionField<FA> + BinaryField,
-	FA: BinaryField,
-	NTT: AdditiveNTT<FA> + Sync,
+	F: BinaryField,
+	P: PackedField<Scalar = F>,
+	NTT: AdditiveNTT<F> + Sync,
 	MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 	VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 {
-	sumcheck_prover: MultilinearSumcheckProver<F, F>,
-	fri_folder: FRIFolder<'a, F, FA, F, NTT, MerkleProver, VCS>,
+	sumcheck_prover: MultilinearSumcheckProver<F, P>,
+	fri_folder: FRIFolder<'a, F, F, P, NTT, MerkleProver, VCS>,
 	log_n: usize,
 }
 
-impl<'a, F, FA, NTT, MerkleProver, VCS> BaseFoldProver<'a, F, FA, NTT, MerkleProver, VCS>
+impl<'a, F, P, NTT, MerkleProver, VCS> BaseFoldProver<'a, F, P, NTT, MerkleProver, VCS>
 where
-	F: Field + ExtensionField<FA> + BinaryField,
-	FA: BinaryField,
-	NTT: AdditiveNTT<FA> + Sync,
+	F: BinaryField,
+	P: PackedField<Scalar = F>,
+	NTT: AdditiveNTT<F> + Sync,
 	MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 	VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 {
@@ -68,14 +68,14 @@ where
 	///  * the length of the multilinear and transparent_multilinear are equal
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
-		multilinear: FieldBuffer<F>,
-		transparent_multilinear: FieldBuffer<F>,
+		multilinear: FieldBuffer<P>,
+		transparent_multilinear: FieldBuffer<P>,
 		claim: F,
-		committed_codeword: &'a [F],
+		committed_codeword: &'a [P],
 		committed: &'a MerkleProver::Committed,
 		merkle_prover: &'a MerkleProver,
 		ntt: &'a NTT,
-		fri_params: &'a FRIParams<F, FA>,
+		fri_params: &'a FRIParams<F, F>,
 	) -> Result<Self, Error> {
 		assert_eq!(multilinear.log_len(), transparent_multilinear.log_len());
 
@@ -87,7 +87,7 @@ where
 		let sumcheck_composition = [multilinear, transparent_multilinear];
 
 		let sumcheck_prover =
-			MultilinearSumcheckProver::<_, F>::new(sumcheck_composition, claim, log_n);
+			MultilinearSumcheckProver::<F, P>::new(sumcheck_composition, claim, log_n);
 
 		Ok(Self {
 			sumcheck_prover,
@@ -180,7 +180,10 @@ where
 
 #[cfg(test)]
 mod test {
-	use binius_field::Field;
+	use binius_field::{
+		BinaryField, PackedExtension, PackedField,
+		arch::{OptimalPackedB128, packed_ghash_256::PackedBinaryGhash2x128b},
+	};
 	use binius_math::{
 		FieldBuffer, ReedSolomonCode,
 		inner_product::inner_product_buffers,
@@ -190,7 +193,7 @@ mod test {
 	};
 	use binius_transcript::ProverTranscript;
 	use binius_verifier::{
-		config::{B128, StdChallenger},
+		config::StdChallenger,
 		fri::FRIParams,
 		hash::{StdCompression, StdDigest},
 		protocols::basefold::verifier::{sumcheck_fri_consistency, verify_transcript},
@@ -205,30 +208,31 @@ mod test {
 
 	pub const LOG_INV_RATE: usize = 1;
 	pub const NUM_TEST_QUERIES: usize = 3;
-	pub type FA = B128; // for ntt
 
-	pub type F = B128;
-
-	fn run_basefold_prove_and_verify(
-		multilinear: FieldBuffer<F>,
+	fn run_basefold_prove_and_verify<F, P>(
+		multilinear: FieldBuffer<P>,
 		evaluation_point: Vec<F>,
 		evaluation_claim: F,
-	) -> Result<(), Box<dyn std::error::Error>> {
+	) -> Result<(), Box<dyn std::error::Error>>
+	where
+		F: BinaryField,
+		P: PackedField<Scalar = F> + PackedExtension<F>,
+	{
 		let n_vars = multilinear.log_len();
 
-		let eval_point_eq = eq_ind_partial_eval(&evaluation_point);
+		let eval_point_eq = eq_ind_partial_eval::<P>(&evaluation_point);
 
 		let merkle_prover =
 			BinaryMerkleTreeProver::<F, StdDigest, _>::new(StdCompression::default());
 
-		let rs_code = ReedSolomonCode::<FA>::new(multilinear.log_len(), LOG_INV_RATE)?;
+		let rs_code = ReedSolomonCode::<F>::new(multilinear.log_len(), LOG_INV_RATE)?;
 
 		let fri_log_batch_size = 0;
 		let fri_arities = vec![2, 1];
-		let fri_params =
+		let fri_params: FRIParams<F, F> =
 			FRIParams::new(rs_code, fri_log_batch_size, fri_arities, NUM_TEST_QUERIES)?;
 
-		let ntt = SingleThreadedNTT::new(fri_params.rs_code().log_len())?;
+		let ntt = SingleThreadedNTT::with_subspace(fri_params.rs_code().subspace()).unwrap();
 
 		let CommitOutput {
 			commitment: codeword_commitment,
@@ -277,20 +281,40 @@ mod test {
 		Ok(())
 	}
 
-	#[test]
-	fn test_basefold_valid_proof() {
+	fn test_setup<F, P>(n_vars: usize) -> (FieldBuffer<P>, Vec<F>, F)
+	where
+		F: BinaryField,
+		P: PackedField<Scalar = F>,
+	{
 		let mut rng = StdRng::from_seed([0; 32]);
 
-		let n_vars = 8;
-
-		// Prover claims a multilinear polynomial, eval point, and evaluation
-		let multilinear = random_field_buffer::<F>(&mut rng, n_vars);
-		let evaluation_point = random_scalars(&mut rng, n_vars);
+		let multilinear = random_field_buffer::<P>(&mut rng, n_vars);
+		let evaluation_point = random_scalars::<F>(&mut rng, n_vars);
 
 		let eval_point_eq = eq_ind_partial_eval(&evaluation_point);
 		let evaluation_claim = inner_product_buffers(&multilinear, &eval_point_eq);
 
-		match run_basefold_prove_and_verify(multilinear, evaluation_point, evaluation_claim) {
+		(multilinear, evaluation_point, evaluation_claim)
+	}
+
+	fn dubiously_modify_claim<F, P>(claim: &mut F)
+	where
+		F: BinaryField,
+		P: PackedField<Scalar = F>,
+	{
+		*claim += P::Scalar::ONE
+	}
+
+	#[test]
+	fn test_basefold_valid_proof() {
+		type P = OptimalPackedB128;
+
+		let n_vars = 8;
+
+		let (multilinear, evaluation_point, evaluation_claim) = test_setup::<_, P>(n_vars);
+
+		match run_basefold_prove_and_verify::<_, P>(multilinear, evaluation_point, evaluation_claim)
+		{
 			Ok(()) => {}
 			Err(_) => panic!("expected valid proof"),
 		}
@@ -298,24 +322,44 @@ mod test {
 
 	#[test]
 	fn test_basefold_invalid_proof() {
-		let mut rng = StdRng::from_seed([0; 32]);
+		type P = OptimalPackedB128;
 
 		let n_vars = 8;
 
-		// Prover claims a multilinear polynomial, eval point, and evaluation
-		let multilinear = random_field_buffer::<F>(&mut rng, n_vars);
-		let evaluation_point = random_scalars(&mut rng, n_vars);
+		let (multilinear, evaluation_point, mut evaluation_claim) = test_setup::<_, P>(n_vars);
 
-		let eval_point_eq = eq_ind_partial_eval(&evaluation_point);
+		dubiously_modify_claim::<_, P>(&mut evaluation_claim);
+		let result =
+			run_basefold_prove_and_verify::<_, P>(multilinear, evaluation_point, evaluation_claim);
+		assert!(result.is_err());
+	}
 
-		// dubiously modified claim
-		let mut evaluation_claim = inner_product_buffers(&multilinear, &eval_point_eq);
-		evaluation_claim += F::ONE;
+	#[test]
+	fn test_basefold_valid_proof_non_trivial_packing_width() {
+		type P = PackedBinaryGhash2x128b;
 
-		if let Ok(()) =
-			run_basefold_prove_and_verify(multilinear, evaluation_point, evaluation_claim)
+		let n_vars = 8;
+
+		let (multilinear, evaluation_point, evaluation_claim) = test_setup::<_, P>(n_vars);
+
+		match run_basefold_prove_and_verify::<_, P>(multilinear, evaluation_point, evaluation_claim)
 		{
-			panic!("expected error")
+			Ok(()) => {}
+			Err(_) => panic!("expected valid proof"),
 		}
+	}
+
+	#[test]
+	fn test_basefold_invalid_proof_non_trivial_packing_width() {
+		type P = PackedBinaryGhash2x128b;
+
+		let n_vars = 8;
+
+		let (multilinear, evaluation_point, mut evaluation_claim) = test_setup::<_, P>(n_vars);
+
+		dubiously_modify_claim::<_, P>(&mut evaluation_claim);
+		let result =
+			run_basefold_prove_and_verify::<_, P>(multilinear, evaluation_point, evaluation_claim);
+		assert!(result.is_err());
 	}
 }
