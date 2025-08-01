@@ -2,6 +2,7 @@ use std::iter;
 
 use binius_field::{BinaryField, PackedExtension};
 use binius_math::tensor_algebra::TensorAlgebra;
+
 use crate::config::B1;
 
 /// Evaluate the ring switching equality indicator at a given point.
