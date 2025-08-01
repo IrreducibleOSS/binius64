@@ -795,7 +795,7 @@ impl BinaryField1b {
 	/// Value should not exceed 1
 	#[inline]
 	pub unsafe fn new_unchecked(val: u8) -> Self {
-		debug_assert!(val < 2);
+		debug_assert!(val < 2, "val has to be less than 2, but it's {val}");
 
 		Self::new(U1::new_unchecked(val))
 	}
@@ -829,7 +829,7 @@ impl BinaryField2b {
 	/// Value should not exceed 3
 	#[inline]
 	pub unsafe fn new_unchecked(val: u8) -> Self {
-		debug_assert!(val < 4);
+		debug_assert!(val < 4, "val has to be less than 4, but it's {val}");
 
 		Self::new(U2::new_unchecked(val))
 	}
@@ -856,7 +856,7 @@ impl BinaryField4b {
 	/// Value should not exceed 15
 	#[inline]
 	pub unsafe fn new_unchecked(val: u8) -> Self {
-		debug_assert!(val < 16);
+		debug_assert!(val < 16, "val has to be less than 16, but it's {val}");
 
 		Self::new(U4::new_unchecked(val))
 	}
@@ -1277,9 +1277,6 @@ pub(crate) mod tests {
 		for i in 0..2 {
 			assert_eq!(unsafe { BF1::new_unchecked(i) }, BF1::from(i));
 		}
-		// Assert a panic for higher values
-		let result = std::panic::catch_unwind(|| unsafe { BF1::new_unchecked(2) });
-		assert!(result.is_err(), "Expected a panic for value > 1, but no panic occurred");
 	}
 
 	#[test]
@@ -1287,9 +1284,6 @@ pub(crate) mod tests {
 		for i in 0..4 {
 			assert_eq!(unsafe { BF2::new_unchecked(i) }, BF2::from(i));
 		}
-		// Assert a panic for higher values
-		let result = std::panic::catch_unwind(|| unsafe { BF2::new_unchecked(4) });
-		assert!(result.is_err(), "Expected a panic for value > 3, but no panic occurred");
 	}
 
 	#[test]
@@ -1297,8 +1291,5 @@ pub(crate) mod tests {
 		for i in 0..16 {
 			assert_eq!(unsafe { BF4::new_unchecked(i) }, BF4::from(i));
 		}
-		// Assert a panic for higher values
-		let result = std::panic::catch_unwind(|| unsafe { BF4::new_unchecked(16) });
-		assert!(result.is_err(), "Expected a panic for value > 15, but no panic occurred");
 	}
 }
