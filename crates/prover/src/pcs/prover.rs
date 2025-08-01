@@ -24,7 +24,7 @@ use crate::{
 /// soundness.
 pub struct OneBitPCSProver<F>
 where
-	F: BinaryField + PackedExtension<B1> + PackedExtension<F>,
+	F: BinaryField + PackedExtension<B1>,
 {
 	pub small_field_evaluation_claim: F,
 	pub evaluation_claim: F,

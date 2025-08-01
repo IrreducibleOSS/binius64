@@ -66,6 +66,14 @@ fn bench(c: &mut Criterion) {
 	let mut group = c.benchmark_group("evaluate");
 	group.throughput(Throughput::Elements(1 << (log_num_rows - SKIPPED_VARS)));
 
+	group.bench_function("NTT lookup precompute", |bench| {
+		bench.iter(|| {
+			ntt_lookup_from_prover_message_domain::<PackedAESBinaryField16x8b>(
+				prover_message_domain.clone(),
+			)
+		});
+	});
+
 	group.bench_function(format!("univariate_round_message 2^{log_num_rows}"), |bench| {
 		bench.iter(|| {
 			let eq_ind_mle = eq_ind_partial_eval(&big_field_zerocheck_challenges);

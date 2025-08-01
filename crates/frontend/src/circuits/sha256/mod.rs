@@ -173,21 +173,21 @@ impl Sha256 {
 		let len_mod_64 = builder.band(len, builder.add_constant_64(63));
 
 		let zero = builder.add_constant(Word::ZERO);
-		let one = builder.add_constant(Word::ONE);
+		let all_ones = builder.add_constant(Word::ALL_ONE);
 
 		// Check if message ends exactly at a 64-byte block boundary.
 		// This is true when len % 64 == 0 AND len > 0 (empty message is not at boundary).
 		let is_empty = builder.icmp_eq(len, builder.add_constant_64(0));
 		let at_boundary = builder.band(
 			builder.icmp_eq(len_mod_64, builder.add_constant_64(0)),
-			builder.bxor(is_empty, one),
+			builder.bxor(is_empty, all_ones),
 		);
 
 		// Length field fits in same block if we have room for 9 bytes (0x80 + 8-byte length).
 		// This means len % 64 <= 55. But if at_boundary is true, padding goes to next block.
 		let fits_in_block = builder.band(
 			builder.icmp_ult(len_mod_64, builder.add_constant_64(56)),
-			builder.bxor(at_boundary, one),
+			builder.bxor(at_boundary, all_ones),
 		);
 
 		// Calculate which block contains the last message byte.
@@ -195,13 +195,14 @@ impl Sha256 {
 		// For len at boundary: block (len/64 - 1) since last byte is at position len-1
 		// For other len > 0: block floor(len/64)
 		let len_div_64 = builder.shr(len, 6);
+		let (len_div_64_minus_1, _) = builder.iadd_cin_cout(len_div_64, all_ones, zero);
 		let last_msg_block_index = builder.bor(
 			builder.band(is_empty, builder.add_constant_64(0)),
 			builder.band(
-				builder.bxor(is_empty, one),
+				builder.bxor(is_empty, all_ones),
 				builder.bor(
-					builder.band(at_boundary, builder.bxor(len_div_64, builder.add_constant_64(1))),
-					builder.band(builder.bxor(at_boundary, one), len_div_64),
+					builder.band(at_boundary, len_div_64_minus_1),
+					builder.band(builder.bxor(at_boundary, all_ones), len_div_64),
 				),
 			),
 		);
@@ -367,10 +368,10 @@ impl Sha256 {
 			// 2. NOT the length field location (last 64-bit word of the length block)
 			let is_length_block =
 				builder.icmp_eq(builder.add_constant_64(blk as u64), end_block_index);
-			let is_last_word_pair = if idx == 14 { one } else { zero };
+			let is_last_word_pair = if idx == 14 { all_ones } else { zero };
 			let is_length_field_location = builder.band(is_length_block, is_last_word_pair);
 			let should_be_zero =
-				builder.band(is_past_message, builder.bxor(is_length_field_location, one));
+				builder.band(is_past_message, builder.bxor(is_length_field_location, all_ones));
 			builder.assert_eq_cond("3c.zero_pad", padded_message_word, zero, should_be_zero);
 
 			// ---- 3d. Length field placement
@@ -385,7 +386,7 @@ impl Sha256 {
 				builder.assert_eq_cond("3d.w14_zero", w_lo32, zero, is_length_field_location);
 
 				builder.assert_eq_cond("3d.w15_len", w_hi32, bitlen, is_length_field_location);
-				let not_length_field = builder.bxor(is_length_field_location, one);
+				let not_length_field = builder.bxor(is_length_field_location, all_ones);
 				let not_message = is_past_message;
 				let padding_word = builder.band(not_length_field, not_message);
 				builder.assert_eq_cond("3d.w15_zero", w_hi32, zero, padding_word);
@@ -631,7 +632,7 @@ mod tests {
 	fn test_size_55_bytes() {
 		// 55 bytes - maximum that fits in one block with padding
 		test_sha256_with_input(
-			b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			&[b'a'; 55],
 			hex!("9f4390f8d30c2dd92ec9f095b65e2b9ae9b0a925a5258e241c9f1e910f734318"),
 		);
 	}
@@ -640,7 +641,7 @@ mod tests {
 	fn test_size_56_bytes() {
 		// 56 bytes - critical boundary, forces two blocks
 		test_sha256_with_input(
-			b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			&[b'a'; 56],
 			hex!("b35439a4ac6f0948b6d6f9e3c6af0f5f590ce20f1bde7090ef7970686ec6738a"),
 		);
 	}
@@ -649,7 +650,7 @@ mod tests {
 	fn test_size_63_bytes() {
 		// 63 bytes - one byte from block boundary
 		test_sha256_with_input(
-			b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			&[b'a'; 63],
 			hex!("7d3e74a05d7db15bce4ad9ec0658ea98e3f06eeecf16b4c6fff2da457ddc2f34"),
 		);
 	}
@@ -658,7 +659,7 @@ mod tests {
 	fn test_size_64_bytes() {
 		// 64 bytes - exactly one complete block
 		test_sha256_with_input(
-			b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			&[b'a'; 64],
 			hex!("ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb"),
 		);
 	}
@@ -667,8 +668,8 @@ mod tests {
 	fn test_size_100_bytes() {
 		// 100 bytes - tests two-block processing
 		test_sha256_with_input(
-			b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-			hex!("2816597888e4a0d3a36b82b83316ab32680eb8f00f8cd3b904d681246d285a0e")
+			&[b'a'; 100],
+			hex!("2816597888e4a0d3a36b82b83316ab32680eb8f00f8cd3b904d681246d285a0e"),
 		);
 	}
 
@@ -676,8 +677,8 @@ mod tests {
 	fn test_size_119_bytes() {
 		// 119 bytes - maximum that fits in two blocks with padding
 		test_sha256_with_input(
-			b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-			hex!("31eba51c313a5c08226adf18d4a359cfdfd8d2e816b13f4af952f7ea6584dcfb")
+			&[b'a'; 119],
+			hex!("31eba51c313a5c08226adf18d4a359cfdfd8d2e816b13f4af952f7ea6584dcfb"),
 		);
 	}
 
@@ -685,8 +686,8 @@ mod tests {
 	fn test_size_120_bytes() {
 		// 120 bytes - minimum that needs three blocks
 		test_sha256_with_input(
-			b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-			hex!("2f3d335432c70b580af0e8e1b3674a7c020d683aa5f73aaaedfdc55af904c21c")
+			&[b'a'; 120],
+			hex!("2f3d335432c70b580af0e8e1b3674a7c020d683aa5f73aaaedfdc55af904c21c"),
 		);
 	}
 
@@ -694,8 +695,25 @@ mod tests {
 	fn test_size_128_bytes() {
 		// 128 bytes - exactly two complete blocks
 		test_sha256_with_input(
-			b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-			hex!("6836cf13bac400e9105071cd6af47084dfacad4e5e302c94bfed24e013afb73e")
+			&[b'a'; 128],
+			hex!("6836cf13bac400e9105071cd6af47084dfacad4e5e302c94bfed24e013afb73e"),
+		);
+	}
+
+	#[test]
+	fn test_size_256_bytes() {
+		// 256 bytes - exactly four complete blocks
+		test_sha256_with_input(
+			&[b'a'; 256],
+			hex!("02d7160d77e18c6447be80c2e355c7ed4388545271702c50253b0914c65ce5fe"),
+		);
+	}
+
+	#[test]
+	fn test_size_512_bytes() {
+		test_sha256_with_input(
+			&[b'a'; 512],
+			hex!("471be6558b665e4f6dd49f1184814d1491b0315d466beea768c153cc5500c836"),
 		);
 	}
 

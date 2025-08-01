@@ -1,6 +1,17 @@
-use binius_field::{PackedExtension, PackedField};
-use binius_frontend::{constraint_system::ValueVec, word::Word};
-use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval, ntt::AdditiveNTT};
+use std::iter::repeat_with;
+
+use binius_field::{
+	AESTowerField8b, BinaryField, PackedAESBinaryField16x8b, PackedExtension, PackedField,
+};
+use binius_frontend::{
+	constraint_system::{
+		AndConstraint, ConstraintSystem, Operand, ShiftVariant, ShiftedValueIndex, ValueVec,
+	},
+	word::Word,
+};
+use binius_math::{
+	BinarySubspace, FieldBuffer, multilinear::eq::eq_ind_partial_eval, ntt::AdditiveNTT,
+};
 use binius_transcript::{
 	ProverTranscript,
 	fiat_shamir::{CanSample, Challenger},
@@ -8,12 +19,15 @@ use binius_transcript::{
 use binius_utils::{SerializeBytes, rayon::prelude::*};
 use binius_verifier::{
 	Params,
-	config::{B128, LOG_WORD_SIZE_BITS, LOG_WORDS_PER_ELEM},
+	config::{
+		B128, LOG_WORD_SIZE_BITS, LOG_WORDS_PER_ELEM, PROVER_SMALL_FIELD_ZEROCHECK_CHALLENGES,
+	},
 	merkle_tree::MerkleTreeScheme,
 };
 
 use super::error::Error;
 use crate::{
+	and_reduction::{prover::OblongZerocheckProver, utils::multivariate::OneBitOblongMultilinear},
 	fold_word::fold_words,
 	fri,
 	fri::CommitOutput,
@@ -28,6 +42,7 @@ use crate::{
 #[allow(clippy::too_many_arguments)]
 pub fn prove<P, Challenger_, NTT, MTScheme, MTProver>(
 	params: &Params<MTScheme>,
+	cs: &ConstraintSystem,
 	witness: ValueVec,
 	transcript: &mut ProverTranscript<Challenger_>,
 	ntt: &NTT,
@@ -64,6 +79,9 @@ where
 		codeword: trace_codeword,
 	} = fri::commit_interleaved(params.fri_params(), ntt, merkle_prover, witness_packed.to_ref())?;
 	transcript.message().write(&trace_commitment);
+
+	let and_witness = build_and_check_witness(&cs.and_constraints, witness.combined_witness());
+	let _output = run_and_check::<B128, _>(params.log_witness_words(), and_witness, transcript)?;
 
 	// Sample a challenge point during the shift reduction.
 	let z_challenge = transcript.sample_vec(LOG_WORD_SIZE_BITS);
@@ -137,4 +155,132 @@ fn pack_witness<P: PackedField<Scalar = B128>>(
 		.for_each(|(dst, elem)| *dst = elem);
 
 	Ok(padded_witness_elems)
+}
+
+fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger>(
+	log_witness_words: usize,
+	witness: AndCheckWitness,
+	transcript: &mut ProverTranscript<Challenger_>,
+) -> Result<AndCheckOutput<F>, Error> {
+	let prover_message_domain = BinarySubspace::<AESTowerField8b>::with_dim(LOG_WORD_SIZE_BITS + 1)
+		.expect("B8::DEGREE is at least LOG_WORD_SIZE_BITS + 1");
+	let AndCheckWitness {
+		mut a,
+		mut b,
+		mut c,
+	} = witness;
+
+	// The structure of the AND reduction requires that it proves at least 2^3 word-level
+	// constraints, you can zero-pad if necessary to reach this minimum
+	assert!(log_witness_words >= 3);
+
+	let big_field_zerocheck_challenges = transcript.sample_vec(log_witness_words - 3);
+
+	a.extend(repeat_with(|| Word(0)).take((1 << log_witness_words) - a.len()));
+	b.extend(repeat_with(|| Word(0)).take((1 << log_witness_words) - b.len()));
+	c.extend(repeat_with(|| Word(0)).take((1 << log_witness_words) - c.len()));
+
+	let prover = OblongZerocheckProver::<_, PackedAESBinaryField16x8b>::new(
+		OneBitOblongMultilinear {
+			log_num_rows: log_witness_words + LOG_WORD_SIZE_BITS,
+			packed_evals: a,
+		},
+		OneBitOblongMultilinear {
+			log_num_rows: log_witness_words + LOG_WORD_SIZE_BITS,
+			packed_evals: b,
+		},
+		OneBitOblongMultilinear {
+			log_num_rows: log_witness_words + LOG_WORD_SIZE_BITS,
+			packed_evals: c,
+		},
+		big_field_zerocheck_challenges.to_vec(),
+		PROVER_SMALL_FIELD_ZEROCHECK_CHALLENGES.to_vec(),
+		prover_message_domain.isomorphic(),
+	);
+
+	let prove_output = prover.prove_with_transcript(transcript)?;
+
+	let mle_claims = prove_output.sumcheck_output.multilinear_evals;
+
+	let l2h_query_for_evaluation_point = prove_output
+		.sumcheck_output
+		.challenges
+		.clone()
+		.into_iter()
+		.rev()
+		.collect::<Vec<_>>();
+
+	transcript.message().write_slice(&mle_claims);
+	Ok(AndCheckOutput {
+		a_eval: mle_claims[0],
+		b_eval: mle_claims[1],
+		c_eval: mle_claims[2],
+		z_challenge: prove_output.univariate_sumcheck_challenge,
+		eval_point: l2h_query_for_evaluation_point,
+	})
+}
+
+struct AndCheckWitness {
+	a: Vec<Word>,
+	b: Vec<Word>,
+	c: Vec<Word>,
+}
+
+// These fields will be read once the shift reduction is used to prove these claims against the
+// witness
+#[allow(dead_code)]
+struct AndCheckOutput<F> {
+	a_eval: F,
+	b_eval: F,
+	c_eval: F,
+	/// The challenge for the bit-index variable.
+	z_challenge: F,
+	/// Evaluation point of the word-index variables.
+	eval_point: Vec<F>,
+}
+
+#[inline]
+fn build_operand_value(operand: &Operand, witness: &[Word]) -> Word {
+	operand.iter().fold(
+		Word::ZERO,
+		|acc,
+		 ShiftedValueIndex {
+		     value_index,
+		     shift_variant,
+		     amount,
+		 }| {
+			let word = witness[value_index.0 as usize];
+			let shifted_word = match shift_variant {
+				ShiftVariant::Sll => word << (*amount as u32),
+				ShiftVariant::Slr => word >> (*amount as u32),
+				ShiftVariant::Sar => word.sar(*amount as u32),
+			};
+			acc ^ shifted_word
+		},
+	)
+}
+
+fn build_and_check_witness(and_constraints: &[AndConstraint], witness: &[Word]) -> AndCheckWitness {
+	let n_constraints = and_constraints.len();
+
+	let mut a = Vec::with_capacity(n_constraints);
+	let mut b = Vec::with_capacity(n_constraints);
+	let mut c = Vec::with_capacity(n_constraints);
+
+	(and_constraints, a.spare_capacity_mut(), b.spare_capacity_mut(), c.spare_capacity_mut())
+		.into_par_iter()
+		.for_each(|(constraint, a_i, b_i, c_i)| {
+			a_i.write(build_operand_value(&constraint.a, witness));
+			b_i.write(build_operand_value(&constraint.b, witness));
+			c_i.write(build_operand_value(&constraint.c, witness));
+		});
+
+	// Safety: all entries in a, b, c are initialized in the parallel loop above.
+	unsafe {
+		a.set_len(n_constraints);
+		b.set_len(n_constraints);
+		c.set_len(n_constraints);
+	}
+
+	AndCheckWitness { a, b, c }
 }

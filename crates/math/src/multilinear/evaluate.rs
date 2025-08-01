@@ -6,7 +6,9 @@ use binius_field::{Field, PackedField};
 use binius_utils::rayon::prelude::*;
 
 use crate::{
-	Error, FieldBuffer, inner_product::inner_product_buffers, multilinear::eq::eq_ind_partial_eval,
+	Error, FieldBuffer,
+	inner_product::inner_product_buffers,
+	multilinear::{eq::eq_ind_partial_eval, fold::fold_highest_var_inplace},
 };
 
 /// Evaluates a multilinear polynomial at a given point using sqrt(n) memory.
@@ -38,11 +40,16 @@ where
 	}
 
 	// Split coordinates: first half gets at least P::LOG_WIDTH coordinates
-	let first_half_len = (point.len() / 2).max(P::LOG_WIDTH);
+	let first_half_len = (point.len() / 2).max(P::LOG_WIDTH).min(point.len());
 	let (first_coords, remaining_coords) = point.split_at(first_half_len);
 
 	// Generate eq tensor for first half of coordinates
 	let eq_tensor = eq_ind_partial_eval::<P>(first_coords);
+
+	// If there is no second half, just return the inner product with the whole evals.
+	if remaining_coords.is_empty() {
+		return Ok(inner_product_buffers(evals, &eq_tensor));
+	}
 
 	// Calculate chunk size based on first half length
 	let log_chunk_size = first_half_len;
@@ -90,33 +97,17 @@ where
 	}
 
 	// Perform folding for each coordinate in reverse order
-	if let Some((&last_coord, remaining_coords)) = coords.split_last() {
-		evals.split_half_mut(move |evals_lo, evals_hi| {
-			// Compute the folded values: lo + (hi - lo) * coord
-			// This is equivalent to lo * (1 - coord) + hi * coord
-			let packed_coord = P::broadcast(last_coord);
-			evals_lo
-				.as_mut()
-				.par_iter_mut()
-				.zip(evals_hi.as_ref())
-				.for_each(|(lo_i, hi_i)| {
-					*lo_i += (*hi_i - *lo_i) * packed_coord;
-				});
-
-			evaluate_inplace(evals_lo.to_mut(), remaining_coords)
-		})?
-	} else {
-		// Base case: no coordinates means we just return the single evaluation
-		let val = evals
-			.get(0)
-			.expect("coords.len() == 0; coords.len() == evals.log_len(); evals has one element");
-		Ok(val)
+	for &coord in coords.iter().rev() {
+		fold_highest_var_inplace(&mut evals, coord)?;
 	}
+
+	assert_eq!(evals.len(), 1);
+	Ok(evals.get(0).expect("evals.len() == 1"))
 }
 
 #[cfg(test)]
 mod tests {
-	use binius_field::BinaryField128bGhash;
+	use binius_field::{BinaryField128bGhash, PackedBinaryField8x16b};
 	use rand::{RngCore, SeedableRng, rngs::StdRng};
 
 	use super::*;
@@ -127,6 +118,9 @@ mod tests {
 
 	#[test]
 	fn test_evaluate_consistency() {
+		type P = PackedBinaryField8x16b;
+		type F = <P as PackedField>::Scalar;
+
 		/// Simple reference function for multilinear polynomial evaluation.
 		fn evaluate_with_inner_product<F, P, Data>(
 			evals: &FieldBuffer<P, Data>,
@@ -152,19 +146,20 @@ mod tests {
 
 		let mut rng = StdRng::seed_from_u64(0);
 
-		// Generate random buffer and evaluation point
-		let log_n = 10;
-		let buffer = random_field_buffer::<BinaryField128bGhash>(&mut rng, log_n);
-		let point = random_scalars::<BinaryField128bGhash>(&mut rng, log_n);
+		for log_n in [0, P::LOG_WIDTH - 1, P::LOG_WIDTH, 10] {
+			// Generate random buffer and evaluation point
+			let buffer = random_field_buffer::<P>(&mut rng, log_n);
+			let point = random_scalars::<F>(&mut rng, log_n);
 
-		// Evaluate using all three methods
-		let result_inner_product = evaluate_with_inner_product(&buffer, &point).unwrap();
-		let result_inplace = evaluate_inplace(buffer.clone(), &point).unwrap();
-		let result_sqrt_memory = evaluate(&buffer, &point).unwrap();
+			// Evaluate using all three methods
+			let result_inner_product = evaluate_with_inner_product(&buffer, &point).unwrap();
+			let result_inplace = evaluate_inplace(buffer.clone(), &point).unwrap();
+			let result_sqrt_memory = evaluate(&buffer, &point).unwrap();
 
-		// All results should be equal
-		assert_eq!(result_inner_product, result_inplace);
-		assert_eq!(result_inner_product, result_sqrt_memory);
+			// All results should be equal
+			assert_eq!(result_inner_product, result_inplace);
+			assert_eq!(result_inner_product, result_sqrt_memory);
+		}
 	}
 
 	#[test]

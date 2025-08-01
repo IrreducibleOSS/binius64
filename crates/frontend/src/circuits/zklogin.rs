@@ -225,6 +225,9 @@ impl ZkLogin {
 			.try_into()
 			.expect("an array of size 6");
 
+		// The zklogin nonce claim is Base64 URL encoded without padding (i.e.
+		// in the same way as JWS components)
+		// <https://github.com/MystenLabs/ts-sdks/blob/eb23fc1c122a1495e52d0bd613bf5e8e6eb816cc/packages/typescript/src/zklogin/nonce.ts#L33>
 		let _base64decode_check_nonce = Base64UrlSafe::new(
 			&b.subcircuit("base64_check_nonce"),
 			base64_decoded_nonce.len() * 8,
