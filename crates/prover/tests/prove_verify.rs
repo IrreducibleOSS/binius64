@@ -8,8 +8,7 @@ use binius_frontend::{
 	constraint_system::{ConstraintSystem, ValueVec},
 	word::Word,
 };
-use binius_math::ntt::SingleThreadedNTT;
-use binius_prover::{merkle_tree::prover::BinaryMerkleTreeProver, prove};
+use binius_prover::Prover;
 use binius_transcript::ProverTranscript;
 use binius_verifier::{
 	Verifier,
@@ -20,20 +19,15 @@ use binius_verifier::{
 fn prove_verify(cs: ConstraintSystem, witness: ValueVec) {
 	const LOG_INV_RATE: usize = 1;
 
-	let verifier = Verifier::setup(&cs, LOG_INV_RATE, StdCompression::default()).unwrap();
+	let verifier =
+		Verifier::<StdDigest, _>::setup(&cs, LOG_INV_RATE, StdCompression::default()).unwrap();
 
-	let ntt = SingleThreadedNTT::with_subspace(verifier.fri_params().rs_code().subspace()).unwrap();
-	let merkle_prover = BinaryMerkleTreeProver::<_, StdDigest, _>::new(StdCompression::default());
+	let prover = Prover::<OptimalPackedB128, _, StdDigest>::setup(&verifier).unwrap();
 
 	let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
-	prove::<OptimalPackedB128, _, _, _, _, _>(
-		&verifier,
-		witness.clone(),
-		&mut prover_transcript,
-		&ntt,
-		&merkle_prover,
-	)
-	.unwrap();
+	prover
+		.prove(witness.clone(), &mut prover_transcript)
+		.unwrap();
 
 	let mut verifier_transcript = prover_transcript.into_verifier();
 	verifier

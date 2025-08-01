@@ -1,4 +1,4 @@
-use std::iter::repeat_with;
+use std::{iter::repeat_with, marker::PhantomData};
 
 use binius_field::{
 	AESTowerField8b, BinaryField, PackedAESBinaryField16x8b, PackedExtension, PackedField,
@@ -8,7 +8,9 @@ use binius_frontend::{
 	word::Word,
 };
 use binius_math::{
-	BinarySubspace, FieldBuffer, multilinear::eq::eq_ind_partial_eval, ntt::AdditiveNTT,
+	BinarySubspace, FieldBuffer,
+	multilinear::eq::eq_ind_partial_eval,
+	ntt::{MultiThreadedNTT, SingleThreadedNTT, twiddle::PrecomputedTwiddleAccess},
 };
 use binius_transcript::{
 	ProverTranscript,
@@ -39,92 +41,131 @@ use crate::{
 	},
 };
 
-#[allow(clippy::too_many_arguments)]
-pub fn prove<P, Challenger_, NTT, MerkleHash, MerkleCompress, ParallelMerkleHasher>(
-	verifier: &Verifier<MerkleHash, MerkleCompress>,
-	witness: ValueVec,
-	transcript: &mut ProverTranscript<Challenger_>,
-	ntt: &NTT,
-	merkle_prover: &BinaryMerkleTreeProver<B128, ParallelMerkleHasher, MerkleCompress>,
-) -> Result<(), Error>
+/// Struct for proving instances of a particular constraint system.
+///
+/// The [`Self::setup`] constructor pre-processes reusable structures for proving instances of the
+/// given constraint system. Then [`Self::prove`] is called one or more times with individual
+/// instances.
+#[derive(Debug)]
+pub struct Prover<'a, P, MerkleCompress, ParallelMerkleHasher: ParallelDigest> {
+	verifier: &'a Verifier<'a, ParallelMerkleHasher::Digest, MerkleCompress>,
+	ntt: MultiThreadedNTT<B128, PrecomputedTwiddleAccess<B128>>,
+	merkle_prover: BinaryMerkleTreeProver<B128, ParallelMerkleHasher, MerkleCompress>,
+	_p_marker: PhantomData<P>,
+}
+
+impl<'a, P, MerkleHash, MerkleCompress, ParallelMerkleHasher>
+	Prover<'a, P, MerkleCompress, ParallelMerkleHasher>
 where
 	P: PackedField<Scalar = B128> + PackedExtension<B128> + PackedExtension<B1>,
-	Challenger_: Challenger,
-	NTT: AdditiveNTT<B128> + Sync,
 	MerkleHash: Digest + BlockSizeUser + FixedOutputReset,
 	ParallelMerkleHasher: ParallelDigest<Digest = MerkleHash>,
 	MerkleCompress: PseudoCompressionFunction<Output<MerkleHash>, 2> + Sync,
 	Output<MerkleHash>: SerializeBytes,
 {
-	// Check that the public input length is correct
-	let public = witness.public().to_vec();
-	if public.len() != 1 << verifier.log_public_words() {
-		return Err(Error::ArgumentError {
-			arg: "witness".to_string(),
-			msg: format!(
-				"witness layout has {} words, expected {}",
-				public.len(),
-				1 << verifier.log_public_words()
-			),
-		});
+	/// Constructs a prover corresponding to a constraint system verifier.
+	///
+	/// See [`Prover`] struct documentation for details.
+	pub fn setup(
+		verifier: &'a Verifier<'a, ParallelMerkleHasher::Digest, MerkleCompress>,
+	) -> Result<Self, Error> {
+		let ntt = SingleThreadedNTT::with_subspace(verifier.fri_params().rs_code().subspace())?
+			.precompute_twiddles()
+			.multithreaded();
+		let merkle_prover = BinaryMerkleTreeProver::<_, ParallelMerkleHasher, _>::new(
+			verifier.merkle_scheme().compression().clone(),
+		);
+
+		Ok(Prover {
+			verifier,
+			ntt,
+			merkle_prover,
+			_p_marker: PhantomData,
+		})
 	}
 
-	let cs = verifier.constraint_system();
+	pub fn prove<Challenger_: Challenger>(
+		&self,
+		witness: ValueVec,
+		transcript: &mut ProverTranscript<Challenger_>,
+	) -> Result<(), Error> {
+		let verifier = &self.verifier;
+		let cs = self.verifier.constraint_system();
 
-	let witness_packed = pack_witness::<P>(verifier.log_witness_elems(), &witness)?;
+		// Check that the public input length is correct
+		let public = witness.public().to_vec();
+		if public.len() != 1 << self.verifier.log_public_words() {
+			return Err(Error::ArgumentError {
+				arg: "witness".to_string(),
+				msg: format!(
+					"witness layout has {} words, expected {}",
+					public.len(),
+					1 << verifier.log_public_words()
+				),
+			});
+		}
 
-	// Commit the witness.
-	let CommitOutput {
-		commitment: trace_commitment,
-		committed: trace_committed,
-		codeword: trace_codeword,
-	} = fri::commit_interleaved(verifier.fri_params(), ntt, merkle_prover, witness_packed.to_ref())?;
-	transcript.message().write(&trace_commitment);
+		let witness_packed = pack_witness::<P>(verifier.log_witness_elems(), &witness)?;
 
-	let and_witness = build_and_check_witness(&cs.and_constraints, witness.combined_witness());
-	let _output = run_and_check::<B128, _>(verifier.log_witness_words(), and_witness, transcript)?;
+		// Commit the witness.
+		let CommitOutput {
+			commitment: trace_commitment,
+			committed: trace_committed,
+			codeword: trace_codeword,
+		} = fri::commit_interleaved(
+			verifier.fri_params(),
+			&self.ntt,
+			&self.merkle_prover,
+			witness_packed.to_ref(),
+		)?;
+		transcript.message().write(&trace_commitment);
 
-	// Sample a challenge point during the shift reduction.
-	let z_challenge = transcript.sample_vec(LOG_WORD_SIZE_BITS);
-	let public_input_challenge = transcript.sample_vec(verifier.log_public_words());
+		let and_witness = build_and_check_witness(&cs.and_constraints, witness.combined_witness());
+		let _output =
+			run_and_check::<B128, _>(verifier.log_witness_words(), and_witness, transcript)?;
 
-	let z_tensor = eq_ind_partial_eval(&z_challenge);
-	let witness_z_folded = fold_words::<_, P>(witness.combined_witness(), z_tensor.as_ref());
-	let public_z_folded = fold_words::<_, P>(&public, z_tensor.as_ref());
+		// Sample a challenge point during the shift reduction.
+		let z_challenge = transcript.sample_vec(LOG_WORD_SIZE_BITS);
+		let public_input_challenge = transcript.sample_vec(verifier.log_public_words());
 
-	let public_check_prover =
-		InOutCheckProver::new(witness_z_folded, public_z_folded, &public_input_challenge)?;
-	let ProveSingleOutput {
-		multilinear_evals,
-		challenges: mut y_challenge,
-	} = prove_single_mlecheck(public_check_prover, transcript)?;
+		let z_tensor = eq_ind_partial_eval(&z_challenge);
+		let witness_z_folded = fold_words::<_, P>(witness.combined_witness(), z_tensor.as_ref());
+		let public_z_folded = fold_words::<_, P>(&public, z_tensor.as_ref());
 
-	y_challenge.reverse();
+		let public_check_prover =
+			InOutCheckProver::new(witness_z_folded, public_z_folded, &public_input_challenge)?;
+		let ProveSingleOutput {
+			multilinear_evals,
+			challenges: mut y_challenge,
+		} = prove_single_mlecheck(public_check_prover, transcript)?;
 
-	// Public input check prover returns the witness evaluation.
-	assert_eq!(multilinear_evals.len(), 1);
-	let witness_eval = multilinear_evals[0];
-	transcript.message().write(&witness_eval);
+		y_challenge.reverse();
 
-	// PCS opening
-	let evaluation_point = [z_challenge, y_challenge].concat();
+		// Public input check prover returns the witness evaluation.
+		assert_eq!(multilinear_evals.len(), 1);
+		let witness_eval = multilinear_evals[0];
+		transcript.message().write(&witness_eval);
 
-	// Convert witness_packed to PackedSubfield view for OneBitPCSProver
-	let witness_packed_subfield_buffer = cast_bases_to_buffer(&witness_packed);
+		// PCS opening
+		let evaluation_point = [z_challenge, y_challenge].concat();
 
-	let pcs_prover =
-		OneBitPCSProver::new(witness_packed_subfield_buffer, witness_eval, evaluation_point)?;
+		// Convert witness_packed to PackedSubfield view for OneBitPCSProver
+		let witness_packed_subfield_buffer = cast_bases_to_buffer(&witness_packed);
 
-	pcs_prover.prove_with_transcript(
-		transcript,
-		ntt,
-		merkle_prover,
-		verifier.fri_params(),
-		&trace_codeword,
-		&trace_committed,
-	)?;
+		let pcs_prover =
+			OneBitPCSProver::new(witness_packed_subfield_buffer, witness_eval, evaluation_point)?;
 
-	Ok(())
+		pcs_prover.prove_with_transcript(
+			transcript,
+			&self.ntt,
+			&self.merkle_prover,
+			verifier.fri_params(),
+			&trace_codeword,
+			&trace_committed,
+		)?;
+
+		Ok(())
+	}
 }
 
 /// Helper function to convert cast_bases result to FieldBuffer
