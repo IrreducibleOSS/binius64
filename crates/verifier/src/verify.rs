@@ -13,6 +13,7 @@ use binius_transcript::{
 	fiat_shamir::{CanSample, Challenger},
 };
 use binius_utils::{DeserializeBytes, checked_arithmetics::log2_ceil_usize};
+use digest::{Digest, Output, core_api::BlockSizeUser};
 use itertools::Itertools;
 
 use super::{
@@ -24,7 +25,8 @@ use crate::{
 		B1, B128, LOG_WORD_SIZE_BITS, PROVER_SMALL_FIELD_ZEROCHECK_CHALLENGES, WORD_SIZE_BITS,
 	},
 	fri::{FRIParams, estimate_optimal_arity},
-	merkle_tree::MerkleTreeScheme,
+	hash::PseudoCompressionFunction,
+	merkle_tree::BinaryMerkleTreeScheme,
 	protocols::pubcheck,
 };
 
@@ -32,17 +34,21 @@ pub const SECURITY_BITS: usize = 96;
 
 /// Public parameters for proving constraint systems of a certain size.
 #[derive(Debug, Clone)]
-pub struct Params<MTScheme> {
+pub struct Params<MerkleHash, MerkleCompress> {
 	fri_params: FRIParams<B128, B128>,
-	merkle_scheme: MTScheme,
+	merkle_scheme: BinaryMerkleTreeScheme<B128, MerkleHash, MerkleCompress>,
 	log_public_words: usize,
 }
 
-impl<MTScheme: MerkleTreeScheme<B128>> Params<MTScheme> {
+impl<MerkleHash, MerkleCompress> Params<MerkleHash, MerkleCompress>
+where
+	MerkleHash: Digest + BlockSizeUser,
+	MerkleCompress: PseudoCompressionFunction<Output<MerkleHash>, 2>,
+{
 	pub fn new(
 		cs: &ConstraintSystem,
 		log_inv_rate: usize,
-		merkle_scheme: MTScheme,
+		compression: MerkleCompress,
 	) -> Result<Self, Error> {
 		// Use offset_witness which is guaranteed to be power of two
 		let n_public = cs.value_vec_layout.offset_witness;
@@ -62,8 +68,11 @@ impl<MTScheme: MerkleTreeScheme<B128>> Params<MTScheme> {
 		let log_witness_elems = log_witness_words - LOG_WORDS_PER_ELEM;
 
 		let log_code_len = log_witness_words + log_inv_rate;
-		let fri_arity =
-			estimate_optimal_arity(log_code_len, size_of::<MTScheme::Digest>(), size_of::<B128>());
+		let fri_arity = estimate_optimal_arity(
+			log_code_len,
+			size_of::<Output<MerkleHash>>(),
+			size_of::<B128>(),
+		);
 
 		let ntt = SingleThreadedNTT::new(log_code_len)?;
 		let fri_params = FRIParams::choose_with_constant_fold_arity(
@@ -73,6 +82,8 @@ impl<MTScheme: MerkleTreeScheme<B128>> Params<MTScheme> {
 			log_inv_rate,
 			fri_arity,
 		)?;
+
+		let merkle_scheme = BinaryMerkleTreeScheme::new(compression);
 
 		Ok(Self {
 			fri_params,
@@ -97,8 +108,8 @@ impl<MTScheme: MerkleTreeScheme<B128>> Params<MTScheme> {
 		&self.fri_params
 	}
 
-	/// Returns the [`MerkleTreeScheme`] instance used.
-	pub fn merkle_scheme(&self) -> &MTScheme {
+	/// Returns the [`crate::merkle_tree::MerkleTreeScheme`] instance used.
+	pub fn merkle_scheme(&self) -> &BinaryMerkleTreeScheme<B128, MerkleHash, MerkleCompress> {
 		&self.merkle_scheme
 	}
 
@@ -108,16 +119,17 @@ impl<MTScheme: MerkleTreeScheme<B128>> Params<MTScheme> {
 	}
 }
 
-pub fn verify<Challenger_, MTScheme>(
-	params: &Params<MTScheme>,
+pub fn verify<Challenger_, MerkleHash, MerkleCompress>(
+	params: &Params<MerkleHash, MerkleCompress>,
 	_cs: &ConstraintSystem,
 	public: &[Word],
 	transcript: &mut VerifierTranscript<Challenger_>,
 ) -> Result<(), Error>
 where
 	Challenger_: Challenger,
-	MTScheme: MerkleTreeScheme<B128>,
-	MTScheme::Digest: DeserializeBytes,
+	MerkleHash: Digest + BlockSizeUser,
+	MerkleCompress: PseudoCompressionFunction<Output<MerkleHash>, 2> + Sync,
+	Output<MerkleHash>: DeserializeBytes,
 {
 	// Check that the public input length is correct
 	if public.len() != 1 << params.log_public_words() {
@@ -128,7 +140,7 @@ where
 	}
 
 	// Receive the trace commitment.
-	let trace_commitment = transcript.message().read::<MTScheme::Digest>()?;
+	let trace_commitment = transcript.message().read::<Output<MerkleHash>>()?;
 
 	// verify the and reduction
 	let _output: AndReductionOutput<B128> = run_and_check(params.log_witness_words(), transcript)?;

@@ -15,21 +15,19 @@ use binius_verifier::{
 	Params,
 	config::StdChallenger,
 	hash::{StdCompression, StdDigest},
-	merkle_tree::BinaryMerkleTreeScheme,
 	verify,
 };
 
 fn prove_verify(cs: ConstraintSystem, witness: ValueVec) {
 	const LOG_INV_RATE: usize = 1;
 
-	let merkle_scheme = BinaryMerkleTreeScheme::<_, StdDigest, _>::new(StdCompression::default());
-	let params = Params::new(&cs, LOG_INV_RATE, merkle_scheme).unwrap();
+	let params = Params::new(&cs, LOG_INV_RATE, StdCompression::default()).unwrap();
 
 	let ntt = SingleThreadedNTT::with_subspace(params.fri_params().rs_code().subspace()).unwrap();
 	let merkle_prover = BinaryMerkleTreeProver::<_, StdDigest, _>::new(StdCompression::default());
 
 	let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
-	prove::<OptimalPackedB128, _, _, _, _>(
+	prove::<OptimalPackedB128, _, _, _, _, _>(
 		&params,
 		&cs,
 		witness.clone(),
