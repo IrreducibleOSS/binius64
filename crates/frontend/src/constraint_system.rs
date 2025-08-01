@@ -1,4 +1,7 @@
-use std::ops::{Index, IndexMut};
+use std::{
+	cmp,
+	ops::{Index, IndexMut},
+};
 
 use crate::word::Word;
 
@@ -83,7 +86,7 @@ impl ShiftedValueIndex {
 
 pub type Operand = Vec<ShiftedValueIndex>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct AndConstraint {
 	pub a: Operand,
 	pub b: Operand,
@@ -116,7 +119,7 @@ impl AndConstraint {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct MulConstraint {
 	pub a: Operand,
 	pub b: Operand,
@@ -141,6 +144,21 @@ impl ConstraintSystem {
 			and_constraints: Vec::new(),
 			mul_constraints: Vec::new(),
 		}
+	}
+
+	/// Prepares this constraint system for proving.
+	///
+	/// Pads the AND and MUL constraints to the next po2 size.
+	pub fn prepare(&mut self) {
+		// Both AND and MUL constraint list have requirements wrt their sizes. Notably, AND
+		// constraint list must be at least 8 elements.
+		let and_target_size = cmp::max(8, self.and_constraints.len()).next_power_of_two();
+		let mul_target_size = cmp::max(1, self.mul_constraints.len()).next_power_of_two();
+
+		self.and_constraints
+			.resize_with(and_target_size, AndConstraint::default);
+		self.mul_constraints
+			.resize_with(mul_target_size, MulConstraint::default);
 	}
 
 	pub fn add_and_constraint(&mut self, and_constraint: AndConstraint) {

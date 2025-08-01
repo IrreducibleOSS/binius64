@@ -54,10 +54,12 @@ where
 	///
 	/// See [`Verifier`] struct documentation for details.
 	pub fn setup(
-		constraint_system: ConstraintSystem,
+		mut constraint_system: ConstraintSystem,
 		log_inv_rate: usize,
 		compression: MerkleCompress,
 	) -> Result<Self, Error> {
+		constraint_system.prepare();
+
 		// Use offset_witness which is guaranteed to be power of two
 		let n_public = constraint_system.value_vec_layout.offset_witness;
 
