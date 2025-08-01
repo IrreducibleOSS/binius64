@@ -416,6 +416,6 @@ mod test {
 			incorrect_evaluation_claim,
 		);
 
-        assert!(result.is_err());
+		assert!(result.is_err());
 	}
 }
