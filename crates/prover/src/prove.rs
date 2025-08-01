@@ -27,10 +27,7 @@ use binius_verifier::{
 
 use super::error::Error;
 use crate::{
-	and_reduction::{
-		prover::OblongZerocheckProver, prover_setup::ntt_lookup_from_prover_message_domain,
-		utils::multivariate::OneBitOblongMultilinear,
-	},
+	and_reduction::{prover::OblongZerocheckProver, utils::multivariate::OneBitOblongMultilinear},
 	fold_word::fold_words,
 	fri,
 	fri::CommitOutput,
