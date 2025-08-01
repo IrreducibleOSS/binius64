@@ -4,9 +4,7 @@ use binius_field::{
 	AESTowerField8b, BinaryField, PackedAESBinaryField16x8b, PackedExtension, PackedField,
 };
 use binius_frontend::{
-	constraint_system::{
-		AndConstraint, ConstraintSystem, Operand, ShiftVariant, ShiftedValueIndex, ValueVec,
-	},
+	constraint_system::{AndConstraint, Operand, ShiftVariant, ShiftedValueIndex, ValueVec},
 	word::Word,
 };
 use binius_math::{
@@ -44,7 +42,6 @@ use crate::{
 #[allow(clippy::too_many_arguments)]
 pub fn prove<P, Challenger_, NTT, MerkleHash, MerkleCompress, ParallelMerkleHasher>(
 	verifier: &Verifier<MerkleHash, MerkleCompress>,
-	cs: &ConstraintSystem,
 	witness: ValueVec,
 	transcript: &mut ProverTranscript<Challenger_>,
 	ntt: &NTT,
@@ -71,6 +68,8 @@ where
 			),
 		});
 	}
+
+	let cs = verifier.constraint_system();
 
 	let witness_packed = pack_witness::<P>(verifier.log_witness_elems(), &witness)?;
 

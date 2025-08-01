@@ -37,13 +37,14 @@ pub const SECURITY_BITS: usize = 96;
 /// The [`Self::setup`] constructor determines public parameters for proving instances of the given
 /// constraint system. Then [`Self::verify`] is called one or more times with individual instances.
 #[derive(Debug, Clone)]
-pub struct Verifier<MerkleHash, MerkleCompress> {
+pub struct Verifier<'a, MerkleHash, MerkleCompress> {
+	constraint_system: &'a ConstraintSystem,
 	fri_params: FRIParams<B128, B128>,
 	merkle_scheme: BinaryMerkleTreeScheme<B128, MerkleHash, MerkleCompress>,
 	log_public_words: usize,
 }
 
-impl<MerkleHash, MerkleCompress> Verifier<MerkleHash, MerkleCompress>
+impl<'a, MerkleHash, MerkleCompress> Verifier<'a, MerkleHash, MerkleCompress>
 where
 	MerkleHash: Digest + BlockSizeUser,
 	MerkleCompress: PseudoCompressionFunction<Output<MerkleHash>, 2> + Sync,
@@ -53,12 +54,12 @@ where
 	///
 	/// See [`Verifier`] struct documentation for details.
 	pub fn setup(
-		cs: &ConstraintSystem,
+		constraint_system: &'a ConstraintSystem,
 		log_inv_rate: usize,
 		compression: MerkleCompress,
 	) -> Result<Self, Error> {
 		// Use offset_witness which is guaranteed to be power of two
-		let n_public = cs.value_vec_layout.offset_witness;
+		let n_public = constraint_system.value_vec_layout.offset_witness;
 
 		// Verify it's a power of two (should always be true by construction)
 		if !n_public.is_power_of_two() {
@@ -71,7 +72,8 @@ where
 		}
 
 		// The number of field elements that constitute the packed witness.
-		let log_witness_words = log2_ceil_usize(cs.value_vec_len()).max(LOG_WORDS_PER_ELEM);
+		let log_witness_words =
+			log2_ceil_usize(constraint_system.value_vec_len()).max(LOG_WORDS_PER_ELEM);
 		let log_witness_elems = log_witness_words - LOG_WORDS_PER_ELEM;
 
 		let log_code_len = log_witness_words + log_inv_rate;
@@ -93,6 +95,7 @@ where
 		let merkle_scheme = BinaryMerkleTreeScheme::new(compression);
 
 		Ok(Self {
+			constraint_system,
 			fri_params,
 			merkle_scheme,
 			log_public_words,
@@ -108,6 +111,11 @@ where
 	pub fn log_witness_elems(&self) -> usize {
 		let rs_code = self.fri_params.rs_code();
 		rs_code.log_dim() + self.fri_params.log_batch_size()
+	}
+
+	/// Returns the constraint system.
+	pub fn constraint_system(&self) -> &ConstraintSystem {
+		self.constraint_system
 	}
 
 	/// Returns the chosen FRI parameters.
@@ -127,7 +135,6 @@ where
 
 	pub fn verify<Challenger_: Challenger>(
 		&self,
-		_cs: &ConstraintSystem,
 		public: &[Word],
 		transcript: &mut VerifierTranscript<Challenger_>,
 	) -> Result<(), Error> {
