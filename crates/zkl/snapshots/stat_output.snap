@@ -12,10 +12,10 @@ config: Config {
 }
 --
 Number of gates: 818551
-Number of AND constraints: 1138868
+Number of AND constraints: 1138871
 Number of MUL constraints: 26945
 Length of value vec: 2097152
   Constants: 620
   Inout: 133
   Witness: 190227
-  Internal: 1070084
+  Internal: 1070090
