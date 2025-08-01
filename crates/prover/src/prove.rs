@@ -20,7 +20,7 @@ use binius_utils::{SerializeBytes, rayon::prelude::*};
 use binius_verifier::{
 	Params,
 	config::{
-		B128, LOG_WORD_SIZE_BITS, LOG_WORDS_PER_ELEM, PROVER_SMALL_FIELD_ZEROCHECK_CHALLENGES,
+		B1, B128, LOG_WORD_SIZE_BITS, LOG_WORDS_PER_ELEM, PROVER_SMALL_FIELD_ZEROCHECK_CHALLENGES,
 	},
 	merkle_tree::MerkleTreeScheme,
 };
@@ -49,7 +49,7 @@ pub fn prove<P, Challenger_, NTT, MTScheme, MTProver>(
 	merkle_prover: &MTProver,
 ) -> Result<(), Error>
 where
-	P: PackedField<Scalar = B128> + PackedExtension<B128>,
+	P: PackedField<Scalar = B128> + PackedExtension<B128> + PackedExtension<B1>,
 	Challenger_: Challenger,
 	NTT: AdditiveNTT<B128> + Sync,
 	MTScheme: MerkleTreeScheme<B128>,
@@ -69,8 +69,7 @@ where
 		});
 	}
 
-	// TODO: Pack witness using P, not B128
-	let witness_packed = pack_witness::<B128>(params.log_witness_elems(), &witness)?;
+	let witness_packed = pack_witness::<P>(params.log_witness_elems(), &witness)?;
 
 	// Commit the witness.
 	let CommitOutput {
@@ -107,7 +106,13 @@ where
 
 	// PCS opening
 	let evaluation_point = [z_challenge, y_challenge].concat();
-	let pcs_prover = OneBitPCSProver::new(witness_packed, witness_eval, evaluation_point)?;
+
+	// Convert witness_packed to PackedSubfield view for OneBitPCSProver
+	let witness_packed_subfield_buffer = cast_bases_to_buffer(&witness_packed);
+
+	let pcs_prover =
+		OneBitPCSProver::new(witness_packed_subfield_buffer, witness_eval, evaluation_point)?;
+
 	pcs_prover.prove_with_transcript(
 		transcript,
 		ntt,
@@ -118,6 +123,18 @@ where
 	)?;
 
 	Ok(())
+}
+
+/// Helper function to convert cast_bases result to FieldBuffer
+fn cast_bases_to_buffer<P>(
+	packed: &FieldBuffer<P>,
+) -> FieldBuffer<<P as PackedExtension<B1>>::PackedSubfield>
+where
+	P: PackedExtension<B1>,
+{
+	let subfield = <P as PackedExtension<B1>>::cast_bases(packed.as_ref());
+	let values: Vec<_> = subfield.iter().flat_map(|p| p.iter()).collect();
+	FieldBuffer::from_values(&values).expect("cast_bases should produce power-of-2 length")
 }
 
 fn pack_witness<P: PackedField<Scalar = B128>>(

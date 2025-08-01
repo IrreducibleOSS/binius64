@@ -1,3 +1,5 @@
+// Copyright 2025 Irreducible Inc.
+
 use binius_field::arch::OptimalPackedB128;
 use binius_frontend::{
 	circuits::sha256::{Compress, State},
@@ -61,8 +63,10 @@ fn test_prove_verify_sha256_preimage() {
 	let params = Params::new(&cs, LOG_INV_RATE, merkle_scheme).unwrap();
 
 	let ntt = SingleThreadedNTT::with_subspace(params.fri_params().rs_code().subspace()).unwrap();
+
 	let merkle_prover = BinaryMerkleTreeProver::<_, StdDigest, _>::new(StdCompression::default());
 	let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
+
 	prove::<OptimalPackedB128, _, _, _, _>(
 		&params,
 		&cs,
@@ -75,5 +79,6 @@ fn test_prove_verify_sha256_preimage() {
 
 	let mut verifier_transcript = prover_transcript.into_verifier();
 	verify(&params, &cs, witness.public(), &mut verifier_transcript).unwrap();
+
 	verifier_transcript.finalize().unwrap();
 }

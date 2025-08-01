@@ -1,3 +1,5 @@
+// Copyright 2025 Irreducible Inc.
+
 use binius_field::{BinaryField, PackedField};
 use binius_math::{FieldBuffer, line::extrapolate_line_packed};
 use binius_utils::rayon::iter::{IntoParallelIterator, ParallelIterator};
