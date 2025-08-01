@@ -1,6 +1,6 @@
 use std::vec;
 
-use binius_field::{BinaryField, ExtensionField, PackedField};
+use binius_field::{BinaryField, PackedField};
 use binius_math::{FieldBuffer, ntt::AdditiveNTT};
 use binius_transcript::{
 	ProverTranscript,
@@ -209,7 +209,7 @@ mod test {
 	pub const LOG_INV_RATE: usize = 1;
 	pub const NUM_TEST_QUERIES: usize = 3;
 
-	fn run_basefold_prove_and_verify<F, P, FA>(
+	fn run_basefold_prove_and_verify<F, P>(
 		multilinear: FieldBuffer<P>,
 		evaluation_point: Vec<F>,
 		evaluation_claim: F,
@@ -313,7 +313,7 @@ mod test {
 
 		let (multilinear, evaluation_point, evaluation_claim) = test_setup::<_, P>(n_vars);
 
-		match run_basefold_prove_and_verify::<_, P, B128>(
+		match run_basefold_prove_and_verify::<_, P>(
 			multilinear,
 			evaluation_point,
 			evaluation_claim,
