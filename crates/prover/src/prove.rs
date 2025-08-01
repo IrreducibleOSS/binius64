@@ -22,8 +22,9 @@ use binius_verifier::{
 	config::{
 		B1, B128, LOG_WORD_SIZE_BITS, LOG_WORDS_PER_ELEM, PROVER_SMALL_FIELD_ZEROCHECK_CHALLENGES,
 	},
-	merkle_tree::MerkleTreeScheme,
+	hash::PseudoCompressionFunction,
 };
+use digest::{Digest, FixedOutputReset, Output, core_api::BlockSizeUser};
 
 use super::error::Error;
 use crate::{
@@ -31,7 +32,8 @@ use crate::{
 	fold_word::fold_words,
 	fri,
 	fri::CommitOutput,
-	merkle_tree::MerkleTreeProver,
+	hash::ParallelDigest,
+	merkle_tree::prover::BinaryMerkleTreeProver,
 	pcs::prover::OneBitPCSProver,
 	protocols::{
 		InOutCheckProver,
@@ -40,21 +42,22 @@ use crate::{
 };
 
 #[allow(clippy::too_many_arguments)]
-pub fn prove<P, Challenger_, NTT, MTScheme, MTProver>(
-	params: &Params<MTScheme>,
+pub fn prove<P, Challenger_, NTT, MerkleHash, MerkleCompress, ParallelMerkleHasher>(
+	params: &Params<MerkleHash, MerkleCompress>,
 	cs: &ConstraintSystem,
 	witness: ValueVec,
 	transcript: &mut ProverTranscript<Challenger_>,
 	ntt: &NTT,
-	merkle_prover: &MTProver,
+	merkle_prover: &BinaryMerkleTreeProver<B128, ParallelMerkleHasher, MerkleCompress>,
 ) -> Result<(), Error>
 where
 	P: PackedField<Scalar = B128> + PackedExtension<B128> + PackedExtension<B1>,
 	Challenger_: Challenger,
 	NTT: AdditiveNTT<B128> + Sync,
-	MTScheme: MerkleTreeScheme<B128>,
-	MTScheme::Digest: SerializeBytes,
-	MTProver: MerkleTreeProver<B128, Scheme = MTScheme>,
+	MerkleHash: Digest + BlockSizeUser + FixedOutputReset,
+	ParallelMerkleHasher: ParallelDigest<Digest = MerkleHash>,
+	MerkleCompress: PseudoCompressionFunction<Output<MerkleHash>, 2> + Sync,
+	Output<MerkleHash>: SerializeBytes,
 {
 	// Check that the public input length is correct
 	let public = witness.public().to_vec();

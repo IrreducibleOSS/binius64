@@ -17,7 +17,7 @@ use super::{
 };
 use crate::hash::{PseudoCompressionFunction, hash_serialize};
 
-#[derive(Debug, Getters)]
+#[derive(Debug, Clone, Getters)]
 pub struct BinaryMerkleTreeScheme<T, H, C> {
 	#[getset(get = "pub")]
 	compression: C,
@@ -39,6 +39,7 @@ impl<F, H, C> MerkleTreeScheme<F> for BinaryMerkleTreeScheme<F, H, C>
 where
 	F: Field,
 	H: Digest + BlockSizeUser,
+	// TODO: Remove Sync trait here
 	C: PseudoCompressionFunction<Output<H>, 2> + Sync,
 {
 	type Digest = Output<H>;
