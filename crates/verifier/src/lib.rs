@@ -9,5 +9,6 @@ pub mod protocols;
 pub mod ring_switch;
 mod verify;
 
+pub use binius_transcript as transcript;
 pub use error::*;
 pub use verify::*;

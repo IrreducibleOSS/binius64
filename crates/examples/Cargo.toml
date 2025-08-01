@@ -1,0 +1,22 @@
+[package]
+name = "binius-examples"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow.workspace = true
+binius-core = { path = "../core" }
+binius-frontend = { path = "../frontend" }
+binius-verifier = { path = "../verifier" }
+binius-prover = { path = "../prover", default-features = false }
+tracing.workspace = true
+tracing-profile.workspace = true
+
+[features]
+default = ["rayon"]
+perfetto = ["tracing-profile/perfetto"]
+rayon = ["binius-prover/rayon"]
