@@ -1,7 +1,8 @@
+use binius_core::word::Word;
+
 use crate::{
 	circuits::slice::Slice,
 	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
-	word::Word,
 };
 
 /// Represents a single JWT attribute to verify

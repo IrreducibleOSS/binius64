@@ -1,7 +1,7 @@
 // Copyright 2025 Irreducible Inc.
 
+use binius_core::{constraint_system::ConstraintSystem, word::Word};
 use binius_field::{AESTowerField8b, BinaryField};
-use binius_frontend::{constraint_system::ConstraintSystem, word::Word};
 use binius_math::{
 	BinarySubspace, FieldBuffer,
 	inner_product::inner_product_subfield,

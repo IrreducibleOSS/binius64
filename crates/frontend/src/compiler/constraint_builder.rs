@@ -1,9 +1,7 @@
+use binius_core::constraint_system::{AndConstraint, MulConstraint, ShiftedValueIndex, ValueIndex};
 use cranelift_entity::SecondaryMap;
 
-use crate::{
-	compiler::Wire,
-	constraint_system::{AndConstraint, MulConstraint, ShiftedValueIndex, ValueIndex},
-};
+use crate::compiler::Wire;
 
 /// Builder for creating constraints using Wire references
 pub struct ConstraintBuilder {

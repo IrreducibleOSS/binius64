@@ -1,15 +1,16 @@
-/// Bitwise AND operation.
-///
-/// Returns `z = x & y`.
-///
-/// # Algorithm
-///
-/// Computes the bitwise AND of two 64-bit words using a single AND constraint.
-///
-/// # Constraints
-///
-/// The gate generates 1 AND constraint:
-/// - `x ∧ y = z`
+//! Bitwise AND operation.
+//!
+//! Returns `z = x & y`.
+//!
+//! # Algorithm
+//!
+//! Computes the bitwise AND of two 64-bit words using a single AND constraint.
+//!
+//! # Constraints
+//!
+//! The gate generates 1 AND constraint:
+//! - `x ∧ y = z`
+
 use crate::compiler::{
 	circuit,
 	constraint_builder::ConstraintBuilder,

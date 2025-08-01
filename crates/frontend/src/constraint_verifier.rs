@@ -1,6 +1,6 @@
 //! Simple constraint verifier for testing
 
-use crate::{
+use binius_core::{
 	constraint_system::{
 		AndConstraint, ConstraintSystem, MulConstraint, ShiftVariant, ShiftedValueIndex, ValueVec,
 	},

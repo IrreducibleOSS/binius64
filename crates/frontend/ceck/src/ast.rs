@@ -1,4 +1,4 @@
-use binius_frontend::constraint_system::ShiftVariant;
+use binius_core::constraint_system::ShiftVariant;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ShiftOp {

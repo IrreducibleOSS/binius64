@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use binius_frontend::{
+use binius_core::{
 	constraint_system::{
 		AndConstraint, ConstraintSystem, MulConstraint, Operand, ShiftedValueIndex, ValueIndex,
 		ValueVecLayout,

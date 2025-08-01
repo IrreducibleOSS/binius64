@@ -1,32 +1,32 @@
-/// Unsigned less-than test returning a mask.
-///
-/// Returns `out_mask = all-1` if `x < y`, `all-0` otherwise.
-///
-/// # Algorithm
-///
-/// The gate computes `x < y` by checking if there's a borrow when computing `x - y`.
-/// This is done by computing `¬x + y` and checking if it carries out (≥ 2^64).
-///
-/// 1. Compute carry bits `bout` from `¬x + y` using the constraint: `(¬x ⊕ bin) ∧ (y ⊕ bin) =
-///    bin ⊕ bout` where `bin = bout << 1`
-/// 2. The MSB of `bout` indicates the comparison result:
-///    - MSB = 1: carry out occurred, meaning `x < y`
-///    - MSB = 0: no carry out, meaning `x ≥ y`
-/// 3. Broadcast the MSB to all bits: `out_mask = bout SRA 63`
-///
-/// # Constraints
-///
-/// The gate generates 2 AND constraints:
-/// 1. Borrow propagation: `(¬x ⊕ bin) ∧ (y ⊕ bin) = bin ⊕ bout`
-/// 2. Mask generation: `out_mask = bout SRA 63`
-use crate::{
-	compiler::{
-		circuit,
-		constraint_builder::{ConstraintBuilder, empty, sar, sll, xor2, xor3},
-		gate::opcode::OpcodeShape,
-		gate_graph::{Gate, GateData, GateParam},
-	},
-	word::Word,
+//! Unsigned less-than test returning a mask.
+//!
+//! Returns `out_mask = all-1` if `x < y`, `all-0` otherwise.
+//!
+//! # Algorithm
+//!
+//! The gate computes `x < y` by checking if there's a borrow when computing `x - y`.
+//! This is done by computing `¬x + y` and checking if it carries out (≥ 2^64).
+//!
+//! 1. Compute carry bits `bout` from `¬x + y` using the constraint: `(¬x ⊕ bin) ∧ (y ⊕ bin) = bin ⊕
+//!    bout` where `bin = bout << 1`
+//! 2. The MSB of `bout` indicates the comparison result:
+//!    - MSB = 1: carry out occurred, meaning `x < y`
+//!    - MSB = 0: no carry out, meaning `x ≥ y`
+//! 3. Broadcast the MSB to all bits: `out_mask = bout SRA 63`
+//!
+//! # Constraints
+//!
+//! The gate generates 2 AND constraints:
+//! 1. Borrow propagation: `(¬x ⊕ bin) ∧ (y ⊕ bin) = bin ⊕ bout`
+//! 2. Mask generation: `out_mask = bout SRA 63`
+
+use binius_core::word::Word;
+
+use crate::compiler::{
+	circuit,
+	constraint_builder::{ConstraintBuilder, empty, sar, sll, xor2, xor3},
+	gate::opcode::OpcodeShape,
+	gate_graph::{Gate, GateData, GateParam},
 };
 
 pub fn shape() -> OpcodeShape {

@@ -1,11 +1,9 @@
 pub mod compress;
 
+use binius_core::word::Word;
 pub use compress::{Compress, State};
 
-use crate::{
-	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
-	word::Word,
-};
+use crate::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
 
 /// Verifies that a message produces a specific SHA-256 digest.
 ///

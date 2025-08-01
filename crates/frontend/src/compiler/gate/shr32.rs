@@ -1,23 +1,23 @@
-/// 32-bit logical right shift.
-///
-/// Returns `z = (x >> n) & MASK_32`.
-///
-/// # Algorithm
-///
-/// Shifts the input right by `n` bits and masks to 32 bits.
-///
-/// # Constraints
-///
-/// The gate generates 1 AND constraint:
-/// - `(x >> n) ∧ MASK_32 = z`
-use crate::{
-	compiler::{
-		circuit,
-		constraint_builder::{ConstraintBuilder, srl},
-		gate::opcode::OpcodeShape,
-		gate_graph::{Gate, GateData, GateParam},
-	},
-	word::Word,
+//! 32-bit logical right shift.
+//!
+//! Returns `z = (x >> n) & MASK_32`.
+//!
+//! # Algorithm
+//!
+//! Shifts the input right by `n` bits and masks to 32 bits.
+//!
+//! # Constraints
+//!
+//! The gate generates 1 AND constraint:
+//! - `(x >> n) ∧ MASK_32 = z`
+
+use binius_core::word::Word;
+
+use crate::compiler::{
+	circuit,
+	constraint_builder::{ConstraintBuilder, srl},
+	gate::opcode::OpcodeShape,
+	gate_graph::{Gate, GateData, GateParam},
 };
 
 pub fn shape() -> OpcodeShape {

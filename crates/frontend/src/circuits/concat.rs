@@ -1,7 +1,6 @@
-use crate::{
-	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
-	word::Word,
-};
+use binius_core::word::Word;
+
+use crate::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
 
 /// A term in a concatenation - a variable-length byte string.
 ///

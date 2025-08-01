@@ -1,26 +1,26 @@
-/// Conditional equality assertion.
-///
-/// Enforces `x = y` when `mask = all-1`, no constraint when `mask = 0`.
-///
-/// # Algorithm
-///
-/// Uses a mask to conditionally enforce equality: `(x ^ y) & mask = 0`.
-/// When mask is all-1, this enforces `x = y`. When mask is 0, the constraint is satisfied
-/// trivially.
-///
-/// # Constraints
-///
-/// The gate generates 1 AND constraint:
-/// - `(x ⊕ y) ∧ mask = 0`
-use crate::{
-	compiler::{
-		circuit,
-		constraint_builder::{ConstraintBuilder, empty, xor2},
-		gate::opcode::OpcodeShape,
-		gate_graph::{Gate, GateData, GateParam},
-		pathspec::PathSpec,
-	},
-	word::Word,
+//! Conditional equality assertion.
+//!
+//! Enforces `x = y` when `mask = all-1`, no constraint when `mask = 0`.
+//!
+//! # Algorithm
+//!
+//! Uses a mask to conditionally enforce equality: `(x ^ y) & mask = 0`.
+//! When mask is all-1, this enforces `x = y`. When mask is 0, the constraint is satisfied
+//! trivially.
+//!
+//! # Constraints
+//!
+//! The gate generates 1 AND constraint:
+//! - `(x ⊕ y) ∧ mask = 0`
+
+use binius_core::word::Word;
+
+use crate::compiler::{
+	circuit,
+	constraint_builder::{ConstraintBuilder, empty, xor2},
+	gate::opcode::OpcodeShape,
+	gate_graph::{Gate, GateData, GateParam},
+	pathspec::PathSpec,
 };
 
 pub fn shape() -> OpcodeShape {

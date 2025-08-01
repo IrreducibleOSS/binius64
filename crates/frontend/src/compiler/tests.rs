@@ -1,8 +1,9 @@
+use binius_core::word::Word;
 use proptest::prelude::*;
 use rand::{Rng, SeedableRng as _, rngs::StdRng};
 
 use super::*;
-use crate::{constraint_verifier::verify_constraints, word::Word};
+use crate::constraint_verifier::verify_constraints;
 
 #[test]
 fn wires_layout() {

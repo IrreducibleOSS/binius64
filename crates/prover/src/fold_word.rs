@@ -1,7 +1,7 @@
 use std::array;
 
+use binius_core::word::Word;
 use binius_field::{Field, PackedField};
-use binius_frontend::word::Word;
 use binius_math::FieldBuffer;
 use binius_utils::{checked_arithmetics::log2_strict_usize, rayon::prelude::*};
 use binius_verifier::config::WORD_SIZE_BITS;

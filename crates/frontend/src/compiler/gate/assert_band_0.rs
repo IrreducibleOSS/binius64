@@ -1,24 +1,24 @@
-/// Assert that bitwise AND equals zero.
-///
-/// Enforces `x & constant = 0`.
-///
-/// # Algorithm
-///
-/// Directly constrains that the bitwise AND of `x` with a constant equals zero.
-///
-/// # Constraints
-///
-/// The gate generates 1 AND constraint:
-/// - `x ∧ constant = 0`
-use crate::{
-	compiler::{
-		circuit,
-		constraint_builder::{ConstraintBuilder, empty},
-		gate::opcode::OpcodeShape,
-		gate_graph::{Gate, GateData, GateParam},
-		pathspec::PathSpec,
-	},
-	word::Word,
+//! Assert that bitwise AND equals zero.
+//!
+//! Enforces `x & constant = 0`.
+//!
+//! # Algorithm
+//!
+//! Directly constrains that the bitwise AND of `x` with a constant equals zero.
+//!
+//! # Constraints
+//!
+//! The gate generates 1 AND constraint:
+//! - `x ∧ constant = 0`
+
+use binius_core::word::Word;
+
+use crate::compiler::{
+	circuit,
+	constraint_builder::{ConstraintBuilder, empty},
+	gate::opcode::OpcodeShape,
+	gate_graph::{Gate, GateData, GateParam},
+	pathspec::PathSpec,
 };
 
 pub fn shape() -> OpcodeShape {

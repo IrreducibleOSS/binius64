@@ -130,8 +130,8 @@ where
 mod test {
 	use std::iter::repeat_with;
 
+	use binius_core::word::Word;
 	use binius_field::{AESTowerField8b, Field, PackedAESBinaryField16x8b, Random};
-	use binius_frontend::word::Word;
 	use binius_math::{BinarySubspace, FieldBuffer, multilinear::eq::eq_ind_partial_eval};
 	use binius_verifier::{
 		and_reduction::{

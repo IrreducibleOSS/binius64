@@ -1,24 +1,24 @@
-/// Assert that a wire equals zero.
-///
-/// Enforces `x = 0` using an AND constraint.
-///
-/// # Algorithm
-///
-/// Uses the constraint `x ∧ all-1 = 0`, which forces `x = 0`.
-///
-/// # Constraints
-///
-/// The gate generates 1 AND constraint:
-/// - `x ∧ all-1 = 0`
-use crate::{
-	compiler::{
-		circuit,
-		constraint_builder::{ConstraintBuilder, empty},
-		gate::opcode::OpcodeShape,
-		gate_graph::{Gate, GateData, GateParam},
-		pathspec::PathSpec,
-	},
-	word::Word,
+//! Assert that a wire equals zero.
+//!
+//! Enforces `x = 0` using an AND constraint.
+//!
+//! # Algorithm
+//!
+//! Uses the constraint `x ∧ all-1 = 0`, which forces `x = 0`.
+//!
+//! # Constraints
+//!
+//! The gate generates 1 AND constraint:
+//! - `x ∧ all-1 = 0`
+
+use binius_core::word::Word;
+
+use crate::compiler::{
+	circuit,
+	constraint_builder::{ConstraintBuilder, empty},
+	gate::opcode::OpcodeShape,
+	gate_graph::{Gate, GateData, GateParam},
+	pathspec::PathSpec,
 };
 
 pub fn shape() -> OpcodeShape {

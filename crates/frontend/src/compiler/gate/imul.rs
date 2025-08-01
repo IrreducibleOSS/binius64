@@ -1,5 +1,6 @@
-/// Imul gate implements 64-bit × 64-bit → 128-bit unsigned multiplication.
-/// Uses the MulConstraint: X * Y = (HI << 64) | LO
+//! Imul gate implements 64-bit × 64-bit → 128-bit unsigned multiplication.
+//! Uses the MulConstraint: X * Y = (HI << 64) | LO
+
 use crate::compiler::{
 	circuit,
 	constraint_builder::ConstraintBuilder,

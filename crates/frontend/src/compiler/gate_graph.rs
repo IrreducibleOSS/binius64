@@ -1,13 +1,11 @@
 use std::collections::HashMap;
 
+use binius_core::word::Word;
 use cranelift_entity::{PrimaryMap, SecondaryMap, entity_impl};
 
-use crate::{
-	compiler::{
-		gate::opcode::Opcode,
-		pathspec::{PathSpec, PathSpecTree},
-	},
-	word::Word,
+use crate::compiler::{
+	gate::opcode::Opcode,
+	pathspec::{PathSpec, PathSpecTree},
 };
 
 #[derive(Default)]

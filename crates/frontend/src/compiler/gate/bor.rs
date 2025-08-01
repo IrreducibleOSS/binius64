@@ -1,16 +1,17 @@
-/// Bitwise OR operation.
-///
-/// Returns `z = x | y`.
-///
-/// # Algorithm
-///
-/// Computes the bitwise OR using De Morgan's law: `x | y = ¬(¬x ∧ ¬y)`.
-/// This is implemented as `x ∧ y = (x ⊕ y ⊕ z)`.
-///
-/// # Constraints
-///
-/// The gate generates 1 AND constraint:
-/// - `x ∧ y = x ⊕ y ⊕ z`
+//! Bitwise OR operation.
+//!
+//! Returns `z = x | y`.
+//!
+//! # Algorithm
+//!
+//! Computes the bitwise OR using De Morgan's law: `x | y = ¬(¬x ∧ ¬y)`.
+//! This is implemented as `x ∧ y = (x ⊕ y ⊕ z)`.
+//!
+//! # Constraints
+//!
+//! The gate generates 1 AND constraint:
+//! - `x ∧ y = x ⊕ y ⊕ z`
+
 use crate::compiler::{
 	circuit,
 	constraint_builder::{ConstraintBuilder, xor3},
