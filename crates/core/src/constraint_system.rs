@@ -3,7 +3,7 @@ use std::{
 	ops::{Index, IndexMut},
 };
 
-use crate::word::Word;
+use crate::{consts, error::ConstraintSystemError, word::Word};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct ValueIndex(pub u32);
@@ -151,19 +151,27 @@ impl ConstraintSystem {
 		}
 	}
 
-	/// Prepares this constraint system for proving.
+	/// Validates and prepares this constraint system for proving/verifying.
 	///
-	/// Pads the AND and MUL constraints to the next po2 size.
-	pub fn prepare(&mut self) {
-		// Both AND and MUL constraint list have requirements wrt their sizes. Notably, AND
-		// constraint list must be at least 8 elements.
-		let and_target_size = cmp::max(8, self.and_constraints.len()).next_power_of_two();
-		let mul_target_size = cmp::max(1, self.mul_constraints.len()).next_power_of_two();
+	/// This function performs the following:
+	/// 1. Validates the value vector layout (including public input checks)
+	/// 2. Pads the AND and MUL constraints to the next po2 size
+	pub fn validate_and_prepare(&mut self) -> Result<(), ConstraintSystemError> {
+		// Validate the value vector layout
+		self.value_vec_layout.validate()?;
+
+		// Both AND and MUL constraint list have requirements wrt their sizes.
+		let and_target_size =
+			cmp::max(consts::MIN_AND_CONSTRAINTS, self.and_constraints.len()).next_power_of_two();
+		let mul_target_size =
+			cmp::max(consts::MIN_MUL_CONSTRAINTS, self.mul_constraints.len()).next_power_of_two();
 
 		self.and_constraints
 			.resize_with(and_target_size, AndConstraint::default);
 		self.mul_constraints
 			.resize_with(mul_target_size, MulConstraint::default);
+
+		Ok(())
 	}
 
 	pub fn add_and_constraint(&mut self, and_constraint: AndConstraint) {
@@ -211,8 +219,8 @@ pub struct ValueVecLayout {
 	pub offset_inout: usize,
 	/// The offset at which `witness` parameters start.
 	///
-	/// The public section of the value vec has the power-of-two size. By public section we mean
-	/// the constants and the inout values.
+	/// The public section of the value vec has the power-of-two size and is greater than the
+	/// minimum number of words. By public section we mean the constants and the inout values.
 	pub offset_witness: usize,
 	/// The total size of the value vec vector.
 	///
@@ -221,13 +229,22 @@ pub struct ValueVecLayout {
 }
 
 impl ValueVecLayout {
-	/// Asserts that the value vec layout has a correct shape.
-	pub fn validate(&self) {
-		assert!(self.total_len.is_power_of_two(), "total length must be a power-of-two");
-		assert!(
-			self.offset_witness.is_power_of_two(),
-			"witness parameters must start at a power-of-two offset",
-		);
+	/// Validates that the value vec layout has a correct shape.
+	pub fn validate(&self) -> Result<(), ConstraintSystemError> {
+		if !self.total_len.is_power_of_two() {
+			return Err(ConstraintSystemError::ValueVecLenNotPowerOfTwo);
+		}
+
+		if !self.offset_witness.is_power_of_two() {
+			return Err(ConstraintSystemError::PublicInputPowerOfTwo);
+		}
+
+		let pub_input_size = self.offset_witness;
+		if pub_input_size < consts::MIN_WORDS_PER_SEGMENT {
+			return Err(ConstraintSystemError::PublicInputTooShort { pub_input_size });
+		}
+
+		Ok(())
 	}
 }
 

@@ -1,8 +1,8 @@
 // Copyright 2025 Irreducible Inc.
 
+use binius_core::ConstraintSystemError;
 use binius_math::ntt;
 
-use super::config::LOG_WORDS_PER_ELEM;
 use crate::{fri, pcs, protocols::sumcheck};
 
 #[derive(Debug, thiserror::Error)]
@@ -25,14 +25,6 @@ pub enum Error {
 	ConstraintSystem(#[from] ConstraintSystemError),
 	#[error("invalid proof: {0}")]
 	Verification(#[from] VerificationError),
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum ConstraintSystemError {
-	#[error("the public input segment must have power of two length")]
-	PublicInputPowerOfTwo,
-	#[error("the public input segment must at least 2^{LOG_WORDS_PER_ELEM} words")]
-	PublicInputTooShort,
 }
 
 #[derive(Debug, thiserror::Error)]

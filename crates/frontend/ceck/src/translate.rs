@@ -103,7 +103,15 @@ impl Context {
 			offset_witness,
 			total_len,
 		};
-		value_vec_layout.validate();
+		// For ceck, we only need basic validation, not full protocol compliance
+		assert!(
+			value_vec_layout.total_len.is_power_of_two(),
+			"total length must be a power-of-two"
+		);
+		assert!(
+			value_vec_layout.offset_witness.is_power_of_two(),
+			"witness parameters must start at a power-of-two offset",
+		);
 		self.value_vec_layout = Some(value_vec_layout);
 	}
 

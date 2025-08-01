@@ -96,6 +96,7 @@ impl Circuit {
 		constraint_system: ConstraintSystem,
 		wire_mapping: SecondaryMap<Wire, ValueIndex>,
 	) -> Self {
+		assert!(constraint_system.value_vec_layout.validate().is_ok());
 		Self {
 			gate_graph,
 			constraint_system,

@@ -16,13 +16,12 @@ use binius_utils::{DeserializeBytes, checked_arithmetics::log2_ceil_usize};
 use digest::{Digest, Output, core_api::BlockSizeUser};
 use itertools::Itertools;
 
-use super::{
-	ConstraintSystemError, VerificationError, config::LOG_WORDS_PER_ELEM, error::Error, pcs,
-};
+use super::{VerificationError, error::Error, pcs};
 use crate::{
 	and_reduction::verifier::{AndReductionOutput, verify_with_transcript},
 	config::{
-		B1, B128, LOG_WORD_SIZE_BITS, PROVER_SMALL_FIELD_ZEROCHECK_CHALLENGES, WORD_SIZE_BITS,
+		B1, B128, LOG_WORD_SIZE_BITS, LOG_WORDS_PER_ELEM, PROVER_SMALL_FIELD_ZEROCHECK_CHALLENGES,
+		WORD_SIZE_BITS,
 	},
 	fri::{FRIParams, estimate_optimal_arity},
 	hash::PseudoCompressionFunction,
@@ -58,20 +57,14 @@ where
 		log_inv_rate: usize,
 		compression: MerkleCompress,
 	) -> Result<Self, Error> {
-		constraint_system.prepare();
+		constraint_system.validate_and_prepare()?;
 
-		// Use offset_witness which is guaranteed to be power of two
+		// Use offset_witness which is guaranteed to be power of two and be at least one full
+		// element.
 		let n_public = constraint_system.value_vec_layout.offset_witness;
-
-		// Verify it's a power of two (should always be true by construction)
-		if !n_public.is_power_of_two() {
-			return Err(ConstraintSystemError::PublicInputPowerOfTwo.into());
-		}
-
 		let log_public_words = log2_ceil_usize(n_public);
-		if log_public_words < LOG_WORDS_PER_ELEM {
-			return Err(ConstraintSystemError::PublicInputTooShort.into());
-		}
+		assert!(n_public.is_power_of_two());
+		assert!(log_public_words >= LOG_WORDS_PER_ELEM);
 
 		// The number of field elements that constitute the packed witness.
 		let log_witness_words =
