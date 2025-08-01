@@ -12,7 +12,10 @@ use binius_transcript::{
 	VerifierTranscript,
 	fiat_shamir::{CanSample, Challenger},
 };
-use binius_utils::{DeserializeBytes, checked_arithmetics::log2_ceil_usize};
+use binius_utils::{
+	DeserializeBytes,
+	checked_arithmetics::{checked_log_2, log2_ceil_usize},
+};
 use digest::{Digest, Output, core_api::BlockSizeUser};
 use itertools::Itertools;
 
@@ -213,7 +216,7 @@ fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger
 ) -> Result<AndReductionOutput<F>, Error> {
 	// The structure of the AND reduction requires that it verifies at least 2^3 word-level
 	// constraints, you can zero-pad if necessary to reach this minimum
-	assert!(log_witness_words >= 3);
+	assert!(log_witness_words >= checked_log_2(binius_core::consts::MIN_AND_CONSTRAINTS));
 
 	let big_field_zerocheck_challenges = transcript.sample_vec(log_witness_words - 3);
 

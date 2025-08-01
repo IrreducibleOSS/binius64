@@ -16,7 +16,7 @@ use binius_transcript::{
 	ProverTranscript,
 	fiat_shamir::{CanSample, Challenger},
 };
-use binius_utils::{SerializeBytes, rayon::prelude::*};
+use binius_utils::{SerializeBytes, checked_arithmetics::checked_log_2, rayon::prelude::*};
 use binius_verifier::{
 	Verifier,
 	config::{
@@ -230,7 +230,7 @@ fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger
 
 	// The structure of the AND reduction requires that it proves at least 2^3 word-level
 	// constraints, you can zero-pad if necessary to reach this minimum
-	assert!(log_witness_words >= 3);
+	assert!(log_witness_words >= checked_log_2(binius_core::consts::MIN_AND_CONSTRAINTS));
 
 	let big_field_zerocheck_challenges = transcript.sample_vec(log_witness_words - 3);
 
