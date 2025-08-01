@@ -32,20 +32,27 @@ use crate::{
 
 pub const SECURITY_BITS: usize = 96;
 
-/// Public parameters for proving constraint systems of a certain size.
+/// Struct for verifying instances of a particular constraint system.
+///
+/// The [`Self::setup`] constructor determines public parameters for proving instances of the given
+/// constraint system. Then [`Self::verify`] is called one or more times with individual instances.
 #[derive(Debug, Clone)]
-pub struct Params<MerkleHash, MerkleCompress> {
+pub struct Verifier<MerkleHash, MerkleCompress> {
 	fri_params: FRIParams<B128, B128>,
 	merkle_scheme: BinaryMerkleTreeScheme<B128, MerkleHash, MerkleCompress>,
 	log_public_words: usize,
 }
 
-impl<MerkleHash, MerkleCompress> Params<MerkleHash, MerkleCompress>
+impl<MerkleHash, MerkleCompress> Verifier<MerkleHash, MerkleCompress>
 where
 	MerkleHash: Digest + BlockSizeUser,
-	MerkleCompress: PseudoCompressionFunction<Output<MerkleHash>, 2>,
+	MerkleCompress: PseudoCompressionFunction<Output<MerkleHash>, 2> + Sync,
+	Output<MerkleHash>: DeserializeBytes,
 {
-	pub fn new(
+	/// Constructs a verifier for a constraint system.
+	///
+	/// See [`Verifier`] struct documentation for details.
+	pub fn setup(
 		cs: &ConstraintSystem,
 		log_inv_rate: usize,
 		compression: MerkleCompress,
@@ -117,62 +124,57 @@ where
 	pub fn log_public_words(&self) -> usize {
 		self.log_public_words
 	}
-}
 
-pub fn verify<Challenger_, MerkleHash, MerkleCompress>(
-	params: &Params<MerkleHash, MerkleCompress>,
-	_cs: &ConstraintSystem,
-	public: &[Word],
-	transcript: &mut VerifierTranscript<Challenger_>,
-) -> Result<(), Error>
-where
-	Challenger_: Challenger,
-	MerkleHash: Digest + BlockSizeUser,
-	MerkleCompress: PseudoCompressionFunction<Output<MerkleHash>, 2> + Sync,
-	Output<MerkleHash>: DeserializeBytes,
-{
-	// Check that the public input length is correct
-	if public.len() != 1 << params.log_public_words() {
-		return Err(Error::IncorrectPublicInputLength {
-			expected: 1 << params.log_public_words(),
-			actual: public.len(),
-		});
+	pub fn verify<Challenger_: Challenger>(
+		&self,
+		_cs: &ConstraintSystem,
+		public: &[Word],
+		transcript: &mut VerifierTranscript<Challenger_>,
+	) -> Result<(), Error> {
+		// Check that the public input length is correct
+		if public.len() != 1 << self.log_public_words() {
+			return Err(Error::IncorrectPublicInputLength {
+				expected: 1 << self.log_public_words(),
+				actual: public.len(),
+			});
+		}
+
+		// Receive the trace commitment.
+		let trace_commitment = transcript.message().read::<Output<MerkleHash>>()?;
+
+		// verify the and reduction
+		let _output: AndReductionOutput<B128> =
+			run_and_check(self.log_witness_words(), transcript)?;
+
+		// Sample a challenge point during the shift reduction.
+		let z_challenge = transcript.sample_vec(LOG_WORD_SIZE_BITS);
+		let public_input_challenge = transcript.sample_vec(self.log_public_words());
+
+		let pubcheck::VerifyOutput {
+			witness_eval,
+			public_eval,
+			eval_point: y_challenge,
+		} = pubcheck::verify(self.log_witness_words(), &public_input_challenge, transcript)?;
+
+		let expected_public_eval =
+			evaluate_public_mle(public, &z_challenge, &y_challenge[..self.log_public_words()]);
+		if public_eval != expected_public_eval {
+			return Err(VerificationError::PublicInputCheckFailed.into());
+		}
+
+		// PCS opening
+		let evaluation_point = [z_challenge, y_challenge].concat();
+		pcs::verify_transcript(
+			transcript,
+			witness_eval,
+			&evaluation_point,
+			trace_commitment,
+			&self.fri_params,
+			&self.merkle_scheme,
+		)?;
+
+		Ok(())
 	}
-
-	// Receive the trace commitment.
-	let trace_commitment = transcript.message().read::<Output<MerkleHash>>()?;
-
-	// verify the and reduction
-	let _output: AndReductionOutput<B128> = run_and_check(params.log_witness_words(), transcript)?;
-
-	// Sample a challenge point during the shift reduction.
-	let z_challenge = transcript.sample_vec(LOG_WORD_SIZE_BITS);
-	let public_input_challenge = transcript.sample_vec(params.log_public_words());
-
-	let pubcheck::VerifyOutput {
-		witness_eval,
-		public_eval,
-		eval_point: y_challenge,
-	} = pubcheck::verify(params.log_witness_words(), &public_input_challenge, transcript)?;
-
-	let expected_public_eval =
-		evaluate_public_mle(public, &z_challenge, &y_challenge[..params.log_public_words()]);
-	if public_eval != expected_public_eval {
-		return Err(VerificationError::PublicInputCheckFailed.into());
-	}
-
-	// PCS opening
-	let evaluation_point = [z_challenge, y_challenge].concat();
-	pcs::verify_transcript(
-		transcript,
-		witness_eval,
-		&evaluation_point,
-		trace_commitment,
-		params.fri_params(),
-		params.merkle_scheme(),
-	)?;
-
-	Ok(())
 }
 
 /// Evaluate the multilinear extension of the public inputs at a point.
