@@ -12,11 +12,6 @@ use binius_frontend::{
 use binius_math::{
 	BinarySubspace, FieldBuffer, multilinear::eq::eq_ind_partial_eval, ntt::AdditiveNTT,
 };
-// Copyright 2025 Irreducible Inc.
-
-use binius_field::{PackedExtension, PackedField};
-use binius_frontend::{constraint_system::ValueVec, word::Word};
-use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval, ntt::AdditiveNTT};
 use binius_transcript::{
 	ProverTranscript,
 	fiat_shamir::{CanSample, Challenger},
@@ -25,7 +20,7 @@ use binius_utils::{SerializeBytes, rayon::prelude::*};
 use binius_verifier::{
 	Params,
 	config::{
-		B128, LOG_WORD_SIZE_BITS, LOG_WORDS_PER_ELEM, PROVER_SMALL_FIELD_ZEROCHECK_CHALLENGES,
+		B1, B128, LOG_WORD_SIZE_BITS, LOG_WORDS_PER_ELEM, PROVER_SMALL_FIELD_ZEROCHECK_CHALLENGES,
 	},
 	merkle_tree::MerkleTreeScheme,
 };
