@@ -166,7 +166,6 @@ where
 		// combine eq w/ mle
 		for (packed_idx, packed_elem) in mle.iter().enumerate() {
 			for high_offset in 0..P::WIDTH {
-
 				// get eq index
 				let eq_idx = packed_idx * P::WIDTH + high_offset;
 				let eq_at_high_value = eq_at_high.as_ref()[eq_idx];
@@ -254,8 +253,8 @@ where
 #[cfg(test)]
 mod test {
 	use binius_field::{
-		ExtensionField, Field, PackedBinaryGhash2x128b, PackedBinaryGhash4x128b,
-		PackedExtension, PackedField,
+		ExtensionField, Field, PackedBinaryGhash2x128b, PackedBinaryGhash4x128b, PackedExtension,
+		PackedField,
 	};
 	use binius_math::{
 		FieldBuffer, ReedSolomonCode, inner_product::inner_product,
@@ -413,7 +412,7 @@ mod test {
 			Err(e) => {
 				println!("error: {:?}", e);
 				panic!("expected valid proof");
-			},
+			}
 		}
 	}
 
@@ -486,7 +485,7 @@ mod test {
 			Err(e) => {
 				println!("error: {:?}", e);
 				panic!("expected valid proof");
-			},
+			}
 		}
 	}
 
@@ -565,7 +564,7 @@ mod test {
 			Err(e) => {
 				println!("error: {:?}", e);
 				panic!("expected valid proof");
-			},
+			}
 		}
 	}
 

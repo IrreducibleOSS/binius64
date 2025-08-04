@@ -183,9 +183,8 @@ where
 #[cfg(test)]
 mod test {
 	use binius_field::{
-		BinaryField, PackedExtension, PackedField,
-		PackedBinaryGhash2x128b, PackedBinaryGhash4x128b,
-		arch::{OptimalPackedB128} 
+		BinaryField, PackedBinaryGhash2x128b, PackedBinaryGhash4x128b, PackedExtension,
+		PackedField, arch::OptimalPackedB128,
 	};
 	use binius_math::{
 		FieldBuffer, ReedSolomonCode,
@@ -361,7 +360,6 @@ mod test {
 			run_basefold_prove_and_verify::<_, P>(multilinear, evaluation_point, evaluation_claim);
 		assert!(result.is_err());
 	}
-
 
 	#[test]
 	fn test_basefold_valid_packing_width_4() {
