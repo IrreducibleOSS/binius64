@@ -226,24 +226,24 @@ where
 		let (_, eval_point_high) = self.evaluation_point.split_at(log_scalar_bit_width);
 
 		let rs_eq_ind_values = rs_eq_ind::<F>(r_double_prime, eval_point_high);
-		let rs_eq_ind: FieldBuffer<P> =
-			FieldBuffer::from_values(rs_eq_ind_values.as_ref())
-				.expect("failed to create field buffer");
+		let rs_eq_ind: FieldBuffer<P> = FieldBuffer::from_values(rs_eq_ind_values.as_ref())
+			.expect("failed to create field buffer");
 
 		// Convert PackedSubfield<P, B1> to P while maintaining packed structure
 		let large_field_mle: &[P] = <P as PackedExtension<B1>>::cast_exts(self.mle.as_ref());
-		
+
 		// The basefold prover expects the mle to maintain the same packing structure as
-		// The previously committed codeword. 
+		// The previously committed codeword.
 
 		let large_field_mle_vec: Vec<P> = large_field_mle.to_vec();
-		
+
 		let packed_log_len = large_field_mle_vec.len().trailing_zeros() as usize;
-		
+
 		let large_field_mle_buffer = FieldBuffer::new(
 			packed_log_len + P::LOG_WIDTH,
-			Box::from(large_field_mle_vec.into_boxed_slice())
-		).expect("failed to create field buffer");
+			Box::from(large_field_mle_vec.into_boxed_slice()),
+		)
+		.expect("failed to create field buffer");
 
 		BaseFoldProver::new(
 			large_field_mle_buffer,
@@ -530,14 +530,12 @@ mod test {
 
 	#[test]
 	fn test_ring_switched_pcs_valid_proof_packing_width_4() {
-		// Use a fixed seed for reproducibility
 		let mut rng = StdRng::from_seed([0; 32]);
 
 		type P = PackedBinaryGhash4x128b;
 
 		let log_scalar_bit_width = <B128 as ExtensionField<B1>>::LOG_DEGREE;
 
-		// Use n_vars = 12 like the other tests
 		let small_field_n_vars = 12;
 		let big_field_n_vars = small_field_n_vars - log_scalar_bit_width;
 
@@ -546,7 +544,8 @@ mod test {
 		// scalars for unpacked large field mle
 		let big_field_mle_scalars =
 			random_scalars::<B128>(&mut rng, total_big_field_scalars_in_packed_mle);
-		let packed_mle_buffer: FieldBuffer<P> = FieldBuffer::from_values(&big_field_mle_scalars).unwrap();
+		let packed_mle_buffer: FieldBuffer<P> =
+			FieldBuffer::from_values(&big_field_mle_scalars).unwrap();
 
 		// Evaluate the small field mle at a point in the large field.
 		let lifted_small_field_mle: Vec<B128> = lift_small_to_large_field(
@@ -575,39 +574,40 @@ mod test {
 		}
 	}
 
-
 	#[test]
 	fn test_fri_commit_packing_width_4() {
 		// Test that FRI commitment and verification works with packing width 4
 		let mut rng = StdRng::from_seed([0; 32]);
 
 		type P = PackedBinaryGhash4x128b;
-		
+
 		const LOG_INV_RATE: usize = 1;
 		const NUM_TEST_QUERIES: usize = 3;
-		
+
 		// Create a simple polynomial
-		let log_dimension = 5; // Same as what we get with n_vars = 12
+		let log_dimension = 5;
 		let n_scalars = 1 << log_dimension;
 		let scalars = random_scalars::<B128>(&mut rng, n_scalars);
 		let packed_buffer: FieldBuffer<P> = FieldBuffer::from_values(&scalars).unwrap();
-		
+
 		// Set up FRI parameters
-		let merkle_prover = BinaryMerkleTreeProver::<B128, StdDigest, _>::new(StdCompression::default());
+		let merkle_prover =
+			BinaryMerkleTreeProver::<B128, StdDigest, _>::new(StdCompression::default());
 		let committed_rs_code = ReedSolomonCode::<B128>::new(log_dimension, LOG_INV_RATE).unwrap();
-		
+
 		let fri_log_batch_size = 0;
 		let fri_arities = vec![1; log_dimension - 1];
-		let fri_params = FRIParams::new(committed_rs_code, fri_log_batch_size, fri_arities, NUM_TEST_QUERIES).unwrap();
-		
+		let fri_params =
+			FRIParams::new(committed_rs_code, fri_log_batch_size, fri_arities, NUM_TEST_QUERIES)
+				.unwrap();
+
 		// Commit using FRI
 		let ntt = SingleThreadedNTT::new(fri_params.rs_code().log_len()).unwrap();
-		
-		let commit_result = fri::commit_interleaved(&fri_params, &ntt, &merkle_prover, packed_buffer.to_ref());
-		
+
+		let commit_result =
+			fri::commit_interleaved(&fri_params, &ntt, &merkle_prover, packed_buffer.to_ref());
+
 		commit_result.expect("FRI commit should work with packing width 4");
-		
-		// Test passes - FRI works fine with packing width 4
 	}
 
 	#[test]
