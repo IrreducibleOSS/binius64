@@ -755,7 +755,7 @@ mod tests {
 
 		// Verify constraints
 		let cs = circuit.constraint_system();
-		verify_constraints(&cs, &filler2.into_value_vec()).unwrap();
+		verify_constraints(cs, &filler2.into_value_vec()).unwrap();
 	}
 
 	#[test]
@@ -815,7 +815,7 @@ mod tests {
 
 		// Additional test: verify constraints
 		let cs = circuit.constraint_system();
-		verify_constraints(&cs, &filler2.into_value_vec()).unwrap();
+		verify_constraints(cs, &filler2.into_value_vec()).unwrap();
 
 		// Test 3: Verify populate_slice handles this correctly
 		let mut filler3 = circuit.new_witness_filler();

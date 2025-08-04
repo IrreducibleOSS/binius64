@@ -1,28 +1,27 @@
-use num_bigint::BigUint;
 use num_integer::Integer;
 
 use super::fixed_byte_vec::FixedByteVec;
 use crate::{
 	circuits::{
-		bignum::{BigNum, ModReduce, assert_eq, mul, square},
+		bignum::{BigUint, ModReduce, assert_eq, mul, square},
 		sha256::Sha256,
 	},
 	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
 };
 
-/// Convert a FixedByteVec with big-endian byte ordering to a BigNum.
+/// Convert a FixedByteVec with big-endian byte ordering to a BigUint.
 ///
 /// This function converts a FixedByteVec containing a packed representation of
-/// bytes with big-endian ordering to a BigNum that's compatible with BigNum arithmetic.
+/// bytes with big-endian ordering to a BigUint that's compatible with BigUint arithmetic.
 ///
 /// # Arguments
 /// * `byte_vec` - FixedByteVec containing bytes in big-endian order, with each wire containing 8
 ///   bytes packed as a big-endian u64
 ///
 /// # Returns
-/// A BigNum with limbs in little-endian order (least significant limb first)
-fn fixedbytevec_be_to_bignum(byte_vec: &FixedByteVec) -> BigNum {
-	BigNum {
+/// A BigUint with limbs in little-endian order (least significant limb first)
+fn fixedbytevec_be_to_biguint(byte_vec: &FixedByteVec) -> BigUint {
+	BigUint {
 		limbs: byte_vec.data.iter().rev().cloned().collect(),
 	}
 }
@@ -95,10 +94,10 @@ impl Rs256Verify {
 		);
 		assert!(modulus.max_len.is_multiple_of(8), "modulus_bytes max_len must be multiple of 8");
 
-		let signature_bignum = fixedbytevec_be_to_bignum(&signature);
+		let signature_bignum = fixedbytevec_be_to_biguint(&signature);
 		builder.assert_eq("signature_bytes_len", signature.len, builder.add_constant_64(256));
 
-		let modulus_bignum = fixedbytevec_be_to_bignum(&modulus);
+		let modulus_bignum = fixedbytevec_be_to_biguint(&modulus);
 		builder.assert_eq("modulus_bytes_len", modulus.len, builder.add_constant_64(256));
 
 		let sha256_builder = builder.subcircuit("sha256");
@@ -110,7 +109,7 @@ impl Rs256Verify {
 			expected_hash_wires,
 			message.data.clone(),
 		);
-		let expected_hash = BigNum {
+		let expected_hash = BigUint {
 			limbs: expected_hash_wires.to_vec(),
 		};
 
@@ -181,7 +180,7 @@ impl Rs256Verify {
 		// - SHA256 outputs hash[0] = bytes 0-7, hash[1] = bytes 8-15, etc.
 		// - But in the EM, these bytes appear at the end (bytes 224-255)
 		// - When EM is converted to little-endian limbs, the byte order within limbs reverses
-		let expected_em = BigNum {
+		let expected_em = BigUint {
 			limbs: expected_hash
 				.limbs
 				.iter()
@@ -257,12 +256,12 @@ impl Rs256Verify {
 /// Verify base^65537 mod modulus using provided intermediate values
 fn modexp_65537_verify(
 	builder: &CircuitBuilder,
-	base: &BigNum,
-	modulus: &BigNum,
-	square_quotients: &[BigNum],
-	square_remainders: &[BigNum],
-	mul_quotient: &BigNum,
-	mul_remainder: &BigNum,
+	base: &BigUint,
+	modulus: &BigUint,
+	square_quotients: &[BigUint],
+	square_remainders: &[BigUint],
+	mul_quotient: &BigUint,
+	mul_remainder: &BigUint,
 ) {
 	let mut result = base.clone();
 
@@ -293,13 +292,13 @@ fn modexp_65537_verify(
 /// Wires associated with intermediate RSA computations
 pub struct RsaIntermediates {
 	/// Quotients for each of the 16 squaring operations
-	square_quotients: Vec<BigNum>,
+	square_quotients: Vec<BigUint>,
 	/// Remainders for each of the 16 squaring operations
-	square_remainders: Vec<BigNum>,
+	square_remainders: Vec<BigUint>,
 	/// Quotient for the final multiplication
-	mul_quotient: BigNum,
+	mul_quotient: BigUint,
 	/// Remainder for the final multiplication (the EM - Encoded Message)
-	mul_remainder: BigNum,
+	mul_remainder: BigUint,
 }
 
 impl RsaIntermediates {
@@ -307,11 +306,11 @@ impl RsaIntermediates {
 		let mut square_quotients = Vec::new();
 		let mut square_remainders = Vec::new();
 		for _ in 0..16 {
-			square_quotients.push(BigNum::new_witness(builder, 32));
-			square_remainders.push(BigNum::new_witness(builder, 32));
+			square_quotients.push(BigUint::new_witness(builder, 32));
+			square_remainders.push(BigUint::new_witness(builder, 32));
 		}
-		let mul_quotient = BigNum::new_witness(builder, 32);
-		let mul_remainder = BigNum::new_witness(builder, 32);
+		let mul_quotient = BigUint::new_witness(builder, 32);
+		let mul_remainder = BigUint::new_witness(builder, 32);
 
 		RsaIntermediates {
 			square_quotients,
@@ -333,8 +332,8 @@ impl RsaIntermediates {
 		assert_eq!(signature.len(), 256, "signature must be exactly 256 bytes");
 		assert_eq!(modulus.len(), 256, "modulus must be exactly 256 bytes");
 
-		let signature_value = BigUint::from_bytes_be(signature);
-		let modulus_value = BigUint::from_bytes_be(modulus);
+		let signature_value = num_bigint::BigUint::from_bytes_be(signature);
+		let modulus_value = num_bigint::BigUint::from_bytes_be(modulus);
 
 		let mut square_quotients = Vec::new();
 		let mut square_remainders = Vec::new();
