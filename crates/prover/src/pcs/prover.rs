@@ -96,7 +96,6 @@ where
 
 		// packed mle partial evals of at high variables
 		let s_hat_v = Self::initialize_proof(&self.mle, &self.evaluation_point, scalar_bit_width)?;
-
 		transcript.message().write_scalar_slice(&s_hat_v);
 
 		// basis decompose/recombine s_hat_v across opposite dimension
@@ -148,39 +147,38 @@ where
 		F: BinaryField,
 		P: PackedExtension<B1> + PackedField<Scalar = F>,
 	{
-		let (_, eval_point_high) = evaluation_point.split_at(scalar_bit_width);
+		let mle: &[<P as PackedExtension<B1>>::PackedSubfield] = mle.as_ref();
 
-		let mle = mle.as_ref();
+		let (_, eval_point_high): (&[F], &[F]) = evaluation_point.split_at(scalar_bit_width);
 
-		// todo maybe use packed field indexible to create the eq?
-		let eq_at_high = eq_ind_partial_eval::<F>(eval_point_high);
+		// Partially evaluated eq is represented as a buffer of the scalars that make
+		// up the packed field elements of the mle.
+		// todo maybe do this w/ P
+		let eq_at_high: FieldBuffer<F> = eq_ind_partial_eval::<F>(eval_point_high);
 
-		let mut s_hat_v = vec![F::zero(); 1 << scalar_bit_width];
+		// partial evals at high variables, since this is a partial eval, it will not
+		// be a packed field element since it deals with the internal scalars
+		let mut s_hat_v: Vec<F> = vec![F::zero(); 1 << scalar_bit_width];
 
-		// determined by the packing width times the scalar bit width
-		let bits_per_packed_elem = mle[0].iter().count();
-		let bits_per_variable = bits_per_packed_elem / P::WIDTH;
+		let bits_per_packed_elem: usize = mle[0].iter().count();
+		let bits_per_variable: usize = bits_per_packed_elem / P::WIDTH;
 
-		// Process all small_field_mle elements
-
+		// combine eq w/ mle
 		for (packed_idx, packed_elem) in mle.iter().enumerate() {
-
 			for high_offset in 0..P::WIDTH {
 
+				// get eq index
 				let eq_idx = packed_idx * P::WIDTH + high_offset;
-				if eq_idx >= eq_at_high.as_ref().len() {
-					break;
-				}
-
 				let eq_at_high_value = eq_at_high.as_ref()[eq_idx];
 
-				// Process the bits within this slice of the packed element
+				// bit index range for where the b128 scalars are located in the packed element
 				let bit_start = high_offset * bits_per_variable;
-				let bit_end = (high_offset + 1) * bits_per_variable;
+				let bit_end = bit_start + bits_per_variable;
 
 				for (i, bit) in packed_elem.iter().enumerate() {
 					if bit == B1::ONE && i >= bit_start && i < bit_end {
 						let low_vars_idx = i - bit_start;
+
 						s_hat_v[low_vars_idx] += eq_at_high_value;
 					}
 				}
@@ -256,7 +254,8 @@ where
 #[cfg(test)]
 mod test {
 	use binius_field::{
-		BinaryField, ExtensionField, Field, PackedBinaryGhash2x128b, PackedBinaryGhash4x128b, PackedExtension, PackedField,
+		BinaryField, ExtensionField, Field, PackedBinaryGhash2x128b, PackedBinaryGhash4x128b,
+		PackedExtension, PackedField,
 	};
 	use binius_math::{
 		FieldBuffer, ReedSolomonCode, inner_product::inner_product,
@@ -309,22 +308,22 @@ mod test {
 		FieldBuffer::from_values(&values).unwrap()
 	}
 
-	fn run_ring_switched_pcs_prove_and_verify<F, P>(
+	fn run_ring_switched_pcs_prove_and_verify<P>(
 		packed_mle: FieldBuffer<P>,
-		evaluation_point: Vec<F>,
-		evaluation_claim: F,
+		evaluation_point: Vec<B128>,
+		evaluation_claim: B128,
 	) -> Result<(), Box<dyn std::error::Error>>
 	where
-		F: BinaryField + ExtensionField<B1> + PackedExtension<B1> + PackedField<Scalar = F>,
-		P: PackedField<Scalar = F> + PackedExtension<F> + PackedExtension<B1>,
+		// F: BinaryField + ExtensionField<B1> + PackedExtension<B1> + PackedField<Scalar = F>,
+		P: PackedField<Scalar = B128> + PackedExtension<B128> + PackedExtension<B1>,
 	{
 		const LOG_INV_RATE: usize = 1;
 		const NUM_TEST_QUERIES: usize = 3;
 
 		let merkle_prover =
-			BinaryMerkleTreeProver::<F, StdDigest, _>::new(StdCompression::default());
+			BinaryMerkleTreeProver::<B128, StdDigest, _>::new(StdCompression::default());
 
-		let committed_rs_code = ReedSolomonCode::<F>::new(packed_mle.log_len(), LOG_INV_RATE)?;
+		let committed_rs_code = ReedSolomonCode::<B128>::new(packed_mle.log_len(), LOG_INV_RATE)?;
 
 		let fri_log_batch_size = 0;
 		let fri_arities = vec![1; packed_mle.log_len() - 1];
@@ -334,17 +333,26 @@ mod test {
 		// Commit packed mle codeword
 		let ntt = SingleThreadedNTT::new(fri_params.rs_code().log_len())?;
 
+		println!("packed_mle: {:?}", packed_mle.to_ref());
+
 		let CommitOutput {
 			commitment: codeword_commitment,
 			committed: codeword_committed,
 			codeword,
 		} = fri::commit_interleaved(&fri_params, &ntt, &merkle_prover, packed_mle.to_ref())?;
 
+		// println!("\n\ncodeword_commitment: {:?}", codeword_commitment);
+		println!("\n\ncodeword: {:?}", codeword);
+
 		let mut prover_challenger = ProverTranscript::new(StdChallenger::default());
 		prover_challenger.message().write(&codeword_commitment);
 
 		// Convert packed_mle to PackedSubfield view for OneBitPCSProver
 		let packed_subfield_buffer = cast_bases_to_buffer(&packed_mle);
+
+		println!("\n\npacked_subfield_buffer: {:?}", packed_subfield_buffer);
+
+		
 
 		let ring_switch_pcs_prover = OneBitPCSProver::new(
 			packed_subfield_buffer,
@@ -405,13 +413,16 @@ mod test {
 				.collect_vec(),
 		);
 
-		match run_ring_switched_pcs_prove_and_verify::<B128, B128>(
+		match run_ring_switched_pcs_prove_and_verify::<B128>(
 			packed_mle,
 			evaluation_point,
 			evaluation_claim,
 		) {
 			Ok(()) => {}
-			Err(_) => panic!("expected valid proof"),
+			Err(e) => {
+				println!("error: {:?}", e);
+				panic!("expected valid proof");
+			},
 		}
 	}
 
@@ -432,7 +443,7 @@ mod test {
 		// dubious evaluation claim
 		let incorrect_evaluation_claim = B128::from(42u128);
 
-		let result = run_ring_switched_pcs_prove_and_verify::<B128, B128>(
+		let result = run_ring_switched_pcs_prove_and_verify::<B128>(
 			packed_mle,
 			evaluation_point,
 			incorrect_evaluation_claim,
@@ -475,13 +486,16 @@ mod test {
 				.collect_vec(),
 		);
 
-		match run_ring_switched_pcs_prove_and_verify::<B128, P>(
+		match run_ring_switched_pcs_prove_and_verify::<P>(
 			packed_mle_buffer,
 			evaluation_point,
 			evaluation_claim,
 		) {
 			Ok(()) => {}
-			Err(_) => panic!("expected valid proof"),
+			Err(e) => {
+				println!("error: {:?}", e);
+				panic!("expected valid proof");
+			},
 		}
 	}
 
@@ -507,7 +521,7 @@ mod test {
 		// dubious evaluation claim
 		let incorrect_evaluation_claim = B128::from(42u128);
 
-		let result = run_ring_switched_pcs_prove_and_verify::<B128, P>(
+		let result = run_ring_switched_pcs_prove_and_verify::<P>(
 			packed_mle_buffer,
 			evaluation_point,
 			incorrect_evaluation_claim,
@@ -521,6 +535,7 @@ mod test {
 		let mut rng = StdRng::from_seed([0; 32]);
 
 		type P = PackedBinaryGhash4x128b;
+
 		let scalar_bit_width = <B128 as ExtensionField<B1>>::LOG_DEGREE;
 
 		let small_field_n_vars = 12;
@@ -529,8 +544,13 @@ mod test {
 		let total_big_field_scalars_in_packed_mle = 1 << big_field_n_vars;
 
 		// scalars for unpacked large field mle
-		let big_field_mle_scalars =
-			random_scalars::<B128>(&mut rng, total_big_field_scalars_in_packed_mle);
+		// let big_field_mle_scalars =
+		// 	random_scalars::<B128>(&mut rng, total_big_field_scalars_in_packed_mle);
+
+		let big_field_mle_scalars: Vec<B128> = (0..total_big_field_scalars_in_packed_mle).map(|i| {
+			B128::from(0xffffffffffffffffffffffffffffffff as u128)
+		}
+		).collect();
 		let packed_mle_buffer = FieldBuffer::from_values(&big_field_mle_scalars).unwrap();
 
 		// Evaluate the small field mle at a point in the large field.
@@ -550,13 +570,16 @@ mod test {
 				.collect_vec(),
 		);
 
-		match run_ring_switched_pcs_prove_and_verify::<B128, P>(
+		match run_ring_switched_pcs_prove_and_verify::<P>(
 			packed_mle_buffer,
 			evaluation_point,
 			evaluation_claim,
 		) {
 			Ok(()) => {}
-			Err(_) => panic!("expected valid proof"),
+			Err(e) => {
+				println!("error: {:?}", e);
+				panic!("expected valid proof");
+			},
 		}
 	}
 
@@ -582,7 +605,7 @@ mod test {
 		// dubious evaluation claim
 		let incorrect_evaluation_claim = B128::from(42u128);
 
-		let result = run_ring_switched_pcs_prove_and_verify::<B128, P>(
+		let result = run_ring_switched_pcs_prove_and_verify::<P>(
 			packed_mle_buffer,
 			evaluation_point,
 			incorrect_evaluation_claim,
