@@ -3,12 +3,8 @@ use binius_math::{FieldSlice, ntt::AdditiveNTT};
 use binius_utils::{bail, rayon::prelude::*};
 use binius_verifier::{fri::FRIParams, merkle_tree::MerkleTreeScheme};
 use bytemuck::zeroed_vec;
-use tracing::instrument;
 
-use super::{
-	error::Error,
-	logging::{MerkleTreeDimensionData, RSEncodeDimensionData, SortAndMergeDimensionData},
-};
+use super::error::Error;
 use crate::merkle_tree::MerkleTreeProver;
 
 #[derive(Debug)]
@@ -26,7 +22,6 @@ pub struct CommitOutput<P, VCSCommitment, VCSCommitted> {
 /// * `params` - common FRI protocol parameters.
 /// * `merkle_prover` - the merke tree prover to use for committing
 /// * `message` - the interleaved message to encode and commit
-#[instrument(skip_all, level = "debug")]
 pub fn commit_interleaved<F, FA, P, PA, NTT, MerkleProver, VCS>(
 	params: &FRIParams<F, FA>,
 	ntt: &NTT,
@@ -61,7 +56,7 @@ where
 /// * `params` - common FRI protocol parameters.
 /// * `merkle_prover` - the Merkle tree prover to use for committing
 /// * `message_writer` - a closure that writes the interleaved message to encode and commit
-pub fn commit_interleaved_with<F, FA, P, PA, NTT, MerkleProver, VCS>(
+fn commit_interleaved_with<F, FA, P, PA, NTT, MerkleProver, VCS>(
 	params: &FRIParams<F, FA>,
 	ntt: &NTT,
 	merkle_prover: &MerkleProver,
@@ -83,41 +78,27 @@ where
 		todo!("can't handle this case well");
 	}
 
+	let _scope = tracing::debug_span!(
+		"FRI Commit",
+		log_batch_size,
+		log_dim = rs_code.log_dim(),
+		log_inv_rate = rs_code.log_inv_rate(),
+		field_bits = F::N_BITS,
+	)
+	.entered();
+
 	let mut encoded = zeroed_vec(1 << (log_elems - P::LOG_WIDTH + rs_code.log_inv_rate()));
+	message_writer(&mut encoded[..1 << (log_elems - P::LOG_WIDTH)]);
 
-	let dimensions_data = SortAndMergeDimensionData::new::<F>(log_elems);
-	tracing::debug_span!(
-		"[task] Sort & Merge",
-		phase = "commit",
-		perfetto_category = "task.main",
-		?dimensions_data
-	)
-	.in_scope(|| {
-		message_writer(&mut encoded[..1 << (log_elems - P::LOG_WIDTH)]);
-	});
-
-	let dimensions_data = RSEncodeDimensionData::new::<F>(log_elems, log_batch_size);
-	tracing::debug_span!(
-		"[task] RS Encode",
-		phase = "commit",
-		perfetto_category = "task.main",
-		?dimensions_data
-	)
-	.in_scope(|| rs_code.encode_ext_batch_inplace(ntt, &mut encoded, log_batch_size))?;
+	tracing::debug_span!("Reed–Solomon Encode")
+		.in_scope(|| rs_code.encode_ext_batch_inplace(ntt, &mut encoded, log_batch_size))?;
 
 	// Take the first arity as coset_log_len, or use the value such that the number of leaves equals
 	// 1 << log_inv_rate if arities is empty
 	let coset_log_len = params.fold_arities().first().copied().unwrap_or(log_elems);
 
 	let log_len = params.log_len() - coset_log_len;
-	let dimension_data = MerkleTreeDimensionData::new::<F>(log_len, 1 << coset_log_len);
-	let merkle_tree_span = tracing::debug_span!(
-		"[task] Merkle Tree",
-		phase = "commit",
-		perfetto_category = "task.main",
-		dimensions_data = ?dimension_data
-	)
-	.entered();
+	let merkle_tree_span = tracing::debug_span!("Merkle Tree").entered();
 	let (commitment, vcs_committed) = if coset_log_len > P::LOG_WIDTH {
 		let iterated_big_chunks = to_par_scalar_big_chunks(&encoded, 1 << coset_log_len);
 		merkle_prover.commit_iterated(iterated_big_chunks, log_len)?

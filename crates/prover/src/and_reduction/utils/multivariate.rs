@@ -41,8 +41,6 @@ impl OneBitOblongMultilinear {
 	/// over the remaining variables.
 	#[allow(clippy::modulo_one)]
 	pub fn fold<F: Field>(&self, lookup: &FoldLookup<F, LOG_WORD_SIZE_BITS>) -> FieldBuffer<F> {
-		let _span = tracing::debug_span!("fold").entered();
-
 		let new_n_vars = self.log_num_rows - LOG_WORD_SIZE_BITS;
 		let multilin_vals = self
 			.packed_evals

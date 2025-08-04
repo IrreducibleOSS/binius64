@@ -16,11 +16,7 @@ use binius_verifier::{
 use bytemuck::zeroed_vec;
 use tracing::instrument;
 
-use super::{
-	error::Error,
-	logging::{FRIFoldData, MerkleTreeDimensionData},
-	query::FRIQueryProver,
-};
+use super::{error::Error, query::FRIQueryProver};
 use crate::merkle_tree::MerkleTreeProver;
 
 /// The type of the termination round codeword in the FRI protocol.
@@ -127,27 +123,15 @@ where
 			return Ok(FoldRoundOutput::NoCommitment);
 		}
 
-		let dimensions_data = match self.round_committed.last() {
-			Some((codeword, _)) => FRIFoldData::new::<F, FA>(
-				log2_strict_usize(codeword.len()),
-				0,
-				self.unprocessed_challenges.len(),
-			),
-			None => FRIFoldData::new::<F, FA>(
-				self.params.rs_code().log_len(),
-				self.params.log_batch_size(),
-				self.unprocessed_challenges.len(),
-			),
-		};
-
-		let fri_fold_span = tracing::debug_span!(
-			"[task] FRI Fold",
-			phase = "piop_compiler",
-			perfetto_category = "task.main",
-			?dimensions_data
+		let _fri_round_scope = tracing::debug_span!(
+			"FRI Round",
+			log_len = log2_strict_usize(self.current_codeword_len()),
+			arity = self.unprocessed_challenges.len()
 		)
 		.entered();
+
 		// Fold the last codeword with the accumulated folding challenges.
+		let fri_fold_span = tracing::debug_span!("FRI Fold").entered();
 		let folded_codeword = match self.round_committed.last() {
 			Some((prev_codeword, _)) => {
 				// Fold a full codeword committed in the previous FRI round into a codeword with
@@ -183,15 +167,7 @@ where
 			.get(self.round_committed.len() + 1)
 			.map(|log| 1 << log)
 			.unwrap_or_else(|| 1 << self.params.n_final_challenges());
-		let dimension_data =
-			MerkleTreeDimensionData::new::<F>(dimensions_data.log_len(), coset_size);
-		let merkle_tree_span = tracing::debug_span!(
-			"[task] Merkle Tree",
-			phase = "piop_compiler",
-			perfetto_category = "task.main",
-			dimensions_data = ?dimension_data
-		)
-		.entered();
+		let merkle_tree_span = tracing::debug_span!("Merkle Tree").entered();
 		let (commitment, committed) = self.merkle_prover.commit(&folded_codeword, coset_size)?;
 		drop(merkle_tree_span);
 
