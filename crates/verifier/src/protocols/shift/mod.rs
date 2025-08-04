@@ -7,3 +7,7 @@ pub const INTMUL_ARITY: usize = 4;
 mod monster;
 
 pub use monster::*;
+mod error;
+mod verify;
+
+pub use verify::OperatorData;
