@@ -32,7 +32,6 @@ where
 	P: PackedExtension<B1> + PackedField<Scalar = F>,
 {
 	pub mle: FieldBuffer<PackedSubfield<P, B1>>,
-	pub small_field_evaluation_claim: F,
 	pub evaluation_claim: F,
 	pub evaluation_point: Vec<F>,
 }
@@ -56,7 +55,6 @@ where
 	) -> Result<Self, Error> {
 		Ok(Self {
 			mle,
-			small_field_evaluation_claim: evaluation_claim,
 			evaluation_claim,
 			evaluation_point,
 		})
@@ -154,7 +152,6 @@ where
 
 		// Partially evaluated eq is represented as a buffer of the scalars that make
 		// up the packed field elements of the mle.
-		// todo maybe do this w/ P
 		let eq_at_high: FieldBuffer<F> = eq_ind_partial_eval::<F>(eval_point_high);
 
 		// partial evals at high variables, since this is a partial eval, it will not
@@ -228,15 +225,23 @@ where
 		let log_scalar_bit_width = <F as ExtensionField<B1>>::LOG_DEGREE;
 		let (_, eval_point_high) = self.evaluation_point.split_at(log_scalar_bit_width);
 
-		let rs_eq_ind: FieldBuffer<P> =
-			FieldBuffer::from_values(rs_eq_ind::<F>(r_double_prime, eval_point_high).as_ref())
-				.expect("failed to create field buffer");
+		let rs_eq_ind_values = rs_eq_ind::<F>(r_double_prime, eval_point_high);
+		let rs_eq_ind: FieldBuffer<P> = FieldBuffer::from_values(rs_eq_ind_values.as_ref())
+			.expect("failed to create field buffer");
 
-		// Convert PackedSubfield<P, B1> to P
+		// Convert PackedSubfield<P, B1> to P while maintaining packed structure
 		let large_field_mle: &[P] = <P as PackedExtension<B1>>::cast_exts(self.mle.as_ref());
-		let large_field_mle: Vec<F> = large_field_mle.iter().flat_map(|p| p.iter()).collect();
-		let large_field_mle_buffer: FieldBuffer<P> =
-			FieldBuffer::from_values(&large_field_mle).expect("failed to create field buffer");
+
+		// The basefold prover expects the mle to maintain the same packing structure as
+		// The previously committed codeword.
+
+		let large_field_mle_vec: Vec<P> = large_field_mle.to_vec();
+
+		let packed_log_len = large_field_mle_vec.len().trailing_zeros() as usize;
+
+		let large_field_mle_buffer =
+			FieldBuffer::new(packed_log_len + P::LOG_WIDTH, large_field_mle_vec.into_boxed_slice())
+				.expect("failed to create field buffer");
 
 		BaseFoldProver::new(
 			large_field_mle_buffer,
@@ -325,7 +330,14 @@ mod test {
 		let committed_rs_code = ReedSolomonCode::<B128>::new(packed_mle.log_len(), LOG_INV_RATE)?;
 
 		let fri_log_batch_size = 0;
-		let fri_arities = vec![1; packed_mle.log_len() - 1];
+
+		// fri arities must support the packing width of the mle
+		let fri_arities = if P::LOG_WIDTH == 2 {
+			vec![2, 2]
+		} else {
+			vec![1; packed_mle.log_len() - 1]
+		};
+
 		let fri_params =
 			FRIParams::new(committed_rs_code, fri_log_batch_size, fri_arities, NUM_TEST_QUERIES)?;
 
@@ -530,7 +542,8 @@ mod test {
 		// scalars for unpacked large field mle
 		let big_field_mle_scalars =
 			random_scalars::<B128>(&mut rng, total_big_field_scalars_in_packed_mle);
-		let packed_mle_buffer = FieldBuffer::from_values(&big_field_mle_scalars).unwrap();
+		let packed_mle_buffer: FieldBuffer<P> =
+			FieldBuffer::from_values(&big_field_mle_scalars).unwrap();
 
 		// Evaluate the small field mle at a point in the large field.
 		let lifted_small_field_mle: Vec<B128> = lift_small_to_large_field(
@@ -549,14 +562,46 @@ mod test {
 				.collect_vec(),
 		);
 
-		let result = run_ring_switched_pcs_prove_and_verify::<P>(
+		match run_ring_switched_pcs_prove_and_verify::<P>(
 			packed_mle_buffer,
 			evaluation_point,
 			evaluation_claim,
-		);
+		) {
+			Ok(()) => {}
+			Err(_) => panic!("expected valid proof"),
+		}
+	}
 
-		// This needs to be addressed...
-		assert!(result.is_err());
+	#[test]
+	fn test_fri_commit_packing_width_4() {
+		let mut rng = StdRng::from_seed([0; 32]);
+
+		type P = PackedBinaryGhash4x128b;
+
+		const LOG_INV_RATE: usize = 1;
+		const NUM_TEST_QUERIES: usize = 3;
+
+		let log_dimension = 5;
+		let n_scalars = 1 << log_dimension;
+		let scalars = random_scalars::<B128>(&mut rng, n_scalars);
+		let packed_buffer: FieldBuffer<P> = FieldBuffer::from_values(&scalars).unwrap();
+
+		let merkle_prover =
+			BinaryMerkleTreeProver::<B128, StdDigest, _>::new(StdCompression::default());
+		let committed_rs_code = ReedSolomonCode::<B128>::new(log_dimension, LOG_INV_RATE).unwrap();
+
+		let fri_log_batch_size = 0;
+		let fri_arities = vec![1; log_dimension - 1];
+		let fri_params =
+			FRIParams::new(committed_rs_code, fri_log_batch_size, fri_arities, NUM_TEST_QUERIES)
+				.unwrap();
+
+		let ntt = SingleThreadedNTT::new(fri_params.rs_code().log_len()).unwrap();
+
+		let commit_result =
+			fri::commit_interleaved(&fri_params, &ntt, &merkle_prover, packed_buffer.to_ref());
+
+		commit_result.expect("FRI commit should work with packing width 4");
 	}
 
 	#[test]
