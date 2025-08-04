@@ -48,13 +48,8 @@ use rand::{rngs::StdRng, SeedableRng};
         let half_len = result.len()>>1;
 
 		for i in 0..half_len {
-			// Debug: check indices before access
-			let idx1 = i + half_len;
-			assert!(idx1 < polynomial_evals.len(), 
-				"Index {} out of bounds for polynomial_evals of length {}", idx1, polynomial_evals.len());
-			
-            result[i<<1] = domain[i<<1] * polynomial_evals[idx1] + polynomial_evals[i];
-			result[(i<<1) + 1] = result[i<<1] + polynomial_evals[idx1];
+            result[i<<1] = domain[i<<1] * polynomial_evals[i+half_len] + polynomial_evals[i];
+			result[(i<<1) + 1] = result[i<<1] + polynomial_evals[i+half_len];
 		}
 
 		result
@@ -109,8 +104,10 @@ use rand::{rngs::StdRng, SeedableRng};
 	){
 		let (domains, _) = elements_for_each_subspace(subspace.clone());
 		for domain in domains {
-            let new_poly_evals = single_forward_ntt_round_full(polynomial_evals, &domain);
+            let new_poly_evals = single_inverse_ntt_round_full(polynomial_evals, &domain);
             polynomial_evals.copy_from_slice(&new_poly_evals);
+            println!("after round of inverse ntt: {:?}", polynomial_evals);
+            println!("domain intt: {:?}", domain);
 		}
 	}
 
@@ -118,10 +115,12 @@ use rand::{rngs::StdRng, SeedableRng};
         polynomial_evals: &mut [F],
 		subspace: BinarySubspace<F>,
 	){
-		let (domains, _) = elements_for_each_subspace(subspace.clone());
+		let (_, domains) = elements_for_each_subspace(subspace.clone());
 		for domain in domains.iter().rev() {
             let new_poly_evals = single_forward_ntt_round_full(polynomial_evals, &domain);
             polynomial_evals.copy_from_slice(&new_poly_evals);
+            println!("after round of forward ntt: {:?}", polynomial_evals);
+            println!("domain fntt: {:?}", domain);
 		}
 	}
 
@@ -129,9 +128,9 @@ use rand::{rngs::StdRng, SeedableRng};
         polynomial_evals: &mut [F],
 		subspace: BinarySubspace<F>,
 	){
-        forward_ntt(polynomial_evals, subspace.clone());
+        inverse_ntt(polynomial_evals, subspace.clone());
         println!("in between : {:?}", polynomial_evals);
-        inverse_ntt(polynomial_evals, subspace);
+        forward_ntt(polynomial_evals, subspace);
     }
 
 
@@ -235,7 +234,7 @@ use rand::{rngs::StdRng, SeedableRng};
 
         let input_space =subspace.reduce_dim(2).unwrap();
 
-        let poly = GenericPo2UnivariatePoly::new((0..4).map(|_|{AESTowerField8b::new(1) }).collect_vec(), input_space.clone());
+        let poly = GenericPo2UnivariatePoly::new((0..4).map(|_|{AESTowerField8b::random(&mut rng) }).collect_vec(), input_space.clone());
 
         let last_basis_vec = subspace.basis()[subspace.basis().len()-1];
 
@@ -271,5 +270,53 @@ use rand::{rngs::StdRng, SeedableRng};
 			assert_eq!(&forward[..], &subspace_elems[expected_half_size..2*expected_half_size],
 				"Forward should contain second half of subspace elements");
 		}
+	}
+
+	#[test]
+	fn test_forward_ntt_specific_values() {
+		// Test that forward NTT of [1,0,0,0] produces [1,1,1,1]
+		let mut polynomial_evals = vec![
+			AESTowerField8b::ONE,
+			AESTowerField8b::ZERO,
+			AESTowerField8b::ZERO,
+			AESTowerField8b::ZERO,
+		];
+		
+		let subspace = BinarySubspace::<AESTowerField8b>::with_dim(3).unwrap();
+		forward_ntt(&mut polynomial_evals, subspace);
+		
+		let expected = vec![
+			AESTowerField8b::ONE,
+			AESTowerField8b::ONE,
+			AESTowerField8b::ONE,
+			AESTowerField8b::ONE,
+		];
+		
+		assert_eq!(polynomial_evals, expected, 
+			"Forward NTT of [1,0,0,0] should produce [1,1,1,1]");
+	}
+
+	#[test]
+	fn test_inverse_ntt_specific_values() {
+		// Test that inverse NTT of [1,1,1,1] produces [1,0,0,0]
+		let mut polynomial_evals = vec![
+			AESTowerField8b::ONE,
+			AESTowerField8b::ONE,
+			AESTowerField8b::ONE,
+			AESTowerField8b::ONE,
+		];
+		
+		let subspace = BinarySubspace::<AESTowerField8b>::with_dim(3).unwrap();
+		inverse_ntt(&mut polynomial_evals, subspace);
+		
+		let expected = vec![
+			AESTowerField8b::ONE,
+			AESTowerField8b::ZERO,
+			AESTowerField8b::ZERO,
+			AESTowerField8b::ZERO,
+		];
+		
+		assert_eq!(polynomial_evals, expected, 
+			"Inverse NTT of [1,1,1,1] should produce [1,0,0,0]");
 	}
 }
