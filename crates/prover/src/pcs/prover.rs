@@ -92,17 +92,17 @@ where
 		MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 		VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 	{
-		let packing_degree = <F as ExtensionField<B1>>::LOG_DEGREE;
+		let log_scalar_bit_width = <F as ExtensionField<B1>>::LOG_DEGREE;
 
 		// packed mle partial evals of at high variables
-		let s_hat_v = Self::initialize_proof(&self.mle, &self.evaluation_point, packing_degree)?;
-
+		let s_hat_v =
+			Self::initialize_proof(&self.mle, &self.evaluation_point, log_scalar_bit_width)?;
 		transcript.message().write_scalar_slice(&s_hat_v);
 
 		// basis decompose/recombine s_hat_v across opposite dimension
 		let s_hat_u = <TensorAlgebra<B1, F>>::new(s_hat_v).transpose().elems;
 
-		let r_double_prime = transcript.sample_vec(packing_degree);
+		let r_double_prime = transcript.sample_vec(log_scalar_bit_width);
 
 		let eq_r_double_prime = eq_ind_partial_eval::<F>(r_double_prime.as_ref());
 
@@ -142,29 +142,47 @@ where
 	fn initialize_proof(
 		mle: &FieldBuffer<PackedSubfield<P, B1>>,
 		evaluation_point: &[F],
-		packing_degree: usize,
+		log_scalar_bit_width: usize,
 	) -> Result<Vec<F>, Error>
 	where
 		F: BinaryField,
 		P: PackedExtension<B1> + PackedField<Scalar = F>,
 	{
-		let (_, eval_point_high) = evaluation_point.split_at(packing_degree);
+		let mle: &[<P as PackedExtension<B1>>::PackedSubfield] = mle.as_ref();
 
-		let small_field_mle = mle.as_ref();
+		let (_, eval_point_high): (&[F], &[F]) = evaluation_point.split_at(log_scalar_bit_width);
 
-		// todo maybe use packed field indexible to create the eq?
-		let eq_at_high = eq_ind_partial_eval::<F>(eval_point_high);
+		// Partially evaluated eq is represented as a buffer of the scalars that make
+		// up the packed field elements of the mle.
+		// todo maybe do this w/ P
+		let eq_at_high: FieldBuffer<F> = eq_ind_partial_eval::<F>(eval_point_high);
 
-		let mut s_hat_v = vec![F::zero(); 1 << packing_degree];
+		// partial evals at high variables, since this is a partial eval, it will not
+		// be a packed field element since it deals with the internal scalars
+		let mut s_hat_v = vec![F::zero(); 1 << log_scalar_bit_width];
 
-		for (packed_elem, eq_at_high_value) in small_field_mle.iter().zip(eq_at_high.as_ref()) {
-			packed_elem.iter().enumerate().for_each(
-				|(low_vars_subcube_idx, bit_in_packed_field)| {
-					if bit_in_packed_field == B1::ONE {
-						s_hat_v[low_vars_subcube_idx] += *eq_at_high_value;
+		let bits_per_packed_elem: usize = mle[0].iter().count();
+		let bits_per_variable: usize = bits_per_packed_elem / P::WIDTH;
+
+		// combine eq w/ mle
+		for (packed_idx, packed_elem) in mle.iter().enumerate() {
+			for high_offset in 0..P::WIDTH {
+				// get eq index
+				let eq_idx = packed_idx * P::WIDTH + high_offset;
+				let eq_at_high_value = eq_at_high.as_ref()[eq_idx];
+
+				// bit index range for where the b128 scalars are located in the packed element
+				let bit_start = high_offset * bits_per_variable;
+				let bit_end = bit_start + bits_per_variable;
+
+				for (i, bit) in packed_elem.iter().enumerate() {
+					if bit == B1::ONE && i >= bit_start && i < bit_end {
+						let low_vars_idx = i - bit_start;
+
+						s_hat_v[low_vars_idx] += eq_at_high_value;
 					}
-				},
-			);
+				}
+			}
 		}
 
 		Ok(s_hat_v)
@@ -207,8 +225,8 @@ where
 		MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 		VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 	{
-		let packing_degree = <F as ExtensionField<B1>>::LOG_DEGREE;
-		let (_, eval_point_high) = self.evaluation_point.split_at(packing_degree);
+		let log_scalar_bit_width = <F as ExtensionField<B1>>::LOG_DEGREE;
+		let (_, eval_point_high) = self.evaluation_point.split_at(log_scalar_bit_width);
 
 		let rs_eq_ind: FieldBuffer<P> =
 			FieldBuffer::from_values(rs_eq_ind::<F>(r_double_prime, eval_point_high).as_ref())
@@ -235,7 +253,10 @@ where
 
 #[cfg(test)]
 mod test {
-	use binius_field::{ExtensionField, Field, PackedExtension, PackedField};
+	use binius_field::{
+		ExtensionField, Field, PackedBinaryGhash2x128b, PackedBinaryGhash4x128b, PackedExtension,
+		PackedField,
+	};
 	use binius_math::{
 		FieldBuffer, ReedSolomonCode, inner_product::inner_product,
 		multilinear::eq::eq_ind_partial_eval, ntt::SingleThreadedNTT, test_utils::random_scalars,
@@ -357,11 +378,10 @@ mod test {
 	#[test]
 	fn test_ring_switched_pcs_valid_proof() {
 		let mut rng = StdRng::from_seed([0; 32]);
-		let n_vars = 12;
-		let packing_degree = <B128 as ExtensionField<B1>>::LOG_DEGREE;
-		let big_field_n_vars = n_vars - packing_degree;
 
-		assert_eq!(packing_degree, 7);
+		let n_vars = 12;
+		let log_scalar_bit_width = <B128 as ExtensionField<B1>>::LOG_DEGREE;
+		let big_field_n_vars = n_vars - log_scalar_bit_width;
 
 		let packed_mle_values = random_scalars::<B128>(&mut rng, 1 << big_field_n_vars);
 
@@ -372,7 +392,7 @@ mod test {
 		let packed_mle =
 			FieldBuffer::from_values(&packed_mle_values).expect("failed to create field buffer");
 
-		let evaluation_point = random_scalars::<B128>(&mut rng, n_vars);
+		let evaluation_point = random_scalars::<B128>(&mut rng, n_vars * B128::WIDTH);
 
 		let evaluation_claim = inner_product::<B128>(
 			lifted_small_field_mle,
@@ -398,8 +418,8 @@ mod test {
 		let mut rng = StdRng::from_seed([0; 32]);
 
 		let n_vars = 12;
-		let packing_degree = <B128 as ExtensionField<B1>>::LOG_DEGREE;
-		let big_field_n_vars = n_vars - packing_degree;
+		let log_scalar_bit_width = <B128 as ExtensionField<B1>>::LOG_DEGREE;
+		let big_field_n_vars = n_vars - log_scalar_bit_width;
 
 		let packed_mle_values = random_scalars::<B128>(&mut rng, 1 << big_field_n_vars);
 		let packed_mle =
@@ -412,6 +432,157 @@ mod test {
 
 		let result = run_ring_switched_pcs_prove_and_verify::<B128>(
 			packed_mle,
+			evaluation_point,
+			incorrect_evaluation_claim,
+		);
+
+		assert!(result.is_err());
+	}
+
+	#[test]
+	fn test_ring_switched_pcs_valid_proof_packing_width_2() {
+		let mut rng = StdRng::from_seed([0; 32]);
+
+		type P = PackedBinaryGhash2x128b;
+		let log_scalar_bit_width = <B128 as ExtensionField<B1>>::LOG_DEGREE;
+
+		let small_field_n_vars = 12;
+		let big_field_n_vars = small_field_n_vars - log_scalar_bit_width;
+
+		let total_big_field_scalars_in_packed_mle = 1 << big_field_n_vars;
+
+		// scalars for unpacked large field mle
+		let big_field_mle_scalars =
+			random_scalars::<B128>(&mut rng, total_big_field_scalars_in_packed_mle);
+		let packed_mle_buffer = FieldBuffer::from_values(&big_field_mle_scalars).unwrap();
+
+		// Evaluate the small field mle at a point in the large field.
+		let lifted_small_field_mle: Vec<B128> = lift_small_to_large_field(
+			&large_field_mle_to_small_field_mle::<B1, B128>(&big_field_mle_scalars),
+		);
+
+		let evaluation_point = random_scalars::<B128>(&mut rng, small_field_n_vars);
+		assert!(1 << evaluation_point.len() == lifted_small_field_mle.len());
+
+		let evaluation_claim = inner_product::<B128>(
+			lifted_small_field_mle,
+			eq_ind_partial_eval(&evaluation_point)
+				.as_ref()
+				.iter()
+				.copied()
+				.collect_vec(),
+		);
+
+		match run_ring_switched_pcs_prove_and_verify::<P>(
+			packed_mle_buffer,
+			evaluation_point,
+			evaluation_claim,
+		) {
+			Ok(()) => {}
+			Err(_) => panic!("expected valid proof"),
+		}
+	}
+
+	#[test]
+	fn test_ring_switched_pcs_invalid_proof_packing_width_2() {
+		let mut rng = StdRng::from_seed([0; 32]);
+
+		type P = PackedBinaryGhash2x128b;
+		let log_scalar_bit_width = <B128 as ExtensionField<B1>>::LOG_DEGREE;
+
+		let small_field_n_vars = 12;
+		let big_field_n_vars = small_field_n_vars - log_scalar_bit_width;
+
+		let total_big_field_scalars_in_packed_mle = 1 << big_field_n_vars;
+
+		// scalars for unpacked large field mle
+		let big_field_mle_scalars =
+			random_scalars::<B128>(&mut rng, total_big_field_scalars_in_packed_mle);
+		let packed_mle_buffer = FieldBuffer::from_values(&big_field_mle_scalars).unwrap();
+
+		let evaluation_point = random_scalars::<B128>(&mut rng, small_field_n_vars);
+
+		// dubious evaluation claim
+		let incorrect_evaluation_claim = B128::from(42u128);
+
+		let result = run_ring_switched_pcs_prove_and_verify::<P>(
+			packed_mle_buffer,
+			evaluation_point,
+			incorrect_evaluation_claim,
+		);
+
+		assert!(result.is_err());
+	}
+
+	#[test]
+	fn test_ring_switched_pcs_valid_proof_packing_width_4() {
+		let mut rng = StdRng::from_seed([0; 32]);
+
+		type P = PackedBinaryGhash4x128b;
+
+		let log_scalar_bit_width = <B128 as ExtensionField<B1>>::LOG_DEGREE;
+
+		let small_field_n_vars = 12;
+		let big_field_n_vars = small_field_n_vars - log_scalar_bit_width;
+
+		let total_big_field_scalars_in_packed_mle = 1 << big_field_n_vars;
+
+		// scalars for unpacked large field mle
+		let big_field_mle_scalars =
+			random_scalars::<B128>(&mut rng, total_big_field_scalars_in_packed_mle);
+		let packed_mle_buffer = FieldBuffer::from_values(&big_field_mle_scalars).unwrap();
+
+		// Evaluate the small field mle at a point in the large field.
+		let lifted_small_field_mle: Vec<B128> = lift_small_to_large_field(
+			&large_field_mle_to_small_field_mle::<B1, B128>(&big_field_mle_scalars),
+		);
+
+		let evaluation_point = random_scalars::<B128>(&mut rng, small_field_n_vars);
+		assert!(1 << evaluation_point.len() == lifted_small_field_mle.len());
+
+		let evaluation_claim = inner_product::<B128>(
+			lifted_small_field_mle,
+			eq_ind_partial_eval(&evaluation_point)
+				.as_ref()
+				.iter()
+				.copied()
+				.collect_vec(),
+		);
+
+		let result = run_ring_switched_pcs_prove_and_verify::<P>(
+			packed_mle_buffer,
+			evaluation_point,
+			evaluation_claim,
+		);
+
+		// This needs to be addressed...
+		assert!(result.is_err());
+	}
+
+	#[test]
+	fn test_ring_switched_pcs_invalid_proof_packing_width_4() {
+		let mut rng = StdRng::from_seed([0; 32]);
+
+		type P = PackedBinaryGhash4x128b;
+		let scalar_bit_width = <B128 as ExtensionField<B1>>::LOG_DEGREE;
+
+		let small_field_n_vars = 12;
+		let big_field_n_vars = small_field_n_vars - scalar_bit_width;
+
+		let total_big_field_scalars_in_packed_mle = 1 << big_field_n_vars;
+
+		// scalars for unpacked large field mle
+		let big_field_mle_scalars =
+			random_scalars::<B128>(&mut rng, total_big_field_scalars_in_packed_mle);
+		let packed_mle_buffer = FieldBuffer::from_values(&big_field_mle_scalars).unwrap();
+
+		let evaluation_point = random_scalars::<B128>(&mut rng, small_field_n_vars);
+
+		// dubious evaluation claim
+		let incorrect_evaluation_claim = B128::from(42u128);
+
+		let result = run_ring_switched_pcs_prove_and_verify::<P>(
+			packed_mle_buffer,
 			evaluation_point,
 			incorrect_evaluation_claim,
 		);

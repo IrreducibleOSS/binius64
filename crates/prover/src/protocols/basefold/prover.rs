@@ -183,8 +183,8 @@ where
 #[cfg(test)]
 mod test {
 	use binius_field::{
-		BinaryField, PackedExtension, PackedField,
-		arch::{OptimalPackedB128, packed_ghash_256::PackedBinaryGhash2x128b},
+		BinaryField, PackedBinaryGhash2x128b, PackedBinaryGhash4x128b, PackedExtension,
+		PackedField, arch::OptimalPackedB128,
 	};
 	use binius_math::{
 		FieldBuffer, ReedSolomonCode,
@@ -312,7 +312,6 @@ mod test {
 		type P = OptimalPackedB128;
 
 		let n_vars = 8;
-
 		let (multilinear, evaluation_point, evaluation_claim) = test_setup::<_, P>(n_vars);
 
 		match run_basefold_prove_and_verify::<_, P>(multilinear, evaluation_point, evaluation_claim)
@@ -327,7 +326,6 @@ mod test {
 		type P = OptimalPackedB128;
 
 		let n_vars = 8;
-
 		let (multilinear, evaluation_point, mut evaluation_claim) = test_setup::<_, P>(n_vars);
 
 		dubiously_modify_claim::<_, P>(&mut evaluation_claim);
@@ -337,11 +335,10 @@ mod test {
 	}
 
 	#[test]
-	fn test_basefold_valid_proof_non_trivial_packing_width() {
+	fn test_basefold_valid_packing_width_2() {
 		type P = PackedBinaryGhash2x128b;
 
 		let n_vars = 8;
-
 		let (multilinear, evaluation_point, evaluation_claim) = test_setup::<_, P>(n_vars);
 
 		match run_basefold_prove_and_verify::<_, P>(multilinear, evaluation_point, evaluation_claim)
@@ -352,11 +349,37 @@ mod test {
 	}
 
 	#[test]
-	fn test_basefold_invalid_proof_non_trivial_packing_width() {
+	fn test_basefold_invalid_proof_packing_width_2() {
 		type P = PackedBinaryGhash2x128b;
 
 		let n_vars = 8;
+		let (multilinear, evaluation_point, mut evaluation_claim) = test_setup::<_, P>(n_vars);
 
+		dubiously_modify_claim::<_, P>(&mut evaluation_claim);
+		let result =
+			run_basefold_prove_and_verify::<_, P>(multilinear, evaluation_point, evaluation_claim);
+		assert!(result.is_err());
+	}
+
+	#[test]
+	fn test_basefold_valid_packing_width_4() {
+		type P = PackedBinaryGhash4x128b;
+
+		let n_vars = 8;
+		let (multilinear, evaluation_point, evaluation_claim) = test_setup::<_, P>(n_vars);
+
+		match run_basefold_prove_and_verify::<_, P>(multilinear, evaluation_point, evaluation_claim)
+		{
+			Ok(()) => {}
+			Err(_) => panic!("expected valid proof"),
+		}
+	}
+
+	#[test]
+	fn test_basefold_invalid_proof_packing_width_4() {
+		type P = PackedBinaryGhash4x128b;
+
+		let n_vars = 8;
 		let (multilinear, evaluation_point, mut evaluation_claim) = test_setup::<_, P>(n_vars);
 
 		dubiously_modify_claim::<_, P>(&mut evaluation_claim);
