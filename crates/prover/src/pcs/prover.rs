@@ -409,10 +409,7 @@ mod test {
 			evaluation_claim,
 		) {
 			Ok(()) => {}
-			Err(e) => {
-				println!("error: {:?}", e);
-				panic!("expected valid proof");
-			}
+			Err(_) => panic!("expected valid proof"),
 		}
 	}
 
@@ -482,10 +479,7 @@ mod test {
 			evaluation_claim,
 		) {
 			Ok(()) => {}
-			Err(e) => {
-				println!("error: {:?}", e);
-				panic!("expected valid proof");
-			}
+			Err(_) => panic!("expected valid proof"),
 		}
 	}
 
@@ -561,10 +555,7 @@ mod test {
 			evaluation_claim,
 		) {
 			Ok(()) => {}
-			Err(e) => {
-				println!("error: {:?}", e);
-				panic!("expected valid proof");
-			}
+			Err(_) => panic!("expected valid proof"),
 		}
 	}
 
