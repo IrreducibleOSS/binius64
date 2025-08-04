@@ -9,7 +9,7 @@ use binius_transcript::{
 	ProverTranscript,
 	fiat_shamir::{CanSample, Challenger},
 };
-use binius_utils::rayon::prelude::*;
+use binius_utils::rayon::{current_num_threads, prelude::*};
 use binius_verifier::{
 	config::{LOG_WORD_SIZE_BITS, WORD_SIZE_BITS},
 	protocols::{
@@ -109,12 +109,12 @@ fn run_phase_1_sumcheck<
 	let mut provers = izip!(g_triplets, h_triplets, sums)
 		.flat_map(|(g_triplet, h_triplet, sum)| {
 			let sll_sum = inner_product_buffers(&g_triplet.sll, &h_triplet.sll);
-			let slr_sum = inner_product_buffers(&g_triplet.srl, &h_triplet.srl);
-			let sar_sum = sum - sll_sum - slr_sum;
+			let srl_sum = inner_product_buffers(&g_triplet.srl, &h_triplet.srl);
+			let sra_sum = sum - sll_sum - srl_sum;
 			[
 				(g_triplet.sll, h_triplet.sll, sll_sum),
-				(g_triplet.srl, h_triplet.srl, slr_sum),
-				(g_triplet.sra, h_triplet.sra, sar_sum),
+				(g_triplet.srl, h_triplet.srl, srl_sum),
+				(g_triplet.sra, h_triplet.sra, sra_sum),
 			]
 		})
 		.map(|(left_buf, right_buf, sum)| {
@@ -206,36 +206,40 @@ fn build_g_triplet<F: Field, P: PackedField<Scalar = F>>(
 	const BITAND_ACC_SIZE: usize = BITAND_ARITY * SHIFT_VARIANT_COUNT * (1 << LOG_LEN);
 	const INTMUL_ACC_SIZE: usize = INTMUL_ARITY * SHIFT_VARIANT_COUNT * (1 << LOG_LEN);
 
+	let chunk_size = words.len().div_ceil(current_num_threads());
+
 	let (bitand_multilinears, intmul_multilinears) = words
-		.into_par_iter()
-		.zip(key_collection.key_ranges.par_iter())
-		.map(|(word, Range { start, end })| {
+		.par_chunks(chunk_size)
+		.zip(key_collection.key_ranges.par_chunks(chunk_size))
+		.map(|(word_chunk, key_range_chunk)| {
 			let mut bitand_multilinears = vec![F::ZERO; BITAND_ACC_SIZE];
 			let mut intmul_multilinears = vec![F::ZERO; INTMUL_ACC_SIZE];
 
-			let keys = &key_collection.keys[*start as usize..*end as usize];
+			for (word, Range { start, end }) in izip!(word_chunk, key_range_chunk) {
+				let keys = &key_collection.keys[*start as usize..*end as usize];
 
-			for key in keys {
-				let (tensor, multilinears) = match key.operation {
-					Operation::BitwiseAnd => {
-						(&bitand_operator_data.r_x_prime_tensor, &mut bitand_multilinears)
+				for key in keys {
+					let (tensor, multilinears) = match key.operation {
+						Operation::BitwiseAnd => {
+							(&bitand_operator_data.r_x_prime_tensor, &mut bitand_multilinears)
+						}
+						Operation::IntegerMul => {
+							(&intmul_operator_data.r_x_prime_tensor, &mut intmul_multilinears)
+						}
+					};
+
+					let acc = key.accumulate(&key_collection.constraint_indices, tensor.as_ref());
+
+					let start = key.id as usize * WORD_SIZE_BITS;
+					let end = start + WORD_SIZE_BITS;
+
+					let mut word = *word;
+					for val in multilinears[start..end].iter_mut() {
+						if word & Word::ONE == Word::ONE {
+							*val += acc;
+						}
+						word = word >> 1;
 					}
-					Operation::IntegerMul => {
-						(&intmul_operator_data.r_x_prime_tensor, &mut intmul_multilinears)
-					}
-				};
-
-				let acc = key.accumulate(&key_collection.constraint_indices, tensor.as_ref());
-
-				let start = key.id as usize * WORD_SIZE_BITS;
-				let end = start + WORD_SIZE_BITS;
-
-				let mut word = *word;
-				for val in multilinears[start..end].iter_mut() {
-					if word & Word::ONE == Word::ONE {
-						*val += acc;
-					}
-					word = word >> 1;
 				}
 			}
 

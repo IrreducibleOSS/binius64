@@ -18,7 +18,7 @@ fn eval_shifted(witness: &ValueVec, sv: &ShiftedValueIndex) -> Word {
 }
 
 /// Evaluates an operand (XOR of shifted values)
-fn eval_operand(witness: &ValueVec, operand: &[ShiftedValueIndex]) -> Word {
+pub fn eval_operand(witness: &ValueVec, operand: &[ShiftedValueIndex]) -> Word {
 	operand
 		.iter()
 		.map(|sv| eval_shifted(witness, sv))

@@ -189,7 +189,7 @@ where
 /// * `public` - the public input words
 /// * `z_coords` - coordinates for the lower variables, corresponding to bits of words
 /// * `y_coords` - coordinates for the upper variables, corresponding to words
-fn evaluate_public_mle<F: BinaryField>(public: &[Word], z_coords: &[F], y_coords: &[F]) -> F {
+pub fn evaluate_public_mle<F: BinaryField>(public: &[Word], z_coords: &[F], y_coords: &[F]) -> F {
 	assert_eq!(public.len(), 1 << y_coords.len()); // precondition
 	assert_eq!(LOG_WORD_SIZE_BITS, z_coords.len()); // precondition
 
