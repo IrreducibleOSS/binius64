@@ -9,6 +9,7 @@ pub mod pcs;
 pub mod protocols;
 mod prove;
 pub mod ring_switch;
+pub mod sub_bytes_reduction;
 
 pub use error::*;
 pub use prove::*;
