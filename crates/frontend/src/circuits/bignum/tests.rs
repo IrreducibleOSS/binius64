@@ -24,10 +24,10 @@ fn from_u64_limbs(limbs: &[u64]) -> num_bigint::BigUint {
 ///
 /// # Arguments
 /// * `w` - Witness filler containing the actual values
-/// * `biguint` - The `BigUint` to covert
+/// * `biguint` - The `BigUint` to convert
 ///
 /// # Returns
-/// The bignum value as a `num_biguint::BigUint`
+/// The `BigUint` value as a `num_biguint::BigUint`
 pub fn biguint_to_num_biguint(w: &WitnessFiller, biguint: &BigUint) -> num_bigint::BigUint {
 	let limb_vals: Vec<_> = biguint.limbs.iter().map(|&l| w[l].as_u64()).collect();
 	from_u64_limbs(&limb_vals)
