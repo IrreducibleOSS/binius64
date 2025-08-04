@@ -1,7 +1,6 @@
-use crate::{
-	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
-	word::Word,
-};
+use binius_core::word::Word;
+
+use crate::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
 
 /// A vector of bytes of an arbitrary size up to and including the configured `max_len`.
 ///

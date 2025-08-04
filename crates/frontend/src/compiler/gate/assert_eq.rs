@@ -1,25 +1,24 @@
-/// Equality assertion.
-///
-/// Enforces `x = y` using an AND constraint.
-///
-/// # Algorithm
-///
-/// Uses the property that `x = y` iff `x ^ y = 0`.
-/// This is enforced as `(x ⊕ y) ∧ all-1 = 0`.
-///
-/// # Constraints
-///
-/// The gate generates 1 AND constraint:
-/// - `(x ⊕ y) ∧ all-1 = 0`
-use crate::{
-	compiler::{
-		circuit,
-		constraint_builder::{ConstraintBuilder, empty, xor2},
-		gate::opcode::OpcodeShape,
-		gate_graph::{Gate, GateData, GateParam},
-		pathspec::PathSpec,
-	},
-	word::Word,
+//! Equality assertion.
+//!
+//! Enforces `x = y` using an AND constraint.
+//!
+//! # Algorithm
+//!
+//! Uses the property that `x = y` iff `x ^ y = 0`.
+//! This is enforced as `(x ⊕ y) ∧ all-1 = 0`.
+//!
+//! # Constraints
+//!
+//! The gate generates 1 AND constraint:
+//! - `(x ⊕ y) ∧ all-1 = 0`
+use binius_core::word::Word;
+
+use crate::compiler::{
+	circuit,
+	constraint_builder::{ConstraintBuilder, empty, xor2},
+	gate::opcode::OpcodeShape,
+	gate_graph::{Gate, GateData, GateParam},
+	pathspec::PathSpec,
 };
 
 pub fn shape() -> OpcodeShape {

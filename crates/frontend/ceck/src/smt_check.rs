@@ -1,5 +1,5 @@
 use anyhow::{Result, anyhow};
-use binius_frontend::constraint_system::{
+use binius_core::constraint_system::{
 	AndConstraint, ConstraintSystem, MulConstraint, Operand, ShiftVariant, ShiftedValueIndex,
 };
 use z3::{

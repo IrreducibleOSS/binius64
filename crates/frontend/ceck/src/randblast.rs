@@ -1,9 +1,9 @@
 use anyhow::{Result, anyhow};
-use binius_frontend::{
+use binius_core::{
 	constraint_system::{ConstraintSystem, ValueVec},
-	constraint_verifier::verify_constraints,
 	word::Word,
 };
+use binius_frontend::constraint_verifier::verify_constraints;
 use rand::{Rng, SeedableRng, rngs::StdRng};
 
 pub struct RandBlast {
@@ -111,7 +111,7 @@ impl RandBlast {
 
 #[cfg(test)]
 mod tests {
-	use binius_frontend::constraint_system::{AndConstraint, ValueIndex, ValueVecLayout};
+	use binius_core::constraint_system::{AndConstraint, ValueIndex, ValueVecLayout};
 
 	use super::*;
 

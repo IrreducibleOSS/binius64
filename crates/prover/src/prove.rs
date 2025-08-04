@@ -1,11 +1,11 @@
 use std::{iter::repeat_with, marker::PhantomData};
 
-use binius_field::{
-	AESTowerField8b, BinaryField, PackedAESBinaryField16x8b, PackedExtension, PackedField,
-};
-use binius_frontend::{
+use binius_core::{
 	constraint_system::{AndConstraint, Operand, ShiftVariant, ShiftedValueIndex, ValueVec},
 	word::Word,
+};
+use binius_field::{
+	AESTowerField8b, BinaryField, PackedAESBinaryField16x8b, PackedExtension, PackedField,
 };
 use binius_math::{
 	BinarySubspace, FieldBuffer,

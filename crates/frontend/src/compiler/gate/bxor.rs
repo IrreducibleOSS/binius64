@@ -1,24 +1,24 @@
-/// Bitwise XOR operation.
-///
-/// Returns `z = x ^ y`.
-///
-/// # Algorithm
-///
-/// Computes the bitwise XOR using the identity: `x ^ y = ¬(x ∧ y)`.
-/// This is implemented as `(x ⊕ y) ∧ all-1 = z`.
-///
-/// # Constraints
-///
-/// The gate generates 1 AND constraint:
-/// - `(x ⊕ y) ∧ all-1 = z`
-use crate::{
-	compiler::{
-		circuit,
-		constraint_builder::{ConstraintBuilder, xor2},
-		gate::opcode::OpcodeShape,
-		gate_graph::{Gate, GateData, GateParam},
-	},
-	word::Word,
+//! Bitwise XOR operation.
+//!
+//! Returns `z = x ^ y`.
+//!
+//! # Algorithm
+//!
+//! Computes the bitwise XOR using the identity: `x ^ y = ¬(x ∧ y)`.
+//! This is implemented as `(x ⊕ y) ∧ all-1 = z`.
+//!
+//! # Constraints
+//!
+//! The gate generates 1 AND constraint:
+//! - `(x ⊕ y) ∧ all-1 = z`
+
+use binius_core::word::Word;
+
+use crate::compiler::{
+	circuit,
+	constraint_builder::{ConstraintBuilder, xor2},
+	gate::opcode::OpcodeShape,
+	gate_graph::{Gate, GateData, GateParam},
 };
 
 pub fn shape() -> OpcodeShape {

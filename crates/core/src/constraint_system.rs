@@ -275,8 +275,6 @@ impl ValueVec {
 	pub fn combined_witness(&self) -> &[Word] {
 		&self.data
 	}
-
-	pub fn assert_filled(&self) {}
 }
 
 impl Index<ValueIndex> for ValueVec {

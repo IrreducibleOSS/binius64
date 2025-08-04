@@ -8,6 +8,7 @@ authors.workspace = true
 workspace = true
 
 [dependencies]
+binius-core = { path = "../core" }
 cranelift-entity = { workspace = true }
 num-bigint = { workspace = true }
 num-integer = { workspace = true }

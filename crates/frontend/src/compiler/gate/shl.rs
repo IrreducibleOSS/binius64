@@ -1,24 +1,24 @@
-/// Logical left shift.
-///
-/// Returns `z = x << n`.
-///
-/// # Algorithm
-///
-/// Performs a logical left shift by `n` bits. The constraint system allows
-/// referencing shifted versions of values directly without additional gates.
-///
-/// # Constraints
-///
-/// The gate generates 1 AND constraint:
-/// - `(x << n) ∧ all-1 = z`
-use crate::{
-	compiler::{
-		circuit,
-		constraint_builder::{ConstraintBuilder, sll},
-		gate::opcode::OpcodeShape,
-		gate_graph::{Gate, GateData, GateParam},
-	},
-	word::Word,
+//! Logical left shift.
+//!
+//! Returns `z = x << n`.
+//!
+//! # Algorithm
+//!
+//! Performs a logical left shift by `n` bits. The constraint system allows
+//! referencing shifted versions of values directly without additional gates.
+//!
+//! # Constraints
+//!
+//! The gate generates 1 AND constraint:
+//! - `(x << n) ∧ all-1 = z`
+
+use binius_core::word::Word;
+
+use crate::compiler::{
+	circuit,
+	constraint_builder::{ConstraintBuilder, sll},
+	gate::opcode::OpcodeShape,
+	gate_graph::{Gate, GateData, GateParam},
 };
 
 pub fn shape() -> OpcodeShape {

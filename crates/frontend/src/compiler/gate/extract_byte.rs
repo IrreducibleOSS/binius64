@@ -1,28 +1,28 @@
-/// Byte extraction from a 64-bit word.
-///
-/// Returns `z = (word >> (8*j)) & 0xFF` where j=0 is the least significant byte.
-///
-/// # Algorithm
-///
-/// Extracts byte j from a 64-bit word using little-endian byte ordering:
-/// - j=0: bits 0-7 (least significant byte)
-/// - j=1: bits 8-15
-/// - ...
-/// - j=7: bits 56-63 (most significant byte)
-///
-/// # Constraints
-///
-/// The gate generates 2 AND constraints:
-/// 1. Low byte extraction: `((word >> (8*j)) ⊕ z) ∧ 0xFF = 0`
-/// 2. High bits zeroing: `z ∧ 0xFFFFFFFFFFFFFF00 = 0`
-use crate::{
-	compiler::{
-		circuit,
-		constraint_builder::{ConstraintBuilder, empty, srl, xor2},
-		gate::opcode::OpcodeShape,
-		gate_graph::{Gate, GateData, GateParam},
-	},
-	word::Word,
+//! Byte extraction from a 64-bit word.
+//!
+//! Returns `z = (word >> (8*j)) & 0xFF` where j=0 is the least significant byte.
+//!
+//! # Algorithm
+//!
+//! Extracts byte j from a 64-bit word using little-endian byte ordering:
+//! - j=0: bits 0-7 (least significant byte)
+//! - j=1: bits 8-15
+//! - ...
+//! - j=7: bits 56-63 (most significant byte)
+//!
+//! # Constraints
+//!
+//! The gate generates 2 AND constraints:
+//! 1. Low byte extraction: `((word >> (8*j)) ⊕ z) ∧ 0xFF = 0`
+//! 2. High bits zeroing: `z ∧ 0xFFFFFFFFFFFFFF00 = 0`
+
+use binius_core::word::Word;
+
+use crate::compiler::{
+	circuit,
+	constraint_builder::{ConstraintBuilder, empty, srl, xor2},
+	gate::opcode::OpcodeShape,
+	gate_graph::{Gate, GateData, GateParam},
 };
 
 pub fn shape() -> OpcodeShape {

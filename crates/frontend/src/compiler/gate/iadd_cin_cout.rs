@@ -1,38 +1,38 @@
-/// 64-bit unsigned integer addition with carry propagation.
-///
-/// # Wires
-///
-/// - `a`, `b`: Input wires for the summands
-/// - `cin` (carry-in): Input wire for the previous carry word. Only the MSB is used as the
-///   actual carry bit
-/// - `sum`: Output wire containing the resulting sum = a + b + carry_bit
-/// - `cout` (carry-out): Output wire containing a carry word where each bit position indicates
-///   whether a carry occurred at that position during the addition.
-///
-/// ## Carry-out Computation
-///
-/// The carry-out is computed as: `cout = (a & b) | ((a ^ b) & ¬sum)`
-///
-/// For example:
-/// - `0x0000000000000003 + 0x0000000000000001 = 0x0000000000000004` with `cout =
-///   0x0000000000000003` (carries at bits 0 and 1)
-/// - `0xFFFFFFFFFFFFFFFF + 0x0000000000000001 = 0x0000000000000000` with `cout =
-///   0xFFFFFFFFFFFFFFFF` (carries at all bit positions)
-///
-/// # Constraints
-///
-/// The gate generates two AND constraints:
-///
-/// 1. **Carry generation constraint**: Ensures correct carry propagation
-/// 2. **Sum constraint**: Ensures the sum equals `a ^ b ^ (cout << 1) ^ cin_msb`
-use crate::{
-	compiler::{
-		circuit,
-		constraint_builder::{ConstraintBuilder, sll, srl, xor3, xor4},
-		gate::opcode::OpcodeShape,
-		gate_graph::{Gate, GateData, GateParam},
-	},
-	word::Word,
+//! 64-bit unsigned integer addition with carry propagation.
+//!
+//! # Wires
+//!
+//! - `a`, `b`: Input wires for the summands
+//! - `cin` (carry-in): Input wire for the previous carry word. Only the MSB is used as the actual
+//!   carry bit
+//! - `sum`: Output wire containing the resulting sum = a + b + carry_bit
+//! - `cout` (carry-out): Output wire containing a carry word where each bit position indicates
+//!   whether a carry occurred at that position during the addition.
+//!
+//! ## Carry-out Computation
+//!
+//! The carry-out is computed as: `cout = (a & b) | ((a ^ b) & ¬sum)`
+//!
+//! For example:
+//! - `0x0000000000000003 + 0x0000000000000001 = 0x0000000000000004` with `cout =
+//!   0x0000000000000003` (carries at bits 0 and 1)
+//! - `0xFFFFFFFFFFFFFFFF + 0x0000000000000001 = 0x0000000000000000` with `cout =
+//!   0xFFFFFFFFFFFFFFFF` (carries at all bit positions)
+//!
+//! # Constraints
+//!
+//! The gate generates two AND constraints:
+//!
+//! 1. **Carry generation constraint**: Ensures correct carry propagation
+//! 2. **Sum constraint**: Ensures the sum equals `a ^ b ^ (cout << 1) ^ cin_msb`
+
+use binius_core::word::Word;
+
+use crate::compiler::{
+	circuit,
+	constraint_builder::{ConstraintBuilder, sll, srl, xor3, xor4},
+	gate::opcode::OpcodeShape,
+	gate_graph::{Gate, GateData, GateParam},
 };
 
 pub fn shape() -> OpcodeShape {

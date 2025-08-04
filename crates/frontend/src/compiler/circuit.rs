@@ -1,16 +1,16 @@
 use std::{error, fmt};
 
+use binius_core::{
+	constraint_system::{ConstraintSystem, ValueIndex, ValueVec, ValueVecLayout},
+	word::Word,
+};
 use cranelift_entity::SecondaryMap;
 
 use super::{Shared, gate};
-use crate::{
-	compiler::{
-		constraint_builder::ConstraintBuilder,
-		gate_graph::{Wire, WireKind},
-		pathspec::PathSpec,
-	},
-	constraint_system::{ConstraintSystem, ValueIndex, ValueVec, ValueVecLayout},
-	word::Word,
+use crate::compiler::{
+	constraint_builder::ConstraintBuilder,
+	gate_graph::{Wire, WireKind},
+	pathspec::PathSpec,
 };
 
 const MAX_ASSERTION_MESSAGES: usize = 100;

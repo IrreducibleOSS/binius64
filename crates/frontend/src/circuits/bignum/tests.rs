@@ -1,3 +1,4 @@
+use binius_core::word::Word;
 use num_bigint::BigUint;
 use num_integer::Integer;
 use proptest::prelude::*;
@@ -6,7 +7,6 @@ use super::*;
 use crate::{
 	compiler::{CircuitBuilder, circuit::WitnessFiller},
 	constraint_verifier::verify_constraints,
-	word::Word,
 };
 
 /// Returns a BigUint from u64 limbs with little-endian ordering

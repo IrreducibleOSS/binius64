@@ -1,7 +1,6 @@
-use crate::{
-	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
-	word::Word,
-};
+use binius_core::word::Word;
+
+use crate::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
 
 /// Base64 encoding (URL-safe, without trailing padding characters) encoding verification.
 ///

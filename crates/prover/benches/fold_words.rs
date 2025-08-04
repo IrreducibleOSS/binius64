@@ -1,5 +1,5 @@
+use binius_core::word::Word;
 use binius_field::arch::OptimalPackedB128;
-use binius_frontend::word::Word;
 use binius_math::test_utils::random_scalars;
 use binius_prover::fold_word::fold_words;
 use binius_verifier::config::{B128, WORD_SIZE_BITS};

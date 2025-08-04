@@ -1,26 +1,26 @@
-/// 32-bit unsigned integer addition with carry propagation.
-///
-/// Returns `z = (x + y) & MASK_32` and `cout` containing carry bits.
-///
-/// # Algorithm
-///
-/// Performs 32-bit addition by computing the full 64-bit result and masking:
-/// 1. Compute carry bits `cout` from `x + y` using carry propagation
-/// 2. Extract the lower 32 bits: `z = (x ⊕ y ⊕ (cout << 1)) ∧ MASK_32`
-///
-/// # Constraints
-///
-/// The gate generates 2 AND constraints:
-/// 1. Carry propagation: `(x ⊕ (cout << 1)) ∧ (y ⊕ (cout << 1)) = cout ⊕ (cout << 1)`
-/// 2. Result masking: `(x ⊕ y ⊕ (cout << 1)) ∧ MASK_32 = z`
-use crate::{
-	compiler::{
-		circuit,
-		constraint_builder::{ConstraintBuilder, sll, xor2, xor3},
-		gate::opcode::OpcodeShape,
-		gate_graph::{Gate, GateData, GateParam},
-	},
-	word::Word,
+//! 32-bit unsigned integer addition with carry propagation.
+//!
+//! Returns `z = (x + y) & MASK_32` and `cout` containing carry bits.
+//!
+//! # Algorithm
+//!
+//! Performs 32-bit addition by computing the full 64-bit result and masking:
+//! 1. Compute carry bits `cout` from `x + y` using carry propagation
+//! 2. Extract the lower 32 bits: `z = (x ⊕ y ⊕ (cout << 1)) ∧ MASK_32`
+//!
+//! # Constraints
+//!
+//! The gate generates 2 AND constraints:
+//! 1. Carry propagation: `(x ⊕ (cout << 1)) ∧ (y ⊕ (cout << 1)) = cout ⊕ (cout << 1)`
+//! 2. Result masking: `(x ⊕ y ⊕ (cout << 1)) ∧ MASK_32 = z`
+
+use binius_core::word::Word;
+
+use crate::compiler::{
+	circuit,
+	constraint_builder::{ConstraintBuilder, sll, xor2, xor3},
+	gate::opcode::OpcodeShape,
+	gate_graph::{Gate, GateData, GateParam},
 };
 
 pub fn shape() -> OpcodeShape {

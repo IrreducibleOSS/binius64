@@ -1,5 +1,5 @@
+use binius_core::word::Word;
 use binius_field::Field;
-use binius_frontend::word::Word;
 use binius_math::FieldBuffer;
 use binius_utils::rayon::prelude::*;
 use binius_verifier::config::LOG_WORD_SIZE_BITS;
@@ -61,8 +61,8 @@ impl OneBitOblongMultilinear {
 mod test {
 	use std::{iter, iter::repeat_with};
 
+	use binius_core::word::Word;
 	use binius_field::{BinaryField, PackedField, Random};
-	use binius_frontend::word::Word;
 	use binius_math::{BinarySubspace, FieldBuffer};
 	use binius_verifier::{
 		and_reduction::{

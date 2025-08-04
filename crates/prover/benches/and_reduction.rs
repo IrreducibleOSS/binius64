@@ -1,7 +1,7 @@
 use std::{iter, iter::repeat_with};
 
+use binius_core::word::Word;
 use binius_field::{AESTowerField8b, Field, PackedAESBinaryField16x8b, Random};
-use binius_frontend::word::Word;
 use binius_math::{BinarySubspace, multilinear::eq::eq_ind_partial_eval};
 use binius_prover::{
 	and_reduction::{

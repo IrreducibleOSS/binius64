@@ -1,7 +1,6 @@
-use crate::{
-	compiler::{CircuitBuilder, Wire},
-	word::Word,
-};
+use binius_core::word::Word;
+
+use crate::compiler::{CircuitBuilder, Wire};
 
 const IV: [u32; 8] = [
 	0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
@@ -217,11 +216,12 @@ fn small_sigma_1(b: &CircuitBuilder, x: Wire) -> Wire {
 
 #[cfg(test)]
 mod tests {
+	use binius_core::word::Word;
+
 	use super::{Compress, State};
 	use crate::{
 		compiler::{self, Wire},
 		constraint_verifier::verify_constraints,
-		word::Word,
 	};
 
 	/// A test circuit that proves a knowledge of preimage for a given state vector S in

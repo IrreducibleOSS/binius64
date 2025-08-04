@@ -7,10 +7,9 @@
 #[cfg(test)]
 mod tests;
 
-use crate::{
-	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
-	word::Word,
-};
+use binius_core::word::Word;
+
+use crate::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
 
 /// Represents an arbitrarily large unsigned integer using a vector of `Wire`s
 ///

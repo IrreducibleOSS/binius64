@@ -1,34 +1,34 @@
-/// 64-bit equality test that returns all-1 if equal, all-0 if not equal.
-///
-/// Returns `out_mask = all-1` if `x == y`, `all-0` otherwise.
-///
-/// # Algorithm
-///
-/// The gate exploits the property that when adding `all-1` to a value:
-/// - If the value is 0: `0 + all-1 = all-1` with no carry out (MSB of cout = 0)
-/// - If the value is non-zero: `value + all-1` wraps around with carry out (MSB of cout = 1)
-///
-/// 1. Compute `diff = x ⊕ y` (which is 0 iff x == y)
-/// 2. Compute carry bits `cout` from `diff + all-1` using the constraint: `(x ⊕ y ⊕ cin) ∧
-///    (all-1 ⊕ cin) = cin ⊕ cout` where `cin = cout << 1`
-/// 3. The MSB of `cout` indicates the comparison result:
-///    - MSB = 0: no carry out, meaning `diff = 0`, so `x == y`
-///    - MSB = 1: carry out occurred, meaning `diff ≠ 0`, so `x ≠ y`
-/// 4. Invert and broadcast the MSB: `out_mask = ¬(cout SRA 63)`
-///
-/// # Constraints
-///
-/// The gate generates two AND constraints:
-/// 1. Carry propagation: `(x ⊕ y ⊕ cin) ∧ (all-1 ⊕ cin) = cin ⊕ cout`
-/// 2. Mask generation: `out_mask = (cout SRA 63) ⊕ all-1`
-use crate::{
-	compiler::{
-		circuit,
-		constraint_builder::{ConstraintBuilder, empty, sar, sll, xor2, xor3},
-		gate::opcode::OpcodeShape,
-		gate_graph::{Gate, GateData, GateParam},
-	},
-	word::Word,
+//! 64-bit equality test that returns all-1 if equal, all-0 if not equal.
+//!
+//! Returns `out_mask = all-1` if `x == y`, `all-0` otherwise.
+//!
+//! # Algorithm
+//!
+//! The gate exploits the property that when adding `all-1` to a value:
+//! - If the value is 0: `0 + all-1 = all-1` with no carry out (MSB of cout = 0)
+//! - If the value is non-zero: `value + all-1` wraps around with carry out (MSB of cout = 1)
+//!
+//! 1. Compute `diff = x ⊕ y` (which is 0 iff x == y)
+//! 2. Compute carry bits `cout` from `diff + all-1` using the constraint: `(x ⊕ y ⊕ cin) ∧ (all-1 ⊕
+//!    cin) = cin ⊕ cout` where `cin = cout << 1`
+//! 3. The MSB of `cout` indicates the comparison result:
+//!    - MSB = 0: no carry out, meaning `diff = 0`, so `x == y`
+//!    - MSB = 1: carry out occurred, meaning `diff ≠ 0`, so `x ≠ y`
+//! 4. Invert and broadcast the MSB: `out_mask = ¬(cout SRA 63)`
+//!
+//! # Constraints
+//!
+//! The gate generates two AND constraints:
+//! 1. Carry propagation: `(x ⊕ y ⊕ cin) ∧ (all-1 ⊕ cin) = cin ⊕ cout`
+//! 2. Mask generation: `out_mask = (cout SRA 63) ⊕ all-1`
+
+use binius_core::word::Word;
+
+use crate::compiler::{
+	circuit,
+	constraint_builder::{ConstraintBuilder, empty, sar, sll, xor2, xor3},
+	gate::opcode::OpcodeShape,
+	gate_graph::{Gate, GateData, GateParam},
 };
 
 pub fn shape() -> OpcodeShape {

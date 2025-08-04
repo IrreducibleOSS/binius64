@@ -1,7 +1,6 @@
-use crate::{
-	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
-	word::Word,
-};
+use binius_core::word::Word;
+
+use crate::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
 
 /// Verifies that a slice is correctly extracted from an input byte array.
 ///

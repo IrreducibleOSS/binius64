@@ -3,16 +3,16 @@ use std::{
 	rc::Rc,
 };
 
-use cranelift_entity::{PrimaryMap, SecondaryMap};
-
-use crate::{
-	compiler::{
-		circuit::Circuit,
-		gate_graph::{ConstPool, GateGraph, WireKind},
-		pathspec::{PathSpec, PathSpecTree},
-	},
+use binius_core::{
 	constraint_system::{ValueIndex, ValueVecLayout},
 	word::Word,
+};
+use cranelift_entity::{PrimaryMap, SecondaryMap};
+
+use crate::compiler::{
+	circuit::Circuit,
+	gate_graph::{ConstPool, GateGraph, WireKind},
+	pathspec::{PathSpec, PathSpecTree},
 };
 
 mod gate;

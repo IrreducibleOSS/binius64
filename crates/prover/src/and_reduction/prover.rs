@@ -274,8 +274,8 @@ where
 mod test {
 	use std::{iter, iter::repeat_with};
 
+	use binius_core::word::Word;
 	use binius_field::{AESTowerField8b, PackedAESBinaryField16x8b};
-	use binius_frontend::word::Word;
 	use binius_math::{BinarySubspace, multilinear::evaluate::evaluate};
 	use binius_transcript::{ProverTranscript, fiat_shamir::CanSample};
 	use binius_verifier::{
