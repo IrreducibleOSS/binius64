@@ -1,5 +1,6 @@
 // Copyright 2023-2025 Irreducible Inc.
 
+pub mod affine_inverse_mlecheck;
 pub mod batch;
 pub mod bivariate_product;
 pub mod bivariate_product_mle;
