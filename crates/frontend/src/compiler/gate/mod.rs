@@ -21,6 +21,7 @@ pub mod iadd_cin_cout;
 pub mod icmp_eq;
 pub mod icmp_ult;
 pub mod imul;
+pub mod isub_bin_bout;
 pub mod rotr32;
 pub mod shl;
 pub mod shr;
@@ -34,6 +35,7 @@ pub fn constrain(gate: Gate, graph: &GateGraph, builder: &mut ConstraintBuilder)
 		Opcode::Bor => bor::constrain(gate, data, builder),
 		Opcode::IaddCinCout => iadd_cin_cout::constrain(gate, data, builder),
 		Opcode::Iadd32 => iadd32::constrain(gate, data, builder),
+		Opcode::IsubBinBout => isub_bin_bout::constrain(gate, data, builder),
 		Opcode::Shr32 => shr32::constrain(gate, data, builder),
 		Opcode::Rotr32 => rotr32::constrain(gate, data, builder),
 		Opcode::AssertEq => assert_eq::constrain(gate, data, builder),
@@ -59,6 +61,7 @@ pub fn evaluate(gate: Gate, graph: &GateGraph, w: &mut circuit::WitnessFiller) {
 		Opcode::Bor => bor::evaluate(gate, data, w),
 		Opcode::IaddCinCout => iadd_cin_cout::evaluate(gate, data, w),
 		Opcode::Iadd32 => iadd32::evaluate(gate, data, w),
+		Opcode::IsubBinBout => isub_bin_bout::evaluate(gate, data, w),
 		Opcode::Shr32 => shr32::evaluate(gate, data, w),
 		Opcode::Rotr32 => rotr32::evaluate(gate, data, w),
 		Opcode::AssertEq => assert_eq::evaluate(gate, data, assertion_path, w),
