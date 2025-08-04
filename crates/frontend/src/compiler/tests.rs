@@ -154,6 +154,23 @@ fn test_iadd_cin_cout_zero() {
 	assert_eq!(w[cout_wire], Word(0));
 }
 
+#[test]
+fn test_isub_bin_bout_from_zero() {
+	let builder = CircuitBuilder::new();
+
+	let a = builder.add_constant_64(0);
+	let b = builder.add_constant_64(u64::MAX);
+	let bin_wire = builder.add_constant(Word::ONE << 63);
+	let (diff_wire, bout_wire) = builder.isub_bin_bout(a, b, bin_wire);
+
+	let circuit = builder.build();
+	let mut w = circuit.new_witness_filler();
+	circuit.populate_wire_witness(&mut w).unwrap();
+
+	assert_eq!(w[diff_wire], Word(0));
+	assert_eq!(w[bout_wire], Word(u64::MAX));
+}
+
 fn prop_check_icmp_ult(a: u64, b: u64, expected_result: Word) {
 	let builder = CircuitBuilder::new();
 	let a_wire = builder.add_constant_64(a);

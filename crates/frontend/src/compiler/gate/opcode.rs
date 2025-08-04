@@ -12,6 +12,7 @@ pub enum Opcode {
 	// Arithmetic
 	IaddCinCout,
 	Iadd32,
+	IsubBinBout,
 	Imul,
 
 	// Shifts
@@ -53,6 +54,7 @@ impl Opcode {
 			// Arithmetic
 			Opcode::IaddCinCout => gate::iadd_cin_cout::shape(),
 			Opcode::Iadd32 => gate::iadd32::shape(),
+			Opcode::IsubBinBout => gate::isub_bin_bout::shape(),
 			Opcode::Imul => gate::imul::shape(),
 
 			// Shifts

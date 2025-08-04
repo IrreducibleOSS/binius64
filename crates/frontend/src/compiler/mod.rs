@@ -287,6 +287,24 @@ impl CircuitBuilder {
 		(sum, cout)
 	}
 
+	/// 64-bit subtraction with borrow input and output.
+	///
+	/// Performs full 64-bit unsigned subtraction of two wires plus a borrow input.
+	///
+	/// Returns (diff, borrow_out) where diff is the 64-bit result and borrow_out
+	/// indicates underflow.
+	///
+	/// # Cost
+	///
+	/// 2 AND constraints.
+	pub fn isub_bin_bout(&self, a: Wire, b: Wire, bin: Wire) -> (Wire, Wire) {
+		let diff = self.add_internal();
+		let bout = self.add_internal();
+		let mut graph = self.graph_mut();
+		graph.emit_gate(self.current_path, Opcode::IsubBinBout, [a, b, bin], [diff, bout]);
+		(diff, bout)
+	}
+
 	pub fn rotr_32(&self, x: Wire, n: u32) -> Wire {
 		assert!(n < 32, "rotate amount n={n} out of range");
 		let z = self.add_internal();

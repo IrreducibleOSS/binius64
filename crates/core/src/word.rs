@@ -98,6 +98,23 @@ impl Word {
 		(Word(sum), Word(cout))
 	}
 
+	/// Performs 64-bit subtraction with borrow input bit.
+	///
+	/// bin is a borrow-in from the previous subtraction. Since it can only affect the LSB only, the
+	/// bin could be 1 if there is borrow over, or 0 otherwise.
+	///
+	/// Returns (diff, borrow_out) where ith borrow_out bit is set to one if there is a borrow out
+	/// at that bit position.
+	pub fn isub_bin_bout(self, rhs: Word, bin: Word) -> (Word, Word) {
+		debug_assert!(bin == Word::ZERO || bin == Word::ONE, "bin must be 0 or 1");
+		let Word(lhs) = self;
+		let Word(rhs) = rhs;
+		let Word(bin) = bin;
+		let diff = lhs.wrapping_sub(rhs).wrapping_sub(bin);
+		let bout = (!lhs & rhs) | (!(lhs ^ rhs) & diff);
+		(Word(diff), Word(bout))
+	}
+
 	pub fn shr_32(self, n: u32) -> Word {
 		let Word(value) = self;
 		// Shift right logically by n bits and mask with 32-bit mask
