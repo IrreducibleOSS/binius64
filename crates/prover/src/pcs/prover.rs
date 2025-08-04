@@ -235,7 +235,9 @@ where
 
 #[cfg(test)]
 mod test {
-	use binius_field::{ExtensionField, Field, PackedExtension, PackedField};
+	use binius_field::{
+		ExtensionField, Field, PackedBinaryGhash2x128b, PackedExtension, PackedField,
+	};
 	use binius_math::{
 		FieldBuffer, ReedSolomonCode, inner_product::inner_product,
 		multilinear::eq::eq_ind_partial_eval, ntt::SingleThreadedNTT, test_utils::random_scalars,
@@ -356,6 +358,8 @@ mod test {
 
 	#[test]
 	fn test_ring_switched_pcs_valid_proof() {
+		type P = PackedBinaryGhash2x128b;
+
 		let mut rng = StdRng::from_seed([0; 32]);
 		let n_vars = 12;
 		let packing_degree = <B128 as ExtensionField<B1>>::LOG_DEGREE;
@@ -383,7 +387,7 @@ mod test {
 				.collect_vec(),
 		);
 
-		match run_ring_switched_pcs_prove_and_verify::<B128>(
+		match run_ring_switched_pcs_prove_and_verify::<P>(
 			packed_mle,
 			evaluation_point,
 			evaluation_claim,
