@@ -576,7 +576,6 @@ mod test {
 
 	#[test]
 	fn test_fri_commit_packing_width_4() {
-		// Test that FRI commitment and verification works with packing width 4
 		let mut rng = StdRng::from_seed([0; 32]);
 
 		type P = PackedBinaryGhash4x128b;
@@ -584,13 +583,11 @@ mod test {
 		const LOG_INV_RATE: usize = 1;
 		const NUM_TEST_QUERIES: usize = 3;
 
-		// Create a simple polynomial
 		let log_dimension = 5;
 		let n_scalars = 1 << log_dimension;
 		let scalars = random_scalars::<B128>(&mut rng, n_scalars);
 		let packed_buffer: FieldBuffer<P> = FieldBuffer::from_values(&scalars).unwrap();
 
-		// Set up FRI parameters
 		let merkle_prover =
 			BinaryMerkleTreeProver::<B128, StdDigest, _>::new(StdCompression::default());
 		let committed_rs_code = ReedSolomonCode::<B128>::new(log_dimension, LOG_INV_RATE).unwrap();
@@ -601,7 +598,6 @@ mod test {
 			FRIParams::new(committed_rs_code, fri_log_batch_size, fri_arities, NUM_TEST_QUERIES)
 				.unwrap();
 
-		// Commit using FRI
 		let ntt = SingleThreadedNTT::new(fri_params.rs_code().log_len()).unwrap();
 
 		let commit_result =
