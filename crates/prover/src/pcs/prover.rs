@@ -314,7 +314,6 @@ mod test {
 		evaluation_claim: B128,
 	) -> Result<(), Box<dyn std::error::Error>>
 	where
-		// F: BinaryField + ExtensionField<B1> + PackedExtension<B1> + PackedField<Scalar = F>,
 		P: PackedField<Scalar = B128> + PackedExtension<B128> + PackedExtension<B1>,
 	{
 		const LOG_INV_RATE: usize = 1;
