@@ -5,8 +5,19 @@ use binius_frontend::{
 	compiler,
 	compiler::Wire,
 };
+use clap::Parser;
+
+#[derive(Parser, Debug)]
+#[command(name = "sha256")]
+#[command(about = "SHA256 compression function example", long_about = None)]
+struct Args {
+	/// Log of the inverse rate for the proof system
+	#[arg(short = 'l', long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..))]
+	log_inv_rate: u32,
+}
 
 fn main() {
+	let args = Args::parse();
 	let _tracing_guard = tracing_profile::init_tracing().unwrap();
 
 	let build_scope = tracing::info_span!("Building circuit").entered();
@@ -38,9 +49,9 @@ fn main() {
 	let circuit = circuit.build();
 	drop(build_scope);
 
-	const LOG_INV_RATE: usize = 1;
+	let log_inv_rate = args.log_inv_rate as usize;
 	let cs = circuit.constraint_system().clone();
-	let (verifier, prover) = setup(cs, LOG_INV_RATE).unwrap();
+	let (verifier, prover) = setup(cs, log_inv_rate).unwrap();
 
 	let witness = tracing::info_span!("Generating witness").in_scope(|| {
 		let mut w = circuit.new_witness_filler();
