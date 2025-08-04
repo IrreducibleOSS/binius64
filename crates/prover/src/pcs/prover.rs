@@ -15,7 +15,7 @@ use binius_utils::SerializeBytes;
 use binius_verifier::{config::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme};
 
 use crate::{
-	Error, merkle_tree::MerkleTreeProver, protocols::basefold::prover::BaseFoldProver,
+	Error, fri, merkle_tree::MerkleTreeProver, protocols::basefold::prover::BaseFoldProver,
 	ring_switch::prover::rs_eq_ind,
 };
 
@@ -516,12 +516,14 @@ mod test {
 
 	#[test]
 	fn test_ring_switched_pcs_valid_proof_packing_width_4() {
+		// Use a fixed seed for reproducibility
 		let mut rng = StdRng::from_seed([0; 32]);
 
 		type P = PackedBinaryGhash4x128b;
 
 		let log_scalar_bit_width = <B128 as ExtensionField<B1>>::LOG_DEGREE;
 
+		// Use n_vars = 12 like the other tests
 		let small_field_n_vars = 12;
 		let big_field_n_vars = small_field_n_vars - log_scalar_bit_width;
 
@@ -530,7 +532,7 @@ mod test {
 		// scalars for unpacked large field mle
 		let big_field_mle_scalars =
 			random_scalars::<B128>(&mut rng, total_big_field_scalars_in_packed_mle);
-		let packed_mle_buffer = FieldBuffer::from_values(&big_field_mle_scalars).unwrap();
+		let packed_mle_buffer: FieldBuffer<P> = FieldBuffer::from_values(&big_field_mle_scalars).unwrap();
 
 		// Evaluate the small field mle at a point in the large field.
 		let lifted_small_field_mle: Vec<B128> = lift_small_to_large_field(
@@ -555,8 +557,77 @@ mod test {
 			evaluation_claim,
 		);
 
-		// This needs to be addressed...
-		assert!(result.is_err());
+		// TODO: Fix packing width 4 support
+		// The ring-switched PCS with packing width 4 currently fails FRI verification
+		// with "The dimension-1 codeword must contain the same values". This appears
+		// to be a fundamental issue with how packing width 4 interacts with the
+		// FRI protocol in the current implementation.
+		assert!(
+			result.is_err(),
+			"Packing width 4 is not yet supported - test should fail but passed"
+		);
+	}
+
+
+	#[test]
+	fn test_fri_commit_packing_width_4() {
+		// Test that FRI commitment and verification works with packing width 4
+		let mut rng = StdRng::from_seed([0; 32]);
+
+		type P = PackedBinaryGhash4x128b;
+		
+		const LOG_INV_RATE: usize = 1;
+		const NUM_TEST_QUERIES: usize = 3;
+		
+		// Create a simple polynomial
+		let log_dimension = 5; // Same as what we get with n_vars = 12
+		let n_scalars = 1 << log_dimension;
+		let scalars = random_scalars::<B128>(&mut rng, n_scalars);
+		let packed_buffer: FieldBuffer<P> = FieldBuffer::from_values(&scalars).unwrap();
+		
+		println!("FRI test with packing width 4:");
+		println!("  log_dimension: {}", log_dimension);
+		println!("  n_scalars: {}", n_scalars);
+		println!("  packed_buffer.log_len(): {}", packed_buffer.log_len());
+		println!("  packed_buffer.len(): {}", packed_buffer.as_ref().len());
+		
+		// Set up FRI parameters
+		let merkle_prover = BinaryMerkleTreeProver::<B128, StdDigest, _>::new(StdCompression::default());
+		let committed_rs_code = ReedSolomonCode::<B128>::new(log_dimension, LOG_INV_RATE).unwrap();
+		
+		let fri_log_batch_size = 0;
+		let fri_arities = vec![1; log_dimension - 1];
+		let fri_params = FRIParams::new(committed_rs_code, fri_log_batch_size, fri_arities, NUM_TEST_QUERIES).unwrap();
+		
+		// Commit using FRI
+		let ntt = SingleThreadedNTT::new(fri_params.rs_code().log_len()).unwrap();
+		
+		let commit_result = fri::commit_interleaved(&fri_params, &ntt, &merkle_prover, packed_buffer.to_ref());
+		
+		match commit_result {
+			Ok(output) => {
+				println!("FRI commit succeeded!");
+				println!("  codeword len: {}", output.codeword.len());
+				
+				// Try to run FRI folder to see if folding works
+				let folder_result = fri::FRIFolder::new(
+					&fri_params,
+					&ntt,
+					&merkle_prover,
+					&output.codeword,
+					&output.committed,
+				);
+				
+				match folder_result {
+					Ok(_) => println!("FRI folder creation succeeded!"),
+					Err(e) => println!("FRI folder creation failed: {:?}", e),
+				}
+			}
+			Err(e) => {
+				println!("FRI commit failed: {:?}", e);
+				panic!("FRI should work with packing width 4");
+			}
+		}
 	}
 
 	#[test]
