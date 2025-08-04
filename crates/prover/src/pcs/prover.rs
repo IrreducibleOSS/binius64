@@ -101,7 +101,7 @@ where
 		// basis decompose/recombine s_hat_v across opposite dimension
 		let s_hat_u = <TensorAlgebra<B1, F>>::new(s_hat_v).transpose().elems;
 
-		let r_double_prime = transcript.sample_vec(scalar_bit_width);
+		let r_double_prime: Vec<F> = transcript.sample_vec(scalar_bit_width);
 
 		let eq_r_double_prime = eq_ind_partial_eval::<F>(r_double_prime.as_ref());
 
@@ -225,8 +225,8 @@ where
 		MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 		VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 	{
-		let packing_degree = <F as ExtensionField<B1>>::LOG_DEGREE;
-		let (_, eval_point_high) = self.evaluation_point.split_at(packing_degree);
+		let scalar_bit_width = <F as ExtensionField<B1>>::LOG_DEGREE;
+		let (_, eval_point_high) = self.evaluation_point.split_at(scalar_bit_width);
 
 		let rs_eq_ind: FieldBuffer<P> =
 			FieldBuffer::from_values(rs_eq_ind::<F>(r_double_prime, eval_point_high).as_ref())
@@ -254,7 +254,7 @@ where
 #[cfg(test)]
 mod test {
 	use binius_field::{
-		BinaryField, ExtensionField, Field, PackedBinaryGhash2x128b, PackedBinaryGhash4x128b,
+		ExtensionField, Field, PackedBinaryGhash2x128b, PackedBinaryGhash4x128b,
 		PackedExtension, PackedField,
 	};
 	use binius_math::{
@@ -333,26 +333,17 @@ mod test {
 		// Commit packed mle codeword
 		let ntt = SingleThreadedNTT::new(fri_params.rs_code().log_len())?;
 
-		println!("packed_mle: {:?}", packed_mle.to_ref());
-
 		let CommitOutput {
 			commitment: codeword_commitment,
 			committed: codeword_committed,
 			codeword,
 		} = fri::commit_interleaved(&fri_params, &ntt, &merkle_prover, packed_mle.to_ref())?;
 
-		// println!("\n\ncodeword_commitment: {:?}", codeword_commitment);
-		println!("\n\ncodeword: {:?}", codeword);
-
 		let mut prover_challenger = ProverTranscript::new(StdChallenger::default());
 		prover_challenger.message().write(&codeword_commitment);
 
 		// Convert packed_mle to PackedSubfield view for OneBitPCSProver
 		let packed_subfield_buffer = cast_bases_to_buffer(&packed_mle);
-
-		println!("\n\npacked_subfield_buffer: {:?}", packed_subfield_buffer);
-
-		
 
 		let ring_switch_pcs_prover = OneBitPCSProver::new(
 			packed_subfield_buffer,
@@ -544,13 +535,8 @@ mod test {
 		let total_big_field_scalars_in_packed_mle = 1 << big_field_n_vars;
 
 		// scalars for unpacked large field mle
-		// let big_field_mle_scalars =
-		// 	random_scalars::<B128>(&mut rng, total_big_field_scalars_in_packed_mle);
-
-		let big_field_mle_scalars: Vec<B128> = (0..total_big_field_scalars_in_packed_mle).map(|i| {
-			B128::from(0xffffffffffffffffffffffffffffffff as u128)
-		}
-		).collect();
+		let big_field_mle_scalars =
+			random_scalars::<B128>(&mut rng, total_big_field_scalars_in_packed_mle);
 		let packed_mle_buffer = FieldBuffer::from_values(&big_field_mle_scalars).unwrap();
 
 		// Evaluate the small field mle at a point in the large field.
