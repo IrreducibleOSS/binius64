@@ -568,7 +568,7 @@ mod test {
 			evaluation_claim,
 		) {
 			Ok(()) => {}
-			Err(e) => panic!("expected valid proof, got error: {:?}", e),
+			Err(_) => panic!("expected valid proof"),
 		}
 	}
 
