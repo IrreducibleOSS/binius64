@@ -350,11 +350,7 @@ mod tests {
 	fn test_unpack_if_possible_mut_2() {
 		let mut slice = [PackedBinaryField2x8b::zero(); 4];
 
-		println!("slice: {:?}", slice);
-
 		let len = unpack_if_possible_mut(&mut slice, |slice| slice.len(), |slice| slice.len());
 		assert_eq!(len, 8);
-
-		println!("slice: {:?}", slice);
 	}
 }
