@@ -92,16 +92,17 @@ where
 		MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 		VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 	{
-		let scalar_bit_width = <F as ExtensionField<B1>>::LOG_DEGREE;
+		let log_scalar_bit_width = <F as ExtensionField<B1>>::LOG_DEGREE;
 
 		// packed mle partial evals of at high variables
-		let s_hat_v = Self::initialize_proof(&self.mle, &self.evaluation_point, scalar_bit_width)?;
+		let s_hat_v =
+			Self::initialize_proof(&self.mle, &self.evaluation_point, log_scalar_bit_width)?;
 		transcript.message().write_scalar_slice(&s_hat_v);
 
 		// basis decompose/recombine s_hat_v across opposite dimension
 		let s_hat_u = <TensorAlgebra<B1, F>>::new(s_hat_v).transpose().elems;
 
-		let r_double_prime = transcript.sample_vec(scalar_bit_width);
+		let r_double_prime = transcript.sample_vec(log_scalar_bit_width);
 
 		let eq_r_double_prime = eq_ind_partial_eval::<F>(r_double_prime.as_ref());
 
@@ -141,7 +142,7 @@ where
 	fn initialize_proof(
 		mle: &FieldBuffer<PackedSubfield<P, B1>>,
 		evaluation_point: &[F],
-		scalar_bit_width: usize,
+		log_scalar_bit_width: usize,
 	) -> Result<Vec<F>, Error>
 	where
 		F: BinaryField,
@@ -149,7 +150,7 @@ where
 	{
 		let mle: &[<P as PackedExtension<B1>>::PackedSubfield] = mle.as_ref();
 
-		let (_, eval_point_high): (&[F], &[F]) = evaluation_point.split_at(scalar_bit_width);
+		let (_, eval_point_high): (&[F], &[F]) = evaluation_point.split_at(log_scalar_bit_width);
 
 		// Partially evaluated eq is represented as a buffer of the scalars that make
 		// up the packed field elements of the mle.
@@ -158,7 +159,7 @@ where
 
 		// partial evals at high variables, since this is a partial eval, it will not
 		// be a packed field element since it deals with the internal scalars
-		let mut s_hat_v = vec![F::zero(); 1 << scalar_bit_width];
+		let mut s_hat_v = vec![F::zero(); 1 << log_scalar_bit_width];
 
 		let bits_per_packed_elem: usize = mle[0].iter().count();
 		let bits_per_variable: usize = bits_per_packed_elem / P::WIDTH;
@@ -224,8 +225,8 @@ where
 		MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 		VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 	{
-		let scalar_bit_width = <F as ExtensionField<B1>>::LOG_DEGREE;
-		let (_, eval_point_high) = self.evaluation_point.split_at(scalar_bit_width);
+		let log_scalar_bit_width = <F as ExtensionField<B1>>::LOG_DEGREE;
+		let (_, eval_point_high) = self.evaluation_point.split_at(log_scalar_bit_width);
 
 		let rs_eq_ind: FieldBuffer<P> =
 			FieldBuffer::from_values(rs_eq_ind::<F>(r_double_prime, eval_point_high).as_ref())
@@ -380,8 +381,8 @@ mod test {
 		let mut rng = StdRng::from_seed([0; 32]);
 
 		let n_vars = 12;
-		let scalar_bit_width = <B128 as ExtensionField<B1>>::LOG_DEGREE;
-		let big_field_n_vars = n_vars - scalar_bit_width;
+		let log_scalar_bit_width = <B128 as ExtensionField<B1>>::LOG_DEGREE;
+		let big_field_n_vars = n_vars - log_scalar_bit_width;
 
 		let packed_mle_values = random_scalars::<B128>(&mut rng, 1 << big_field_n_vars);
 
@@ -418,8 +419,8 @@ mod test {
 		let mut rng = StdRng::from_seed([0; 32]);
 
 		let n_vars = 12;
-		let scalar_bit_width = <B128 as ExtensionField<B1>>::LOG_DEGREE;
-		let big_field_n_vars = n_vars - scalar_bit_width;
+		let log_scalar_bit_width = <B128 as ExtensionField<B1>>::LOG_DEGREE;
+		let big_field_n_vars = n_vars - log_scalar_bit_width;
 
 		let packed_mle_values = random_scalars::<B128>(&mut rng, 1 << big_field_n_vars);
 		let packed_mle =
@@ -444,10 +445,10 @@ mod test {
 		let mut rng = StdRng::from_seed([0; 32]);
 
 		type P = PackedBinaryGhash2x128b;
-		let scalar_bit_width = <B128 as ExtensionField<B1>>::LOG_DEGREE;
+		let log_scalar_bit_width = <B128 as ExtensionField<B1>>::LOG_DEGREE;
 
 		let small_field_n_vars = 12;
-		let big_field_n_vars = small_field_n_vars - scalar_bit_width;
+		let big_field_n_vars = small_field_n_vars - log_scalar_bit_width;
 
 		let total_big_field_scalars_in_packed_mle = 1 << big_field_n_vars;
 
@@ -488,10 +489,10 @@ mod test {
 		let mut rng = StdRng::from_seed([0; 32]);
 
 		type P = PackedBinaryGhash2x128b;
-		let scalar_bit_width = <B128 as ExtensionField<B1>>::LOG_DEGREE;
+		let log_scalar_bit_width = <B128 as ExtensionField<B1>>::LOG_DEGREE;
 
 		let small_field_n_vars = 12;
-		let big_field_n_vars = small_field_n_vars - scalar_bit_width;
+		let big_field_n_vars = small_field_n_vars - log_scalar_bit_width;
 
 		let total_big_field_scalars_in_packed_mle = 1 << big_field_n_vars;
 
@@ -520,10 +521,10 @@ mod test {
 
 		type P = PackedBinaryGhash4x128b;
 
-		let scalar_bit_width = <B128 as ExtensionField<B1>>::LOG_DEGREE;
+		let log_scalar_bit_width = <B128 as ExtensionField<B1>>::LOG_DEGREE;
 
 		let small_field_n_vars = 12;
-		let big_field_n_vars = small_field_n_vars - scalar_bit_width;
+		let big_field_n_vars = small_field_n_vars - log_scalar_bit_width;
 
 		let total_big_field_scalars_in_packed_mle = 1 << big_field_n_vars;
 
