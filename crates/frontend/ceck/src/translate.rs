@@ -135,14 +135,12 @@ impl Context {
 
 		let constants = self.literals.keys().map(|&lit| Word(lit)).collect();
 
-		let mut cs = ConstraintSystem::new(constants, self.value_vec_layout.clone().unwrap());
-		for constraint in and_constraints {
-			cs.add_and_constraint(constraint);
-		}
-		for constraint in mul_constraints {
-			cs.add_mul_constraint(constraint);
-		}
-		cs
+		ConstraintSystem::new(
+			constants,
+			self.value_vec_layout.clone().unwrap(),
+			and_constraints,
+			mul_constraints,
+		)
 	}
 
 	fn convert_term(&self, term: &Term) -> ShiftedValueIndex {

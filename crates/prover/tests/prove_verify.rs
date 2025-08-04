@@ -75,5 +75,5 @@ fn test_prove_verify_sha256_preimage() {
 	}
 	circuit.populate_wire_witness(&mut w).unwrap();
 
-	prove_verify(circuit.constraint_system(), w.into_value_vec())
+	prove_verify(circuit.constraint_system().clone(), w.into_value_vec())
 }

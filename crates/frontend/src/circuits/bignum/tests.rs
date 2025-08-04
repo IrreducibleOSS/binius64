@@ -105,7 +105,7 @@ fn test_mul_single_case() {
 	}
 
 	// Verify all constraints are satisfied
-	verify_constraints(&cs.constraint_system(), &w.into_value_vec()).unwrap();
+	verify_constraints(cs.constraint_system(), &w.into_value_vec()).unwrap();
 }
 
 proptest! {
@@ -155,7 +155,7 @@ proptest! {
 			);
 		}
 
-		verify_constraints(&cs.constraint_system(), &w.into_value_vec()).unwrap();
+		verify_constraints(cs.constraint_system(), &w.into_value_vec()).unwrap();
 	}
 
 	#[test]
@@ -193,7 +193,7 @@ proptest! {
 			"Multiplication failed: {a_big} * {b_big} = {result_big} (expected {expected})"
 		);
 
-		verify_constraints(&cs.constraint_system(), &w.into_value_vec()).unwrap();
+		verify_constraints(cs.constraint_system(), &w.into_value_vec()).unwrap();
 	}
 
 	#[test]
@@ -222,7 +222,7 @@ proptest! {
 			"Squaring failed: {a_big}^2 = {result_big} (expected {expected})"
 		);
 
-		verify_constraints(&cs.constraint_system(), &w.into_value_vec()).unwrap();
+		verify_constraints(cs.constraint_system(), &w.into_value_vec()).unwrap();
 	}
 
 	#[test]
@@ -248,7 +248,7 @@ proptest! {
 
 		assert_eq!(square_big, mul_big, "square(a) != mul(a,a): {square_big} != {mul_big}");
 
-		verify_constraints(&cs.constraint_system(), &w.into_value_vec()).unwrap();
+		verify_constraints(cs.constraint_system(), &w.into_value_vec()).unwrap();
 	}
 
 	#[test]
@@ -269,7 +269,7 @@ proptest! {
 		}
 
 		cs.populate_wire_witness(&mut w).unwrap();
-		verify_constraints(&cs.constraint_system(), &w.into_value_vec()).unwrap();
+		verify_constraints(cs.constraint_system(), &w.into_value_vec()).unwrap();
 	}
 
 	#[test]
@@ -347,7 +347,7 @@ proptest! {
 			"ModReduce failed: {a_big} != {quotient_big} * {modulus_big} + {remainder_big}"
 		);
 
-		verify_constraints(&cs.constraint_system(), &w.into_value_vec()).unwrap();
+		verify_constraints(cs.constraint_system(), &w.into_value_vec()).unwrap();
 	}
 
 	#[test]

@@ -558,7 +558,7 @@ mod tests {
 
 		// Verify constraints
 		let cs = compiled.constraint_system();
-		verify_constraints(&cs, &witness.into_value_vec())?;
+		verify_constraints(cs, &witness.into_value_vec())?;
 
 		Ok(())
 	}
