@@ -161,7 +161,7 @@ pub fn build_monster_multilinear<F: BinaryField, P: PackedField<Scalar = F>>(
 							(&intmul_operator_data.r_x_prime_tensor, &intmul_scalars)
 						}
 					};
-					key.accumulate(&key_collection.constraint_indices, tensor)
+					key.accumulate(&key_collection.constraint_indices, tensor.as_ref())
 						* scalars[key.id as usize]
 				})
 				.sum()

@@ -3,12 +3,19 @@
 use std::{array, ops::Range};
 
 use binius_core::word::Word;
-use binius_field::{Field, PackedField};
-use binius_math::FieldBuffer;
+use binius_field::{BinaryField, Field, PackedField};
+use binius_math::{FieldBuffer, inner_product::inner_product_buffers};
+use binius_transcript::{
+	ProverTranscript,
+	fiat_shamir::{CanSample, Challenger},
+};
 use binius_utils::rayon::prelude::*;
 use binius_verifier::{
 	config::{LOG_WORD_SIZE_BITS, WORD_SIZE_BITS},
-	protocols::shift::{BITAND_ARITY, INTMUL_ARITY, SHIFT_VARIANT_COUNT},
+	protocols::{
+		shift::{BITAND_ARITY, INTMUL_ARITY, SHIFT_VARIANT_COUNT},
+		sumcheck::{SumcheckOutput, common::RoundCoeffs},
+	},
 };
 use itertools::izip;
 use tracing::instrument;
@@ -16,7 +23,11 @@ use tracing::instrument;
 use super::{
 	error::Error,
 	key_collection::{KeyCollection, Operation},
+	monster::build_h_triplet,
 	prove::OperatorData,
+};
+use crate::protocols::sumcheck::{
+	bivariate_product::BivariateProductSumcheckProver, common::SumcheckProver,
 };
 
 /// `MultilinearTriplet` holds three field buffers, corresponding to the
@@ -31,6 +42,135 @@ pub struct MultilinearTriplet<P: PackedField> {
 
 // This is the number of variables in the g (and h) multilinears of phase 1.
 const LOG_LEN: usize = LOG_WORD_SIZE_BITS + LOG_WORD_SIZE_BITS;
+
+/// Constructs the "g" multilinear triplets for both BITAND and INTMUL operations.
+/// Proves the first phase of the shift reduction.
+/// Computes the g and h multilinears and performs the sumcheck.
+#[instrument(skip_all, name = "prover_phase_1")]
+pub fn prove_phase_1<F: BinaryField, P: PackedField<Scalar = F>, C: Challenger>(
+	key_collection: &KeyCollection,
+	words: &[Word],
+	bitand_data: &OperatorData<F>,
+	intmul_data: &OperatorData<F>,
+	transcript: &mut ProverTranscript<C>,
+) -> Result<SumcheckOutput<F>, Error> {
+	let [g_triplet_bitand, g_triplet_intmul]: [MultilinearTriplet<P>; 2] =
+		build_g_triplet(words, key_collection, bitand_data, intmul_data)?;
+
+	let h_triplet_bitand = build_h_triplet(bitand_data.r_zhat_prime)?;
+	let h_triplet_intmul = build_h_triplet(intmul_data.r_zhat_prime)?;
+
+	run_phase_1_sumcheck(
+		[g_triplet_bitand, g_triplet_intmul],
+		[h_triplet_bitand, h_triplet_intmul],
+		[bitand_data.batched_eval(), intmul_data.batched_eval()],
+		transcript,
+	)
+}
+
+/// Runs the phase 1 sumcheck protocol for shift constraint verification.
+///
+/// Executes a sumcheck over bivariate products of g and h multilinear triplets for each
+/// operation (BITAND, INTMUL). The protocol proves that the sum of g·h products across
+/// all shift variants equals the claimed batched evaluation.
+///
+/// # Protocol Structure
+///
+/// For each operation, creates 3 bivariate product sumcheck provers (one per shift variant):
+/// - g_sll · h_sll with claim `sll_sum`
+/// - g_srl · h_srl with claim `srl_sum`
+/// - g_sra · h_sra with claim `sar_sum = total_sum - sll_sum - srl_sum`
+///
+/// The g triplets incorporate batching randomness (lambda weighting), while h triplets
+/// encode the shift operation behavior at the univariate challenge points.
+///
+/// # Parameters
+///
+/// - `g_triplets`: g multilinear triplets for each operation (witness-dependent)
+/// - `h_triplets`: h multilinear triplets for each operation (challenge-dependent)
+/// - `sums`: Expected total sums for each operation from lambda-weighted evaluation claims
+///
+/// # Returns
+///
+/// `SumcheckOutput` containing the challenge vector and final evaluation `gamma`
+#[instrument(skip_all, name = "run_sumcheck")]
+fn run_phase_1_sumcheck<
+	F: Field,
+	P: PackedField<Scalar = F>,
+	C: Challenger,
+	const OPERATOR_COUNT: usize,
+>(
+	g_triplets: [MultilinearTriplet<P>; OPERATOR_COUNT],
+	h_triplets: [MultilinearTriplet<P>; OPERATOR_COUNT],
+	sums: [F; OPERATOR_COUNT],
+	transcript: &mut ProverTranscript<C>,
+) -> Result<SumcheckOutput<F>, Error> {
+	// Build `BivariateProductSumcheckProver` provers.
+	let mut provers = izip!(g_triplets, h_triplets, sums)
+		.flat_map(|(g_triplet, h_triplet, sum)| {
+			let sll_sum = inner_product_buffers(&g_triplet.sll, &h_triplet.sll);
+			let slr_sum = inner_product_buffers(&g_triplet.srl, &h_triplet.srl);
+			let sar_sum = sum - sll_sum - slr_sum;
+			[
+				(g_triplet.sll, h_triplet.sll, sll_sum),
+				(g_triplet.srl, h_triplet.srl, slr_sum),
+				(g_triplet.sra, h_triplet.sra, sar_sum),
+			]
+		})
+		.map(|(left_buf, right_buf, sum)| {
+			BivariateProductSumcheckProver::new([left_buf, right_buf], sum)
+		})
+		.collect::<Result<Vec<_>, _>>()?;
+
+	// Perform the sumcheck rounds, collecting challenges.
+	let n_vars = 2 * LOG_WORD_SIZE_BITS;
+	let mut challenges = Vec::with_capacity(n_vars);
+	for _ in 0..n_vars {
+		let mut all_round_coeffs = Vec::new();
+		for prover in &mut provers {
+			all_round_coeffs.extend(prover.execute()?);
+		}
+
+		let summed_round_coeffs = all_round_coeffs
+			.into_iter()
+			.rfold(RoundCoeffs::default(), |acc, coeffs| acc + &coeffs);
+
+		let round_proof = summed_round_coeffs.truncate();
+
+		transcript
+			.message()
+			.write_scalar_slice(round_proof.coeffs());
+
+		let challenge = transcript.sample();
+		challenges.push(challenge);
+
+		for prover in &mut provers {
+			prover.fold(challenge)?;
+		}
+	}
+	challenges.reverse();
+
+	let multilinear_evals = provers
+		.into_iter()
+		.map(|prover| prover.finish())
+		.collect::<Result<Vec<Vec<F>>, _>>()?;
+
+	// Evaluate the composition polynomial to compute `gamma`.
+	let gamma = multilinear_evals
+		.into_iter()
+		.map(|prover_evals| {
+			assert_eq!(prover_evals.len(), 2);
+			let h_eval = prover_evals[0];
+			let g_eval = prover_evals[1];
+			h_eval * g_eval
+		})
+		.sum();
+
+	Ok(SumcheckOutput {
+		challenges,
+		eval: gamma,
+	})
+}
 
 /// Constructs the "g" multilinear triplets for both BITAND and INTMUL operations.
 ///
@@ -56,7 +196,6 @@ const LOG_LEN: usize = LOG_WORD_SIZE_BITS + LOG_WORD_SIZE_BITS;
 ///
 /// Used in phase 1 to construct the constant size g multilinears
 /// that will participate in the phase 1 sumcheck protocol.
-#[allow(dead_code)] // TODO: With phase 2 integration, dead code warnings will disappear.
 #[instrument(skip_all, name = "build_g_triplet")]
 fn build_g_triplet<F: Field, P: PackedField<Scalar = F>>(
 	words: &[Word],
