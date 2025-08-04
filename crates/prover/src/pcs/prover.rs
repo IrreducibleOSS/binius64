@@ -90,12 +90,15 @@ where
 		MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 		VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 	{
+		// κ, the base-2 log of the packing degree
 		let log_scalar_bit_width = <F as ExtensionField<B1>>::LOG_DEGREE;
 
-		let (_, eval_point_suffix) = self.evaluation_point.split_at(log_scalar_bit_width);
+		// eval_point_suffix is the evaluation point, skipping the first κ coordinates
+		let eval_point_suffix = &self.evaluation_point[log_scalar_bit_width..];
+		let suffix_tensor = eq_ind_partial_eval::<P>(eval_point_suffix);
 
 		// packed mle partial evals of at high variables
-		let s_hat_v = evaluate_partial_high::<_, P>(&self.mle, eval_point_suffix);
+		let s_hat_v = fold_1b_rows::<_, P>(&self.mle, &suffix_tensor);
 		transcript.message().write_scalar_slice(s_hat_v.as_ref());
 
 		// basis decompose/recombine s_hat_v across opposite dimension
@@ -198,51 +201,48 @@ where
 	}
 }
 
-/// Compute the partial evaluation of a B1-multilinear at an extension point, binding the
-/// high-index variables.
+/// Computes the linear combination of the rows of a B1 matrix by an extension field coefficient
+/// vector.
 ///
-/// This evaluation method specializes all but the bottom $\kappa$ variables of the input
-/// multilinear, where $\kappa$ is the base-2 logarithm of the extension degree.
+/// The matrix `mat` is a B1 matrix, packed in row-major order. The number of columns is equal to
+/// the extension degree of `F` over [`B1`]. The row coefficients are packed in the vector `vec`.
 ///
 /// ## Arguments
 ///
-/// * `mle` - the multilinear polynomial over [`B1`]
-/// * `evaluation_point` - the evaluation point of the small field multilinear
+/// * `mat` - the [`B1`] matrix, with `F::N_BITS` columns
+/// * `vec` - the row coefficients
 ///
 /// ## Preconditions
 ///
-/// * the number of multilinear variables must be the evaluation point length plus $\kappa$
-pub fn evaluate_partial_high<F, P>(
-	mle: &FieldBuffer<PackedSubfield<P, B1>>,
-	evaluation_point: &[F],
+/// * the length of the matrix, in `B1` elements, must equal vector length, in `F` elements, times
+///   the field extension degree
+pub fn fold_1b_rows<F, P>(
+	mat: &FieldBuffer<PackedSubfield<P, B1>>,
+	vec: &FieldBuffer<P>,
 ) -> FieldBuffer<F>
 where
 	F: BinaryField,
 	P: PackedExtension<B1> + PackedField<Scalar = F>,
 {
 	let log_scalar_bit_width = <F as ExtensionField<B1>>::LOG_DEGREE;
-	assert_eq!(mle.log_len(), log_scalar_bit_width + evaluation_point.len()); // precondition
+	assert_eq!(mat.log_len(), log_scalar_bit_width + vec.log_len()); // precondition
 
-	let mle: &[<P as PackedExtension<B1>>::PackedSubfield] = mle.as_ref();
-
-	// Partially evaluated eq is represented as a buffer of the scalars that make
-	// up the packed field elements of the mle.
-	let eq_at_high: FieldBuffer<F> = eq_ind_partial_eval::<F>(evaluation_point);
+	let mat = mat.as_ref();
 
 	// partial evals at high variables, since this is a partial eval, it will not
 	// be a packed field element since it deals with the internal scalars
 	let mut s_hat_v_buffer = FieldBuffer::zeros(log_scalar_bit_width);
 	let s_hat_v = s_hat_v_buffer.as_mut();
 
-	let bits_per_packed_elem: usize = mle[0].iter().count();
+	let bits_per_packed_elem: usize = mat[0].iter().count();
 	let bits_per_variable: usize = bits_per_packed_elem / P::WIDTH;
 
 	// combine eq w/ mle
-	for (packed_idx, packed_elem) in mle.iter().enumerate() {
+	for (packed_idx, packed_elem) in mat.iter().enumerate() {
 		for high_offset in 0..P::WIDTH {
 			// get eq index
 			let eq_idx = packed_idx * P::WIDTH + high_offset;
-			let eq_at_high_value = eq_at_high.as_ref()[eq_idx];
+			let eq_at_high_value = vec.get(eq_idx).expect("eq_idx in range");
 
 			// bit index range for where the b128 scalars are located in the packed element
 			let bit_start = high_offset * bits_per_variable;
