@@ -1,5 +1,4 @@
 use binius_core::word::Word;
-use num_bigint::BigUint;
 use num_integer::Integer;
 use proptest::prelude::*;
 
@@ -10,27 +9,27 @@ use crate::{
 };
 
 /// Returns a BigUint from u64 limbs with little-endian ordering
-fn from_u64_limbs(limbs: &[u64]) -> BigUint {
+fn from_u64_limbs(limbs: &[u64]) -> num_bigint::BigUint {
 	let mut bytes = Vec::with_capacity(limbs.len() * 8);
 	for &word in limbs {
 		bytes.extend_from_slice(&word.to_le_bytes());
 	}
-	BigUint::from_bytes_le(&bytes)
+	num_bigint::BigUint::from_bytes_le(&bytes)
 }
 
-/// Convert witness BigNum to BigUint for computation.
+/// Convert witness BigUint to num_bigint::BigUint for computation.
 ///
 /// This function is used during witness generation to extract the actual
 /// numeric value from a bignum represented as wires in the circuit.
 ///
 /// # Arguments
 /// * `w` - Witness filler containing the actual values
-/// * `bignum` - The `BigNum` to covert
+/// * `biguint` - The `BigUint` to convert
 ///
 /// # Returns
-/// The bignum value as a `BigUint`
-pub fn bignum_to_biguint(w: &WitnessFiller, bignum: &BigNum) -> BigUint {
-	let limb_vals: Vec<_> = bignum.limbs.iter().map(|&l| w[l].as_u64()).collect();
+/// The `BigUint` value as a `num_biguint::BigUint`
+pub fn biguint_to_num_biguint(w: &WitnessFiller, biguint: &BigUint) -> num_bigint::BigUint {
+	let limb_vals: Vec<_> = biguint.limbs.iter().map(|&l| w[l].as_u64()).collect();
 	from_u64_limbs(&limb_vals)
 }
 
@@ -40,10 +39,10 @@ fn test_add_overflow_detection_via_final_carry() {
 	// We'll try to add values that would overflow the allocated limbs
 	let builder = CircuitBuilder::new();
 
-	let a = BigNum {
+	let a = BigUint {
 		limbs: vec![builder.add_witness()],
 	};
-	let b = BigNum {
+	let b = BigUint {
 		limbs: vec![builder.add_witness()],
 	};
 
@@ -66,8 +65,8 @@ fn test_mul_single_case() {
 	let builder = CircuitBuilder::new();
 
 	// Create 2048-bit numbers for inputs (32 limbs)
-	let a = BigNum::new_witness(&builder, 32);
-	let b = BigNum::new_witness(&builder, 32);
+	let a = BigUint::new_witness(&builder, 32);
+	let b = BigUint::new_witness(&builder, 32);
 
 	let mul = mul(&builder, &a, &b);
 
@@ -130,8 +129,8 @@ proptest! {
 		let builder = CircuitBuilder::new();
 		let num_limbs = vals.len();
 
-		let a = BigNum::new_witness(&builder, num_limbs);
-		let b = BigNum::new_witness(&builder, num_limbs);
+		let a = BigUint::new_witness(&builder, num_limbs);
+		let b = BigUint::new_witness(&builder, num_limbs);
 
 		let result = add(&builder, &a, &b);
 
@@ -165,8 +164,8 @@ proptest! {
 	) {
 		let builder = CircuitBuilder::new();
 
-		let a = BigNum::new_inout(&builder, a_limbs.len());
-		let b = BigNum::new_inout(&builder, b_limbs.len());
+		let a = BigUint::new_inout(&builder, a_limbs.len());
+		let b = BigUint::new_inout(&builder, b_limbs.len());
 
 		let result = mul(&builder, &a, &b);
 
@@ -186,7 +185,7 @@ proptest! {
 
 		cs.populate_wire_witness(&mut w).unwrap();
 
-		let result_big = bignum_to_biguint(&w, &result);
+		let result_big = biguint_to_num_biguint(&w, &result);
 
 		assert_eq!(
 			result_big, expected,
@@ -200,7 +199,7 @@ proptest! {
 	fn test_square_with_values(a_limbs in prop::collection::vec(any::<u64>(), 1..10)) {
 		let builder = CircuitBuilder::new();
 
-		let a = BigNum::new_witness(&builder, a_limbs.len());
+		let a = BigUint::new_witness(&builder, a_limbs.len());
 		let result = square(&builder, &a);
 
 		let cs = builder.build();
@@ -215,7 +214,7 @@ proptest! {
 
 		cs.populate_wire_witness(&mut w).unwrap();
 
-		let result_big = bignum_to_biguint(&w, &result);
+		let result_big = biguint_to_num_biguint(&w, &result);
 
 		assert_eq!(
 			result_big, expected,
@@ -229,7 +228,7 @@ proptest! {
 	fn prop_square_vs_mul_equivalence(vals in prop::collection::vec(any::<u64>(), 1..=8)) {
 		let builder = CircuitBuilder::new();
 
-		let a = BigNum::new_witness(&builder, vals.len());
+		let a = BigUint::new_witness(&builder, vals.len());
 
 		let square_result = square(&builder, &a);
 		let mul_result = mul(&builder, &a, &a);
@@ -243,8 +242,8 @@ proptest! {
 
 		cs.populate_wire_witness(&mut w).unwrap();
 
-		let square_big = bignum_to_biguint(&w, &square_result);
-		let mul_big = bignum_to_biguint(&w, &mul_result);
+		let square_big = biguint_to_num_biguint(&w, &square_result);
+		let mul_big = biguint_to_num_biguint(&w, &mul_result);
 
 		assert_eq!(square_big, mul_big, "square(a) != mul(a,a): {square_big} != {mul_big}");
 
@@ -254,8 +253,8 @@ proptest! {
 	#[test]
 	fn prop_assert_eq_equal(vals in prop::collection::vec(any::<u64>(), 0..=8)) {
 		let builder = CircuitBuilder::new();
-		let a = BigNum::new_witness(&builder, vals.len());
-		let b = BigNum::new_witness(&builder, vals.len());
+		let a = BigUint::new_witness(&builder, vals.len());
+		let b = BigUint::new_witness(&builder, vals.len());
 
 		assert_eq(&builder, "prop_assert_eq", &a, &b);
 
@@ -280,8 +279,8 @@ proptest! {
 		prop_assume!(a_vals != b_vals);
 
 		let builder = CircuitBuilder::new();
-		let a = BigNum::new_witness(&builder, a_vals.len());
-		let b = BigNum::new_witness(&builder, b_vals.len());
+		let a = BigUint::new_witness(&builder, a_vals.len());
+		let b = BigUint::new_witness(&builder, b_vals.len());
 
 		assert_eq(&builder, "prop_assert_eq_different", &a, &b);
 
@@ -307,11 +306,11 @@ proptest! {
 		prop_assume!(!mod_vals.iter().all(|&v| v == 0));
 
 		let builder = CircuitBuilder::new();
-		let a = BigNum::new_witness(&builder, a_vals.len());
-		let modulus = BigNum::new_witness(&builder, mod_vals.len());
+		let a = BigUint::new_witness(&builder, a_vals.len());
+		let modulus = BigUint::new_witness(&builder, mod_vals.len());
 
-		let quotient = BigNum::new_witness(&builder, a.limbs.len());
-		let remainder = BigNum::new_witness(&builder, modulus.limbs.len());
+		let quotient = BigUint::new_witness(&builder, a.limbs.len());
+		let remainder = BigUint::new_witness(&builder, modulus.limbs.len());
 
 		let circuit = ModReduce::new(&builder, a, modulus, quotient, remainder);
 
@@ -336,10 +335,10 @@ proptest! {
 
 		cs.populate_wire_witness(&mut w).unwrap();
 
-		let a_big = bignum_to_biguint(&w, &circuit.a);
-		let modulus_big = bignum_to_biguint(&w, &circuit.modulus);
-		let quotient_big = bignum_to_biguint(&w, &circuit.quotient);
-		let remainder_big = bignum_to_biguint(&w, &circuit.remainder);
+		let a_big = biguint_to_num_biguint(&w, &circuit.a);
+		let modulus_big = biguint_to_num_biguint(&w, &circuit.modulus);
+		let quotient_big = biguint_to_num_biguint(&w, &circuit.quotient);
+		let remainder_big = biguint_to_num_biguint(&w, &circuit.remainder);
 
 		let reconstructed = &quotient_big * &modulus_big + &remainder_big;
 		assert_eq!(
@@ -374,10 +373,10 @@ proptest! {
 
 		let builder = CircuitBuilder::new();
 
-		let a = BigNum::new_witness(&builder, a_vals.len());
-		let modulus = BigNum::new_witness(&builder, mod_vals.len());
-		let quotient = BigNum::new_witness(&builder, a_vals.len());
-		let remainder = BigNum::new_witness(&builder, mod_vals.len());
+		let a = BigUint::new_witness(&builder, a_vals.len());
+		let modulus = BigUint::new_witness(&builder, mod_vals.len());
+		let quotient = BigUint::new_witness(&builder, a_vals.len());
+		let remainder = BigUint::new_witness(&builder, mod_vals.len());
 
 		let circuit = ModReduce::new(&builder, a, modulus, quotient, remainder);
 
