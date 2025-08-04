@@ -92,13 +92,16 @@ where
 	{
 		let log_scalar_bit_width = <F as ExtensionField<B1>>::LOG_DEGREE;
 
+		let (_, eval_point_suffix) = self.evaluation_point.split_at(log_scalar_bit_width);
+
 		// packed mle partial evals of at high variables
-		let s_hat_v =
-			Self::initialize_proof(&self.mle, &self.evaluation_point, log_scalar_bit_width)?;
-		transcript.message().write_scalar_slice(&s_hat_v);
+		let s_hat_v = evaluate_partial_high::<_, P>(&self.mle, eval_point_suffix);
+		transcript.message().write_scalar_slice(s_hat_v.as_ref());
 
 		// basis decompose/recombine s_hat_v across opposite dimension
-		let s_hat_u = <TensorAlgebra<B1, F>>::new(s_hat_v).transpose().elems;
+		let s_hat_u = <TensorAlgebra<B1, F>>::new(s_hat_v.as_ref().to_vec())
+			.transpose()
+			.elems;
 
 		let r_double_prime = transcript.sample_vec(log_scalar_bit_width);
 
@@ -122,67 +125,6 @@ where
 		big_field_basefold_prover.prove_with_transcript(transcript)?;
 
 		Ok(())
-	}
-
-	/// Initializes the proof by computing the initial message to the verifier.
-	///
-	/// Initializes the proof by computing the initial message, which is the partial
-	/// eval of the high variables of the packed multilinear at the evaluation point.
-	///
-	/// ## Arguments
-	///
-	/// * `mle` - the multilinear polynomial with elements in the large field
-	/// * `evaluation_point` - the evaluation point of the small field multilinear
-	///
-	/// ## Returns
-	///
-	/// * `s_hat_v` - the initial message to the verifier
-	fn initialize_proof(
-		mle: &FieldBuffer<PackedSubfield<P, B1>>,
-		evaluation_point: &[F],
-		log_scalar_bit_width: usize,
-	) -> Result<Vec<F>, Error>
-	where
-		F: BinaryField,
-		P: PackedExtension<B1> + PackedField<Scalar = F>,
-	{
-		let mle: &[<P as PackedExtension<B1>>::PackedSubfield] = mle.as_ref();
-
-		let (_, eval_point_high): (&[F], &[F]) = evaluation_point.split_at(log_scalar_bit_width);
-
-		// Partially evaluated eq is represented as a buffer of the scalars that make
-		// up the packed field elements of the mle.
-		let eq_at_high: FieldBuffer<F> = eq_ind_partial_eval::<F>(eval_point_high);
-
-		// partial evals at high variables, since this is a partial eval, it will not
-		// be a packed field element since it deals with the internal scalars
-		let mut s_hat_v = vec![F::zero(); 1 << log_scalar_bit_width];
-
-		let bits_per_packed_elem: usize = mle[0].iter().count();
-		let bits_per_variable: usize = bits_per_packed_elem / P::WIDTH;
-
-		// combine eq w/ mle
-		for (packed_idx, packed_elem) in mle.iter().enumerate() {
-			for high_offset in 0..P::WIDTH {
-				// get eq index
-				let eq_idx = packed_idx * P::WIDTH + high_offset;
-				let eq_at_high_value = eq_at_high.as_ref()[eq_idx];
-
-				// bit index range for where the b128 scalars are located in the packed element
-				let bit_start = high_offset * bits_per_variable;
-				let bit_end = bit_start + bits_per_variable;
-
-				for (i, bit) in packed_elem.iter().enumerate() {
-					if bit == B1::ONE && i >= bit_start && i < bit_end {
-						let low_vars_idx = i - bit_start;
-
-						s_hat_v[low_vars_idx] += eq_at_high_value;
-					}
-				}
-			}
-		}
-
-		Ok(s_hat_v)
 	}
 
 	/// Initializes the basefold prover.
@@ -254,6 +196,69 @@ where
 			fri_params,
 		)
 	}
+}
+
+/// Compute the partial evaluation of a B1-multilinear at an extension point, binding the
+/// high-index variables.
+///
+/// This evaluation method specializes all but the bottom $\kappa$ variables of the input
+/// multilinear, where $\kappa$ is the base-2 logarithm of the extension degree.
+///
+/// ## Arguments
+///
+/// * `mle` - the multilinear polynomial over [`B1`]
+/// * `evaluation_point` - the evaluation point of the small field multilinear
+///
+/// ## Preconditions
+///
+/// * the number of multilinear variables must be the evaluation point length plus $\kappa$
+pub fn evaluate_partial_high<F, P>(
+	mle: &FieldBuffer<PackedSubfield<P, B1>>,
+	evaluation_point: &[F],
+) -> FieldBuffer<F>
+where
+	F: BinaryField,
+	P: PackedExtension<B1> + PackedField<Scalar = F>,
+{
+	let log_scalar_bit_width = <F as ExtensionField<B1>>::LOG_DEGREE;
+	assert_eq!(mle.log_len(), log_scalar_bit_width + evaluation_point.len()); // precondition
+
+	let mle: &[<P as PackedExtension<B1>>::PackedSubfield] = mle.as_ref();
+
+	// Partially evaluated eq is represented as a buffer of the scalars that make
+	// up the packed field elements of the mle.
+	let eq_at_high: FieldBuffer<F> = eq_ind_partial_eval::<F>(evaluation_point);
+
+	// partial evals at high variables, since this is a partial eval, it will not
+	// be a packed field element since it deals with the internal scalars
+	let mut s_hat_v_buffer = FieldBuffer::zeros(log_scalar_bit_width);
+	let s_hat_v = s_hat_v_buffer.as_mut();
+
+	let bits_per_packed_elem: usize = mle[0].iter().count();
+	let bits_per_variable: usize = bits_per_packed_elem / P::WIDTH;
+
+	// combine eq w/ mle
+	for (packed_idx, packed_elem) in mle.iter().enumerate() {
+		for high_offset in 0..P::WIDTH {
+			// get eq index
+			let eq_idx = packed_idx * P::WIDTH + high_offset;
+			let eq_at_high_value = eq_at_high.as_ref()[eq_idx];
+
+			// bit index range for where the b128 scalars are located in the packed element
+			let bit_start = high_offset * bits_per_variable;
+			let bit_end = bit_start + bits_per_variable;
+
+			for (i, bit) in packed_elem.iter().enumerate() {
+				if bit == B1::ONE && i >= bit_start && i < bit_end {
+					let low_vars_idx = i - bit_start;
+
+					s_hat_v[low_vars_idx] += eq_at_high_value;
+				}
+			}
+		}
+	}
+
+	s_hat_v_buffer
 }
 
 #[cfg(test)]
