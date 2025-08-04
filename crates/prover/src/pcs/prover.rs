@@ -239,11 +239,9 @@ where
 
 		let packed_log_len = large_field_mle_vec.len().trailing_zeros() as usize;
 
-		let large_field_mle_buffer = FieldBuffer::new(
-			packed_log_len + P::LOG_WIDTH,
-			Box::from(large_field_mle_vec.into_boxed_slice()),
-		)
-		.expect("failed to create field buffer");
+		let large_field_mle_buffer =
+			FieldBuffer::new(packed_log_len + P::LOG_WIDTH, large_field_mle_vec.into_boxed_slice())
+				.expect("failed to create field buffer");
 
 		BaseFoldProver::new(
 			large_field_mle_buffer,
