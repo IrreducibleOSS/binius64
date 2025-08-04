@@ -101,7 +101,7 @@ where
 		// basis decompose/recombine s_hat_v across opposite dimension
 		let s_hat_u = <TensorAlgebra<B1, F>>::new(s_hat_v).transpose().elems;
 
-		let r_double_prime: Vec<F> = transcript.sample_vec(scalar_bit_width);
+		let r_double_prime = transcript.sample_vec(scalar_bit_width);
 
 		let eq_r_double_prime = eq_ind_partial_eval::<F>(r_double_prime.as_ref());
 
@@ -158,7 +158,7 @@ where
 
 		// partial evals at high variables, since this is a partial eval, it will not
 		// be a packed field element since it deals with the internal scalars
-		let mut s_hat_v: Vec<F> = vec![F::zero(); 1 << scalar_bit_width];
+		let mut s_hat_v = vec![F::zero(); 1 << scalar_bit_width];
 
 		let bits_per_packed_elem: usize = mle[0].iter().count();
 		let bits_per_variable: usize = bits_per_packed_elem / P::WIDTH;
