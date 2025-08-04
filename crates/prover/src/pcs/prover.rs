@@ -555,7 +555,8 @@ mod test {
 			evaluation_claim,
 		) {
 			Ok(()) => {}
-			Err(_) => {} //panic!("expected valid proof"), // This is currently failing and requires debug. Is commented out for CI.
+			Err(_) => {} /* panic!("expected valid proof"), // This is currently failing and
+			              * requires debug. Is commented out for CI. */
 		}
 	}
 
