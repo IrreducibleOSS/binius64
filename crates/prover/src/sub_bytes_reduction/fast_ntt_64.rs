@@ -296,7 +296,7 @@ mod tests {
 		GenericPo2UnivariatePoly, UnivariatePolyIsomorphic,
 	};
 	use itertools::Itertools;
-	use rand::{rngs::StdRng, SeedableRng};
+	use rand::{SeedableRng, rngs::StdRng};
 
 	use super::*;
 
