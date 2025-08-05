@@ -1,4 +1,4 @@
-use binius_field::{AESTowerField8b, BinaryField};
+use binius_field::{AESTowerField8b, Field};
 
 // Precomputed inverse NTT domains for 2^6 size
 const INTT_DOMAIN_0: [AESTowerField8b; 64] = [AESTowerField8b::new(0x00), AESTowerField8b::new(0x01), AESTowerField8b::new(0x02), AESTowerField8b::new(0x03), AESTowerField8b::new(0x04), AESTowerField8b::new(0x05), AESTowerField8b::new(0x06), AESTowerField8b::new(0x07), AESTowerField8b::new(0x08), AESTowerField8b::new(0x09), AESTowerField8b::new(0x0a), AESTowerField8b::new(0x0b), AESTowerField8b::new(0x0c), AESTowerField8b::new(0x0d), AESTowerField8b::new(0x0e), AESTowerField8b::new(0x0f), AESTowerField8b::new(0x10), AESTowerField8b::new(0x11), AESTowerField8b::new(0x12), AESTowerField8b::new(0x13), AESTowerField8b::new(0x14), AESTowerField8b::new(0x15), AESTowerField8b::new(0x16), AESTowerField8b::new(0x17), AESTowerField8b::new(0x18), AESTowerField8b::new(0x19), AESTowerField8b::new(0x1a), AESTowerField8b::new(0x1b), AESTowerField8b::new(0x1c), AESTowerField8b::new(0x1d), AESTowerField8b::new(0x1e), AESTowerField8b::new(0x1f), AESTowerField8b::new(0x20), AESTowerField8b::new(0x21), AESTowerField8b::new(0x22), AESTowerField8b::new(0x23), AESTowerField8b::new(0x24), AESTowerField8b::new(0x25), AESTowerField8b::new(0x26), AESTowerField8b::new(0x27), AESTowerField8b::new(0x28), AESTowerField8b::new(0x29), AESTowerField8b::new(0x2a), AESTowerField8b::new(0x2b), AESTowerField8b::new(0x2c), AESTowerField8b::new(0x2d), AESTowerField8b::new(0x2e), AESTowerField8b::new(0x2f), AESTowerField8b::new(0x30), AESTowerField8b::new(0x31), AESTowerField8b::new(0x32), AESTowerField8b::new(0x33), AESTowerField8b::new(0x34), AESTowerField8b::new(0x35), AESTowerField8b::new(0x36), AESTowerField8b::new(0x37), AESTowerField8b::new(0x38), AESTowerField8b::new(0x39), AESTowerField8b::new(0x3a), AESTowerField8b::new(0x3b), AESTowerField8b::new(0x3c), AESTowerField8b::new(0x3d), AESTowerField8b::new(0x3e), AESTowerField8b::new(0x3f)];
@@ -16,125 +16,197 @@ const FNTT_DOMAIN_3: [AESTowerField8b; 8] = [AESTowerField8b::new(0x3f), AESTowe
 const FNTT_DOMAIN_4: [AESTowerField8b; 4] = [AESTowerField8b::new(0xd7), AESTowerField8b::new(0xd6), AESTowerField8b::new(0x84), AESTowerField8b::new(0x85)];
 const FNTT_DOMAIN_5: [AESTowerField8b; 2] = [AESTowerField8b::new(0xb7), AESTowerField8b::new(0xb6)];
 
-fn single_inverse_ntt_round_full<F: BinaryField>(
-	polynomial_evals: &[F],
-	domain: &[F],
-) -> Vec<F> {
-	let domain_len = domain.len();
-	let num_chunks = polynomial_evals.len() / domain_len;
-	let mut result = vec![F::ZERO; polynomial_evals.len()];
-
-	for chunk_idx in 0..num_chunks {
-		let start = chunk_idx * domain_len;
-		let end = start + domain_len;
-		let chunk_result =
-			single_inverse_ntt_round_one_polynomial(&polynomial_evals[start..end], domain);
-		result[start..end].copy_from_slice(&chunk_result);
-	}
-
-	result
-}
-
-fn single_forward_ntt_round_full<F: BinaryField>(
-	polynomial_evals: &[F],
-	domain: &[F],
-) -> Vec<F> {
-	let domain_len = domain.len();
-	let num_chunks = polynomial_evals.len() / domain_len;
-	let mut result = vec![F::ZERO; polynomial_evals.len()];
-
-	for chunk_idx in 0..num_chunks {
-		let start = chunk_idx * domain_len;
-		let end = start + domain_len;
-		let chunk_result =
-			single_forward_ntt_round_one_polynomial(&polynomial_evals[start..end], domain);
-		result[start..end].copy_from_slice(&chunk_result);
-	}
-
-	result
-}
-
-fn single_forward_ntt_round_one_polynomial<F: BinaryField>(
-	polynomial_evals: &[F],
-	domain: &[F],
-) -> Vec<F> {
-	assert_eq!(
-		polynomial_evals.len(),
-		domain.len(),
-		"polynomial_evals and domain must have the same length"
-	);
-
-	let mut result = vec![F::ZERO; domain.len()];
-
-	let half_len = result.len() >> 1;
-
-	for i in 0..half_len {
-		result[i << 1] = domain[i << 1] * polynomial_evals[i + half_len] + polynomial_evals[i];
-		result[(i << 1) + 1] = result[i << 1] + polynomial_evals[i + half_len];
-	}
-
-	result
-}
-
-fn single_inverse_ntt_round_one_polynomial<F: BinaryField>(
-	polynomial_evals: &[F],
-	domain: &[F],
-) -> Vec<F> {
-	let mut result = vec![F::ZERO; domain.len()];
-
-	let half_len = result.len() >> 1;
-
-	for i in 0..half_len {
-		result[i + half_len] = polynomial_evals[(i << 1) + 1] - polynomial_evals[i << 1];
-		result[i] = domain[i << 1] * result[i + half_len] + polynomial_evals[i << 1];
-	}
-
-	result
-}
 
 /// Fast specialized inverse NTT for 2^6 size with precomputed domains
+#[inline]
 pub fn fast_inverse_ntt_64(polynomial_evals: &mut [AESTowerField8b; 64]) {
-	let new_poly_evals = single_inverse_ntt_round_full(polynomial_evals, &INTT_DOMAIN_0);
-	polynomial_evals.copy_from_slice(&new_poly_evals);
+	let mut temp = [AESTowerField8b::ZERO; 64];
 	
-	let new_poly_evals = single_inverse_ntt_round_full(polynomial_evals, &INTT_DOMAIN_1);
-	polynomial_evals.copy_from_slice(&new_poly_evals);
+	// Round 0: domain size 64, 1 chunk of 64 elements
+	{
+		let domain = &INTT_DOMAIN_0;
+		let half_len = 32;
+		for i in 0..half_len {
+			temp[i + half_len] = polynomial_evals[(i << 1) + 1] - polynomial_evals[i << 1];
+			temp[i] = domain[i << 1] * temp[i + half_len] + polynomial_evals[i << 1];
+		}
+		*polynomial_evals = temp;
+	}
 	
-	let new_poly_evals = single_inverse_ntt_round_full(polynomial_evals, &INTT_DOMAIN_2);
-	polynomial_evals.copy_from_slice(&new_poly_evals);
+	// Round 1: domain size 32, 2 chunks of 32 elements each
+	{
+		let domain = &INTT_DOMAIN_1;
+		for chunk in 0..2 {
+			let offset = chunk * 32;
+			let half_len = 16;
+			for i in 0..half_len {
+				let idx1 = offset + (i << 1);
+				let idx2 = idx1 + 1;
+				temp[offset + i + half_len] = polynomial_evals[idx2] - polynomial_evals[idx1];
+				temp[offset + i] = domain[i << 1] * temp[offset + i + half_len] + polynomial_evals[idx1];
+			}
+		}
+		*polynomial_evals = temp;
+	}
 	
-	let new_poly_evals = single_inverse_ntt_round_full(polynomial_evals, &INTT_DOMAIN_3);
-	polynomial_evals.copy_from_slice(&new_poly_evals);
+	// Round 2: domain size 16, 4 chunks of 16 elements each
+	{
+		let domain = &INTT_DOMAIN_2;
+		for chunk in 0..4 {
+			let offset = chunk * 16;
+			let half_len = 8;
+			for i in 0..half_len {
+				let idx1 = offset + (i << 1);
+				let idx2 = idx1 + 1;
+				temp[offset + i + half_len] = polynomial_evals[idx2] - polynomial_evals[idx1];
+				temp[offset + i] = domain[i << 1] * temp[offset + i + half_len] + polynomial_evals[idx1];
+			}
+		}
+		*polynomial_evals = temp;
+	}
 	
-	let new_poly_evals = single_inverse_ntt_round_full(polynomial_evals, &INTT_DOMAIN_4);
-	polynomial_evals.copy_from_slice(&new_poly_evals);
+	// Round 3: domain size 8, 8 chunks of 8 elements each
+	{
+		let domain = &INTT_DOMAIN_3;
+		for chunk in 0..8 {
+			let offset = chunk * 8;
+			let half_len = 4;
+			for i in 0..half_len {
+				let idx1 = offset + (i << 1);
+				let idx2 = idx1 + 1;
+				temp[offset + i + half_len] = polynomial_evals[idx2] - polynomial_evals[idx1];
+				temp[offset + i] = domain[i << 1] * temp[offset + i + half_len] + polynomial_evals[idx1];
+			}
+		}
+		*polynomial_evals = temp;
+	}
 	
-	let new_poly_evals = single_inverse_ntt_round_full(polynomial_evals, &INTT_DOMAIN_5);
-	polynomial_evals.copy_from_slice(&new_poly_evals);
+	// Round 4: domain size 4, 16 chunks of 4 elements each
+	{
+		let domain = &INTT_DOMAIN_4;
+		for chunk in 0..16 {
+			let offset = chunk * 4;
+			let half_len = 2;
+			for i in 0..half_len {
+				let idx1 = offset + (i << 1);
+				let idx2 = idx1 + 1;
+				temp[offset + i + half_len] = polynomial_evals[idx2] - polynomial_evals[idx1];
+				temp[offset + i] = domain[i << 1] * temp[offset + i + half_len] + polynomial_evals[idx1];
+			}
+		}
+		*polynomial_evals = temp;
+	}
+	
+	// Round 5: domain size 2, 32 chunks of 2 elements each
+	{
+		let domain = &INTT_DOMAIN_5;
+		for chunk in 0..32 {
+			let offset = chunk * 2;
+			temp[offset + 1] = polynomial_evals[offset + 1] - polynomial_evals[offset];
+			temp[offset] = domain[0] * temp[offset + 1] + polynomial_evals[offset];
+		}
+		*polynomial_evals = temp;
+	}
 }
 
 /// Fast specialized forward NTT for 2^6 size with precomputed domains
+#[inline]
 pub fn fast_forward_ntt_64(polynomial_evals: &mut [AESTowerField8b; 64]) {
-	let new_poly_evals = single_forward_ntt_round_full(polynomial_evals, &FNTT_DOMAIN_5);
-	polynomial_evals.copy_from_slice(&new_poly_evals);
+	let mut temp = [AESTowerField8b::ZERO; 64];
 	
-	let new_poly_evals = single_forward_ntt_round_full(polynomial_evals, &FNTT_DOMAIN_4);
-	polynomial_evals.copy_from_slice(&new_poly_evals);
+	// Round 0: domain size 2, 32 chunks of 2 elements each
+	{
+		let domain = &FNTT_DOMAIN_5;
+		for chunk in 0..32 {
+			let offset = chunk * 2;
+			let half_len = 1;
+			for i in 0..half_len {
+				temp[i << 1] = domain[i << 1] * polynomial_evals[offset + i + half_len] + polynomial_evals[offset + i];
+				temp[(i << 1) + 1] = temp[i << 1] + polynomial_evals[offset + i + half_len];
+			}
+			polynomial_evals[offset] = temp[0];
+			polynomial_evals[offset + 1] = temp[1];
+		}
+	}
 	
-	let new_poly_evals = single_forward_ntt_round_full(polynomial_evals, &FNTT_DOMAIN_3);
-	polynomial_evals.copy_from_slice(&new_poly_evals);
+	// Round 1: domain size 4, 16 chunks of 4 elements each
+	{
+		let domain = &FNTT_DOMAIN_4;
+		for chunk in 0..16 {
+			let offset = chunk * 4;
+			let half_len = 2;
+			for i in 0..half_len {
+				temp[i << 1] = domain[i << 1] * polynomial_evals[offset + i + half_len] + polynomial_evals[offset + i];
+				temp[(i << 1) + 1] = temp[i << 1] + polynomial_evals[offset + i + half_len];
+			}
+			for i in 0..4 {
+				polynomial_evals[offset + i] = temp[i];
+			}
+		}
+	}
 	
-	let new_poly_evals = single_forward_ntt_round_full(polynomial_evals, &FNTT_DOMAIN_2);
-	polynomial_evals.copy_from_slice(&new_poly_evals);
+	// Round 2: domain size 8, 8 chunks of 8 elements each
+	{
+		let domain = &FNTT_DOMAIN_3;
+		for chunk in 0..8 {
+			let offset = chunk * 8;
+			let half_len = 4;
+			for i in 0..half_len {
+				temp[i << 1] = domain[i << 1] * polynomial_evals[offset + i + half_len] + polynomial_evals[offset + i];
+				temp[(i << 1) + 1] = temp[i << 1] + polynomial_evals[offset + i + half_len];
+			}
+			for i in 0..8 {
+				polynomial_evals[offset + i] = temp[i];
+			}
+		}
+	}
 	
-	let new_poly_evals = single_forward_ntt_round_full(polynomial_evals, &FNTT_DOMAIN_1);
-	polynomial_evals.copy_from_slice(&new_poly_evals);
+	// Round 3: domain size 16, 4 chunks of 16 elements each
+	{
+		let domain = &FNTT_DOMAIN_2;
+		for chunk in 0..4 {
+			let offset = chunk * 16;
+			let half_len = 8;
+			for i in 0..half_len {
+				temp[i << 1] = domain[i << 1] * polynomial_evals[offset + i + half_len] + polynomial_evals[offset + i];
+				temp[(i << 1) + 1] = temp[i << 1] + polynomial_evals[offset + i + half_len];
+			}
+			for i in 0..16 {
+				polynomial_evals[offset + i] = temp[i];
+			}
+		}
+	}
 	
-	let new_poly_evals = single_forward_ntt_round_full(polynomial_evals, &FNTT_DOMAIN_0);
-	polynomial_evals.copy_from_slice(&new_poly_evals);
+	// Round 4: domain size 32, 2 chunks of 32 elements each
+	{
+		let domain = &FNTT_DOMAIN_1;
+		for chunk in 0..2 {
+			let offset = chunk * 32;
+			let half_len = 16;
+			for i in 0..half_len {
+				temp[i << 1] = domain[i << 1] * polynomial_evals[offset + i + half_len] + polynomial_evals[offset + i];
+				temp[(i << 1) + 1] = temp[i << 1] + polynomial_evals[offset + i + half_len];
+			}
+			for i in 0..32 {
+				polynomial_evals[offset + i] = temp[i];
+			}
+		}
+	}
+	
+	// Round 5: domain size 64, 1 chunk of 64 elements
+	{
+		let domain = &FNTT_DOMAIN_0;
+		let half_len = 32;
+		for i in 0..half_len {
+			temp[i << 1] = domain[i << 1] * polynomial_evals[i + half_len] + polynomial_evals[i];
+			temp[(i << 1) + 1] = temp[i << 1] + polynomial_evals[i + half_len];
+		}
+		*polynomial_evals = temp;
+	}
 }
 
 /// Fast specialized NTT for 2^6 size with precomputed domains
+#[inline]
 pub fn fast_ntt_64(polynomial_evals: &mut [AESTowerField8b; 64]) {
 	fast_inverse_ntt_64(polynomial_evals);
 	fast_forward_ntt_64(polynomial_evals);
