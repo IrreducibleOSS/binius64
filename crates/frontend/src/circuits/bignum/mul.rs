@@ -1,4 +1,4 @@
-use super::{add::compute_stack_adds, biguint::BigUint};
+use super::{addsub::compute_stack_adds, biguint::BigUint};
 use crate::compiler::CircuitBuilder;
 
 /// Multiply two arbitrary-sized `BigUint`s.

@@ -3,7 +3,7 @@ use binius_core::word::Word;
 use super::biguint::BigUint;
 use crate::compiler::{CircuitBuilder, Wire};
 
-/// Add two arbitrary-sized `BigUints`s with carry propagation.
+/// Add two equally-sized `BigUints`s with carry propagation.
 ///
 /// Computes `a + b` with proper carry handling between limbs. The result
 /// has the same number of limbs as the inputs. Overflow beyond the most
@@ -28,6 +28,47 @@ pub fn add(builder: &CircuitBuilder, a: &BigUint, b: &BigUint) -> BigUint {
 		accumulator[i].push(b.limbs[i]);
 	}
 	compute_stack_adds(builder, &accumulator)
+}
+
+/// Subtracts two equally-sized `BigUints`s with carry propagation.
+///
+/// Computes `a - b` with proper borrow handling between limbs. The result
+/// has the same number of limbs as the inputs. Underflow beyond the most
+/// significant limb is checked and must be zero. This implies that `a >= b`
+/// and the difference remains unsigned.
+///
+/// # Arguments
+/// * `builder` - Circuit builder for constraint generation
+/// * `a` - minuend
+/// * `b` - subtrahend (must have same number of limbs as `a`)
+///
+/// # Returns
+/// Difference as a `BigUint` with the same number of limbs as the inputs
+///
+/// # Panics
+/// - Panics if `a` and `b` have different number of limbs
+pub fn sub(builder: &CircuitBuilder, a: &BigUint, b: &BigUint) -> BigUint {
+	assert_eq!(a.limbs.len(), b.limbs.len(), "sub: inputs must have the same number of limbs");
+
+	let zero = builder.add_constant(Word::ZERO);
+
+	let mut diff_limbs = Vec::with_capacity(a.limbs.len());
+
+	let mut borrow_in = zero;
+	for (&a_limb, &b_limb) in a.limbs.iter().zip(&b.limbs) {
+		let (diff_limb, borrow_out) = builder.isub_bin_bout(a_limb, b_limb, borrow_in);
+		diff_limbs.push(diff_limb);
+
+		borrow_in = borrow_out;
+	}
+
+	// Assert the final borrow is zero (i.e no underflow).
+	//
+	// It requires checking the MSB of the `borrow_in`
+	let borrow_out_msb = builder.shr(borrow_in, 63);
+	builder.assert_eq("sub_borrow_out", borrow_out_msb, zero);
+
+	BigUint { limbs: diff_limbs }
 }
 
 /// Computes multi-operand addition with carry propagation across limb positions.
