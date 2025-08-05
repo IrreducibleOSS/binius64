@@ -6,6 +6,7 @@ use binius_core::{
 };
 use binius_field::{
 	AESTowerField8b as B8, BinaryField, PackedAESBinaryField16x8b, PackedExtension, PackedField,
+	PackedSubfield,
 };
 use binius_math::{
 	BinarySubspace, FieldBuffer,
@@ -166,11 +167,9 @@ where
 		// PCS opening
 		let evaluation_point = [z_challenge, y_challenge].concat();
 
-		// Convert witness_packed to PackedSubfield view for OneBitPCSProver
-		let witness_packed_subfield_buffer = cast_bases_to_buffer(&witness_packed);
-
 		let _scope = tracing::debug_span!("PCS open").entered();
-		let pcs_prover = OneBitPCSProver::new(witness_packed_subfield_buffer, evaluation_point)?;
+		let pcs_prover =
+			OneBitPCSProver::new(cast_bases_to_buffer(&witness_packed), evaluation_point)?;
 
 		pcs_prover.prove_with_transcript(
 			transcript,
@@ -186,15 +185,18 @@ where
 }
 
 /// Helper function to convert cast_bases result to FieldBuffer
-fn cast_bases_to_buffer<P>(
+fn cast_bases_to_buffer<F, P>(
 	packed: &FieldBuffer<P>,
-) -> FieldBuffer<<P as PackedExtension<B1>>::PackedSubfield>
+) -> FieldBuffer<PackedSubfield<P, B1>, &[PackedSubfield<P, B1>]>
 where
-	P: PackedExtension<B1>,
+	F: BinaryField,
+	P: PackedField<Scalar = F> + PackedExtension<B1>,
 {
-	let subfield = <P as PackedExtension<B1>>::cast_bases(packed.as_ref());
-	let values: Vec<_> = subfield.iter().flat_map(|p| p.iter()).collect();
-	FieldBuffer::from_values(&values).expect("cast_bases should produce power-of-2 length")
+	FieldBuffer::new(
+		packed.log_len() + F::LOG_DEGREE,
+		<P as PackedExtension<B1>>::cast_bases(packed.as_ref()),
+	)
+	.expect("PackedExtension guarantees that cast_bases increases LOG_WIDTH by LOG_DEGREE")
 }
 
 fn pack_witness<P: PackedField<Scalar = B128>>(
