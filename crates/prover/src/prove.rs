@@ -5,7 +5,7 @@ use binius_core::{
 	word::Word,
 };
 use binius_field::{
-	AESTowerField8b, BinaryField, PackedAESBinaryField16x8b, PackedExtension, PackedField,
+	AESTowerField8b as B8, BinaryField, PackedAESBinaryField16x8b, PackedExtension, PackedField,
 };
 use binius_math::{
 	BinarySubspace, FieldBuffer,
@@ -235,12 +235,12 @@ fn pack_witness<P: PackedField<Scalar = B128>>(
 	Ok(padded_witness_elems)
 }
 
-fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger>(
+fn run_and_check<F: BinaryField + From<B8>, Challenger_: Challenger>(
 	log_witness_words: usize,
 	witness: AndCheckWitness,
 	transcript: &mut ProverTranscript<Challenger_>,
 ) -> Result<AndCheckOutput<F>, Error> {
-	let prover_message_domain = BinarySubspace::<AESTowerField8b>::with_dim(LOG_WORD_SIZE_BITS + 1)
+	let prover_message_domain = BinarySubspace::<B8>::with_dim(LOG_WORD_SIZE_BITS + 1)
 		.expect("B8::DEGREE is at least LOG_WORD_SIZE_BITS + 1");
 	let AndCheckWitness {
 		mut a,
