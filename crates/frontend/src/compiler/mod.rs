@@ -5,6 +5,7 @@ use std::{
 
 use binius_core::{
 	constraint_system::{ConstraintSystem, ValueIndex, ValueVecLayout},
+	consts::MIN_WORDS_PER_SEGMENT,
 	word::Word,
 };
 use cranelift_entity::{PrimaryMap, SecondaryMap};
@@ -126,6 +127,8 @@ impl CircuitBuilder {
 			wire_mapping[wire] = ValueIndex(cur_index);
 			cur_index += 1;
 		}
+		// Ensure the public section meets the minimum size requirement
+		cur_index = cur_index.max(MIN_WORDS_PER_SEGMENT as u32);
 		cur_index = cur_index.next_power_of_two();
 		let offset_witness = cur_index as usize;
 		for wire in w_witness.into_iter().chain(w_internal.into_iter()) {
