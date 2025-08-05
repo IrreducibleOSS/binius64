@@ -27,8 +27,8 @@ pub fn fast_inverse_ntt_64(polynomial_evals: &mut [AESTowerField8b; 64]) {
 		let domain = &INTT_DOMAIN_0;
 		let half_len = 32;
 		for i in 0..half_len {
-			temp[i + half_len] = polynomial_evals[(i << 1) + 1] - polynomial_evals[i << 1];
-			temp[i] = domain[i << 1] * temp[i + half_len] + polynomial_evals[i << 1];
+			temp[half_len | i] = polynomial_evals[(i << 1) | 1] - polynomial_evals[i << 1];
+			temp[i] = domain[i << 1] * temp[half_len | i] + polynomial_evals[i << 1];
 		}
 		*polynomial_evals = temp;
 	}
@@ -42,8 +42,8 @@ pub fn fast_inverse_ntt_64(polynomial_evals: &mut [AESTowerField8b; 64]) {
 			for i in 0..half_len {
 				let idx1 = offset + (i << 1);
 				let idx2 = idx1 + 1;
-				temp[offset + i + half_len] = polynomial_evals[idx2] - polynomial_evals[idx1];
-				temp[offset + i] = domain[i << 1] * temp[offset + i + half_len] + polynomial_evals[idx1];
+				temp[offset | half_len | i] = polynomial_evals[idx2] - polynomial_evals[idx1];
+				temp[offset | i] = domain[i << 1] * temp[offset | half_len | i] + polynomial_evals[idx1];
 			}
 		}
 		*polynomial_evals = temp;
@@ -58,8 +58,8 @@ pub fn fast_inverse_ntt_64(polynomial_evals: &mut [AESTowerField8b; 64]) {
 			for i in 0..half_len {
 				let idx1 = offset + (i << 1);
 				let idx2 = idx1 + 1;
-				temp[offset + i + half_len] = polynomial_evals[idx2] - polynomial_evals[idx1];
-				temp[offset + i] = domain[i << 1] * temp[offset + i + half_len] + polynomial_evals[idx1];
+				temp[offset | half_len | i] = polynomial_evals[idx2] - polynomial_evals[idx1];
+				temp[offset | i] = domain[i << 1] * temp[offset | half_len | i] + polynomial_evals[idx1];
 			}
 		}
 		*polynomial_evals = temp;
@@ -74,8 +74,8 @@ pub fn fast_inverse_ntt_64(polynomial_evals: &mut [AESTowerField8b; 64]) {
 			for i in 0..half_len {
 				let idx1 = offset + (i << 1);
 				let idx2 = idx1 + 1;
-				temp[offset + i + half_len] = polynomial_evals[idx2] - polynomial_evals[idx1];
-				temp[offset + i] = domain[i << 1] * temp[offset + i + half_len] + polynomial_evals[idx1];
+				temp[offset | half_len | i] = polynomial_evals[idx2] - polynomial_evals[idx1];
+				temp[offset | i] = domain[i << 1] * temp[offset | half_len | i] + polynomial_evals[idx1];
 			}
 		}
 		*polynomial_evals = temp;
@@ -90,8 +90,8 @@ pub fn fast_inverse_ntt_64(polynomial_evals: &mut [AESTowerField8b; 64]) {
 			for i in 0..half_len {
 				let idx1 = offset + (i << 1);
 				let idx2 = idx1 + 1;
-				temp[offset + i + half_len] = polynomial_evals[idx2] - polynomial_evals[idx1];
-				temp[offset + i] = domain[i << 1] * temp[offset + i + half_len] + polynomial_evals[idx1];
+				temp[offset | half_len | i] = polynomial_evals[idx2] - polynomial_evals[idx1];
+				temp[offset | i] = domain[i << 1] * temp[offset | half_len | i] + polynomial_evals[idx1];
 			}
 		}
 		*polynomial_evals = temp;
@@ -102,8 +102,8 @@ pub fn fast_inverse_ntt_64(polynomial_evals: &mut [AESTowerField8b; 64]) {
 		let domain = &INTT_DOMAIN_5;
 		for chunk in 0..32 {
 			let offset = chunk * 2;
-			temp[offset + 1] = polynomial_evals[offset + 1] - polynomial_evals[offset];
-			temp[offset] = domain[0] * temp[offset + 1] + polynomial_evals[offset];
+			temp[offset | 1] = polynomial_evals[offset | 1] - polynomial_evals[offset];
+			temp[offset] = domain[0] * temp[offset | 1] + polynomial_evals[offset];
 		}
 		*polynomial_evals = temp;
 	}
@@ -121,11 +121,11 @@ pub fn fast_forward_ntt_64(polynomial_evals: &mut [AESTowerField8b; 64]) {
 			let offset = chunk * 2;
 			let half_len = 1;
 			for i in 0..half_len {
-				temp[i << 1] = domain[i << 1] * polynomial_evals[offset + i + half_len] + polynomial_evals[offset + i];
-				temp[(i << 1) + 1] = temp[i << 1] + polynomial_evals[offset + i + half_len];
+				temp[i << 1] = domain[i << 1] * polynomial_evals[offset | half_len | i] + polynomial_evals[offset | i];
+				temp[(i << 1) | 1] = temp[i << 1] + polynomial_evals[offset | half_len | i];
 			}
 			polynomial_evals[offset] = temp[0];
-			polynomial_evals[offset + 1] = temp[1];
+			polynomial_evals[offset | 1] = temp[1];
 		}
 	}
 	
@@ -136,11 +136,11 @@ pub fn fast_forward_ntt_64(polynomial_evals: &mut [AESTowerField8b; 64]) {
 			let offset = chunk * 4;
 			let half_len = 2;
 			for i in 0..half_len {
-				temp[i << 1] = domain[i << 1] * polynomial_evals[offset + i + half_len] + polynomial_evals[offset + i];
-				temp[(i << 1) + 1] = temp[i << 1] + polynomial_evals[offset + i + half_len];
+				temp[i << 1] = domain[i << 1] * polynomial_evals[offset | half_len | i] + polynomial_evals[offset | i];
+				temp[(i << 1) | 1] = temp[i << 1] + polynomial_evals[offset | half_len | i];
 			}
 			for i in 0..4 {
-				polynomial_evals[offset + i] = temp[i];
+				polynomial_evals[offset | i] = temp[i];
 			}
 		}
 	}
@@ -152,11 +152,11 @@ pub fn fast_forward_ntt_64(polynomial_evals: &mut [AESTowerField8b; 64]) {
 			let offset = chunk * 8;
 			let half_len = 4;
 			for i in 0..half_len {
-				temp[i << 1] = domain[i << 1] * polynomial_evals[offset + i + half_len] + polynomial_evals[offset + i];
-				temp[(i << 1) + 1] = temp[i << 1] + polynomial_evals[offset + i + half_len];
+				temp[i << 1] = domain[i << 1] * polynomial_evals[offset | half_len | i] + polynomial_evals[offset | i];
+				temp[(i << 1) | 1] = temp[i << 1] + polynomial_evals[offset | half_len | i];
 			}
 			for i in 0..8 {
-				polynomial_evals[offset + i] = temp[i];
+				polynomial_evals[offset | i] = temp[i];
 			}
 		}
 	}
@@ -168,11 +168,11 @@ pub fn fast_forward_ntt_64(polynomial_evals: &mut [AESTowerField8b; 64]) {
 			let offset = chunk * 16;
 			let half_len = 8;
 			for i in 0..half_len {
-				temp[i << 1] = domain[i << 1] * polynomial_evals[offset + i + half_len] + polynomial_evals[offset + i];
-				temp[(i << 1) + 1] = temp[i << 1] + polynomial_evals[offset + i + half_len];
+				temp[i << 1] = domain[i << 1] * polynomial_evals[offset | half_len | i] + polynomial_evals[offset | i];
+				temp[(i << 1) | 1] = temp[i << 1] + polynomial_evals[offset | half_len | i];
 			}
 			for i in 0..16 {
-				polynomial_evals[offset + i] = temp[i];
+				polynomial_evals[offset | i] = temp[i];
 			}
 		}
 	}
@@ -184,11 +184,11 @@ pub fn fast_forward_ntt_64(polynomial_evals: &mut [AESTowerField8b; 64]) {
 			let offset = chunk * 32;
 			let half_len = 16;
 			for i in 0..half_len {
-				temp[i << 1] = domain[i << 1] * polynomial_evals[offset + i + half_len] + polynomial_evals[offset + i];
-				temp[(i << 1) + 1] = temp[i << 1] + polynomial_evals[offset + i + half_len];
+				temp[i << 1] = domain[i << 1] * polynomial_evals[offset | half_len | i] + polynomial_evals[offset | i];
+				temp[(i << 1) | 1] = temp[i << 1] + polynomial_evals[offset | half_len | i];
 			}
 			for i in 0..32 {
-				polynomial_evals[offset + i] = temp[i];
+				polynomial_evals[offset | i] = temp[i];
 			}
 		}
 	}
@@ -198,8 +198,8 @@ pub fn fast_forward_ntt_64(polynomial_evals: &mut [AESTowerField8b; 64]) {
 		let domain = &FNTT_DOMAIN_0;
 		let half_len = 32;
 		for i in 0..half_len {
-			temp[i << 1] = domain[i << 1] * polynomial_evals[i + half_len] + polynomial_evals[i];
-			temp[(i << 1) + 1] = temp[i << 1] + polynomial_evals[i + half_len];
+			temp[i << 1] = domain[i << 1] * polynomial_evals[half_len | i] + polynomial_evals[i];
+			temp[(i << 1) | 1] = temp[i << 1] + polynomial_evals[half_len | i];
 		}
 		*polynomial_evals = temp;
 	}
