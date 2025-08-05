@@ -34,7 +34,7 @@ use crate::{
 	fri::CommitOutput,
 	hash::ParallelDigest,
 	merkle_tree::prover::BinaryMerkleTreeProver,
-	pcs::prover::OneBitPCSProver,
+	pcs::OneBitPCSProver,
 	protocols::{
 		InOutCheckProver,
 		sumcheck::{ProveSingleOutput, prove_single_mlecheck},
