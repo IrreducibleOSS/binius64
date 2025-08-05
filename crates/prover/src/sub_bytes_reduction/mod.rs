@@ -299,7 +299,7 @@ mod test {
 
 		// Test with fast specialized NTT
 		let mut polynomial_evals_fast: [AESTowerField8b; 64] = poly.iter().copied().collect_vec().try_into().unwrap();
-		fast_ntt_64(&mut polynomial_evals_fast);
+		fast_ntt_64(&mut polynomial_evals_fast, &crate::sub_bytes_reduction::fast_ntt_64::DEFAULT_INTT_DOMAINS, &crate::sub_bytes_reduction::fast_ntt_64::DEFAULT_FNTT_DOMAINS);
 		
 		// Verify they produce the same results
 		assert_eq!(&polynomial_evals_generic[..], &polynomial_evals_fast[..], "Fast NTT should produce same results as generic NTT");
