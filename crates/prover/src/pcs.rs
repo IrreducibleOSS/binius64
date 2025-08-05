@@ -1,6 +1,6 @@
 // Copyright 2025 Irreducible Inc.
 
-use binius_field::{BinaryField, ExtensionField, PackedExtension, PackedField, PackedSubfield};
+use binius_field::{BinaryField, ExtensionField, PackedExtension, PackedField};
 use binius_math::{
 	FieldBuffer, inner_product::inner_product, multilinear::eq::eq_ind_partial_eval,
 	ntt::AdditiveNTT, tensor_algebra::TensorAlgebra,
@@ -23,17 +23,12 @@ use crate::{
 /// at a large field point. The prover first performs the ring switching phase of the proof,
 /// establishing completeness. Then, the large field pcs (basefold) is invoked to establish
 /// soundness.
-pub struct OneBitPCSProver<F, P>
-where
-	F: BinaryField,
-	P: PackedExtension<B1> + PackedField<Scalar = F>,
-{
-	pub mle: FieldBuffer<PackedSubfield<P, B1>>,
-	pub evaluation_claim: F,
-	pub evaluation_point: Vec<F>,
+pub struct OneBitPCSProver<P: PackedField> {
+	packed_multilin: FieldBuffer<P>,
+	evaluation_point: Vec<P::Scalar>,
 }
 
-impl<F, P> OneBitPCSProver<F, P>
+impl<F, P> OneBitPCSProver<P>
 where
 	F: BinaryField,
 	P: PackedExtension<B1> + PackedField<Scalar = F>,
@@ -42,19 +37,16 @@ where
 	///
 	/// ## Arguments
 	///
-	/// * `mle` - the multilinear polynomial with elements in the large field
-	/// * `evaluation_claim` - the evaluation claim of the small field multilinear
-	/// * `evaluation_point` - the evaluation point of the small field multilinear
-	pub fn new(
-		mle: FieldBuffer<PackedSubfield<P, B1>>,
-		evaluation_claim: F,
-		evaluation_point: Vec<F>,
-	) -> Result<Self, Error> {
-		Ok(Self {
-			mle,
-			evaluation_claim,
+	/// * `packed_multilin` - a packed field buffer that the prover interprets as a multilinear
+	///   polynomial over its B1 subcomponents, in multilinear Lagrange basis. The number of B1
+	///   elements is `packed_multilin.len() * F::N_BITS`.
+	/// * `evaluation_point` - the evaluation point of the B1 multilinear
+	pub fn new(packed_multilin: FieldBuffer<P>, evaluation_point: Vec<F>) -> Self {
+		assert_eq!(packed_multilin.log_len() + F::LOG_DEGREE, evaluation_point.len()); // precondition
+		Self {
+			packed_multilin,
 			evaluation_point,
-		})
+		}
 	}
 
 	/// Prove the ring switched PCS with a transcript.
@@ -93,8 +85,18 @@ where
 		let suffix_tensor = tracing::debug_span!("Expand evaluation suffix query")
 			.in_scope(|| eq_ind_partial_eval::<P>(eval_point_suffix));
 
-		let s_hat_v = tracing::debug_span!("Compute ring-switching partial evaluations")
-			.in_scope(|| ring_switch::fold_1b_rows(&self.mle, &suffix_tensor));
+		let s_hat_v =
+			tracing::debug_span!("Compute ring-switching partial evaluations").in_scope(|| {
+				// Cast packed field to its B1 subfield representation for ring switching
+				let packed_b1_view = FieldBuffer::new(
+					self.packed_multilin.log_len() + F::LOG_DEGREE,
+					<P as PackedExtension<B1>>::cast_bases(self.packed_multilin.as_ref()),
+				)
+				.expect(
+					"PackedExtension guarantees that cast_bases increases LOG_WIDTH by LOG_DEGREE",
+				);
+				ring_switch::fold_1b_rows(&packed_b1_view, &suffix_tensor)
+			});
 		transcript.message().write_scalar_slice(s_hat_v.as_ref());
 
 		// basis decompose/recombine s_hat_v across opposite dimension
@@ -172,22 +174,8 @@ where
 				ring_switch::fold_elems_inplace(eval_point_suffix_tensor, r_double_prime_tensor)
 			});
 
-		// Convert PackedSubfield<P, B1> to P while maintaining packed structure
-		let large_field_mle: &[P] = <P as PackedExtension<B1>>::cast_exts(self.mle.as_ref());
-
-		// The basefold prover expects the mle to maintain the same packing structure as
-		// The previously committed codeword.
-
-		let large_field_mle_vec: Vec<P> = large_field_mle.to_vec();
-
-		let packed_log_len = large_field_mle_vec.len().trailing_zeros() as usize;
-
-		let large_field_mle_buffer =
-			FieldBuffer::new(packed_log_len + P::LOG_WIDTH, large_field_mle_vec.into_boxed_slice())
-				.expect("failed to create field buffer");
-
 		BaseFoldProver::new(
-			large_field_mle_buffer,
+			self.packed_multilin,
 			rs_eq_ind,
 			basefold_sumcheck_claim,
 			committed_codeword,
@@ -244,18 +232,6 @@ mod test {
 		small_field_elms.iter().map(|&elm| FE::from(elm)).collect()
 	}
 
-	/// Helper function to convert cast_bases result to FieldBuffer
-	fn cast_bases_to_buffer<P>(
-		packed: &FieldBuffer<P>,
-	) -> FieldBuffer<<P as PackedExtension<B1>>::PackedSubfield>
-	where
-		P: PackedExtension<B1>,
-	{
-		let subfield = <P as PackedExtension<B1>>::cast_bases(packed.as_ref());
-		let values: Vec<_> = subfield.iter().flat_map(|p| p.iter()).collect();
-		FieldBuffer::from_values(&values).unwrap()
-	}
-
 	fn run_ring_switched_pcs_prove_and_verify<P>(
 		packed_mle: FieldBuffer<P>,
 		evaluation_point: Vec<B128>,
@@ -296,15 +272,7 @@ mod test {
 		let mut prover_challenger = ProverTranscript::new(StdChallenger::default());
 		prover_challenger.message().write(&codeword_commitment);
 
-		// Convert packed_mle to PackedSubfield view for OneBitPCSProver
-		let packed_subfield_buffer = cast_bases_to_buffer(&packed_mle);
-
-		let ring_switch_pcs_prover = OneBitPCSProver::new(
-			packed_subfield_buffer,
-			evaluation_claim,
-			evaluation_point.clone(),
-		)?;
-
+		let ring_switch_pcs_prover = OneBitPCSProver::new(packed_mle, evaluation_point.clone());
 		ring_switch_pcs_prover.prove_with_transcript(
 			&mut prover_challenger,
 			&ntt,
