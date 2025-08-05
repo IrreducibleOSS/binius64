@@ -145,14 +145,12 @@ mod tests {
 			assert_eq!(
 				inverse[i].len(),
 				*expected_size,
-				"Inverse elements size mismatch at index {}",
-				i
+				"Inverse elements size mismatch at index {i}"
 			);
 			assert_eq!(
 				forward[i].len(),
 				*expected_size,
-				"Forward elements size mismatch at index {}",
-				i
+				"Forward elements size mismatch at index {i}"
 			);
 		}
 	}
