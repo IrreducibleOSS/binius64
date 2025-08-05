@@ -18,6 +18,8 @@ tracing-profile.workspace = true
 
 [dev-dependencies]
 clap.workspace = true
+rand.workspace = true
+sha2.workspace = true
 
 [features]
 default = ["rayon"]
