@@ -4,6 +4,10 @@ pub const SHIFT_VARIANT_COUNT: usize = 3;
 pub const BITAND_ARITY: usize = 3;
 pub const INTMUL_ARITY: usize = 4;
 
+mod error;
 mod fat_multilinear;
 
 pub use fat_multilinear::*;
+mod verify;
+
+pub use verify::OperatorData;

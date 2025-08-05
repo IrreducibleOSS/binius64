@@ -3,7 +3,7 @@
 use binius_math::Error as MathError;
 
 #[derive(thiserror::Error, Debug)]
-enum Error {
+pub enum Error {
 	#[error("transcript error")]
 	Transcript(#[from] binius_transcript::Error),
 	#[error("sumcheck error")]
