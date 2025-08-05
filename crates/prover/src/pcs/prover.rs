@@ -16,7 +16,7 @@ use binius_verifier::{config::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme}
 
 use crate::{
 	Error, merkle_tree::MerkleTreeProver, protocols::basefold::prover::BaseFoldProver,
-	ring_switch::prover::fold_elems_inplace,
+	ring_switch::fold_elems_inplace,
 };
 
 /// Ring switched PCS prover for non-interactively proving an evaluation claim of a one bit
@@ -167,7 +167,7 @@ where
 	{
 		// Compute the multilinear extension of the ring switching equality indicator.
 		//
-		// This is functionally equivalent to crate::ring_switch::prover::rs_eq_ind, except that
+		// This is functionally equivalent to crate::ring_switch::rs_eq_ind, except that
 		// we reuse the already-computed tensor expansions of the challenges.
 		let rs_eq_ind = fold_elems_inplace(eval_point_suffix_tensor, r_double_prime_tensor);
 
