@@ -120,19 +120,22 @@ where
 
 #[cfg(test)]
 mod test {
-	use binius_field::{BinaryField128b, ExtensionField};
+	use binius_field::{
+		BinaryField128bGhash, ExtensionField, PackedBinaryGhash2x128b, PackedExtension,
+		PackedField, PackedSubfield,
+	};
 	use binius_math::{
 		FieldBuffer,
 		inner_product::inner_product_buffers,
-		multilinear::eq::eq_ind_partial_eval,
-		test_utils::{index_to_hypercube_point, random_scalars},
+		multilinear::{eq::eq_ind_partial_eval, evaluate::evaluate_inplace},
+		test_utils::{index_to_hypercube_point, random_field_buffer, random_scalars},
 	};
 	use binius_verifier::{config::B1, ring_switch::verifier::eval_rs_eq};
 	use rand::{SeedableRng, rngs::StdRng};
 
-	use super::rs_eq_ind;
+	use super::*;
 
-	type F = BinaryField128b;
+	type F = BinaryField128bGhash;
 
 	#[test]
 	fn test_consistent_with_tensor_alg() {
@@ -190,5 +193,55 @@ mod test {
 			eval_rs_eq::<F>(&z_vals, &eval_point, row_batching_expanded_query.as_ref());
 
 		assert_eq!(expected_eval, actual_eval);
+	}
+
+	#[test]
+	fn test_fold_tensor_product() {
+		let mut rng = StdRng::seed_from_u64(0);
+
+		type P = PackedBinaryGhash2x128b;
+
+		// Parameters
+		let n = 10;
+		let log_degree = <F as ExtensionField<B1>>::LOG_DEGREE;
+
+		// Generate a random B1 bit matrix with 2^(n + log_degree) bits
+		let bit_matrix = random_field_buffer::<PackedSubfield<P, B1>>(&mut rng, n + log_degree);
+
+		// Generate a random evaluation point with n + log_degree coordinates
+		let eval_point: Vec<F> = random_scalars(&mut rng, n + log_degree);
+
+		// Split the evaluation point into prefix and suffix
+		let (prefix, suffix) = eval_point.split_at(log_degree);
+
+		// Method 1 (Reference): Tensor expand the full challenge and compute inner product
+		let full_tensor = eq_ind_partial_eval::<F>(&eval_point);
+		let reference_result = inner_product_subfield(
+			PackedField::iter_slice(bit_matrix.as_ref()),
+			PackedField::iter_slice(full_tensor.as_ref()),
+		);
+
+		// Method 2: Tensor expand prefix, call fold_elems_inplace, then evaluate_inplace on suffix
+		let prefix_tensor = eq_ind_partial_eval::<F>(prefix);
+		let bit_matrix_packed = FieldBuffer::new(
+			n,
+			bit_matrix
+				.as_ref()
+				.iter()
+				.map(|&bits_packed| P::cast_ext(bits_packed))
+				.collect(),
+		)
+		.unwrap();
+		let folded_method2 = fold_elems_inplace(bit_matrix_packed, &prefix_tensor);
+		let method2_result = evaluate_inplace(folded_method2, suffix).unwrap();
+
+		// Method 3: Tensor expand suffix, call fold_1b_rows, then evaluate_inplace on prefix
+		let suffix_tensor = eq_ind_partial_eval::<P>(suffix);
+		let folded_method3 = fold_1b_rows::<F, P>(&bit_matrix, &suffix_tensor);
+		let method3_result = evaluate_inplace(folded_method3, prefix).unwrap();
+
+		// Compare all three results
+		assert_eq!(reference_result, method2_result, "Method 2 does not match reference");
+		assert_eq!(reference_result, method3_result, "Method 3 does not match reference");
 	}
 }
