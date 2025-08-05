@@ -1,4 +1,4 @@
-use binius_field::{AESTowerField8b, BinaryField, Field, PackedField};
+use binius_field::{AESTowerField8b, BinaryField, PackedField};
 use binius_math::BinarySubspace;
 
 /// Precomputed domains for NTT operations
@@ -26,27 +26,28 @@ fn get_next_subspace<F: BinaryField>(
 	BinarySubspace::new_unchecked(new_basis)
 }
 
-fn elements_of_subspace<F: BinaryField>(subspace: &BinarySubspace<F>) -> (Vec<F>, Vec<F>) {
+fn elements_of_subspace_broadcasted<F: BinaryField, P: PackedField<Scalar = F>>(subspace: &BinarySubspace<F>) -> (Vec<P>, Vec<P>) {
 	let dim = subspace.dim();
 
-	let inverse = subspace.iter().take(1 << (dim - 1)).collect();
+	let inverse = subspace.iter().map(P::broadcast).take(1 << (dim - 1)).collect();
 
 	let forward = subspace
 		.iter()
 		.skip(1 << (dim - 1))
+		.map(P::broadcast)
 		.take(1 << (dim - 1))
 		.collect();
 
 	(inverse, forward)
 }
 
-fn elements_for_each_subspace<F: BinaryField>(
+fn elements_for_each_subspace_broadcasted<F: BinaryField, P: PackedField<Scalar = F>>(
 	mut subspace: BinarySubspace<F>,
-) -> (Vec<Vec<F>>, Vec<Vec<F>>) {
+) -> (Vec<Vec<P>>, Vec<Vec<P>>) {
 	let (mut inverse, mut forward) = (vec![], vec![]);
 
 	for _dim in (2..=subspace.dim()).rev() {
-		let subspace_elems = elements_of_subspace(&subspace);
+		let subspace_elems = elements_of_subspace_broadcasted(&subspace);
 
 		inverse.push(subspace_elems.0);
 		forward.push(subspace_elems.1);
@@ -58,8 +59,8 @@ fn elements_for_each_subspace<F: BinaryField>(
 }
 
 /// Generate NTT domains for a given subspace
-pub fn generate_ntt_domains(subspace: BinarySubspace<AESTowerField8b>) -> (NttDomains<AESTowerField8b>, NttDomains<AESTowerField8b>) {
-	let (inverse_domains, forward_domains) = elements_for_each_subspace(subspace);
+pub fn generate_ntt_domains<P: PackedField<Scalar = AESTowerField8b>>(subspace: BinarySubspace<AESTowerField8b>) -> (NttDomains<P>, NttDomains<P>) {
+	let (inverse_domains, forward_domains) = elements_for_each_subspace_broadcasted(subspace);
 	
 	// Convert vectors to fixed-size arrays
 	let intt_domains = NttDomains {
@@ -85,11 +86,11 @@ pub fn generate_ntt_domains(subspace: BinarySubspace<AESTowerField8b>) -> (NttDo
 
 /// Fast specialized inverse NTT for 2^6 size with provided domains
 #[inline]
-pub fn fast_inverse_ntt_64(
-	polynomial_evals: &mut [AESTowerField8b; 64],
-	domains: &NttDomains<AESTowerField8b>,
+pub fn fast_inverse_ntt_64<P: PackedField<Scalar = AESTowerField8b>>(
+	polynomial_evals: &mut [P; 64],
+	domains: &NttDomains<P>,
 ) {
-	let mut temp = [AESTowerField8b::ZERO; 64];
+	let mut temp = [P::zero(); 64];
 
 	// Round 0: domain size 64, 1 chunk of 64 elements
 	{
@@ -176,11 +177,11 @@ pub fn fast_inverse_ntt_64(
 
 /// Fast specialized forward NTT for 2^6 size with provided domains
 #[inline]
-pub fn fast_forward_ntt_64(
-	polynomial_evals: &mut [AESTowerField8b; 64],
-	domains: &NttDomains<AESTowerField8b>,
+pub fn fast_forward_ntt_64<P: PackedField<Scalar = AESTowerField8b>>(
+	polynomial_evals: &mut [P; 64],
+	domains: &NttDomains<P>,
 ) {
-	let mut temp = [AESTowerField8b::ZERO; 64];
+	let mut temp = [P::zero(); 64];
 
 	// Round 0: domain size 2, 32 chunks of 2 elements each
 	{
@@ -278,10 +279,10 @@ pub fn fast_forward_ntt_64(
 
 /// Fast specialized NTT for 2^6 size with provided domains
 #[inline]
-pub fn fast_ntt_64(
-	polynomial_evals: &mut [AESTowerField8b; 64],
-	intt_domains: &NttDomains<AESTowerField8b>,
-	fntt_domains: &NttDomains<AESTowerField8b>,
+pub fn fast_ntt_64<P: PackedField<Scalar = AESTowerField8b>>(
+	polynomial_evals: &mut [P; 64],
+	intt_domains: &NttDomains<P>,
+	fntt_domains: &NttDomains<P>,
 ) {
 	fast_inverse_ntt_64(polynomial_evals, intt_domains);
 	fast_forward_ntt_64(polynomial_evals, fntt_domains);
