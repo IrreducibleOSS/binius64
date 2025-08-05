@@ -332,11 +332,9 @@ pub fn fast_inverse_ntt_64(
 			let offset = chunk * 32;
 			let half_len = 16;
 			for i in 0..half_len {
-				let idx1 = offset + (i << 1);
-				let idx2 = idx1 + 1;
-				temp[offset | half_len | i] = polynomial_evals[idx2] - polynomial_evals[idx1];
+				temp[offset | half_len | i] = polynomial_evals[offset | (i << 1) | 1] - polynomial_evals[offset | i << 1];
 				temp[offset | i] =
-					domain[i << 1] * temp[offset | half_len | i] + polynomial_evals[idx1];
+					domain[i << 1] * temp[offset | half_len | i] + polynomial_evals[offset | i << 1];
 			}
 		}
 		*polynomial_evals = temp;
@@ -349,11 +347,9 @@ pub fn fast_inverse_ntt_64(
 			let offset = chunk * 16;
 			let half_len = 8;
 			for i in 0..half_len {
-				let idx1 = offset + (i << 1);
-				let idx2 = idx1 + 1;
-				temp[offset | half_len | i] = polynomial_evals[idx2] - polynomial_evals[idx1];
+				temp[offset | half_len | i] = polynomial_evals[offset | (i << 1) | 1] - polynomial_evals[offset | i << 1];
 				temp[offset | i] =
-					domain[i << 1] * temp[offset | half_len | i] + polynomial_evals[idx1];
+					domain[i << 1] * temp[offset | half_len | i] + polynomial_evals[offset | i << 1];
 			}
 		}
 		*polynomial_evals = temp;
@@ -366,11 +362,9 @@ pub fn fast_inverse_ntt_64(
 			let offset = chunk * 8;
 			let half_len = 4;
 			for i in 0..half_len {
-				let idx1 = offset + (i << 1);
-				let idx2 = idx1 + 1;
-				temp[offset | half_len | i] = polynomial_evals[idx2] - polynomial_evals[idx1];
+				temp[offset | half_len | i] = polynomial_evals[offset | (i << 1) | 1] - polynomial_evals[offset | i << 1];
 				temp[offset | i] =
-					domain[i << 1] * temp[offset | half_len | i] + polynomial_evals[idx1];
+					domain[i << 1] * temp[offset | half_len | i] + polynomial_evals[offset | i << 1];
 			}
 		}
 		*polynomial_evals = temp;
@@ -383,11 +377,9 @@ pub fn fast_inverse_ntt_64(
 			let offset = chunk * 4;
 			let half_len = 2;
 			for i in 0..half_len {
-				let idx1 = offset + (i << 1);
-				let idx2 = idx1 + 1;
-				temp[offset | half_len | i] = polynomial_evals[idx2] - polynomial_evals[idx1];
+				temp[offset | half_len | i] = polynomial_evals[offset | (i << 1) | 1] - polynomial_evals[offset | i << 1];
 				temp[offset | i] =
-					domain[i << 1] * temp[offset | half_len | i] + polynomial_evals[idx1];
+					domain[i << 1] * temp[offset | half_len | i] + polynomial_evals[offset | i << 1];
 			}
 		}
 		*polynomial_evals = temp;
@@ -436,9 +428,9 @@ pub fn fast_forward_ntt_64(
 			let offset = chunk * 4;
 			let half_len = 2;
 			for i in 0..half_len {
-				temp[offset| i << 1] = domain[i << 1] * polynomial_evals[offset | half_len | i]
+				temp[offset | i << 1] = domain[i << 1] * polynomial_evals[offset | half_len | i]
 					+ polynomial_evals[offset | i];
-				temp[offset|(i << 1) | 1] = temp[offset| i << 1] + polynomial_evals[offset | half_len | i];
+				temp[offset | (i << 1) | 1] = temp[offset | i << 1] + polynomial_evals[offset | half_len | i];
 			}
 		}
 
