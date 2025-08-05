@@ -1,8 +1,10 @@
 // Copyright 2025 Irreducible Inc.
 
-use binius_field::{BinaryField, ExtensionField, Field};
-use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval};
-use binius_verifier::config::B1;
+use binius_field::{BinaryField, PackedField};
+use binius_math::{
+	FieldBuffer, inner_product::inner_product_subfield, multilinear::eq::eq_ind_partial_eval,
+};
+use binius_utils::rayon::prelude::*;
 
 /// Compute the multilinear extension of the ring switching equality indicator.
 ///
@@ -22,35 +24,35 @@ use binius_verifier::config::B1;
 /// * the length of batching challenges must equal `FE::LOG_DEGREE`
 ///
 /// [DP24]: <https://eprint.iacr.org/2024/504>
-pub fn rs_eq_ind<F>(batching_challenges: &[F], z_vals: &[F]) -> FieldBuffer<F>
-where
-	F: BinaryField,
-{
+pub fn rs_eq_ind<F: BinaryField>(batching_challenges: &[F], z_vals: &[F]) -> FieldBuffer<F> {
 	assert_eq!(batching_challenges.len(), F::LOG_DEGREE);
 
-	let big_field_hypercube_vertices = 1 << z_vals.len();
-
-	// MLE-random-linear-combination of bit-slices of the eq_ind for z_vals
 	let z_vals_eq_ind = eq_ind_partial_eval::<F>(z_vals);
-
 	let row_batching_query = eq_ind_partial_eval::<F>(batching_challenges);
+	fold_elems_inplace(z_vals_eq_ind, &row_batching_query)
+}
 
-	let mut rs_eq_mle = FieldBuffer::<F>::zeros(z_vals.len());
+/// Transforms a [`FieldBuffer`] by mapping every scalar to the inner product of its B1 components
+/// and a given vector of field elements.
+//
+/// ## Preconditions
+/// * `vec` has length equal to the extension degree of `F` over `B1`
+pub fn fold_elems_inplace<F, P>(mut elems: FieldBuffer<P>, vec: &FieldBuffer<F>) -> FieldBuffer<P>
+where
+	F: BinaryField,
+	P: PackedField<Scalar = F>,
+{
+	assert_eq!(vec.log_len(), F::LOG_DEGREE); // precondition
 
-	for big_field_hypercube_vertex in 0..big_field_hypercube_vertices {
-		for (index, bit) in <F as ExtensionField<B1>>::into_iter_bases(
-			z_vals_eq_ind.as_ref()[big_field_hypercube_vertex],
-		)
-		.enumerate()
-		{
-			if bit == B1::ONE {
-				rs_eq_mle.as_mut()[big_field_hypercube_vertex] +=
-					row_batching_query.as_ref()[index];
-			}
-		}
-	}
+	// TODO: Try optimizing this using the Method of Four Russians. The trait interfaces for
+	// byte-decomposing the packed elements `P` are missing.
+	elems.as_mut().par_iter_mut().for_each(|packed_elem| {
+		*packed_elem = P::from_scalars(packed_elem.into_iter().map(|scalar| {
+			inner_product_subfield(scalar.into_iter_bases(), vec.as_ref().iter().copied())
+		}));
+	});
 
-	rs_eq_mle
+	elems
 }
 
 #[cfg(test)]

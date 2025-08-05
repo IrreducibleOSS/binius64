@@ -16,7 +16,7 @@ use binius_verifier::{config::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme}
 
 use crate::{
 	Error, merkle_tree::MerkleTreeProver, protocols::basefold::prover::BaseFoldProver,
-	ring_switch::prover::rs_eq_ind,
+	ring_switch::prover::fold_elems_inplace,
 };
 
 /// Ring switched PCS prover for non-interactively proving an evaluation claim of a one bit
@@ -28,7 +28,7 @@ use crate::{
 /// soundness.
 pub struct OneBitPCSProver<F, P>
 where
-	F: BinaryField + ExtensionField<B1>,
+	F: BinaryField,
 	P: PackedExtension<B1> + PackedField<Scalar = F>,
 {
 	pub mle: FieldBuffer<PackedSubfield<P, B1>>,
@@ -38,7 +38,7 @@ where
 
 impl<F, P> OneBitPCSProver<F, P>
 where
-	F: BinaryField + ExtensionField<B1>,
+	F: BinaryField,
 	P: PackedExtension<B1> + PackedField<Scalar = F>,
 {
 	/// Create a new ring switched PCS prover.
@@ -83,8 +83,6 @@ where
 		committed: &'a MerkleProver::Committed,
 	) -> Result<(), Error>
 	where
-		F: BinaryField + ExtensionField<B1> + PackedExtension<B1> + PackedField<Scalar = F>,
-		P: PackedExtension<B1> + PackedField<Scalar = F>,
 		TranscriptChallenger: Challenger,
 		NTT: AdditiveNTT<F> + Sync,
 		MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
@@ -106,9 +104,9 @@ where
 			.transpose()
 			.elems;
 
+		// Sample row-batching challenges
 		let r_double_prime = transcript.sample_vec(log_scalar_bit_width);
-
-		let eq_r_double_prime = eq_ind_partial_eval::<F>(r_double_prime.as_ref());
+		let eq_r_double_prime = eq_ind_partial_eval::<F>(&r_double_prime);
 
 		let computed_sumcheck_claim: F =
 			inner_product(s_hat_u, eq_r_double_prime.as_ref().iter().copied());
@@ -116,7 +114,8 @@ where
 		let computed_sumcheck_claim: F = computed_sumcheck_claim.iter().collect::<Vec<F>>()[0];
 
 		let big_field_basefold_prover = self.setup_for_fri_sumcheck(
-			&r_double_prime,
+			&eq_r_double_prime,
+			suffix_tensor,
 			ntt,
 			merkle_prover,
 			fri_params,
@@ -152,7 +151,8 @@ where
 	#[allow(clippy::too_many_arguments)]
 	fn setup_for_fri_sumcheck<'a, NTT, MerkleProver, VCS>(
 		self,
-		r_double_prime: &[F],
+		r_double_prime_tensor: &FieldBuffer<F>,
+		eval_point_suffix_tensor: FieldBuffer<P>,
 		ntt: &'a NTT,
 		merkle_prover: &'a MerkleProver,
 		fri_params: &'a FRIParams<F, F>,
@@ -161,18 +161,15 @@ where
 		basefold_sumcheck_claim: F,
 	) -> Result<BaseFoldProver<'a, F, P, NTT, MerkleProver, VCS>, Error>
 	where
-		F: BinaryField,
-		P: PackedExtension<B1> + PackedField<Scalar = F>,
 		NTT: AdditiveNTT<F> + Sync,
 		MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 		VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 	{
-		let log_scalar_bit_width = <F as ExtensionField<B1>>::LOG_DEGREE;
-		let (_, eval_point_high) = self.evaluation_point.split_at(log_scalar_bit_width);
-
-		let rs_eq_ind_values = rs_eq_ind::<F>(r_double_prime, eval_point_high);
-		let rs_eq_ind: FieldBuffer<P> = FieldBuffer::from_values(rs_eq_ind_values.as_ref())
-			.expect("failed to create field buffer");
+		// Compute the multilinear extension of the ring switching equality indicator.
+		//
+		// This is functionally equivalent to crate::ring_switch::prover::rs_eq_ind, except that
+		// we reuse the already-computed tensor expansions of the challenges.
+		let rs_eq_ind = fold_elems_inplace(eval_point_suffix_tensor, r_double_prime_tensor);
 
 		// Convert PackedSubfield<P, B1> to P while maintaining packed structure
 		let large_field_mle: &[P] = <P as PackedExtension<B1>>::cast_exts(self.mle.as_ref());
