@@ -394,4 +394,45 @@ proptest! {
 			"Circuit incorrectly accepted invalid quotient/remainder: a={a_big}, mod={modulus_big}, q={provided_q} (correct={correct_q}), r={provided_r} (correct={correct_r})"
 		);
 	}
+
+	#[test]
+	fn prop_pseudo_mersenne_mod_reduce(
+		a_vals in prop::collection::vec(any::<u64>(), 1..=10),
+		(modulus_po2, modulus_subtrahend_vals) in (1usize..6)
+			.prop_flat_map(|modulus_limbs| {
+				(Just(64 * modulus_limbs), prop::collection::vec(any::<u64>(), 1..=modulus_limbs))
+			})
+	) {
+		let builder = CircuitBuilder::new();
+
+		let a = BigUint::new_witness(&builder, a_vals.len());
+		let modulus_subtrahend = BigUint::new_witness(&builder, modulus_subtrahend_vals.len());
+
+		let quotient = BigUint::new_witness(&builder, a.limbs.len());
+		let remainder = BigUint::new_witness(&builder, modulus_po2 / 64);
+
+		let circuit = PseudoMersenneModReduce::new(&builder, a, modulus_po2, modulus_subtrahend, quotient, remainder);
+
+		let cs = builder.build();
+		let mut w = cs.new_witness_filler();
+
+		let a_big = from_u64_limbs(&a_vals);
+		let modulus_big = num_bigint::BigUint::from(2u64).pow(modulus_po2 as u32) - from_u64_limbs(&modulus_subtrahend_vals);
+		let (q_big, r_big) = a_big.div_rem(&modulus_big);
+
+		circuit.a.populate_limbs(&mut w, &a_vals);
+		circuit.modulus_subtrahend.populate_limbs(&mut w, &modulus_subtrahend_vals);
+
+		let mut q_limbs = q_big.to_u64_digits();
+		q_limbs.resize(circuit.quotient.limbs.len(), 0u64);
+		circuit.quotient.populate_limbs(&mut w, &q_limbs);
+
+		let mut r_limbs = r_big.to_u64_digits();
+		r_limbs.resize(circuit.remainder.limbs.len(), 0u64);
+		circuit.remainder.populate_limbs(&mut w, &r_limbs);
+
+		cs.populate_wire_witness(&mut w).unwrap();
+
+		verify_constraints(cs.constraint_system(), &w.into_value_vec()).unwrap();
+	}
 }

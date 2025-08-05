@@ -11,8 +11,8 @@ config: Config {
     max_len_t_max: 48,
 }
 --
-Number of gates: 819666
-Number of AND constraints: 1140296
+Number of gates: 819669
+Number of AND constraints: 1140299
 Number of MUL constraints: 26945
 Length of value vec: 2097152
   Constants: 624

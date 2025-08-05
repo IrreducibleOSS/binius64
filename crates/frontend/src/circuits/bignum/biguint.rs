@@ -25,6 +25,34 @@ impl BigUint {
 		BigUint { limbs }
 	}
 
+	/// Pads to given limb length with a wire value.
+	///
+	/// No-op if `new_limbs_len` is shorter then the current one.
+	pub fn pad_limbs_to(&self, new_limbs_len: usize, padding_value: Wire) -> Self {
+		let mut padded_limbs = self.limbs.clone();
+		if new_limbs_len > padded_limbs.len() {
+			padded_limbs.resize(new_limbs_len, padding_value);
+		}
+		Self {
+			limbs: padded_limbs,
+		}
+	}
+
+	/// Splits the `BigUint` at a given limb position into `(lo, hi)`. The result
+	/// satisfies `lo + 2^(WORD_SIZE_BITS * lo.limbs.len()) * hi`.
+	pub fn split_at_limbs(mut self, at_limbs: usize) -> (Self, Self) {
+		let hi_limbs = self.limbs.split_off(at_limbs);
+		(self, Self { limbs: hi_limbs })
+	}
+
+	/// Concatenate the limbs of another `BigUint` on top. The resulting value
+	/// equals `self + 2^(WORD_SIZE_BITS * self.limbs.len()) * hi`.
+	pub fn concat_limbs(&self, hi: &Self) -> Self {
+		let mut limbs = self.limbs.clone();
+		limbs.extend(&hi.limbs);
+		Self { limbs }
+	}
+
 	/// Populate the BigUint with the expected limb_values
 	///
 	/// Panics if limb_values.len() != self.limbs.len()
