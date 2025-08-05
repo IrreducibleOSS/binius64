@@ -15,19 +15,21 @@ struct Args {
 	#[arg(short = 'l', long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..))]
 	log_inv_rate: u32,
 
-	/// Maximum byte-length the circuit can handle, unless --exact-len is set
+	/// Maximum message length in bytes that the circuit can handle (ignored with --exact-len)
 	#[arg(long, default_value_t = 2048)]
 	max_len: usize,
 
-	/// Actual byte-length of the message
+	/// Length of message in bytes (optional if --message is provided, defaults to --max-len for
+	/// random data)
 	#[arg(long)]
 	len: Option<usize>,
 
-	/// UTF-8 string to hash
+	/// UTF-8 string to hash (if not provided, random bytes are generated)
 	#[arg(long)]
 	message: Option<String>,
 
-	/// Use exact-length circuit (length is constant instead of witness)
+	/// Build circuit for exact message length (makes length a compile-time constant instead of
+	/// runtime witness)
 	#[arg(long, default_value_t = false)]
 	exact_len: bool,
 }
