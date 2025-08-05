@@ -60,7 +60,7 @@ name = "fold_words"
 harness = false
 
 [[bench]]
-name = "pcs"
+name = "ring_switch"
 harness = false
 
 [features]

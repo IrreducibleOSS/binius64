@@ -1,10 +1,13 @@
 // Copyright 2025 Irreducible Inc.
 
-use binius_field::{BinaryField, PackedField};
+use binius_field::{
+	BinaryField, ExtensionField, Field, PackedExtension, PackedField, PackedSubfield,
+};
 use binius_math::{
 	FieldBuffer, inner_product::inner_product_subfield, multilinear::eq::eq_ind_partial_eval,
 };
 use binius_utils::rayon::prelude::*;
+use binius_verifier::config::B1;
 
 /// Compute the multilinear extension of the ring switching equality indicator.
 ///
@@ -53,6 +56,66 @@ where
 	});
 
 	elems
+}
+
+/// Computes the linear combination of the rows of a B1 matrix by an extension field coefficient
+/// vector.
+///
+/// The matrix `mat` is a B1 matrix, packed in row-major order. The number of columns is equal to
+/// the extension degree of `F` over [`B1`]. The row coefficients are packed in the vector `vec`.
+///
+/// ## Arguments
+///
+/// * `mat` - the [`B1`] matrix, with `F::N_BITS` columns
+/// * `vec` - the row coefficients
+///
+/// ## Preconditions
+///
+/// * the length of the matrix, in `B1` elements, must equal vector length, in `F` elements, times
+///   the field extension degree
+pub fn fold_1b_rows<F, P>(
+	mat: &FieldBuffer<PackedSubfield<P, B1>>,
+	vec: &FieldBuffer<P>,
+) -> FieldBuffer<F>
+where
+	F: BinaryField,
+	P: PackedExtension<B1> + PackedField<Scalar = F>,
+{
+	let log_scalar_bit_width = <F as ExtensionField<B1>>::LOG_DEGREE;
+	assert_eq!(mat.log_len(), log_scalar_bit_width + vec.log_len()); // precondition
+
+	let mat = mat.as_ref();
+
+	// partial evals at high variables, since this is a partial eval, it will not
+	// be a packed field element since it deals with the internal scalars
+	let mut s_hat_v_buffer = FieldBuffer::zeros(log_scalar_bit_width);
+	let s_hat_v = s_hat_v_buffer.as_mut();
+
+	let bits_per_packed_elem: usize = mat[0].iter().count();
+	let bits_per_variable: usize = bits_per_packed_elem / P::WIDTH;
+
+	// combine eq w/ mle
+	for (packed_idx, packed_elem) in mat.iter().enumerate() {
+		for high_offset in 0..P::WIDTH {
+			// get eq index
+			let eq_idx = packed_idx * P::WIDTH + high_offset;
+			let eq_at_high_value = vec.get(eq_idx).expect("eq_idx in range");
+
+			// bit index range for where the b128 scalars are located in the packed element
+			let bit_start = high_offset * bits_per_variable;
+			let bit_end = bit_start + bits_per_variable;
+
+			for (i, bit) in packed_elem.iter().enumerate() {
+				if bit == B1::ONE && i >= bit_start && i < bit_end {
+					let low_vars_idx = i - bit_start;
+
+					s_hat_v[low_vars_idx] += eq_at_high_value;
+				}
+			}
+		}
+	}
+
+	s_hat_v_buffer
 }
 
 #[cfg(test)]
