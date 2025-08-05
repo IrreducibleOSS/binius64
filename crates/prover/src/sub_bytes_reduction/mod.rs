@@ -3,13 +3,14 @@ pub mod ntt_eight_bit;
 #[cfg(test)]
 mod test {
 	use binius_field::{
-		arithmetic_traits::{InvertOrZero, TaggedInvertOrZero},
 		AESTowerField8b, BinaryField, Field, Random,
 	};
 	use binius_math::BinarySubspace;
-use binius_verifier::and_reduction::univariate::univariate_poly::{GenericPo2UnivariatePoly, UnivariatePolyIsomorphic};
-use itertools::Itertools;
-use rand::{rngs::StdRng, SeedableRng};
+	use binius_verifier::and_reduction::univariate::univariate_poly::{
+		GenericPo2UnivariatePoly, UnivariatePolyIsomorphic,
+	};
+	use itertools::Itertools;
+	use rand::{rngs::StdRng, SeedableRng};
 
 	fn get_next_subspace<F: BinaryField>(
 		current_subspace: &BinarySubspace<F>,
@@ -39,100 +40,107 @@ use rand::{rngs::StdRng, SeedableRng};
 		(inverse, fowrard)
 	}
 
-	fn single_foward_ntt_round_one_polynomial<F: BinaryField>(polynomial_evals: &[F], domain: &[F]) -> Vec<F> {
-		assert_eq!(polynomial_evals.len(), domain.len(), 
-			"polynomial_evals and domain must have the same length");
-		
+	fn single_foward_ntt_round_one_polynomial<F: BinaryField>(
+		polynomial_evals: &[F],
+		domain: &[F],
+	) -> Vec<F> {
+		assert_eq!(
+			polynomial_evals.len(),
+			domain.len(),
+			"polynomial_evals and domain must have the same length"
+		);
+
 		let mut result = vec![F::ZERO; domain.len()];
 
-        let half_len = result.len()>>1;
+		let half_len = result.len() >> 1;
 
 		for i in 0..half_len {
-            result[i<<1] = domain[i<<1] * polynomial_evals[i+half_len] + polynomial_evals[i];
-			result[(i<<1) + 1] = result[i<<1] + polynomial_evals[i+half_len];
+			result[i << 1] = domain[i << 1] * polynomial_evals[i + half_len] + polynomial_evals[i];
+			result[(i << 1) + 1] = result[i << 1] + polynomial_evals[i + half_len];
 		}
 
 		result
 	}
 
-    fn single_inverse_ntt_round_one_polynomial<F: BinaryField>(polynomial_evals: &[F], domain: &[F]) -> Vec<F> {
+	fn single_inverse_ntt_round_one_polynomial<F: BinaryField>(
+		polynomial_evals: &[F],
+		domain: &[F],
+	) -> Vec<F> {
 		let mut result = vec![F::ZERO; domain.len()];
 
-        let half_len = result.len()>>1;
+		let half_len = result.len() >> 1;
 
 		for i in 0..half_len {
-            result[i + half_len] = polynomial_evals[(i<<1) + 1] - polynomial_evals[i<<1];
-			result[i] = domain[i<<1] * result[i + half_len] + polynomial_evals[i<<1];
+			result[i + half_len] = polynomial_evals[(i << 1) + 1] - polynomial_evals[i << 1];
+			result[i] = domain[i << 1] * result[i + half_len] + polynomial_evals[i << 1];
 		}
 
 		result
 	}
 
-    fn single_inverse_ntt_round_full<F: BinaryField>(polynomial_evals: &[F], domain: &[F]) -> Vec<F> {
+	fn single_inverse_ntt_round_full<F: BinaryField>(
+		polynomial_evals: &[F],
+		domain: &[F],
+	) -> Vec<F> {
 		let domain_len = domain.len();
 		let num_chunks = polynomial_evals.len() / domain_len;
 		let mut result = vec![F::ZERO; polynomial_evals.len()];
-		
+
 		for chunk_idx in 0..num_chunks {
 			let start = chunk_idx * domain_len;
 			let end = start + domain_len;
-			let chunk_result = single_inverse_ntt_round_one_polynomial(&polynomial_evals[start..end], domain);
+			let chunk_result =
+				single_inverse_ntt_round_one_polynomial(&polynomial_evals[start..end], domain);
 			result[start..end].copy_from_slice(&chunk_result);
 		}
-		
+
 		result
 	}
 
-	fn single_forward_ntt_round_full<F: BinaryField>(polynomial_evals: &[F], domain: &[F]) -> Vec<F> {
+	fn single_forward_ntt_round_full<F: BinaryField>(
+		polynomial_evals: &[F],
+		domain: &[F],
+	) -> Vec<F> {
 		let domain_len = domain.len();
 		let num_chunks = polynomial_evals.len() / domain_len;
 		let mut result = vec![F::ZERO; polynomial_evals.len()];
-		
+
 		for chunk_idx in 0..num_chunks {
 			let start = chunk_idx * domain_len;
 			let end = start + domain_len;
-			let chunk_result = single_foward_ntt_round_one_polynomial(&polynomial_evals[start..end], domain);
+			let chunk_result =
+				single_foward_ntt_round_one_polynomial(&polynomial_evals[start..end], domain);
 			result[start..end].copy_from_slice(&chunk_result);
 		}
-		
+
 		result
 	}
 
-    fn inverse_ntt<F: BinaryField>(
-        polynomial_evals: &mut [F],
-		subspace: BinarySubspace<F>,
-	){
+	fn inverse_ntt<F: BinaryField>(polynomial_evals: &mut [F], subspace: BinarySubspace<F>) {
 		let (domains, _) = elements_for_each_subspace(subspace.clone());
 		for domain in domains {
-            let new_poly_evals = single_inverse_ntt_round_full(polynomial_evals, &domain);
-            polynomial_evals.copy_from_slice(&new_poly_evals);
-            println!("after round of inverse ntt: {:?}", polynomial_evals);
-            println!("domain intt: {:?}", domain);
+			let new_poly_evals = single_inverse_ntt_round_full(polynomial_evals, &domain);
+			polynomial_evals.copy_from_slice(&new_poly_evals);
+			println!("after round of inverse ntt: {:?}", polynomial_evals);
+			println!("domain intt: {:?}", domain);
 		}
 	}
 
-    fn forward_ntt<F: BinaryField>(
-        polynomial_evals: &mut [F],
-		subspace: BinarySubspace<F>,
-	){
+	fn forward_ntt<F: BinaryField>(polynomial_evals: &mut [F], subspace: BinarySubspace<F>) {
 		let (_, domains) = elements_for_each_subspace(subspace.clone());
 		for domain in domains.iter().rev() {
-            let new_poly_evals = single_forward_ntt_round_full(polynomial_evals, &domain);
-            polynomial_evals.copy_from_slice(&new_poly_evals);
-            println!("after round of forward ntt: {:?}", polynomial_evals);
-            println!("domain fntt: {:?}", domain);
+			let new_poly_evals = single_forward_ntt_round_full(polynomial_evals, &domain);
+			polynomial_evals.copy_from_slice(&new_poly_evals);
+			println!("after round of forward ntt: {:?}", polynomial_evals);
+			println!("domain fntt: {:?}", domain);
 		}
 	}
 
-    fn ntt<F: BinaryField>(
-        polynomial_evals: &mut [F],
-		subspace: BinarySubspace<F>,
-	){
-        inverse_ntt(polynomial_evals, subspace.clone());
-        println!("in between : {:?}", polynomial_evals);
-        forward_ntt(polynomial_evals, subspace);
-    }
-
+	fn ntt<F: BinaryField>(polynomial_evals: &mut [F], subspace: BinarySubspace<F>) {
+		inverse_ntt(polynomial_evals, subspace.clone());
+		println!("in between : {:?}", polynomial_evals);
+		forward_ntt(polynomial_evals, subspace);
+	}
 
 	fn elements_for_each_subspace<F: BinaryField>(
 		mut subspace: BinarySubspace<F>,
@@ -140,10 +148,10 @@ use rand::{rngs::StdRng, SeedableRng};
 		let (mut inverse, mut forward) = (vec![], vec![]);
 
 		for _dim in (2..=subspace.dim()).rev() {
-            let subspace_elems = elements_of_subspace(&subspace);
+			let subspace_elems = elements_of_subspace(&subspace);
 
-            inverse.push(subspace_elems.0);
-            forward.push(subspace_elems.1);
+			inverse.push(subspace_elems.0);
+			forward.push(subspace_elems.1);
 
 			subspace = get_next_subspace(&subspace);
 		}
@@ -156,58 +164,64 @@ use rand::{rngs::StdRng, SeedableRng};
 		// Test with different subspace dimensions
 		for dim in 3..=8 {
 			let subspace = BinarySubspace::<AESTowerField8b>::with_dim(dim).unwrap();
-			
+
 			// Use subspace.iter().collect() as requested by user
 			let domain: Vec<AESTowerField8b> = subspace.iter().collect();
-			
+
 			// Create test polynomial evaluations with same size as domain
 			let poly_size = domain.len();
 			let mut test_poly = vec![AESTowerField8b::ZERO; poly_size];
-			
+
 			// Initialize with some non-zero values
 			for i in 0..poly_size {
 				test_poly[i] = AESTowerField8b::new(i as u8);
 			}
-			
+
 			// Apply forward NTT
 			let forward_result = single_foward_ntt_round_one_polynomial(&test_poly, &domain);
-			
+
 			// Apply inverse NTT using the same domain
 			let inverse_result = single_inverse_ntt_round_one_polynomial(&forward_result, &domain);
-			
+
 			// Check that we get back the original polynomial
-			assert_eq!(test_poly, inverse_result, 
-				"Forward and inverse NTT should be inverses for dimension {}", dim);
+			assert_eq!(
+				test_poly, inverse_result,
+				"Forward and inverse NTT should be inverses for dimension {}",
+				dim
+			);
 		}
 	}
 
-    #[test]
+	#[test]
 	fn test_forward_inverse_are_inverses_full_round() {
 		// Test with different subspace dimensions
 		for dim in 3..=8 {
 			let subspace = BinarySubspace::<AESTowerField8b>::with_dim(dim).unwrap();
-			
+
 			// Use subspace.iter().collect() as requested by user
 			let domain: Vec<AESTowerField8b> = subspace.iter().collect();
-			
+
 			// Create test polynomial evaluations with same size as domain
 			let poly_size = domain.len() * 8;
 			let mut test_poly = vec![AESTowerField8b::ZERO; poly_size];
-			
+
 			// Initialize with some non-zero values
 			for i in 0..poly_size {
 				test_poly[i] = AESTowerField8b::new(i as u8);
 			}
-			
+
 			// Apply forward NTT
 			let forward_result = single_forward_ntt_round_full(&test_poly, &domain);
-			
+
 			// Apply inverse NTT using the same domain
 			let inverse_result = single_inverse_ntt_round_full(&forward_result, &domain);
-			
+
 			// Check that we get back the original polynomial
-			assert_eq!(test_poly, inverse_result, 
-				"Forward and inverse NTT should be inverses for dimension {}", dim);
+			assert_eq!(
+				test_poly, inverse_result,
+				"Forward and inverse NTT should be inverses for dimension {}",
+				dim
+			);
 		}
 	}
 
@@ -217,37 +231,48 @@ use rand::{rngs::StdRng, SeedableRng};
 		for start_dim in 3..=8 {
 			let subspace = BinarySubspace::<AESTowerField8b>::with_dim(start_dim).unwrap();
 			let next_subspace = get_next_subspace(&subspace);
-			
-			assert_eq!(next_subspace.dim(), start_dim - 1,
-				"get_next_subspace should reduce dimension by 1");
-			
+
+			assert_eq!(
+				next_subspace.dim(),
+				start_dim - 1,
+				"get_next_subspace should reduce dimension by 1"
+			);
+
 			// Verify the next subspace has valid basis
-			assert_eq!(next_subspace.basis().len(), start_dim - 1,
-				"Next subspace basis should have dimension - 1 elements");
+			assert_eq!(
+				next_subspace.basis().len(),
+				start_dim - 1,
+				"Next subspace basis should have dimension - 1 elements"
+			);
 		}
 	}
 
-    #[test]
-    fn test_ntt(){
-        let mut rng = StdRng::seed_from_u64(0);
-        let subspace = BinarySubspace::<AESTowerField8b>::with_dim(3).unwrap();
+	#[test]
+	fn test_ntt() {
+		let mut rng = StdRng::seed_from_u64(0);
+		let subspace = BinarySubspace::<AESTowerField8b>::with_dim(3).unwrap();
 
-        let input_space =subspace.reduce_dim(2).unwrap();
+		let input_space = subspace.reduce_dim(2).unwrap();
 
-        let poly = GenericPo2UnivariatePoly::new((0..4).map(|_|{AESTowerField8b::random(&mut rng) }).collect_vec(), input_space.clone());
+		let poly = GenericPo2UnivariatePoly::new(
+			(0..4)
+				.map(|_| AESTowerField8b::random(&mut rng))
+				.collect_vec(),
+			input_space.clone(),
+		);
 
-        let last_basis_vec = subspace.basis()[subspace.basis().len()-1];
+		let last_basis_vec = subspace.basis()[subspace.basis().len() - 1];
 
-        let mut polynomial_evals = poly.iter().copied().collect_vec();
+		let mut polynomial_evals = poly.iter().copied().collect_vec();
 
-        ntt(&mut polynomial_evals, subspace.clone());
+		ntt(&mut polynomial_evals, subspace.clone());
 
-        for (i,input_domain_elem)  in input_space.iter().enumerate(){
-            let result = poly.evaluate_at_challenge(input_domain_elem + last_basis_vec);
+		for (i, input_domain_elem) in input_space.iter().enumerate() {
+			let result = poly.evaluate_at_challenge(input_domain_elem + last_basis_vec);
 
-            assert_eq!(result, polynomial_evals[i])
-        }
-    }
+			assert_eq!(result, polynomial_evals[i])
+		}
+	}
 
 	#[test]
 	fn test_elements_of_subspace() {
@@ -255,20 +280,32 @@ use rand::{rngs::StdRng, SeedableRng};
 		for dim in 2..=8 {
 			let subspace = BinarySubspace::<AESTowerField8b>::with_dim(dim).unwrap();
 			let (inverse, forward) = elements_of_subspace(&subspace);
-			
+
 			// Check that both halves have correct size
 			let expected_half_size = 1 << (dim - 1);
-			assert_eq!(inverse.len(), expected_half_size,
-				"Inverse elements should have size 2^(dim-1)");
-			assert_eq!(forward.len(), expected_half_size,
-				"Forward elements should have size 2^(dim-1)");
-			
+			assert_eq!(
+				inverse.len(),
+				expected_half_size,
+				"Inverse elements should have size 2^(dim-1)"
+			);
+			assert_eq!(
+				forward.len(),
+				expected_half_size,
+				"Forward elements should have size 2^(dim-1)"
+			);
+
 			// Verify that inverse contains first half of subspace elements
 			let subspace_elems: Vec<_> = subspace.iter().collect();
-			assert_eq!(&inverse[..], &subspace_elems[..expected_half_size],
-				"Inverse should contain first half of subspace elements");
-			assert_eq!(&forward[..], &subspace_elems[expected_half_size..2*expected_half_size],
-				"Forward should contain second half of subspace elements");
+			assert_eq!(
+				&inverse[..],
+				&subspace_elems[..expected_half_size],
+				"Inverse should contain first half of subspace elements"
+			);
+			assert_eq!(
+				&forward[..],
+				&subspace_elems[expected_half_size..2 * expected_half_size],
+				"Forward should contain second half of subspace elements"
+			);
 		}
 	}
 
@@ -281,19 +318,18 @@ use rand::{rngs::StdRng, SeedableRng};
 			AESTowerField8b::ZERO,
 			AESTowerField8b::ZERO,
 		];
-		
+
 		let subspace = BinarySubspace::<AESTowerField8b>::with_dim(3).unwrap();
 		forward_ntt(&mut polynomial_evals, subspace);
-		
+
 		let expected = vec![
 			AESTowerField8b::ONE,
 			AESTowerField8b::ONE,
 			AESTowerField8b::ONE,
 			AESTowerField8b::ONE,
 		];
-		
-		assert_eq!(polynomial_evals, expected, 
-			"Forward NTT of [1,0,0,0] should produce [1,1,1,1]");
+
+		assert_eq!(polynomial_evals, expected, "Forward NTT of [1,0,0,0] should produce [1,1,1,1]");
 	}
 
 	#[test]
@@ -305,18 +341,17 @@ use rand::{rngs::StdRng, SeedableRng};
 			AESTowerField8b::ONE,
 			AESTowerField8b::ONE,
 		];
-		
+
 		let subspace = BinarySubspace::<AESTowerField8b>::with_dim(3).unwrap();
 		inverse_ntt(&mut polynomial_evals, subspace);
-		
+
 		let expected = vec![
 			AESTowerField8b::ONE,
 			AESTowerField8b::ZERO,
 			AESTowerField8b::ZERO,
 			AESTowerField8b::ZERO,
 		];
-		
-		assert_eq!(polynomial_evals, expected, 
-			"Inverse NTT of [1,1,1,1] should produce [1,0,0,0]");
+
+		assert_eq!(polynomial_evals, expected, "Inverse NTT of [1,1,1,1] should produce [1,0,0,0]");
 	}
 }
