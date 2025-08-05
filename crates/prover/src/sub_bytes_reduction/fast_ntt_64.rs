@@ -338,7 +338,7 @@ pub fn fast_ntt_64<P: PackedField<Scalar = AESTowerField8b>>(
 
 #[cfg(test)]
 mod tests {
-	use binius_field::{Field, Random};
+	use binius_field::{Field, Random, arch::packed_aes_128::PackedAESBinaryField16x8b};
 	use binius_math::BinarySubspace;
 	use binius_verifier::and_reduction::univariate::univariate_poly::{
 		GenericPo2UnivariatePoly, UnivariatePolyIsomorphic,
@@ -414,5 +414,49 @@ mod tests {
 
 		// Check linearity: NTT(a + b) = NTT(a) + NTT(b)
 		assert_eq!(poly_sum, ntt_sum, "NTT should be linear");
+	}
+
+	#[test]
+	fn test_fast_ntt_64_packed_16x8b_correctness() {
+		let mut rng = StdRng::seed_from_u64(0);
+		let subspace = BinarySubspace::<AESTowerField8b>::with_dim(7).unwrap();
+		let input_space = subspace.reduce_dim(6).unwrap();
+
+		// Create random packed field values
+		let mut packed_poly: [PackedAESBinaryField16x8b; 64] = [PackedAESBinaryField16x8b::zero(); 64];
+		for i in 0..64 {
+			packed_poly[i] = PackedAESBinaryField16x8b::random(&mut rng);
+		}
+
+		// Generate domains for packed field type
+		let (intt_domains, fntt_domains) = generate_ntt_domains::<PackedAESBinaryField16x8b>(subspace.clone());
+
+		// Perform NTT on packed values
+		let mut ntt_result = packed_poly.clone();
+		fast_ntt_64(&mut ntt_result, &intt_domains, &fntt_domains);
+
+		// Extract individual elements from packed fields and verify
+		for elem_idx in 0..16 {
+			// Extract element at position elem_idx from each packed field
+			let mut single_poly_coeffs = vec![];
+			for i in 0..64 {
+				single_poly_coeffs.push(packed_poly[i].get(elem_idx));
+			}
+
+			// Create univariate polynomial from extracted elements
+			let single_poly = GenericPo2UnivariatePoly::new(
+				single_poly_coeffs,
+				input_space.clone(),
+			);
+
+			// Verify evaluations match extracted elements from NTT result
+			let last_basis_vec = subspace.basis()[subspace.basis().len() - 1];
+			for (i, input_domain_elem) in input_space.iter().enumerate() {
+				let expected = single_poly.evaluate_at_challenge(input_domain_elem + last_basis_vec);
+				let actual = ntt_result[i].get(elem_idx);
+				assert_eq!(expected, actual, 
+					"Mismatch at element {} of packed field index {}", elem_idx, i);
+			}
+		}
 	}
 }
