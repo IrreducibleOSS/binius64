@@ -142,6 +142,8 @@ where
 		mut self,
 		transcript: &mut ProverTranscript<T>,
 	) -> Result<(), Error> {
+		let _scope = tracing::debug_span!("Basefold").entered();
+
 		let mut round_commitments = vec![];
 
 		for _ in 0..self.log_n {
