@@ -1,4 +1,5 @@
-pub mod ntt_eight_bit;
+
+pub mod fast_ntt_64;
 
 #[cfg(test)]
 mod test {
@@ -116,12 +117,12 @@ mod test {
 		result
 	}
 
+
 	fn inverse_ntt<F: BinaryField>(polynomial_evals: &mut [F], subspace: BinarySubspace<F>) {
 		let (domains, _) = elements_for_each_subspace(subspace.clone());
 		for domain in domains {
 			let new_poly_evals = single_inverse_ntt_round_full(polynomial_evals, &domain);
 			polynomial_evals.copy_from_slice(&new_poly_evals);
-			println!("after round of inverse ntt: {:?}", polynomial_evals);
 			println!("domain intt: {:?}", domain);
 		}
 	}
@@ -131,10 +132,10 @@ mod test {
 		for domain in domains.iter().rev() {
 			let new_poly_evals = single_forward_ntt_round_full(polynomial_evals, &domain);
 			polynomial_evals.copy_from_slice(&new_poly_evals);
-			println!("after round of forward ntt: {:?}", polynomial_evals);
 			println!("domain fntt: {:?}", domain);
 		}
 	}
+
 
 	fn ntt<F: BinaryField>(polynomial_evals: &mut [F], subspace: BinarySubspace<F>) {
 		inverse_ntt(polynomial_evals, subspace.clone());
@@ -250,12 +251,12 @@ mod test {
 	#[test]
 	fn test_ntt() {
 		let mut rng = StdRng::seed_from_u64(0);
-		let subspace = BinarySubspace::<AESTowerField8b>::with_dim(3).unwrap();
+		let subspace = BinarySubspace::<AESTowerField8b>::with_dim(7).unwrap();
 
-		let input_space = subspace.reduce_dim(2).unwrap();
+		let input_space = subspace.reduce_dim(6).unwrap();
 
 		let poly = GenericPo2UnivariatePoly::new(
-			(0..4)
+			(0..64)
 				.map(|_| AESTowerField8b::random(&mut rng))
 				.collect_vec(),
 			input_space.clone(),
@@ -271,6 +272,42 @@ mod test {
 			let result = poly.evaluate_at_challenge(input_domain_elem + last_basis_vec);
 
 			assert_eq!(result, polynomial_evals[i])
+		}
+	}
+	
+	#[test]
+	fn test_fast_ntt_64() {
+		use crate::sub_bytes_reduction::fast_ntt_64::fast_ntt_64;
+		
+		let mut rng = StdRng::seed_from_u64(0);
+		let subspace = BinarySubspace::<AESTowerField8b>::with_dim(7).unwrap();
+
+		let input_space = subspace.reduce_dim(6).unwrap();
+
+		let poly = GenericPo2UnivariatePoly::new(
+			(0..64)
+				.map(|_| AESTowerField8b::random(&mut rng))
+				.collect_vec(),
+			input_space.clone(),
+		);
+
+		let last_basis_vec = subspace.basis()[subspace.basis().len() - 1];
+
+		// Test with generic NTT
+		let mut polynomial_evals_generic = poly.iter().copied().collect_vec();
+		ntt(&mut polynomial_evals_generic, subspace.clone());
+
+		// Test with fast specialized NTT
+		let mut polynomial_evals_fast: [AESTowerField8b; 64] = poly.iter().copied().collect_vec().try_into().unwrap();
+		fast_ntt_64(&mut polynomial_evals_fast);
+		
+		// Verify they produce the same results
+		assert_eq!(&polynomial_evals_generic[..], &polynomial_evals_fast[..], "Fast NTT should produce same results as generic NTT");
+
+		// Also verify correctness
+		for (i, input_domain_elem) in input_space.iter().enumerate() {
+			let result = poly.evaluate_at_challenge(input_domain_elem + last_basis_vec);
+			assert_eq!(result, polynomial_evals_fast[i])
 		}
 	}
 
