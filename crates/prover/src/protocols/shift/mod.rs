@@ -8,3 +8,4 @@ mod phase_1;
 mod prove;
 pub use key_collection::*;
 pub use monster::*;
+pub use phase_1::*;
