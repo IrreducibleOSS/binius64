@@ -2,7 +2,7 @@
 
 use binius_field::{BinaryField, ExtensionField, PackedSubfield, arch::OptimalPackedB128};
 use binius_math::test_utils::random_field_buffer;
-use binius_prover::{pcs::prover::fold_1b_rows, ring_switch::fold_elems_inplace};
+use binius_prover::ring_switch::{fold_1b_rows, fold_elems_inplace};
 use binius_utils::checked_arithmetics::log2_strict_usize;
 use binius_verifier::config::{B1, B128};
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
