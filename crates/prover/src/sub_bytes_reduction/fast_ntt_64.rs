@@ -11,10 +11,7 @@ pub struct NttDomains<P: PackedField<Scalar = AESTowerField8b>> {
 	pub domain_5: [P; 2],
 }
 
-
-fn get_next_subspace<F: BinaryField>(
-	current_subspace: &BinarySubspace<F>,
-) -> BinarySubspace<F> {
+fn get_next_subspace<F: BinaryField>(current_subspace: &BinarySubspace<F>) -> BinarySubspace<F> {
 	let basis = current_subspace.basis();
 	let div_by_factor = basis[1] * (basis[1] + F::ONE);
 
@@ -26,10 +23,16 @@ fn get_next_subspace<F: BinaryField>(
 	BinarySubspace::new_unchecked(new_basis)
 }
 
-fn elements_of_subspace_broadcasted<F: BinaryField, P: PackedField<Scalar = F>>(subspace: &BinarySubspace<F>) -> (Vec<P>, Vec<P>) {
+fn elements_of_subspace_broadcasted<F: BinaryField, P: PackedField<Scalar = F>>(
+	subspace: &BinarySubspace<F>,
+) -> (Vec<P>, Vec<P>) {
 	let dim = subspace.dim();
 
-	let inverse = subspace.iter().map(P::broadcast).take(1 << (dim - 1)).collect();
+	let inverse = subspace
+		.iter()
+		.map(P::broadcast)
+		.take(1 << (dim - 1))
+		.collect();
 
 	let forward = subspace
 		.iter()
@@ -59,28 +62,66 @@ fn elements_for_each_subspace_broadcasted<F: BinaryField, P: PackedField<Scalar 
 }
 
 /// Generate NTT domains for a given subspace
-pub fn generate_ntt_domains<P: PackedField<Scalar = AESTowerField8b>>(subspace: BinarySubspace<AESTowerField8b>) -> (NttDomains<P>, NttDomains<P>) {
+pub fn generate_ntt_domains<P: PackedField<Scalar = AESTowerField8b>>(
+	subspace: BinarySubspace<AESTowerField8b>,
+) -> (NttDomains<P>, NttDomains<P>) {
 	let (inverse_domains, forward_domains) = elements_for_each_subspace_broadcasted(subspace);
-	
+
 	// Convert vectors to fixed-size arrays
 	let intt_domains = NttDomains {
-		domain_0: inverse_domains[0].as_slice().try_into().expect("Domain 0 should have 64 elements"),
-		domain_1: inverse_domains[1].as_slice().try_into().expect("Domain 1 should have 32 elements"),
-		domain_2: inverse_domains[2].as_slice().try_into().expect("Domain 2 should have 16 elements"),
-		domain_3: inverse_domains[3].as_slice().try_into().expect("Domain 3 should have 8 elements"),
-		domain_4: inverse_domains[4].as_slice().try_into().expect("Domain 4 should have 4 elements"),
-		domain_5: inverse_domains[5].as_slice().try_into().expect("Domain 5 should have 2 elements"),
+		domain_0: inverse_domains[0]
+			.as_slice()
+			.try_into()
+			.expect("Domain 0 should have 64 elements"),
+		domain_1: inverse_domains[1]
+			.as_slice()
+			.try_into()
+			.expect("Domain 1 should have 32 elements"),
+		domain_2: inverse_domains[2]
+			.as_slice()
+			.try_into()
+			.expect("Domain 2 should have 16 elements"),
+		domain_3: inverse_domains[3]
+			.as_slice()
+			.try_into()
+			.expect("Domain 3 should have 8 elements"),
+		domain_4: inverse_domains[4]
+			.as_slice()
+			.try_into()
+			.expect("Domain 4 should have 4 elements"),
+		domain_5: inverse_domains[5]
+			.as_slice()
+			.try_into()
+			.expect("Domain 5 should have 2 elements"),
 	};
-	
+
 	let fntt_domains = NttDomains {
-		domain_0: forward_domains[0].as_slice().try_into().expect("Domain 0 should have 64 elements"),
-		domain_1: forward_domains[1].as_slice().try_into().expect("Domain 1 should have 32 elements"),
-		domain_2: forward_domains[2].as_slice().try_into().expect("Domain 2 should have 16 elements"),
-		domain_3: forward_domains[3].as_slice().try_into().expect("Domain 3 should have 8 elements"),
-		domain_4: forward_domains[4].as_slice().try_into().expect("Domain 4 should have 4 elements"),
-		domain_5: forward_domains[5].as_slice().try_into().expect("Domain 5 should have 2 elements"),
+		domain_0: forward_domains[0]
+			.as_slice()
+			.try_into()
+			.expect("Domain 0 should have 64 elements"),
+		domain_1: forward_domains[1]
+			.as_slice()
+			.try_into()
+			.expect("Domain 1 should have 32 elements"),
+		domain_2: forward_domains[2]
+			.as_slice()
+			.try_into()
+			.expect("Domain 2 should have 16 elements"),
+		domain_3: forward_domains[3]
+			.as_slice()
+			.try_into()
+			.expect("Domain 3 should have 8 elements"),
+		domain_4: forward_domains[4]
+			.as_slice()
+			.try_into()
+			.expect("Domain 4 should have 4 elements"),
+		domain_5: forward_domains[5]
+			.as_slice()
+			.try_into()
+			.expect("Domain 5 should have 2 elements"),
 	};
-	
+
 	(intt_domains, fntt_domains)
 }
 
@@ -110,9 +151,10 @@ pub fn fast_inverse_ntt_64<P: PackedField<Scalar = AESTowerField8b>>(
 			let offset = chunk * 32;
 			let half_len = 16;
 			for i in 0..half_len {
-				temp[offset | half_len | i] = polynomial_evals[offset | (i << 1) | 1] - polynomial_evals[offset | i << 1];
-				temp[offset | i] =
-					domain[i << 1] * temp[offset | half_len | i] + polynomial_evals[offset | i << 1];
+				temp[offset | half_len | i] =
+					polynomial_evals[offset | (i << 1) | 1] - polynomial_evals[offset | i << 1];
+				temp[offset | i] = domain[i << 1] * temp[offset | half_len | i]
+					+ polynomial_evals[offset | i << 1];
 			}
 		}
 		*polynomial_evals = temp;
@@ -125,9 +167,10 @@ pub fn fast_inverse_ntt_64<P: PackedField<Scalar = AESTowerField8b>>(
 			let offset = chunk * 16;
 			let half_len = 8;
 			for i in 0..half_len {
-				temp[offset | half_len | i] = polynomial_evals[offset | (i << 1) | 1] - polynomial_evals[offset | i << 1];
-				temp[offset | i] =
-					domain[i << 1] * temp[offset | half_len | i] + polynomial_evals[offset | i << 1];
+				temp[offset | half_len | i] =
+					polynomial_evals[offset | (i << 1) | 1] - polynomial_evals[offset | i << 1];
+				temp[offset | i] = domain[i << 1] * temp[offset | half_len | i]
+					+ polynomial_evals[offset | i << 1];
 			}
 		}
 		*polynomial_evals = temp;
@@ -140,9 +183,10 @@ pub fn fast_inverse_ntt_64<P: PackedField<Scalar = AESTowerField8b>>(
 			let offset = chunk * 8;
 			let half_len = 4;
 			for i in 0..half_len {
-				temp[offset | half_len | i] = polynomial_evals[offset | (i << 1) | 1] - polynomial_evals[offset | i << 1];
-				temp[offset | i] =
-					domain[i << 1] * temp[offset | half_len | i] + polynomial_evals[offset | i << 1];
+				temp[offset | half_len | i] =
+					polynomial_evals[offset | (i << 1) | 1] - polynomial_evals[offset | i << 1];
+				temp[offset | i] = domain[i << 1] * temp[offset | half_len | i]
+					+ polynomial_evals[offset | i << 1];
 			}
 		}
 		*polynomial_evals = temp;
@@ -155,9 +199,10 @@ pub fn fast_inverse_ntt_64<P: PackedField<Scalar = AESTowerField8b>>(
 			let offset = chunk * 4;
 			let half_len = 2;
 			for i in 0..half_len {
-				temp[offset | half_len | i] = polynomial_evals[offset | (i << 1) | 1] - polynomial_evals[offset | i << 1];
-				temp[offset | i] =
-					domain[i << 1] * temp[offset | half_len | i] + polynomial_evals[offset | i << 1];
+				temp[offset | half_len | i] =
+					polynomial_evals[offset | (i << 1) | 1] - polynomial_evals[offset | i << 1];
+				temp[offset | i] = domain[i << 1] * temp[offset | half_len | i]
+					+ polynomial_evals[offset | i << 1];
 			}
 		}
 		*polynomial_evals = temp;
@@ -192,7 +237,8 @@ pub fn fast_forward_ntt_64<P: PackedField<Scalar = AESTowerField8b>>(
 			for i in 0..half_len {
 				temp[offset | i << 1] = domain[i << 1] * polynomial_evals[offset | half_len | i]
 					+ polynomial_evals[offset | i];
-				temp[offset | (i << 1) | 1] = temp[offset | i << 1] + polynomial_evals[offset | half_len | i];
+				temp[offset | (i << 1) | 1] =
+					temp[offset | i << 1] + polynomial_evals[offset | half_len | i];
 			}
 		}
 
@@ -208,7 +254,8 @@ pub fn fast_forward_ntt_64<P: PackedField<Scalar = AESTowerField8b>>(
 			for i in 0..half_len {
 				temp[offset | i << 1] = domain[i << 1] * polynomial_evals[offset | half_len | i]
 					+ polynomial_evals[offset | i];
-				temp[offset | (i << 1) | 1] = temp[offset | i << 1] + polynomial_evals[offset | half_len | i];
+				temp[offset | (i << 1) | 1] =
+					temp[offset | i << 1] + polynomial_evals[offset | half_len | i];
 			}
 		}
 
@@ -222,9 +269,10 @@ pub fn fast_forward_ntt_64<P: PackedField<Scalar = AESTowerField8b>>(
 			let offset = chunk * 8;
 			let half_len = 4;
 			for i in 0..half_len {
-				temp[offset| i << 1] = domain[i << 1] * polynomial_evals[offset | half_len | i]
+				temp[offset | i << 1] = domain[i << 1] * polynomial_evals[offset | half_len | i]
 					+ polynomial_evals[offset | i];
-				temp[offset|(i << 1) | 1] = temp[offset|i << 1] + polynomial_evals[offset | half_len | i];
+				temp[offset | (i << 1) | 1] =
+					temp[offset | i << 1] + polynomial_evals[offset | half_len | i];
 			}
 		}
 
@@ -296,7 +344,7 @@ mod tests {
 		GenericPo2UnivariatePoly, UnivariatePolyIsomorphic,
 	};
 	use itertools::Itertools;
-	use rand::{rngs::StdRng, SeedableRng};
+	use rand::{SeedableRng, rngs::StdRng};
 
 	use super::*;
 

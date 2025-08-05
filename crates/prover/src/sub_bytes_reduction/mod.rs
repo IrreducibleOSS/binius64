@@ -1,17 +1,14 @@
-
 pub mod fast_ntt_64;
 
 #[cfg(test)]
 mod test {
-	use binius_field::{
-		AESTowerField8b, BinaryField, Field, Random,
-	};
+	use binius_field::{AESTowerField8b, BinaryField, Field, Random};
 	use binius_math::BinarySubspace;
 	use binius_verifier::and_reduction::univariate::univariate_poly::{
 		GenericPo2UnivariatePoly, UnivariatePolyIsomorphic,
 	};
 	use itertools::Itertools;
-	use rand::{rngs::StdRng, SeedableRng};
+	use rand::{SeedableRng, rngs::StdRng};
 
 	fn get_next_subspace<F: BinaryField>(
 		current_subspace: &BinarySubspace<F>,
@@ -117,7 +114,6 @@ mod test {
 		result
 	}
 
-
 	fn inverse_ntt<F: BinaryField>(polynomial_evals: &mut [F], subspace: BinarySubspace<F>) {
 		let (domains, _) = elements_for_each_subspace(subspace.clone());
 		for domain in domains {
@@ -135,7 +131,6 @@ mod test {
 			println!("domain fntt: {:?}", domain);
 		}
 	}
-
 
 	fn ntt<F: BinaryField>(polynomial_evals: &mut [F], subspace: BinarySubspace<F>) {
 		inverse_ntt(polynomial_evals, subspace.clone());
@@ -274,7 +269,7 @@ mod test {
 			assert_eq!(result, polynomial_evals[i])
 		}
 	}
-	
+
 	#[test]
 	fn test_elements_of_subspace() {
 		// Test elements_of_subspace returns correct split
