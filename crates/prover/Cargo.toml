@@ -59,6 +59,10 @@ harness = false
 name = "fold_words"
 harness = false
 
+[[bench]]
+name = "pcs"
+harness = false
+
 [features]
 default = ["rayon"]
 rayon = ["binius-utils/rayon"]
