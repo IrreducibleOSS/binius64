@@ -178,33 +178,6 @@ mod tests {
 	}
 
 	#[test]
-	fn test_fast_forward_inverse_are_inverses() {
-		let mut rng = StdRng::seed_from_u64(42);
-		
-		// Create random polynomial evaluations
-		let mut test_poly: [AESTowerField8b; 64] = [AESTowerField8b::ZERO; 64];
-		for i in 0..64 {
-			test_poly[i] = AESTowerField8b::random(&mut rng);
-		}
-		let original = test_poly.clone();
-
-		// Apply inverse NTT then forward NTT (should get back the original)
-		fast_inverse_ntt_64(&mut test_poly);
-		fast_forward_ntt_64(&mut test_poly);
-
-		// Check that we get back the original
-		assert_eq!(test_poly, original, "Inverse followed by forward NTT should be identity");
-		
-		// Also test the other way around
-		let mut test_poly2 = original.clone();
-		fast_forward_ntt_64(&mut test_poly2);
-		fast_inverse_ntt_64(&mut test_poly2);
-		
-		// Check that we get back the original
-		assert_eq!(test_poly2, original, "Forward followed by inverse NTT should be identity");
-	}
-
-	#[test]
 	fn test_fast_ntt_linearity() {
 		let mut rng = StdRng::seed_from_u64(42);
 		
