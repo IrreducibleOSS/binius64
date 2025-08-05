@@ -90,10 +90,11 @@ where
 
 		// eval_point_suffix is the evaluation point, skipping the first κ coordinates
 		let eval_point_suffix = &self.evaluation_point[log_scalar_bit_width..];
-		let suffix_tensor = eq_ind_partial_eval::<P>(eval_point_suffix);
+		let suffix_tensor = tracing::debug_span!("Expand evaluation suffix query")
+			.in_scope(|| eq_ind_partial_eval::<P>(eval_point_suffix));
 
-		// packed mle partial evals of at high variables
-		let s_hat_v = ring_switch::fold_1b_rows::<_, P>(&self.mle, &suffix_tensor);
+		let s_hat_v = tracing::debug_span!("Compute ring-switching partial evaluations")
+			.in_scope(|| ring_switch::fold_1b_rows(&self.mle, &suffix_tensor));
 		transcript.message().write_scalar_slice(s_hat_v.as_ref());
 
 		// basis decompose/recombine s_hat_v across opposite dimension
@@ -167,7 +168,9 @@ where
 		// This is functionally equivalent to crate::ring_switch::rs_eq_ind, except that
 		// we reuse the already-computed tensor expansions of the challenges.
 		let rs_eq_ind =
-			ring_switch::fold_elems_inplace(eval_point_suffix_tensor, r_double_prime_tensor);
+			tracing::debug_span!("Compute ring-switching equality indicator").in_scope(|| {
+				ring_switch::fold_elems_inplace(eval_point_suffix_tensor, r_double_prime_tensor)
+			});
 
 		// Convert PackedSubfield<P, B1> to P while maintaining packed structure
 		let large_field_mle: &[P] = <P as PackedExtension<B1>>::cast_exts(self.mle.as_ref());
