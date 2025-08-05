@@ -1,5 +1,7 @@
 // Copyright 2025 Irreducible Inc.
 
+use std::ops::Deref;
+
 use binius_field::{
 	BinaryField, ExtensionField, Field, PackedExtension, PackedField, PackedSubfield,
 };
@@ -73,13 +75,14 @@ where
 ///
 /// * the length of the matrix, in `B1` elements, must equal vector length, in `F` elements, times
 ///   the field extension degree
-pub fn fold_1b_rows<F, P>(
-	mat: &FieldBuffer<PackedSubfield<P, B1>>,
+pub fn fold_1b_rows<F, P, Data>(
+	mat: &FieldBuffer<PackedSubfield<P, B1>, Data>,
 	vec: &FieldBuffer<P>,
 ) -> FieldBuffer<F>
 where
 	F: BinaryField,
 	P: PackedExtension<B1> + PackedField<Scalar = F>,
+	Data: Deref<Target = [PackedSubfield<P, B1>]>,
 {
 	let log_scalar_bit_width = <F as ExtensionField<B1>>::LOG_DEGREE;
 	assert_eq!(mat.log_len(), log_scalar_bit_width + vec.log_len()); // precondition
@@ -237,7 +240,7 @@ mod test {
 
 		// Method 3: Tensor expand suffix, call fold_1b_rows, then evaluate_inplace on prefix
 		let suffix_tensor = eq_ind_partial_eval::<P>(suffix);
-		let folded_method3 = fold_1b_rows::<F, P>(&bit_matrix, &suffix_tensor);
+		let folded_method3 = fold_1b_rows(&bit_matrix, &suffix_tensor);
 		let method3_result = evaluate_inplace(folded_method3, prefix).unwrap();
 
 		// Compare all three results
