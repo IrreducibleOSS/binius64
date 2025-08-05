@@ -1,7 +1,13 @@
 use std::iter::repeat_with;
 
 use binius_field::{BinaryField, PackedField};
-use binius_math::ntt::{AdditiveNTT, NTTShape, SingleThreadedNTT};
+use binius_math::{
+	BinarySubspace,
+	ntt::{
+		AdditiveNTT, NeighborsLastMultiThread, NeighborsLastSingleThread,
+		domain_context::GenericPreExpanded,
+	},
+};
 use binius_utils::{
 	env::boolean_env_flag_set,
 	rayon::{ThreadPool, ThreadPoolBuilder},
@@ -33,73 +39,47 @@ fn bench_ntts<F, P>(
 	thread_pool: &ThreadPool,
 	num_threads: usize,
 	data: &mut [P],
-	log_x: usize,
-	log_z: usize,
-	skip_rounds: usize,
+	skip_early: usize,
+	skip_late: usize,
 ) where
 	F: BinaryField,
 	P: PackedField<Scalar = F>,
 {
-	// log_d is the total size of input
+	// log_d is the total number of scalars in the input
 	assert!(data.len().is_power_of_two());
 	let log_d = data.len().ilog2() as usize + P::LOG_WIDTH;
 
-	// we compute log_y automatically from log_x, log_z, and the size of the provided data
-	assert!(log_x + log_z <= log_d);
-	let log_y = log_d - log_x - log_z;
-
-	let shape = NTTShape {
-		log_x,
-		log_y,
-		log_z,
-	};
+	let subspace = BinarySubspace::with_dim(log_d - skip_late).unwrap();
+	let domain_context = GenericPreExpanded::generate_from_subspace(&subspace);
 
 	let parameter = format!(
-		"threads={num_threads}/log_d={log_d}/log_x={log_x}/log_y={log_y}/log_z={log_z}/skip_rounds={skip_rounds}"
+		"threads={num_threads}/log_d={log_d}/skip_early={skip_early}/skip_late={skip_late}"
 	);
 
 	let throughput = match throughput_var {
 		ThroughputVariant::Standard => Throughput::Bytes(std::mem::size_of_val(data) as u64),
-		ThroughputVariant::Multiplication => Throughput::Elements(num_muls(shape, skip_rounds)),
+		ThroughputVariant::Multiplication => {
+			Throughput::Elements(num_muls(log_d, skip_early, skip_late))
+		}
 	};
 	group.throughput(throughput);
 
-	let ntt = SingleThreadedNTT::<F>::new(log_y).unwrap();
-	group.bench_function(BenchmarkId::new("singlethread/on-the-fly/forward", &parameter), |b| {
-		thread_pool.install(|| b.iter(|| ntt.forward_transform(data, shape, 0, 0, skip_rounds)))
-	});
-	group.bench_function(BenchmarkId::new("singlethread/on-the-fly/inverse", &parameter), |b| {
-		thread_pool.install(|| b.iter(|| ntt.inverse_transform(data, shape, 0, 0, skip_rounds)))
-	});
+	let ntt = NeighborsLastSingleThread {
+		domain_context: domain_context.clone(),
+	};
+	group.bench_function(
+		BenchmarkId::new("neighbors_last/singlethread/precompute/forward", &parameter),
+		|b| thread_pool.install(|| b.iter(|| ntt.forward_transform(data, skip_early, skip_late))),
+	);
 
-	let ntt = SingleThreadedNTT::<F>::new(log_y)
-		.unwrap()
-		.precompute_twiddles();
-	group.bench_function(BenchmarkId::new("singlethread/precompute/forward", &parameter), |b| {
-		thread_pool.install(|| b.iter(|| ntt.forward_transform(data, shape, 0, 0, skip_rounds)))
-	});
-	group.bench_function(BenchmarkId::new("singlethread/precompute/inverse", &parameter), |b| {
-		thread_pool.install(|| b.iter(|| ntt.inverse_transform(data, shape, 0, 0, skip_rounds)))
-	});
-
-	let ntt = SingleThreadedNTT::<F>::new(log_y).unwrap().multithreaded();
-	group.bench_function(BenchmarkId::new("multithread/on-the-fly/forward", &parameter), |b| {
-		thread_pool.install(|| b.iter(|| ntt.forward_transform(data, shape, 0, 0, skip_rounds)))
-	});
-	group.bench_function(BenchmarkId::new("multithread/on-the-fly/inverse", &parameter), |b| {
-		thread_pool.install(|| b.iter(|| ntt.inverse_transform(data, shape, 0, 0, skip_rounds)))
-	});
-
-	let ntt = SingleThreadedNTT::<F>::new(log_y)
-		.unwrap()
-		.precompute_twiddles()
-		.multithreaded();
-	group.bench_function(BenchmarkId::new("multithread/precompute/forward", &parameter), |b| {
-		thread_pool.install(|| b.iter(|| ntt.forward_transform(data, shape, 0, 0, skip_rounds)))
-	});
-	group.bench_function(BenchmarkId::new("multithread/precompute/inverse", &parameter), |b| {
-		thread_pool.install(|| b.iter(|| ntt.inverse_transform(data, shape, 0, 0, skip_rounds)))
-	});
+	let ntt = NeighborsLastMultiThread {
+		domain_context: domain_context.clone(),
+		log_num_shares: num_threads.ilog2() as usize,
+	};
+	group.bench_function(
+		BenchmarkId::new("neighbors_last/multithread/precompute/forward", &parameter),
+		|b| thread_pool.install(|| b.iter(|| ntt.forward_transform(data, skip_early, skip_late))),
+	);
 }
 
 /// Calls `bench_ntts` with a fixed `PackedField` but different parameters.
@@ -111,12 +91,12 @@ where
 	let mut group = c.benchmark_group(packed_field_name);
 	let mut rng = rand::rng();
 
-	for &num_threads in &[1, 2, 4] {
+	for num_threads in [1, 2, 4] {
 		let thread_pool = ThreadPoolBuilder::new()
 			.num_threads(num_threads)
 			.build()
 			.unwrap();
-		for &log_d in &[16, 20, 24] {
+		for log_d in [18, 24, 27] {
 			let mut data: Vec<P> = repeat_with(|| P::random(&mut rng))
 				.take(1usize << (log_d - P::LOG_WIDTH))
 				.collect();
@@ -127,10 +107,19 @@ where
 				group.sample_size(40);
 			}
 
-			bench_ntts(&mut group, throughput_var, &thread_pool, num_threads, &mut data, 0, 0, 0);
-			bench_ntts(&mut group, throughput_var, &thread_pool, num_threads, &mut data, 4, 0, 0);
-			bench_ntts(&mut group, throughput_var, &thread_pool, num_threads, &mut data, 0, 4, 0);
-			bench_ntts(&mut group, throughput_var, &thread_pool, num_threads, &mut data, 0, 0, 4);
+			for skip_early in [0, 4] {
+				for skip_late in [0, 4] {
+					bench_ntts(
+						&mut group,
+						throughput_var,
+						&thread_pool,
+						num_threads,
+						&mut data,
+						skip_early,
+						skip_late,
+					);
+				}
+			}
 		}
 	}
 }
@@ -139,24 +128,20 @@ where
 fn bench_fields(c: &mut Criterion) {
 	let throughput_var = determine_throughput_variant();
 
-	bench_params::<_, binius_field::PackedBinaryPolyval1x128b>(c, "1xPolyv", throughput_var);
-	bench_params::<_, binius_field::PackedBinaryPolyval2x128b>(c, "2xPolyv", throughput_var);
-	bench_params::<_, binius_field::PackedBinaryPolyval4x128b>(c, "4xPolyv", throughput_var);
 	bench_params::<_, binius_field::PackedBinaryGhash1x128b>(c, "1xGhash", throughput_var);
 	bench_params::<_, binius_field::PackedBinaryGhash2x128b>(c, "2xGhash", throughput_var);
 	bench_params::<_, binius_field::PackedBinaryGhash4x128b>(c, "4xGhash", throughput_var);
+	bench_params::<_, binius_field::PackedBinaryPolyval1x128b>(c, "1xPolyv", throughput_var);
+	bench_params::<_, binius_field::PackedBinaryPolyval2x128b>(c, "2xPolyv", throughput_var);
+	bench_params::<_, binius_field::PackedBinaryPolyval4x128b>(c, "4xPolyv", throughput_var);
 }
 
 /// Gives the number of raw field multiplications that are done for an NTT with specific parameters.
-fn num_muls(shape: NTTShape, skip_rounds: usize) -> u64 {
-	assert!(skip_rounds <= shape.log_y);
-	let num_rounds = (shape.log_y - skip_rounds) as u64;
-	assert!(shape.log_y >= 1);
-	let muls_per_round = 1u64 << (shape.log_y - 1);
-	let muls_single_ntt = num_rounds * muls_per_round;
+fn num_muls(log_d: usize, skip_early: usize, skip_late: usize) -> u64 {
+	let num_rounds = log_d - skip_late - skip_early;
+	let muls_per_round = 1u64 << (log_d - 1);
 
-	let log_batch_size = shape.log_x + shape.log_z;
-	muls_single_ntt << log_batch_size
+	num_rounds as u64 * muls_per_round
 }
 
 /// Determine the throughput variant based on an environment variable.

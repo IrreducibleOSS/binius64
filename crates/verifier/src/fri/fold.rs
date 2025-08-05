@@ -18,7 +18,7 @@ where
 	NTT: AdditiveNTT<FS>,
 {
 	// Perform inverse additive NTT butterfly
-	let t = ntt.get_subspace_eval(round, index);
+	let t = ntt.twiddle(round - 1, index);
 	let (mut u, mut v) = values;
 	v += u;
 	u += v * t;

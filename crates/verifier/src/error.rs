@@ -1,7 +1,6 @@
 // Copyright 2025 Irreducible Inc.
 
 use binius_core::ConstraintSystemError;
-use binius_math::ntt;
 
 use crate::{
 	fri, pcs,
@@ -15,8 +14,6 @@ pub enum Error {
 	#[error("FRI error: {0}")]
 	FRI(#[from] fri::Error),
 	#[error("NTT error: {0}")]
-	NTT(#[from] ntt::Error),
-	#[error("PCS error: {0}")]
 	PCS(#[from] pcs::Error),
 	#[error("sumcheck error: {0}")]
 	Sumcheck(#[from] sumcheck::Error),

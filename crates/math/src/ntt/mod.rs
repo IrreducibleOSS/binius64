@@ -7,17 +7,117 @@
 //! [LCH14]: <https://arxiv.org/abs/1404.3458>
 //! [DP24]: <https://eprint.iacr.org/2024/504>
 
-mod additive_ntt;
-mod error;
-mod multithreaded;
-mod odd_interpolate;
-mod single_threaded;
+pub mod domain_context;
+mod neighbors_last;
 #[cfg(test)]
-mod tests;
-pub mod twiddle;
+mod tests_evaluation;
+#[cfg(test)]
+pub mod tests_reference;
 
-pub use additive_ntt::{AdditiveNTT, NTTShape};
-pub use error::Error;
-pub use multithreaded::MultiThreadedNTT;
-pub use odd_interpolate::OddInterpolate;
-pub use single_threaded::SingleThreadedNTT;
+use binius_field::{BinaryField, PackedField};
+pub use neighbors_last::{NeighborsLastMultiThread, NeighborsLastSingleThread};
+
+use super::BinarySubspace;
+
+/// The binary field additive NTT.
+///
+/// A number-theoretic transform (NTT) is a linear transformation on a finite field analogous to
+/// the discrete fourier transform. The version of the additive NTT we use is originally described
+/// in [LCH14]. In [DP24] Section 4.1, the authors present the LCH additive NTT algorithm in a way
+/// that makes apparent its compatibility with the FRI proximity test. Throughout the
+/// documentation, we will refer to the notation used in [DP24].
+///
+/// The additive NTT is parameterized by a binary field $K$ and $\mathbb{F}\_2$-linear subspace. We
+/// write $\beta_0, \ldots, \beta_{\ell-1}$ for the ordered basis elements of the subspace. The
+/// basis determines a novel polynomial basis and an evaluation domain. In the forward direction,
+/// the additive NTT transforms a vector of polynomial coefficients, with respect to the novel
+/// polynomial basis, into a vector of their evaluations over the evaluation domain. The inverse
+/// transformation interpolates polynomial values over the domain into novel polynomial basis
+/// coefficients.
+///
+/// An [`AdditiveNTT`] implementation with a maximum domain dimension of $\ell$ can be applied on
+/// a sequence of $\ell + 1$ evaluation domains of sizes $2^0, \ldots, 2^\ell$. These are the
+/// domains $S^{(\ell)}, S^{(\ell - 1)}, \ldots, S^{(0)}$ defined in [DP24] Section 4. The methods
+/// [`Self::forward_transform`] requires a parameter
+/// `log_domain_size` that indicates which of the $S^(i)$ domains to use for the transformation's
+/// evaluation domain and novel polynomial basis. (Remember, the novel polynomial basis is itself
+/// parameterized by basis). **Counterintuitively, the space $S^(i+1)$ is not necessarily
+/// a subset of $S^i$**. We choose this behavior for the [`AdditiveNTT`] trait because it
+/// facilitates compatibility with FRI when batching proximity tests for codewords of different
+/// dimensions.
+///
+/// [LCH14]: <https://arxiv.org/abs/1404.3458>
+/// [DP24]: <https://eprint.iacr.org/2024/504>
+pub trait AdditiveNTT<F: BinaryField> {
+	/// Forward transformation as defined in [DP24], Section 2.3.
+	///
+	/// ## Preconditons
+	///
+	/// Each [`AdditiveNTT`] object defines their own preconditions.
+	///
+	/// [DP24]: <https://eprint.iacr.org/2024/504>
+	fn forward_transform<P: PackedField<Scalar = F>>(
+		&self,
+		data: &mut [P],
+		skip_early: usize,
+		skip_late: usize,
+	);
+
+	/// The associated [`DomainContext`].
+	fn domain_context(&self) -> &impl DomainContext<Field = F>;
+
+	/// See [`DomainContext::log_domain_size`].
+	fn log_domain_size(&self) -> usize {
+		self.domain_context().log_domain_size()
+	}
+
+	/// See [`DomainContext::subspace`].
+	fn subspace(&self, i: usize) -> BinarySubspace<F> {
+		self.domain_context().subspace(i)
+	}
+
+	/// See [`DomainContext::twiddle`].
+	fn twiddle(&self, i: usize, j: usize) -> F {
+		self.domain_context().twiddle(i, j)
+	}
+}
+
+/// Provides information about the domains $S^{(i)}$ and the associated twiddle factors.
+///
+/// Needed by the NTT and by FRI.
+pub trait DomainContext {
+	type Field: BinaryField;
+
+	/// Base 2 logarithm of the size of $S^{(0)}$, i.e., $\ell$.
+	///
+	/// In other words: Index of the first layer that can _not_ be computed anymore.
+	/// I.e., number of the latest layer that _can_ be computed, plus one.
+	/// Layers are indexed starting from 0.
+	///
+	/// If you intend to call the NTT with `skip_late = 0`, then this should be equal to the base 2
+	/// logarithm of the number of scalars in the input.
+	fn log_domain_size(&self) -> usize;
+
+	/// Returns the binary subspace with dimension $i$.
+	///
+	/// In [DP24], this subspace is referred to as $S^{(\ell - i)}$, where $\ell$ is the maximum
+	/// domain size of the NTT, i.e., `self.log_domain_size()`. We choose to reverse the indexing
+	/// order with respect to the paper because it is more natural in code that the $i$th subspace
+	/// has dimension $i$.
+	///
+	/// ## Preconditions
+	///
+	/// - `i` must be less than or equal to `self.log_domain_size()`
+	///
+	/// [DP24]: <https://eprint.iacr.org/2024/504>
+	fn subspace(&self, i: usize) -> BinarySubspace<Self::Field>;
+
+	/// Returns the twiddle of a certain block in a certain layer.
+	///
+	/// The layer numbers start from 0, i.e., the earliest layer is layer 0.
+	///
+	/// ## Preconditions
+	///
+	/// - `block` must be less than `2^layer`
+	fn twiddle(&self, layer: usize, block: usize) -> Self::Field;
+}

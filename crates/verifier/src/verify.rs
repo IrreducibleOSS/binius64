@@ -6,7 +6,7 @@ use binius_math::{
 	BinarySubspace, FieldBuffer,
 	inner_product::inner_product_subfield,
 	multilinear::{eq::eq_ind_partial_eval, evaluate::evaluate_inplace},
-	ntt::SingleThreadedNTT,
+	ntt::{NeighborsLastSingleThread, domain_context::GenericOnTheFly},
 };
 use binius_transcript::{
 	VerifierTranscript,
@@ -85,7 +85,9 @@ where
 			size_of::<B128>(),
 		);
 
-		let ntt = SingleThreadedNTT::new(log_code_len)?;
+		let subspace = BinarySubspace::with_dim(log_code_len)?;
+		let domain_context = GenericOnTheFly::generate_from_subspace(&subspace);
+		let ntt = NeighborsLastSingleThread { domain_context };
 		let fri_params = FRIParams::choose_with_constant_fold_arity(
 			&ntt,
 			log_witness_elems,

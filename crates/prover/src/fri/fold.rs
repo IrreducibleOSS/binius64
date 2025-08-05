@@ -330,9 +330,9 @@ where
 #[cfg(test)]
 mod tests {
 	use binius_math::{
-		FieldBuffer,
+		BinarySubspace, FieldBuffer,
 		fold::fold_cols,
-		ntt::{NTTShape, SingleThreadedNTT},
+		ntt::{NeighborsLastSingleThread, domain_context::GenericOnTheFly},
 		test_utils::random_scalars,
 	};
 	use binius_verifier::config::B128;
@@ -349,7 +349,9 @@ mod tests {
 	}
 
 	fn test_help_fri_compatible_ntt_domains(log_dim: usize, arity: usize) {
-		let ntt = SingleThreadedNTT::<B128>::new(32).unwrap();
+		let subspace = BinarySubspace::with_dim(32).unwrap();
+		let domain_context = GenericOnTheFly::generate_from_subspace(&subspace);
+		let ntt = NeighborsLastSingleThread { domain_context };
 
 		let mut rng = StdRng::seed_from_u64(0);
 		let msg = random_scalars(&mut rng, 1 << (log_dim + arity));
@@ -364,33 +366,13 @@ mod tests {
 
 		// Encode the message over the large domain.
 		let mut codeword = msg;
-		ntt.forward_transform(
-			&mut codeword,
-			NTTShape {
-				log_y: log_dim + arity,
-				..Default::default()
-			},
-			0,
-			0,
-			0,
-		)
-		.unwrap();
+		ntt.forward_transform(&mut codeword, 0, 0);
 
 		// Fold the encoded message using FRI folding.
 		let folded_codeword = fold_interleaved(&ntt, &codeword, &challenges, log_dim + arity, 0);
 
 		// Encode the folded message.
-		ntt.forward_transform(
-			folded_msg.as_mut(),
-			NTTShape {
-				log_y: log_dim,
-				..Default::default()
-			},
-			0,
-			0,
-			0,
-		)
-		.unwrap();
+		ntt.forward_transform(folded_msg.as_mut(), 0, 0);
 
 		// Check that folding and encoding commute.
 		assert_eq!(folded_codeword, folded_msg.as_ref());

@@ -3,7 +3,11 @@
 use std::iter;
 
 use binius_field::{BinaryField, ExtensionField};
-use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval, ntt::SingleThreadedNTT};
+use binius_math::{
+	FieldBuffer,
+	multilinear::eq::eq_ind_partial_eval,
+	ntt::{NeighborsLastSingleThread, domain_context::GenericOnTheFly},
+};
 use binius_transcript::{
 	TranscriptReader, VerifierTranscript,
 	fiat_shamir::{CanSampleBits, Challenger},
@@ -99,7 +103,9 @@ where
 	where
 		Challenger_: Challenger,
 	{
-		let ntt = SingleThreadedNTT::with_subspace(self.params.rs_code().subspace())?;
+		let subspace = self.params.rs_code().subspace();
+		let domain_context = GenericOnTheFly::generate_from_subspace(subspace);
+		let ntt = NeighborsLastSingleThread { domain_context };
 
 		// Verify that the last oracle sent is a codeword.
 		let terminate_codeword_len =
@@ -145,7 +151,7 @@ where
 	/// Returns the fully-folded message value.
 	pub fn verify_last_oracle(
 		&self,
-		ntt: &SingleThreadedNTT<FA>,
+		ntt: &NeighborsLastSingleThread<GenericOnTheFly<FA>>,
 		terminate_codeword: &[F],
 	) -> Result<F, Error> {
 		let n_final_challenges = self.params.n_final_challenges();
@@ -227,7 +233,7 @@ where
 	pub fn verify_query<B: Buf>(
 		&self,
 		index: usize,
-		ntt: &SingleThreadedNTT<FA>,
+		ntt: &NeighborsLastSingleThread<GenericOnTheFly<FA>>,
 		terminate_codeword: &[F],
 		layers: &[Vec<VCS::Digest>],
 		advice: &mut TranscriptReader<B>,
@@ -245,7 +251,7 @@ where
 	fn verify_query_internal<B: Buf>(
 		&self,
 		mut index: usize,
-		ntt: &SingleThreadedNTT<FA>,
+		ntt: &NeighborsLastSingleThread<GenericOnTheFly<FA>>,
 		terminate_codeword: &[F],
 		layers: &[Vec<VCS::Digest>],
 		advice: &mut TranscriptReader<B>,

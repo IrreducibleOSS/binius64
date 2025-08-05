@@ -192,7 +192,7 @@ mod test {
 		FieldBuffer, ReedSolomonCode,
 		inner_product::inner_product_buffers,
 		multilinear::eq::eq_ind_partial_eval,
-		ntt::SingleThreadedNTT,
+		ntt::{NeighborsLastSingleThread, domain_context::GenericOnTheFly},
 		test_utils::{random_field_buffer, random_scalars},
 	};
 	use binius_transcript::ProverTranscript;
@@ -236,7 +236,9 @@ mod test {
 		let fri_params: FRIParams<F, F> =
 			FRIParams::new(rs_code, fri_log_batch_size, fri_arities, NUM_TEST_QUERIES)?;
 
-		let ntt = SingleThreadedNTT::with_subspace(fri_params.rs_code().subspace()).unwrap();
+		let subspace = fri_params.rs_code().subspace();
+		let domain_context = GenericOnTheFly::generate_from_subspace(subspace);
+		let ntt = NeighborsLastSingleThread { domain_context };
 
 		let CommitOutput {
 			commitment: codeword_commitment,
