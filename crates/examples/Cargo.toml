@@ -16,6 +16,9 @@ binius-prover = { path = "../prover", default-features = false }
 tracing.workspace = true
 tracing-profile.workspace = true
 
+[dev-dependencies]
+clap.workspace = true
+
 [features]
 default = ["rayon"]
 perfetto = ["tracing-profile/perfetto"]
