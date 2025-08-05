@@ -1,7 +1,6 @@
 pub mod and_reduction;
 mod error;
 pub mod fold_word;
-mod formatting;
 pub mod fri;
 pub mod hash;
 pub mod merkle_tree;

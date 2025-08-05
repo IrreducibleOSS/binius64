@@ -11,7 +11,6 @@ use binius_utils::{
 };
 use binius_verifier::{hash::PseudoCompressionFunction, merkle_tree::Error};
 use digest::{FixedOutputReset, Output, crypto_common::BlockSizeUser};
-use tracing::instrument;
 
 use crate::hash::ParallelDigest;
 
@@ -102,7 +101,6 @@ where
 	})
 }
 
-#[instrument("BinaryMerkleTree::build", skip_all, level = "debug")]
 pub fn build_from_iterator<F, H, C, ParIter>(
 	compression: &C,
 	iterated_chunks: ParIter,

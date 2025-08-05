@@ -3,7 +3,6 @@
 mod commit;
 mod error;
 mod fold;
-mod logging;
 mod query;
 #[cfg(test)]
 mod tests;

@@ -92,19 +92,22 @@ where
 		small_field_zerocheck_challenges: Vec<PNTTDomain::Scalar>,
 		prover_message_domain: BinarySubspace<PNTTDomain::Scalar>,
 	) -> Self {
-		let ntt_lookup =
-			ntt_lookup_from_prover_message_domain::<PNTTDomain>(prover_message_domain.clone());
+		let ntt_lookup = tracing::debug_span!("Compute univariate LDE table").in_scope(|| {
+			ntt_lookup_from_prover_message_domain::<PNTTDomain>(prover_message_domain.clone())
+		});
 		let eq_ind_big_field_challenges = eq_ind_partial_eval(&big_field_zerocheck_challenges);
 
-		let univariate_round_message =
-			sumcheck_round_messages::univariate_round_message_extension_domain(
-				&first_col,
-				&second_col,
-				&third_col,
-				&eq_ind_big_field_challenges,
-				&ntt_lookup,
-				&small_field_zerocheck_challenges,
-			);
+		let univariate_round_message = tracing::debug_span!("Compute univariate round message")
+			.in_scope(|| {
+				sumcheck_round_messages::univariate_round_message_extension_domain(
+					&first_col,
+					&second_col,
+					&third_col,
+					&eq_ind_big_field_challenges,
+					&ntt_lookup,
+					&small_field_zerocheck_challenges,
+				)
+			});
 
 		Self {
 			first_col,
@@ -258,13 +261,18 @@ where
 
 		let univariate_sumcheck_challenge = transcript.sample();
 		let univariate_round_message_domain = self.univariate_round_message_domain.clone();
-		let sumcheck_prover = self.fold_and_send_reduced_prover(
-			univariate_round_message_domain,
-			univariate_sumcheck_challenge,
-		);
+		let sumcheck_prover = tracing::debug_span!("Fold univariate round").in_scope(|| {
+			self.fold_and_send_reduced_prover(
+				univariate_round_message_domain,
+				univariate_sumcheck_challenge,
+			)
+		});
+
+		let sumcheck_output = tracing::debug_span!("MLE-check remaining rounds")
+			.in_scope(|| prove_single_mlecheck(sumcheck_prover, transcript))?;
 
 		Ok(ProveAndReductionOutput {
-			sumcheck_output: prove_single_mlecheck(sumcheck_prover, transcript)?,
+			sumcheck_output,
 			univariate_sumcheck_challenge,
 		})
 	}

@@ -1,4 +1,4 @@
-use std::{iter::repeat_with, marker::PhantomData};
+use std::marker::PhantomData;
 
 use binius_core::{
 	constraint_system::{AndConstraint, Operand, ShiftVariant, ShiftedValueIndex, ValueVec},
@@ -103,6 +103,14 @@ where
 			});
 		}
 
+		let _scope = tracing::debug_span!(
+			"Prover::prove",
+			n_witness_words = cs.value_vec_layout.total_len,
+			n_bitand = cs.and_constraints.len(),
+			n_intmul = cs.mul_constraints.len(),
+		)
+		.entered();
+
 		let witness_packed = pack_witness::<P>(verifier.log_witness_elems(), &witness)?;
 
 		// Commit the witness.
@@ -118,24 +126,34 @@ where
 		)?;
 		transcript.message().write(&trace_commitment);
 
+		let andcheck_scope =
+			tracing::debug_span!("BitAnd check", n_constraints = cs.and_constraints.len())
+				.entered();
 		let and_witness = build_and_check_witness(&cs.and_constraints, witness.combined_witness());
 		let _output =
 			run_and_check::<B128, _>(verifier.log_witness_words(), and_witness, transcript)?;
+		drop(andcheck_scope);
 
 		// Sample a challenge point during the shift reduction.
 		let z_challenge = transcript.sample_vec(LOG_WORD_SIZE_BITS);
 		let public_input_challenge = transcript.sample_vec(verifier.log_public_words());
 
+		let pubcheck_scope =
+			tracing::debug_span!("Public input check", n_public = 1 << verifier.log_public_words())
+				.entered();
+
 		let z_tensor = eq_ind_partial_eval(&z_challenge);
 		let witness_z_folded = fold_words::<_, P>(witness.combined_witness(), z_tensor.as_ref());
 		let public_z_folded = fold_words::<_, P>(&public, z_tensor.as_ref());
 
+		let pubcheck_mlecheck_scope = tracing::debug_span!("Public input MLE-check").entered();
 		let public_check_prover =
 			InOutCheckProver::new(witness_z_folded, public_z_folded, &public_input_challenge)?;
 		let ProveSingleOutput {
 			multilinear_evals,
 			challenges: mut y_challenge,
 		} = prove_single_mlecheck(public_check_prover, transcript)?;
+		drop(pubcheck_mlecheck_scope);
 
 		y_challenge.reverse();
 
@@ -143,6 +161,7 @@ where
 		assert_eq!(multilinear_evals.len(), 1);
 		let witness_eval = multilinear_evals[0];
 		transcript.message().write(&witness_eval);
+		drop(pubcheck_scope);
 
 		// PCS opening
 		let evaluation_point = [z_challenge, y_challenge].concat();
@@ -150,6 +169,7 @@ where
 		// Convert witness_packed to PackedSubfield view for OneBitPCSProver
 		let witness_packed_subfield_buffer = cast_bases_to_buffer(&witness_packed);
 
+		let _scope = tracing::debug_span!("PCS open").entered();
 		let pcs_prover =
 			OneBitPCSProver::new(witness_packed_subfield_buffer, witness_eval, evaluation_point)?;
 
@@ -234,9 +254,9 @@ fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger
 
 	let big_field_zerocheck_challenges = transcript.sample_vec(log_witness_words - 3);
 
-	a.extend(repeat_with(|| Word(0)).take((1 << log_witness_words) - a.len()));
-	b.extend(repeat_with(|| Word(0)).take((1 << log_witness_words) - b.len()));
-	c.extend(repeat_with(|| Word(0)).take((1 << log_witness_words) - c.len()));
+	a.resize(1 << log_witness_words, Word(0));
+	b.resize(1 << log_witness_words, Word(0));
+	c.resize(1 << log_witness_words, Word(0));
 
 	let prover = OblongZerocheckProver::<_, PackedAESBinaryField16x8b>::new(
 		OneBitOblongMultilinear {
@@ -318,6 +338,7 @@ fn build_operand_value(operand: &Operand, witness: &[Word]) -> Word {
 	)
 }
 
+#[tracing::instrument(skip_all, "Build BitAnd witness", level = "debug")]
 fn build_and_check_witness(and_constraints: &[AndConstraint], witness: &[Word]) -> AndCheckWitness {
 	let n_constraints = and_constraints.len();
 

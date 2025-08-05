@@ -98,8 +98,6 @@ where
 		assert_eq!(ntt_output_domain.len(), ROWS_PER_HYPERCUBE_VERTEX);
 		assert_eq!(ntt_input_domain.dim(), SKIPPED_VARS);
 
-		let _span = tracing::debug_span!("precompute_lookup").entered();
-
 		let mut lookup =
 			vec![
 				vec![vec![PNTTDomain::zero(); ntt_output_domain.len() / PNTTDomain::WIDTH]; 1 << 8];
