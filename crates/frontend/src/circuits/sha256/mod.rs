@@ -409,6 +409,105 @@ impl Sha256 {
 		}
 	}
 
+	/// Returns digest wires in little-endian packed format.
+	///
+	/// The SHA256 digest is stored as 4 wires, each containing 8 bytes of the hash
+	/// as a 64-bit big-endian value.
+	///
+	/// This method extracts the individual bytes and repacks them in little-endian format,
+	/// which is useful for interfacing with other circuits that expect LE format.
+	///
+	/// # Returns
+	/// An array of 4 wires containing the 32-byte digest repacked in little-endian format (8 bytes
+	/// per wire)
+	pub fn digest_to_le_wires(&self, builder: &CircuitBuilder) -> [Wire; 4] {
+		let mut wires = [builder.add_constant(Word::ZERO); 4];
+
+		for i in 0..4 {
+			let be_wire = self.digest[i];
+
+			// Extract 8 bytes from the 64-bit BE value
+			let mut bytes = Vec::with_capacity(8);
+			for j in 0..8 {
+				let shift_amount = (56 - j * 8) as u32;
+				let byte = builder
+					.band(builder.shr(be_wire, shift_amount), builder.add_constant(Word(0xFF)));
+				bytes.push(byte);
+			}
+
+			// Repack bytes in little-endian order
+			// bytes[0..8] contains the 8 digest bytes in their original order
+			// We pack them in LE format: byte0 | (byte1 << 8) | ... | (byte7 << 56)
+			let mut le_wire = bytes[0];
+			for j in 1..8 {
+				let shifted = builder.shl(bytes[j], (j * 8) as u32);
+				le_wire = builder.bor(le_wire, shifted);
+			}
+
+			wires[i] = le_wire;
+		}
+
+		wires
+	}
+
+	/// Returns message wires in little-endian packed format.
+	///
+	/// The SHA256 message is stored with each wire containing 8 bytes packed as two XORed 32-bit
+	/// big-endian words: `lo_word ^ (hi_word << 32)`.
+	///
+	/// This method extracts the individual bytes and repacks them in little-endian format,
+	/// which is useful for interfacing with other circuits that expect LE format (e.g., zklogin).
+	///
+	/// # Returns
+	/// A vector of wires containing the message repacked in little-endian format (8 bytes per wire)
+	pub fn message_to_le_wires(&self, builder: &CircuitBuilder) -> Vec<Wire> {
+		let mut wires = Vec::with_capacity(self.message.len());
+
+		for &sha256_wire in &self.message {
+			// Extract the two 32-bit words from SHA256 format
+			// SHA256 format: lo_word ^ (hi_word << 32)
+			let hi_word = builder.shr(sha256_wire, 32);
+			let hi_word_masked = builder.band(hi_word, builder.add_constant(Word(0xFFFFFFFF)));
+			let lo_word = builder.band(sha256_wire, builder.add_constant(Word(0xFFFFFFFF)));
+
+			// Extract bytes from the two 32-bit BE words
+			// lo_word contains message bytes[i*8..i*8+4] in big-endian
+			// hi_word contains message bytes[i*8+4..i*8+8] in big-endian
+			let mut bytes = Vec::with_capacity(8);
+
+			// Extract 4 bytes from lo_word (BE format) - these are bytes 0-3
+			for j in 0..4 {
+				let shift_amount = (24 - j * 8) as u32;
+				let byte = builder
+					.band(builder.shr(lo_word, shift_amount), builder.add_constant(Word(0xFF)));
+				bytes.push(byte);
+			}
+
+			// Extract 4 bytes from hi_word (BE format) - these are bytes 4-7
+			for j in 0..4 {
+				let shift_amount = (24 - j * 8) as u32;
+				let byte = builder.band(
+					builder.shr(hi_word_masked, shift_amount),
+					builder.add_constant(Word(0xFF)),
+				);
+				bytes.push(byte);
+			}
+
+			// Repack bytes in little-endian order
+			// bytes[0..8] contains the 8 message bytes in their original order
+			// We pack them in LE format: byte0 | (byte1 << 8) | ... | (byte7 << 56)
+			let mut le_wire = bytes[0];
+			for j in 1..8 {
+				let shifted = builder.shl(bytes[j], (j * 8) as u32);
+				le_wire = builder.bor(le_wire, shifted);
+			}
+
+			wires.push(le_wire);
+		}
+
+		wires
+	}
+
 	/// Populates the message wires and internal compression blocks with the input message.
 	///
 	/// This method handles the complete message preparation including:
@@ -877,5 +976,67 @@ mod tests {
 				);
 			}
 		}
+	}
+
+	#[test]
+	fn test_sha256_to_le_wires() {
+		let mut b = compiler::CircuitBuilder::new();
+		let c = mk_circuit(&mut b, 64);
+
+		// Obtain LE-packed wires for the digest wires
+		let le_wires = c.digest_to_le_wires(&b);
+		assert_eq!(le_wires.len(), 4);
+
+		let circuit = b.build();
+		let mut w = circuit.new_witness_filler();
+		let message = b"abc";
+		let hash = hex!("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+
+		c.populate_len(&mut w, message.len());
+		c.populate_message(&mut w, message);
+		c.populate_digest(&mut w, hash);
+		circuit.populate_wire_witness(&mut w).unwrap();
+
+		// Extract the LE-packed bytes from the wires
+		let mut le_bytes = Vec::with_capacity(32);
+		for i in 0..4 {
+			let word = w[le_wires[i]].0;
+			for j in 0..8 {
+				le_bytes.push((word >> (j * 8)) as u8);
+			}
+		}
+
+		assert_eq!(&le_bytes[..32], &hash);
+	}
+
+	#[test]
+	fn test_message_to_le_wires() {
+		let mut b = compiler::CircuitBuilder::new();
+		let c = mk_circuit(&mut b, 16); // Small circuit for simple test
+
+		// Obtain LE-packed wires for the message
+		let le_message_wires = c.message_to_le_wires(&b);
+
+		let circuit = b.build();
+		let mut w = circuit.new_witness_filler();
+		// Use a simple 8-byte message that fits in one wire
+		let message = b"abcdefgh";
+		let hash = hex!("9c56cc51b374c3ba189210d5b6d4bf57790d351c96c47c02190ecf1e430635ab");
+
+		c.populate_len(&mut w, message.len());
+		c.populate_message(&mut w, message);
+		c.populate_digest(&mut w, hash);
+		circuit.populate_wire_witness(&mut w).unwrap();
+
+		// Check the converted LE wire
+		let le_wire = w[le_message_wires[0]].0;
+
+		// Verify the bytes match
+		let mut extracted_bytes = Vec::new();
+		for j in 0..8 {
+			let byte = (le_wire >> (j * 8)) as u8;
+			extracted_bytes.push(byte);
+		}
+		assert_eq!(&extracted_bytes, message);
 	}
 }
