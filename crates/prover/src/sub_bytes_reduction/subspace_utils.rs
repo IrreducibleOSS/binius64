@@ -65,7 +65,7 @@ pub fn elements_for_each_subspace_broadcasted<F: BinaryField, P: PackedField<Sca
 #[cfg(test)]
 mod tests {
 	use binius_field::{
-		AESTowerField8b, BinaryField128b, BinaryField32b, PackedAESBinaryField16x8b,
+		AESTowerField8b, BinaryField32b, BinaryField128b, PackedAESBinaryField16x8b,
 	};
 
 	use super::*;
