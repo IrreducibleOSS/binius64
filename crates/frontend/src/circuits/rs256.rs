@@ -9,21 +9,33 @@ use crate::{
 	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
 };
 
-/// Convert a FixedByteVec with big-endian byte ordering to a BigUint.
+/// Convert a FixedByteVec with little-endian wire packing to a BigUint.
 ///
-/// This function converts a FixedByteVec containing a packed representation of
-/// bytes with big-endian ordering to a BigUint that's compatible with BigUint arithmetic.
-///
-/// # Arguments
-/// * `byte_vec` - FixedByteVec containing bytes in big-endian order, with each wire containing 8
-///   bytes packed as a big-endian u64
-///
-/// # Returns
-/// A BigUint with limbs in little-endian order (least significant limb first)
-fn fixedbytevec_be_to_biguint(byte_vec: &FixedByteVec) -> BigUint {
-	BigUint {
-		limbs: byte_vec.data.iter().rev().cloned().collect(),
+/// This function converts a FixedByteVec with little-endian packed wires
+/// to a BigUint representing a big-endian number.
+fn fixedbytevec_le_to_biguint(builder: &mut CircuitBuilder, byte_vec: &FixedByteVec) -> BigUint {
+	// With LE packing, each wire contains 8 bytes as: byte0 | byte1<<8 | ... | byte7<<56
+	// For a BE number, we need to both reverse wire order AND byte-swap within each wire
+	let mut limbs = Vec::new();
+	// Process wires in reverse order (big-endian to little-endian conversion)
+	for packed_wire in byte_vec.data.clone().into_iter().rev() {
+		// Extract bytes from LE-packed wire and repack in reverse order
+		let mut bytes = Vec::with_capacity(8);
+		for i in 0..8 {
+			let shift_amount = i * 8;
+			let byte = builder.shr(packed_wire, shift_amount as u32);
+			let byte_masked = builder.band(byte, builder.add_constant_64(0xFF));
+			bytes.push(byte_masked);
+		}
+		// Repack bytes in reverse order (byte-swap)
+		let mut swapped_limb = bytes[7];
+		for i in 1..8 {
+			let shifted = builder.shl(bytes[7 - i], (i * 8) as u32);
+			swapped_limb = builder.bor(swapped_limb, shifted);
+		}
+		limbs.push(swapped_limb);
 	}
+	BigUint { limbs }
 }
 
 /// RS256 signature verification circuit (internal implementation)
@@ -51,6 +63,10 @@ pub struct Rs256Verify {
 impl Rs256Verify {
 	/// Create a new RS256 verification circuit
 	///
+	/// This constructor accepts inputs with little-endian wire packing, which
+	/// is convenient when composing with other circuits (e.g base64, concat)
+	/// which use the same wire packing.
+	///
 	/// RS256 uses the public exponent 2^16 + 1 (65537). The circuit verifies
 	/// that the encoded message (EM) has the following properties:
 	///
@@ -58,22 +74,15 @@ impl Rs256Verify {
 	/// - `EM` has a valid PKCS#1 v1.5 prefix
 	/// - The hash stored in `EM` is equal to the SHA-256 hash of the provided message.
 	///
-	/// Additional wires for quotients and remainders must be provided for the
-	/// nested modular reduction circuits.
-	///
 	/// # Arguments
 	/// * `builder` - Circuit builder
 	/// * `message` - A FixedByteVec containing the plaintext message
-	/// * `signature` - The RSA signature as a FixedByteVec (256 bytes for 2048-bit RSA). The
-	///   signature should be in big-endian byte order (standard JWT/RSA format). Each wire in the
-	///   FixedByteVec contains 8 bytes packed as a big-endian u64.
-	/// * `modulus` - The RSA modulus as a FixedByteVec (256 bytes for 2048-bit RSA). The modulus
-	///   should be in big-endian byte order (standard RSA format). Each wire in the FixedByteVec
-	///   contains 8 bytes packed as a big-endian u64.
+	/// * `signature` - The RSA signature with little-endian wire packing (256 bytes for 2048-bit
+	///   RSA)
+	/// * `modulus` - The RSA modulus with little-endian wire packing (256 bytes for 2048-bit RSA)
 	///
 	/// # Panics
-	/// * If signature_bytes does not have enough space for 256 bytes
-	#[allow(clippy::too_many_arguments)]
+	/// * If signature or modulus don't have at least 256 bytes
 	pub fn new(
 		builder: &mut CircuitBuilder,
 		message: FixedByteVec,
@@ -82,22 +91,25 @@ impl Rs256Verify {
 	) -> Self {
 		assert!(
 			signature.max_len >= 256,
-			"signature_bytes must have at least 256 bytes for 2048-bit RSA"
+			"signature must have at least 256 bytes for 2048-bit RSA"
 		);
-		assert!(
-			signature.max_len.is_multiple_of(8),
-			"signature_bytes max_len must be multiple of 8"
-		);
-		assert!(
-			modulus.max_len >= 256,
-			"modulus_bytes must have at least 256 bytes for 2048-bit RSA"
-		);
-		assert!(modulus.max_len.is_multiple_of(8), "modulus_bytes max_len must be multiple of 8");
+		assert!(modulus.max_len >= 256, "modulus must have at least 256 bytes for 2048-bit RSA");
 
-		let signature_bignum = fixedbytevec_be_to_biguint(&signature);
+		// Truncate signature to exactly 256 bytes if it's larger
+		// This is needed because:
+		// 1. RSA signatures are always exactly 256 bytes for 2048-bit RSA
+		// 2. The input might be padded for other circuit requirements (e.g., Base64 alignment to
+		//    264 bytes)
+		let signature = if signature.max_len > 256 {
+			signature.truncate(builder, 256)
+		} else {
+			signature.clone()
+		};
+
+		let signature_bignum = fixedbytevec_le_to_biguint(builder, &signature);
 		builder.assert_eq("signature_bytes_len", signature.len, builder.add_constant_64(256));
 
-		let modulus_bignum = fixedbytevec_be_to_biguint(&modulus);
+		let modulus_bignum = fixedbytevec_le_to_biguint(builder, &modulus);
 		builder.assert_eq("modulus_bytes_len", modulus.len, builder.add_constant_64(256));
 
 		let sha256_builder = builder.subcircuit("sha256");
@@ -176,10 +188,6 @@ impl Rs256Verify {
 
 		// Create expected EM (Encoded Message) by combining hash limbs and prefix constants
 		let prefix_wires = EXPECTED_PREFIX_LIMBS.map(|l| builder.add_constant_64(l));
-		// The hash limbs need to be reversed because:
-		// - SHA256 outputs hash[0] = bytes 0-7, hash[1] = bytes 8-15, etc.
-		// - But in the EM, these bytes appear at the end (bytes 224-255)
-		// - When EM is converted to little-endian limbs, the byte order within limbs reverses
 		let expected_em = BigUint {
 			limbs: expected_hash
 				.limbs
@@ -222,6 +230,11 @@ impl Rs256Verify {
 			.populate_witness(w, signature, modulus);
 	}
 
+	pub fn populate_intermediates(&self, w: &mut WitnessFiller, signature: &[u8], modulus: &[u8]) {
+		self.rsa_intermediates
+			.populate_witness(w, signature, modulus);
+	}
+
 	/// Populate the message
 	///
 	/// # Panics
@@ -234,9 +247,9 @@ impl Rs256Verify {
 	///
 	/// # Panics
 	/// Panics if modulus_bytes.len() != 256
-	fn populate_modulus(&self, w: &mut WitnessFiller, modulus_bytes: &[u8]) {
+	pub fn populate_modulus(&self, w: &mut WitnessFiller, modulus_bytes: &[u8]) {
 		assert_eq!(modulus_bytes.len(), 256, "modulus must be exactly 256 bytes");
-		self.modulus.populate_bytes_be(w, modulus_bytes);
+		self.modulus.populate_bytes_le(w, modulus_bytes);
 	}
 
 	/// Populate the RSA signature
@@ -247,9 +260,9 @@ impl Rs256Verify {
 	///
 	/// # Panics
 	/// Panics if signature_bytes.len() != 256
-	fn populate_signature(&self, w: &mut WitnessFiller, signature_bytes: &[u8]) {
+	pub fn populate_signature(&self, w: &mut WitnessFiller, signature_bytes: &[u8]) {
 		assert_eq!(signature_bytes.len(), 256, "signature must be exactly 256 bytes");
-		self.signature.populate_bytes_be(w, signature_bytes);
+		self.signature.populate_bytes_le(w, signature_bytes);
 	}
 }
 
@@ -328,7 +341,7 @@ impl RsaIntermediates {
 	/// # Arguments
 	/// * `signature` - The bytes of a RSA signature
 	/// * `modulus_limbs` - The bytes of a RSA modulus
-	fn populate_witness(&self, w: &mut WitnessFiller, signature: &[u8], modulus: &[u8]) {
+	pub fn populate_witness(&self, w: &mut WitnessFiller, signature: &[u8], modulus: &[u8]) {
 		assert_eq!(signature.len(), 256, "signature must be exactly 256 bytes");
 		assert_eq!(modulus.len(), 256, "modulus must be exactly 256 bytes");
 
@@ -430,7 +443,7 @@ impl RsaIntermediates {
 #[cfg(test)]
 mod tests {
 	use num_bigint::BigUint;
-	use rand::{SeedableRng, rngs::StdRng};
+	use rand::{SeedableRng, TryRngCore, rngs::StdRng};
 	use rsa::{
 		RsaPrivateKey, RsaPublicKey,
 		pkcs1v15::SigningKey,
@@ -467,7 +480,7 @@ mod tests {
 	#[test]
 	fn test_real_rsa_signature_verification_with_message() {
 		let mut builder = CircuitBuilder::new();
-		let circuit = setup_circuit(&mut builder, 256);
+		let circuit = setup_circuit(&mut builder, 2048);
 		let cs = builder.build();
 
 		// Generate a real RSA signature as it would appear in a JWT
@@ -475,15 +488,18 @@ mod tests {
 		let bits = 2048;
 		let private_key = RsaPrivateKey::new(&mut rng, bits).expect("failed to generate key");
 		let public_key = RsaPublicKey::from(&private_key);
-		let message = b"Test message for RS256 verification";
+
+		let mut rng = StdRng::seed_from_u64(42);
+		let mut message = [0u8; 256];
+		rng.try_fill_bytes(&mut message).unwrap();
 
 		let signing_key = SigningKey::<Sha256>::new(private_key);
-		let signature = signing_key.sign(message);
+		let signature = signing_key.sign(&message);
 		let signature_bytes = signature.to_bytes();
 		let modulus_bytes = public_key.n().to_be_bytes();
 
 		let mut w = cs.new_witness_filler();
-		populate_circuit(&circuit, &mut w, &signature_bytes, message, &modulus_bytes);
+		populate_circuit(&circuit, &mut w, &signature_bytes, &message, &modulus_bytes);
 
 		cs.populate_wire_witness(&mut w).unwrap();
 		verify_constraints(cs.constraint_system(), &w.into_value_vec()).unwrap();
