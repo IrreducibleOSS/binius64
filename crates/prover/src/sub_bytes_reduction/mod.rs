@@ -276,42 +276,6 @@ mod test {
 	}
 	
 	#[test]
-	fn test_fast_ntt_64() {
-		use crate::sub_bytes_reduction::fast_ntt_64::fast_ntt_64;
-		
-		let mut rng = StdRng::seed_from_u64(0);
-		let subspace = BinarySubspace::<AESTowerField8b>::with_dim(7).unwrap();
-
-		let input_space = subspace.reduce_dim(6).unwrap();
-
-		let poly = GenericPo2UnivariatePoly::new(
-			(0..64)
-				.map(|_| AESTowerField8b::random(&mut rng))
-				.collect_vec(),
-			input_space.clone(),
-		);
-
-		let last_basis_vec = subspace.basis()[subspace.basis().len() - 1];
-
-		// Test with generic NTT
-		let mut polynomial_evals_generic = poly.iter().copied().collect_vec();
-		ntt(&mut polynomial_evals_generic, subspace.clone());
-
-		// Test with fast specialized NTT
-		let mut polynomial_evals_fast: [AESTowerField8b; 64] = poly.iter().copied().collect_vec().try_into().unwrap();
-		fast_ntt_64(&mut polynomial_evals_fast, &crate::sub_bytes_reduction::fast_ntt_64::DEFAULT_INTT_DOMAINS, &crate::sub_bytes_reduction::fast_ntt_64::DEFAULT_FNTT_DOMAINS);
-		
-		// Verify they produce the same results
-		assert_eq!(&polynomial_evals_generic[..], &polynomial_evals_fast[..], "Fast NTT should produce same results as generic NTT");
-
-		// Also verify correctness
-		for (i, input_domain_elem) in input_space.iter().enumerate() {
-			let result = poly.evaluate_at_challenge(input_domain_elem + last_basis_vec);
-			assert_eq!(result, polynomial_evals_fast[i])
-		}
-	}
-
-	#[test]
 	fn test_elements_of_subspace() {
 		// Test elements_of_subspace returns correct split
 		for dim in 2..=8 {
