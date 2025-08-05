@@ -326,7 +326,7 @@ mod tests {
 		// Verify correctness
 		for (i, input_domain_elem) in input_space.iter().enumerate() {
 			let result = poly.evaluate_at_challenge(input_domain_elem + last_basis_vec);
-			assert_eq!(result, polynomial_evals[i], "Fast NTT result mismatch at index {}", i);
+			assert_eq!(result, polynomial_evals[i], "Fast NTT result mismatch at index {i}");
 		}
 	}
 
@@ -354,8 +354,8 @@ mod tests {
 		fast_ntt_64(&mut poly_sum, &intt_domains, &fntt_domains);
 
 		// Compute NTT(a) + NTT(b)
-		let mut ntt_a = poly_a.clone();
-		let mut ntt_b = poly_b.clone();
+		let mut ntt_a = poly_a;
+		let mut ntt_b = poly_b;
 		fast_ntt_64(&mut ntt_a, &intt_domains, &fntt_domains);
 		fast_ntt_64(&mut ntt_b, &intt_domains, &fntt_domains);
 
@@ -386,7 +386,7 @@ mod tests {
 			generate_ntt_domains::<PackedAESBinaryField16x8b>(subspace.clone());
 
 		// Perform NTT on packed values
-		let mut ntt_result = packed_poly.clone();
+		let mut ntt_result = packed_poly;
 		fast_ntt_64(&mut ntt_result, &intt_domains, &fntt_domains);
 
 		// Extract individual elements from packed fields and verify
@@ -409,8 +409,7 @@ mod tests {
 				let actual = ntt_result[i].get(elem_idx);
 				assert_eq!(
 					expected, actual,
-					"Mismatch at element {} of packed field index {}",
-					elem_idx, i
+					"Mismatch at element {elem_idx} of packed field index {i}"
 				);
 			}
 		}
