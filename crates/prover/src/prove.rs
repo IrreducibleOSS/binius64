@@ -170,8 +170,7 @@ where
 		let witness_packed_subfield_buffer = cast_bases_to_buffer(&witness_packed);
 
 		let _scope = tracing::debug_span!("PCS open").entered();
-		let pcs_prover =
-			OneBitPCSProver::new(witness_packed_subfield_buffer, witness_eval, evaluation_point)?;
+		let pcs_prover = OneBitPCSProver::new(witness_packed_subfield_buffer, evaluation_point)?;
 
 		pcs_prover.prove_with_transcript(
 			transcript,

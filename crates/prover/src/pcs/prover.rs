@@ -1,5 +1,7 @@
 // Copyright 2025 Irreducible Inc.
 
+use std::{marker::PhantomData, ops::Deref};
+
 use binius_field::{BinaryField, ExtensionField, PackedExtension, PackedField, PackedSubfield};
 use binius_math::{
 	FieldBuffer, inner_product::inner_product, multilinear::eq::eq_ind_partial_eval,
@@ -23,37 +25,36 @@ use crate::{
 /// at a large field point. The prover first performs the ring switching phase of the proof,
 /// establishing completeness. Then, the large field pcs (basefold) is invoked to establish
 /// soundness.
-pub struct OneBitPCSProver<F, P>
+pub struct OneBitPCSProver<P, Data>
 where
-	F: BinaryField,
-	P: PackedExtension<B1> + PackedField<Scalar = F>,
+	P: PackedExtension<B1>,
+	Data: Deref<Target = [PackedSubfield<P, B1>]>,
 {
-	pub mle: FieldBuffer<PackedSubfield<P, B1>>,
-	pub evaluation_claim: F,
-	pub evaluation_point: Vec<F>,
+	mle: FieldBuffer<PackedSubfield<P, B1>, Data>,
+	evaluation_point: Vec<P::Scalar>,
+	_marker: PhantomData<P>,
 }
 
-impl<F, P> OneBitPCSProver<F, P>
+impl<F, P, Data> OneBitPCSProver<P, Data>
 where
 	F: BinaryField,
 	P: PackedExtension<B1> + PackedField<Scalar = F>,
+	Data: Deref<Target = [PackedSubfield<P, B1>]>,
 {
 	/// Create a new ring switched PCS prover.
 	///
 	/// ## Arguments
 	///
 	/// * `mle` - the multilinear polynomial with elements in the large field
-	/// * `evaluation_claim` - the evaluation claim of the small field multilinear
 	/// * `evaluation_point` - the evaluation point of the small field multilinear
 	pub fn new(
-		mle: FieldBuffer<PackedSubfield<P, B1>>,
-		evaluation_claim: F,
+		mle: FieldBuffer<PackedSubfield<P, B1>, Data>,
 		evaluation_point: Vec<F>,
 	) -> Result<Self, Error> {
 		Ok(Self {
 			mle,
-			evaluation_claim,
 			evaluation_point,
+			_marker: PhantomData,
 		})
 	}
 
@@ -93,7 +94,7 @@ where
 		let suffix_tensor = eq_ind_partial_eval::<P>(eval_point_suffix);
 
 		// packed mle partial evals of at high variables
-		let s_hat_v = ring_switch::fold_1b_rows::<_, P>(&self.mle, &suffix_tensor);
+		let s_hat_v = ring_switch::fold_1b_rows(&self.mle, &suffix_tensor);
 		transcript.message().write_scalar_slice(s_hat_v.as_ref());
 
 		// basis decompose/recombine s_hat_v across opposite dimension
@@ -296,11 +297,8 @@ mod test {
 		// Convert packed_mle to PackedSubfield view for OneBitPCSProver
 		let packed_subfield_buffer = cast_bases_to_buffer(&packed_mle);
 
-		let ring_switch_pcs_prover = OneBitPCSProver::new(
-			packed_subfield_buffer,
-			evaluation_claim,
-			evaluation_point.clone(),
-		)?;
+		let ring_switch_pcs_prover =
+			OneBitPCSProver::new(packed_subfield_buffer, evaluation_point.clone())?;
 
 		ring_switch_pcs_prover.prove_with_transcript(
 			&mut prover_challenger,
