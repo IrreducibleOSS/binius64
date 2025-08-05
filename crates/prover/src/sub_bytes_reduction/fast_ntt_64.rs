@@ -126,7 +126,7 @@ pub fn generate_ntt_domains<P: PackedField<Scalar = AESTowerField8b>>(
 }
 
 /// Fast specialized inverse NTT for 2^6 size with provided domains
-#[inline]
+#[inline(always)]
 pub fn fast_inverse_ntt_64<P: PackedField<Scalar = AESTowerField8b>>(
 	polynomial_evals: &mut [P; 64],
 	domains: &NttDomains<P>,
@@ -221,7 +221,7 @@ pub fn fast_inverse_ntt_64<P: PackedField<Scalar = AESTowerField8b>>(
 }
 
 /// Fast specialized forward NTT for 2^6 size with provided domains
-#[inline]
+#[inline(always)]
 pub fn fast_forward_ntt_64<P: PackedField<Scalar = AESTowerField8b>>(
 	polynomial_evals: &mut [P; 64],
 	domains: &NttDomains<P>,
@@ -326,7 +326,7 @@ pub fn fast_forward_ntt_64<P: PackedField<Scalar = AESTowerField8b>>(
 }
 
 /// Fast specialized NTT for 2^6 size with provided domains
-#[inline]
+#[inline(always)]
 pub fn fast_ntt_64<P: PackedField<Scalar = AESTowerField8b>>(
 	polynomial_evals: &mut [P; 64],
 	intt_domains: &NttDomains<P>,
