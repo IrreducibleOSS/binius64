@@ -1,8 +1,13 @@
 // Copyright 2025 Irreducible Inc.
 
-use binius_field::Field;
+use binius_core::constraint_system::{Operand, ShiftedValueIndex};
+use binius_field::{BinaryField, Field};
+use binius_math::{
+	BinarySubspace, multilinear::eq::eq_ind_partial_eval, univariate::lagrange_evals,
+};
+use itertools::izip;
 
-use super::SHIFT_VARIANT_COUNT;
+use super::{SHIFT_VARIANT_COUNT, error::Error, verify::OperatorData};
 use crate::config::{LOG_WORD_SIZE_BITS, WORD_SIZE_BITS};
 
 /// Evaluates the three h multilinear polynomials (corresponding to SLL, SRL, SRA) at challenge
@@ -66,6 +71,86 @@ pub fn evaluate_h_op<F: Field>(l_tilde: &[F], r_j: &[F], r_s: &[F]) -> [F; SHIFT
 	let sra: F = srl + j_product * (0..WORD_SIZE_BITS).map(|i| l_tilde[i] * a[i]).sum::<F>();
 
 	[sll, srl, sra]
+}
+
+/// Evaluates the term of the monster multilinear corresponding to an operand of an operation.
+///
+/// For each operand $m$ of an operation, there are multilinears $h_{\text{op}}$ and
+/// $M_{m,\text{op}}$ for $\text{op}$ in $\{\text{SLL, SRL, SRA}\}$. Together these make
+/// up the term of the monster multilinear corresponding to this operand as follows:
+/// $$
+///     \sum_{\text{op}} h_{\text{op}}(r_j, r_s) \cdot M_{m, \text{op}}(r_x', r_y, r_s)
+/// $$
+/// This function computes this term from the three evaluations $h_{\text{op}}(r_j, r_s)$,
+/// as well as $r_x'$, $r_y$, and $r_s$ (or rather their expanded tensors).
+fn evaluate_monster_multilinear_term_for_operand<F: Field>(
+	operands: Vec<Operand>,
+	h_op_evals: [F; SHIFT_VARIANT_COUNT],
+	r_x_prime_tensor: &[F],
+	r_y_tensor: &[F],
+	r_s_tensor: &[F],
+) -> F {
+	izip!(operands, r_x_prime_tensor)
+		.map(|(operand, &constraint_eval)| {
+			operand
+				.iter()
+				.map(
+					|ShiftedValueIndex {
+					     value_index,
+					     shift_variant,
+					     amount,
+					 }| {
+						constraint_eval
+							* h_op_evals[*shift_variant as usize]
+							* r_y_tensor[value_index.0 as usize]
+							* r_s_tensor[*amount]
+					},
+				)
+				.sum::<F>()
+		})
+		.sum()
+}
+
+/// The monster multilinear for an operation is written
+/// $$
+/// \sum_{\text{m_idx} \in \text{enumerate(operands)}}
+///     \lambda^{\text{m_idx}+1}
+///     \sum_{\text{op}} h_{\text{op}}(r_j, r_s) \cdot M_{\text{m}, \text{op}}(r_x', r_y, r_s)
+/// $$
+/// where $op$ ranges over the shift variants.
+/// This function computes this expression given corresponding `OperatorData`, as well
+/// as $r_j$, $r_s$, and $r_y$.
+pub fn evaluate_monster_multilinear_for_operation<F: BinaryField, const ARITY: usize>(
+	operand_vecs: Vec<Vec<Operand>>,
+	operator_data: OperatorData<F, ARITY>,
+	r_j: &[F],
+	r_s: &[F],
+	r_y: &[F],
+) -> Result<F, Error> {
+	let r_x_prime_tensor = eq_ind_partial_eval::<F>(&operator_data.r_x_prime);
+	let r_y_tensor = eq_ind_partial_eval::<F>(r_y);
+	let r_s_tensor = eq_ind_partial_eval::<F>(r_s);
+
+	let subspace = BinarySubspace::<F>::with_dim(LOG_WORD_SIZE_BITS)?;
+	let l_tilde = lagrange_evals(&subspace, operator_data.r_zhat_prime);
+	let h_op_evals = evaluate_h_op(&l_tilde, r_j, r_s);
+
+	let eval = operand_vecs
+		.into_iter()
+		.enumerate()
+		.map(|(i, operand_vec)| {
+			operator_data.lambda.pow([i as u64 + 1])
+				* evaluate_monster_multilinear_term_for_operand(
+					operand_vec,
+					h_op_evals,
+					r_x_prime_tensor.as_ref(),
+					r_y_tensor.as_ref(),
+					r_s_tensor.as_ref(),
+				)
+		})
+		.sum();
+
+	Ok(eval)
 }
 
 #[cfg(test)]
