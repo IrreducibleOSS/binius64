@@ -338,7 +338,7 @@ pub fn fast_ntt_64<P: PackedField<Scalar = AESTowerField8b>>(
 
 #[cfg(test)]
 mod tests {
-	use binius_field::{Field, Random, arch::packed_aes_128::PackedAESBinaryField16x8b};
+	use binius_field::{Field, Random, PackedAESBinaryField16x8b};
 	use binius_math::BinarySubspace;
 	use binius_verifier::and_reduction::univariate::univariate_poly::{
 		GenericPo2UnivariatePoly, UnivariatePolyIsomorphic,
