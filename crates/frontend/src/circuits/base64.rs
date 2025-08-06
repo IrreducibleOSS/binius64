@@ -1,6 +1,9 @@
 use binius_core::word::Word;
 
-use crate::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
+use crate::{
+	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
+	util::pack_bytes_into_wires_be,
+};
 
 /// Base64 encoding (URL-safe, without trailing padding characters) encoding verification.
 ///
@@ -130,28 +133,7 @@ impl Base64UrlSafe {
 	///
 	/// Panics if `data.len()` exceeds the maximum size specified during construction.
 	pub fn populate_decoded(&self, w: &mut WitnessFiller, data: &[u8]) {
-		assert!(
-			data.len() <= self.max_len_decoded,
-			"decoded length {} exceeds maximum {}",
-			data.len(),
-			self.max_len_decoded,
-		);
-
-		// Pack bytes into 64-bit words (big-endian)
-		for (i, chunk) in data.chunks(8).enumerate() {
-			if i < self.decoded.len() {
-				let mut word = 0u64;
-				for (j, &byte) in chunk.iter().enumerate() {
-					word |= (byte as u64) << ((7 - j) * 8);
-				}
-				w[self.decoded[i]] = Word(word);
-			}
-		}
-
-		// Zero out remaining words
-		for i in data.len().div_ceil(8)..self.decoded.len() {
-			w[self.decoded[i]] = Word::ZERO;
-		}
+		pack_bytes_into_wires_be(w, &self.decoded, data);
 	}
 
 	/// Populates the encoded base64 array from a byte slice.
@@ -165,29 +147,7 @@ impl Base64UrlSafe {
 	///
 	/// Panics if `data.len()` exceeds the maximum size specified during construction.
 	pub fn populate_encoded(&self, w: &mut WitnessFiller, data: &[u8]) {
-		let max_bytes = self.encoded.len() * 8;
-		assert!(
-			data.len() <= max_bytes,
-			"encoded length {} exceeds maximum {}",
-			data.len(),
-			max_bytes
-		);
-
-		// Pack bytes into 64-bit words (big-endian)
-		for (i, chunk) in data.chunks(8).enumerate() {
-			if i < self.encoded.len() {
-				let mut word = 0u64;
-				for (j, &byte) in chunk.iter().enumerate() {
-					word |= (byte as u64) << ((7 - j) * 8);
-				}
-				w[self.encoded[i]] = Word(word);
-			}
-		}
-
-		// Zero out remaining words
-		for i in data.len().div_ceil(8)..self.encoded.len() {
-			w[self.encoded[i]] = Word::ZERO;
-		}
+		pack_bytes_into_wires_be(w, &self.encoded, data);
 	}
 }
 

@@ -236,7 +236,7 @@ impl Rs256Verify {
 	/// Panics if modulus_bytes.len() != 256
 	fn populate_modulus(&self, w: &mut WitnessFiller, modulus_bytes: &[u8]) {
 		assert_eq!(modulus_bytes.len(), 256, "modulus must be exactly 256 bytes");
-		self.modulus.populate_bytes(w, modulus_bytes);
+		self.modulus.populate_bytes_be(w, modulus_bytes);
 	}
 
 	/// Populate the RSA signature
@@ -249,7 +249,7 @@ impl Rs256Verify {
 	/// Panics if signature_bytes.len() != 256
 	fn populate_signature(&self, w: &mut WitnessFiller, signature_bytes: &[u8]) {
 		assert_eq!(signature_bytes.len(), 256, "signature must be exactly 256 bytes");
-		self.signature.populate_bytes(w, signature_bytes);
+		self.signature.populate_bytes_be(w, signature_bytes);
 	}
 }
 

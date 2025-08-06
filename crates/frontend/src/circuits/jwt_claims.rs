@@ -3,6 +3,7 @@ use binius_core::word::Word;
 use crate::{
 	circuits::slice::Slice,
 	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
+	util::pack_bytes_into_wires_le,
 };
 
 /// Represents a single JWT attribute to verify
@@ -24,29 +25,7 @@ impl Attribute {
 	/// # Panics
 	/// Panics if value.len() > max_value_size (determined by self.value.len() * 8)
 	pub fn populate_value(&self, w: &mut WitnessFiller, value: &[u8]) {
-		let max_value_size = self.value.len() * 8;
-		assert!(
-			value.len() <= max_value_size,
-			"value length {} exceeds maximum {}",
-			value.len(),
-			max_value_size
-		);
-
-		// Pack bytes into words
-		for (i, chunk) in value.chunks(8).enumerate() {
-			if i < self.value.len() {
-				let mut word = 0u64;
-				for (j, &byte) in chunk.iter().enumerate() {
-					word |= (byte as u64) << (j * 8);
-				}
-				w[self.value[i]] = Word(word);
-			}
-		}
-
-		// Zero out remaining words
-		for i in value.len().div_ceil(8)..self.value.len() {
-			w[self.value[i]] = Word::ZERO;
-		}
+		pack_bytes_into_wires_le(w, &self.value, value);
 	}
 }
 
@@ -274,29 +253,7 @@ impl JwtClaims {
 	/// # Panics
 	/// Panics if json.len() > max_len_json (the maximum size specified during construction)
 	pub fn populate_json(&self, w: &mut WitnessFiller, json: &[u8]) {
-		let max_len_json = self.json.len() * 8;
-		assert!(
-			json.len() <= max_len_json,
-			"json length {} exceeds maximum {}",
-			json.len(),
-			max_len_json
-		);
-
-		// Pack bytes into words
-		for (i, chunk) in json.chunks(8).enumerate() {
-			if i < self.json.len() {
-				let mut word = 0u64;
-				for (j, &byte) in chunk.iter().enumerate() {
-					word |= (byte as u64) << (j * 8);
-				}
-				w[self.json[i]] = Word(word);
-			}
-		}
-
-		// Zero out remaining words
-		for i in json.len().div_ceil(8)..self.json.len() {
-			w[self.json[i]] = Word::ZERO;
-		}
+		pack_bytes_into_wires_le(w, &self.json, json);
 	}
 }
 
