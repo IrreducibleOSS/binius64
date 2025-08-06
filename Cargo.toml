@@ -57,7 +57,7 @@ rand = { version = "0.9.1", default-features = false, features = [
 rayon = "1.10.0"
 regex = "1.10"
 # Uses RC because latest stable rsa-0.9.8 API requires RNG from rand=0.6
-rsa = "0.10.0-rc.3"
+rsa = { version = "0.10.0-rc.3", features = ["sha2"] }
 seq-macro = "0.3.5"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
@@ -65,6 +65,7 @@ sha2 = "0.10.8"
 thiserror = "2.0.3"
 transpose = "0.2.2"
 tracing = "0.1.38"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt"] }
 tracing-profile = "0.10.9"
 trait-set = "0.3.0"
 z3 = "0.13.3"

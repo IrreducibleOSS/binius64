@@ -10,4 +10,4 @@ pub use monster::*;
 mod error;
 mod verify;
 
-pub use verify::OperatorData;
+pub use verify::{OperatorData, verify};

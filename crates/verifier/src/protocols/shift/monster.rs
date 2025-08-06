@@ -84,7 +84,7 @@ pub fn evaluate_h_op<F: Field>(l_tilde: &[F], r_j: &[F], r_s: &[F]) -> [F; SHIFT
 /// This function computes this term from the three evaluations $h_{\text{op}}(r_j, r_s)$,
 /// as well as $r_x'$, $r_y$, and $r_s$ (or rather their expanded tensors).
 fn evaluate_monster_multilinear_term_for_operand<F: Field>(
-	operands: Vec<Operand>,
+	operands: Vec<&Operand>,
 	h_op_evals: [F; SHIFT_VARIANT_COUNT],
 	r_x_prime_tensor: &[F],
 	r_y_tensor: &[F],
@@ -121,7 +121,7 @@ fn evaluate_monster_multilinear_term_for_operand<F: Field>(
 /// This function computes this expression given corresponding `OperatorData`, as well
 /// as $r_j$, $r_s$, and $r_y$.
 pub fn evaluate_monster_multilinear_for_operation<F: BinaryField, const ARITY: usize>(
-	operand_vecs: Vec<Vec<Operand>>,
+	operand_vecs: Vec<Vec<&Operand>>,
 	operator_data: OperatorData<F, ARITY>,
 	r_j: &[F],
 	r_s: &[F],
