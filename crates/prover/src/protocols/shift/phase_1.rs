@@ -9,7 +9,7 @@ use binius_transcript::{
 	ProverTranscript,
 	fiat_shamir::{CanSample, Challenger},
 };
-use binius_utils::rayon::{current_num_threads, prelude::*};
+use binius_utils::rayon::prelude::*;
 use binius_verifier::{
 	config::{LOG_WORD_SIZE_BITS, WORD_SIZE_BITS},
 	protocols::{
@@ -206,16 +206,17 @@ fn build_g_triplet<F: Field, P: PackedField<Scalar = F>>(
 	const BITAND_ACC_SIZE: usize = BITAND_ARITY * SHIFT_VARIANT_COUNT * (1 << LOG_LEN);
 	const INTMUL_ACC_SIZE: usize = INTMUL_ARITY * SHIFT_VARIANT_COUNT * (1 << LOG_LEN);
 
-	let chunk_size = words.len().div_ceil(current_num_threads());
-
 	let (bitand_multilinears, intmul_multilinears) = words
-		.par_chunks(chunk_size)
-		.zip(key_collection.key_ranges.par_chunks(chunk_size))
-		.map(|(word_chunk, key_range_chunk)| {
-			let mut bitand_multilinears = vec![F::ZERO; BITAND_ACC_SIZE];
-			let mut intmul_multilinears = vec![F::ZERO; INTMUL_ACC_SIZE];
-
-			for (word, Range { start, end }) in izip!(word_chunk, key_range_chunk) {
+		.par_iter()
+		.zip(key_collection.key_ranges.par_iter())
+		.fold(
+			|| {
+				(
+					vec![F::ZERO; BITAND_ACC_SIZE].into_boxed_slice(),
+					vec![F::ZERO; INTMUL_ACC_SIZE].into_boxed_slice(),
+				)
+			},
+			|(mut bitand_multilinears, mut intmul_multilinears), (word, Range { start, end })| {
 				let keys = &key_collection.keys[*start as usize..*end as usize];
 
 				for key in keys {
@@ -241,12 +242,17 @@ fn build_g_triplet<F: Field, P: PackedField<Scalar = F>>(
 						word = word >> 1;
 					}
 				}
-			}
 
-			(bitand_multilinears, intmul_multilinears)
-		})
+				(bitand_multilinears, intmul_multilinears)
+			},
+		)
 		.reduce(
-			|| (vec![F::ZERO; BITAND_ACC_SIZE], vec![F::ZERO; INTMUL_ACC_SIZE]),
+			|| {
+				(
+					vec![F::ZERO; BITAND_ACC_SIZE].into_boxed_slice(),
+					vec![F::ZERO; INTMUL_ACC_SIZE].into_boxed_slice(),
+				)
+			},
 			|(mut acc_bitand, mut acc_intmul), (local_bitand, local_intmul)| {
 				izip!(acc_bitand.iter_mut(), local_bitand.iter()).for_each(|(acc, local)| {
 					*acc += *local;
