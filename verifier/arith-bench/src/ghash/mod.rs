@@ -12,4 +12,4 @@ pub const ONE: u128 = 0x01;
 
 // Re-export mul_clmul for backward compatibility
 #[allow(unused_imports)]
-pub use clmul::mul as mul_clmul;
+pub use clmul::{mul as mul_clmul, square as square_clmul};

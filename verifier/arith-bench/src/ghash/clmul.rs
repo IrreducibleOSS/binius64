@@ -46,6 +46,21 @@ pub fn mul<U: Underlier + OpsClmul + PackedUnderlier<u128>>(x: U, y: U) -> U {
 	t0
 }
 
+/// Multiply two GHASH field elements using CLMUL instructions.
+#[inline]
+pub fn square<U: Underlier + OpsClmul + PackedUnderlier<u128>>(x: U) -> U {
+	// t2 = x.hi * y.hi
+	let t2 = U::clmulepi64::<0x11>(x, x);
+	// Reduce t1 and t2
+	let t1 = gf2_128_shift_reduce(t2);
+	// t0 = x.lo * y.lo
+	let mut t0 = U::clmulepi64::<0x00>(x, x);
+	// Final reduction
+	t0 = gf2_128_reduce(t0, t1);
+
+	t0
+}
+
 /// Performs reduction step: returns t0 + x^64 * t1
 #[inline]
 fn gf2_128_reduce<U: Underlier + OpsClmul + PackedUnderlier<u128>>(mut t0: U, t1: U) -> U {
@@ -56,6 +71,24 @@ fn gf2_128_reduce<U: Underlier + OpsClmul + PackedUnderlier<u128>>(mut t0: U, t1
 	// t0 = t0 XOR (t1 << 64)
 	// In SIMD, left shift by 64 bits is shifting by 8 bytes
 	t0 = U::xor(t0, U::slli_si128::<8>(t1));
+
+	// t0 = t0 XOR clmul(t1, poly, 0x01)
+	// This multiplies the high 64 bits of t1 with the low 64 bits of poly
+	t0 = U::xor(t0, U::clmulepi64::<0x01>(t1, poly));
+
+	t0
+}
+
+/// Performs reduction step: returns x^64 * t1
+#[inline]
+fn gf2_128_shift_reduce<U: Underlier + OpsClmul + PackedUnderlier<u128>>(t1: U) -> U {
+	// The reduction polynomial x^128 + x^7 + x^2 + x + 1 is represented as 0x87
+	const POLY: u128 = 0x87;
+	let poly = <U as PackedUnderlier<u128>>::broadcast(POLY);
+
+	// t0 = t1 << 64
+	// In SIMD, left shift by 64 bits is shifting by 8 bytes
+	let mut t0 = U::slli_si128::<8>(t1);
 
 	// t0 = t0 XOR clmul(t1, poly, 0x01)
 	// This multiplies the high 64 bits of t1 with the low 64 bits of poly
