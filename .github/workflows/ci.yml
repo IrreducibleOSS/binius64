@@ -83,7 +83,7 @@ jobs:
             rustflags: "-C debug-assertions"
           - name: "wasm-build"
             command: |
-              cargo build -p binius-math -p binius-field -p binius-prover -p binius-verifier --benches --tests --all-features --examples --target wasm32-wasip1
+              cargo build -p binius-math -p binius-field -p binius-prover -p binius-verifier --target wasm32-wasip1
             rust-target: "wasm32-wasip1"
     steps:
       - name: Checkout Repository

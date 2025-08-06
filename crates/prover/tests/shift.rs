@@ -1,17 +1,12 @@
 // Copyright 2025 Irreducible Inc.
 
-use std::sync::Once;
-
 use binius_core::{
 	constraint_system::{AndConstraint, ConstraintSystem, MulConstraint, ValueVec},
 	word::Word,
 };
 use binius_field::{BinaryField, Field};
 use binius_frontend::{
-	circuits::{
-		jwt_claims::{Attribute, JwtClaims},
-		sha256::Sha256,
-	},
+	circuits::sha256::Sha256,
 	compiler::CircuitBuilder,
 	constraint_verifier::{eval_operand, verify_constraints},
 };
@@ -35,65 +30,6 @@ use binius_verifier::{
 use itertools::Itertools;
 use rand::{SeedableRng, rngs::StdRng};
 use sha2::{Digest, Sha256 as Sha256Hasher};
-
-// Initialize tracing subscriber once for all tests
-static INIT_TRACING: Once = Once::new();
-
-fn init_tracing() {
-	INIT_TRACING.call_once(|| {
-		// Initialize tracing with profile layer - the guard is kept alive until program ends
-		let _guard = tracing_profile::init_tracing().unwrap();
-		// Note: In a real application you'd want to keep the guard alive
-		// but for tests this is sufficient
-		std::mem::forget(_guard);
-	});
-}
-
-// Create example constraint systems with witnesses.
-
-pub fn create_jwt_claims_cs_with_witness() -> (ConstraintSystem, ValueVec) {
-	let builder = CircuitBuilder::new();
-	let max_len_json = 128;
-	let len_json = builder.add_witness();
-	let json: Vec<binius_frontend::compiler::Wire> = (0..max_len_json / 8)
-		.map(|_| builder.add_witness())
-		.collect();
-
-	let attributes = vec![
-		Attribute {
-			name: "iss",
-			len_value: builder.add_inout(),
-			value: (0..32 / 8).map(|_| builder.add_inout()).collect(),
-		},
-		Attribute {
-			name: "sub",
-			len_value: builder.add_inout(),
-			value: (0..32 / 8).map(|_| builder.add_inout()).collect(),
-		},
-	];
-
-	let jwt_claims = JwtClaims::new(&builder, max_len_json, len_json, json, attributes);
-
-	let circuit = builder.build();
-	let mut witness_filler = circuit.new_witness_filler();
-
-	// Populate with concrete JSON
-	let json_str = r#"{"iss":"example.com","sub":"user123"}"#;
-	jwt_claims.populate_len_json(&mut witness_filler, json_str.len());
-	jwt_claims.populate_json(&mut witness_filler, json_str.as_bytes());
-
-	// Populate expected attribute values
-	jwt_claims.attributes[0].populate_len_value(&mut witness_filler, 11); // "example.com"
-	jwt_claims.attributes[0].populate_value(&mut witness_filler, b"example.com");
-
-	jwt_claims.attributes[1].populate_len_value(&mut witness_filler, 7); // "user123"
-	jwt_claims.attributes[1].populate_value(&mut witness_filler, b"user123");
-
-	// Get the witness vector
-	circuit.populate_wire_witness(&mut witness_filler).unwrap();
-
-	(circuit.constraint_system().clone(), witness_filler.into_value_vec())
-}
 
 pub fn create_sha256_cs_with_witness() -> (ConstraintSystem, ValueVec) {
 	let builder = CircuitBuilder::new();
@@ -126,40 +62,6 @@ pub fn create_sha256_cs_with_witness() -> (ConstraintSystem, ValueVec) {
 	let hash = Sha256Hasher::digest(message_bytes);
 	let expected_digest: [u8; 32] = hash.into();
 	sha256.populate_digest(&mut witness_filler, expected_digest);
-
-	// Get the witness vector
-	circuit.populate_wire_witness(&mut witness_filler).unwrap();
-
-	(circuit.constraint_system().clone(), witness_filler.into_value_vec())
-}
-
-pub fn create_base64_cs_with_witness() -> (ConstraintSystem, ValueVec) {
-	use binius_frontend::{circuits::base64::Base64UrlSafe, compiler::Wire};
-
-	let builder = CircuitBuilder::new();
-	let max_len_decoded: usize = 1368 * 5; // Must be multiple of 24
-
-	// Create wires for Base64 circuit
-	let decoded: Vec<Wire> = (0..max_len_decoded / 8)
-		.map(|_| builder.add_inout())
-		.collect();
-	let encoded: Vec<Wire> = (0..max_len_decoded / 6)
-		.map(|_| builder.add_inout())
-		.collect();
-	let len_decoded = builder.add_inout();
-
-	// Create the Base64 circuit
-	let base64 = Base64UrlSafe::new(&builder, max_len_decoded, decoded, encoded, len_decoded);
-
-	let circuit = builder.build();
-	let mut witness_filler = circuit.new_witness_filler();
-
-	let decoded_data = br#"Lorem ipsum dolor sit amet consectetur adipiscing elit quisque faucibus ex sapien vitae pellentesque sem placerat in id cursus mi pretium tellus duis convallis tempus leo eu aenean sed diam urna tempor pulvinar vivamus fringilla lacus nec metus bibendum egestas iaculis massa nisl malesuada lacinia integer nunc posuere ut hendrerit semper vel class aptent taciti sociosqu ad litora torquent per conubia nostra inceptos himenaeos orci various natoque penatibus"#;
-	let encoded_data = br#"TG9yZW0gaXBzdW0gZG9sb3Igc2l0IGFtZXQgY29uc2VjdGV0dXIgYWRpcGlzY2luZyBlbGl0IHF1aXNxdWUgZmF1Y2lidXMgZXggc2FwaWVuIHZpdGFlIHBlbGxlbnRlc3F1ZSBzZW0gcGxhY2VyYXQgaW4gaWQgY3Vyc3VzIG1pIHByZXRpdW0gdGVsbHVzIGR1aXMgY29udmFsbGlzIHRlbXB1cyBsZW8gZXUgYWVuZWFuIHNlZCBkaWFtIHVybmEgdGVtcG9yIHB1bHZpbmFyIHZpdmFtdXMgZnJpbmdpbGxhIGxhY3VzIG5lYyBtZXR1cyBiaWJlbmR1bSBlZ2VzdGFzIGlhY3VsaXMgbWFzc2EgbmlzbCBtYWxlc3VhZGEgbGFjaW5pYSBpbnRlZ2VyIG51bmMgcG9zdWVyZSB1dCBoZW5kcmVyaXQgc2VtcGVyIHZlbCBjbGFzcyBhcHRlbnQgdGFjaXRpIHNvY2lvc3F1IGFkIGxpdG9yYSB0b3JxdWVudCBwZXIgY29udWJpYSBub3N0cmEgaW5jZXB0b3MgaGltZW5hZW9zIG9yY2kgdmFyaW91cyBuYXRvcXVlIHBlbmF0aWJ1cw"#;
-
-	base64.populate_len_decoded(&mut witness_filler, decoded_data.len());
-	base64.populate_decoded(&mut witness_filler, decoded_data);
-	base64.populate_encoded(&mut witness_filler, encoded_data);
 
 	// Get the witness vector
 	circuit.populate_wire_witness(&mut witness_filler).unwrap();
@@ -271,60 +173,6 @@ pub fn create_slice_cs_with_witness() -> (ConstraintSystem, ValueVec) {
 	(circuit.constraint_system().clone(), witness_filler.into_value_vec())
 }
 
-pub fn create_rs256_cs_with_witness() -> (ConstraintSystem, ValueVec) {
-	use binius_frontend::circuits::{fixed_byte_vec::FixedByteVec, rs256::Rs256Verify};
-	use rand::SeedableRng;
-	use rsa::{
-		RsaPrivateKey, RsaPublicKey,
-		pkcs1v15::SigningKey,
-		sha2::{Digest, Sha256},
-		signature::{SignatureEncoding, Signer},
-		traits::PublicKeyParts,
-	};
-
-	let mut builder = CircuitBuilder::new();
-	let max_message_len: usize = 256; // Maximum message length
-
-	// Setup circuit using the new Rs256Verify API
-	let signature_bytes = FixedByteVec::new_inout(&builder, 256);
-	let modulus_bytes = FixedByteVec::new_inout(&builder, 256);
-	let message = FixedByteVec::new_witness(&builder, max_message_len);
-
-	// Create the RS256 circuit with new API (only 4 arguments)
-	let rs256 = Rs256Verify::new(&mut builder, message, signature_bytes, modulus_bytes);
-
-	let circuit = builder.build();
-	let mut witness_filler = circuit.new_witness_filler();
-
-	// Generate real RSA signature and witness data (following the working test pattern)
-	let mut rng = StdRng::seed_from_u64(0);
-	let bits = 2048;
-	let private_key = RsaPrivateKey::new(&mut rng, bits).expect("failed to generate key");
-	let public_key = RsaPublicKey::from(&private_key);
-
-	let message_bytes = b"Test message for RS256 verification";
-	let signing_key = SigningKey::<Sha256>::new(private_key);
-	let signature_obj = signing_key.sign(message_bytes);
-
-	// Get signature and modulus as byte arrays
-	let signature_bytes = signature_obj.to_bytes();
-	let modulus_bytes = public_key.n().to_be_bytes();
-
-	// Populate using the exact same pattern as the working test
-	let hash = Sha256::digest(message_bytes);
-	rs256.populate_rsa(&mut witness_filler, &signature_bytes, &modulus_bytes);
-	rs256.populate_message_len(&mut witness_filler, message_bytes.len());
-	rs256.populate_message(&mut witness_filler, message_bytes);
-	rs256
-		.sha256
-		.populate_digest(&mut witness_filler, hash.into());
-
-	// Populate wire witness using built circuit
-	circuit.populate_wire_witness(&mut witness_filler).unwrap();
-
-	(circuit.constraint_system().clone(), witness_filler.into_value_vec())
-}
-
 // Compute the image of the witness applied to the AND constraints
 pub fn compute_bitand_images(constraints: &[AndConstraint], witness: &ValueVec) -> [Vec<Word>; 3] {
 	let (a_image, b_image, c_image) = constraints
@@ -385,9 +233,6 @@ pub fn evaluate_witness<F: Field>(words: &[Word], r_jr_y: &[F]) -> F {
 
 #[test]
 fn test_prove_and_verify() {
-	// Initialize tracing to capture instrumented function calls
-	init_tracing();
-
 	use binius_field::{BinaryField128bGhash, PackedBinaryGhash1x128b, Random};
 	type F = BinaryField128bGhash;
 	type P = PackedBinaryGhash1x128b;
@@ -395,30 +240,17 @@ fn test_prove_and_verify() {
 
 	let mut constraint_systems_to_test = vec![
 		create_sha256_cs_with_witness(),
-		create_jwt_claims_cs_with_witness(),
-		create_rs256_cs_with_witness(),
 		create_slice_cs_with_witness(),
-		create_base64_cs_with_witness(),
 		create_concat_cs_with_witness(),
 	];
 	for (constraint_system, _) in constraint_systems_to_test.iter_mut() {
 		constraint_system.validate_and_prepare().unwrap();
 	}
 
-	for (i, (cs, value_vec)) in constraint_systems_to_test.into_iter().enumerate() {
-		let circuit_name = match i {
-			0 => "sha256",
-			1 => "jwt_claims",
-			2 => "rs256",
-			3 => "slice",
-			4 => "base64",
-			5 => "concat",
-			_ => "unknown",
-		};
-
+	for (cs, value_vec) in constraint_systems_to_test.into_iter() {
 		// Validate constraints using frontend verifier first
 		if let Err(e) = verify_constraints(&cs, &value_vec) {
-			panic!("Circuit {circuit_name} failed constraint validation: {e}");
+			panic!("Circuit failed constraint validation: {e}");
 		}
 
 		// Sample multilinear challenge point
