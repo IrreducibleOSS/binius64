@@ -1,7 +1,7 @@
 // Copyright 2025 Irreducible Inc.
 
 use binius_core::word::Word;
-use binius_field::{BinaryField, Field, PackedField};
+use binius_field::{AESTowerField8b, BinaryField, Field, PackedField};
 use binius_math::{
 	FieldBuffer, multilinear::eq::eq_ind_partial_eval, univariate::evaluate_univariate,
 };
@@ -89,20 +89,23 @@ impl<F: Field> OperatorData<F> {
 /// # Requirements
 /// - `words` must have power-of-2 length for efficient multilinear operations
 #[instrument(skip_all, name = "prove")]
-pub fn prove<F: BinaryField, P: PackedField<Scalar = F>, C: Challenger>(
+pub fn prove<F, P: PackedField<Scalar = F>, C: Challenger>(
 	inout_n_vars: usize,
 	key_collection: &KeyCollection,
 	words: &[Word],
 	mut bitand_data: OperatorData<F>,
 	mut intmul_data: OperatorData<F>,
 	transcript: &mut ProverTranscript<C>,
-) -> Result<SumcheckOutput<F>, Error> {
+) -> Result<SumcheckOutput<F>, Error>
+where
+	F: BinaryField + From<AESTowerField8b>,
+{
 	// Sample and assign lambdas, one for each operator.
 	bitand_data.lambda = transcript.sample();
 	intmul_data.lambda = transcript.sample();
 
 	// Prove the first phase, receiving a `SumcheckOutput`
-	// with challenges made of `r_j` and `r_s` (see below),
+	// with challenges made of `r_j` and `r_s`,
 	// and eval equal to `gamma` (see paper).
 	let phase_1_output =
 		prove_phase_1::<_, P, C>(key_collection, words, &bitand_data, &intmul_data, transcript)?;

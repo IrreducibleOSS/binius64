@@ -11,12 +11,18 @@ use crate::{
 		univariate::univariate_poly::{GenericPo2UnivariatePoly, UnivariatePolyIsomorphic},
 		utils::constants::ROWS_PER_HYPERCUBE_VERTEX,
 	},
+	error::VerificationError,
 	protocols::{mlecheck::verify, sumcheck::SumcheckOutput},
 };
 
-pub struct AndReductionOutput<F: Field> {
-	pub univariate_sumcheck_challenge: F,
-	pub sumcheck_output: SumcheckOutput<F>,
+/// Output from the AND constraint reduction protocol verification.
+#[derive(Debug, PartialEq)]
+pub struct AndCheckOutput<F> {
+	pub a_eval: F,
+	pub b_eval: F,
+	pub c_eval: F,
+	pub z_challenge: F,
+	pub eval_point: Vec<F>,
 }
 
 /// Verifies the AND constraint reduction protocol via univariate zerocheck.
@@ -79,15 +85,17 @@ pub struct AndReductionOutput<F: Field> {
 ///
 /// ## Returns
 ///
-/// Returns `AndReductionOutput` containing:
-/// - `univariate_sumcheck_challenge`: The challenge z sampled for Z
-/// - `sumcheck_output`: The reduced claim (evaluation and challenge point) from the sumcheck
-///   protocol
+/// Returns `AndCheckOutput` containing:
+/// - `z_challenge`: The univariate challenge z sampled for the bit-index variable
+/// - `eval_point`: The multilinear evaluation point. Prepened with the `z_challenge` this makes the
+///   oblong evaluation point
+/// - `a_eval`, `b_eval`, `c_eval`: The claimed evaluations of the A, B, and C at the oblong
+///   evaluation point
 pub fn verify_with_transcript<F, TranscriptChallenger>(
 	all_zerocheck_challenges: &[F],
 	transcript: &mut VerifierTranscript<TranscriptChallenger>,
 	round_message_univariate_domain: BinarySubspace<F>,
-) -> Result<AndReductionOutput<F>, Error>
+) -> Result<AndCheckOutput<F>, Error>
 where
 	TranscriptChallenger: Challenger,
 	F: Field + BinaryField + From<F>,
@@ -109,8 +117,27 @@ where
 
 	let sumcheck_claim = univariate_message.evaluate_at_challenge(univariate_sumcheck_challenge);
 
-	Ok(AndReductionOutput {
-		sumcheck_output: verify(all_zerocheck_challenges, 2, sumcheck_claim, transcript)?,
-		univariate_sumcheck_challenge,
+	let SumcheckOutput {
+		eval,
+		challenges: mut eval_point,
+	} = verify(all_zerocheck_challenges, 2, sumcheck_claim, transcript)?;
+
+	let mut reader = transcript.message();
+	let a_eval = reader.read()?;
+	let b_eval = reader.read()?;
+	let c_eval = reader.read()?;
+
+	if eval != a_eval * b_eval - c_eval {
+		return Err(VerificationError::AndReductionMLECheckFailed.into());
+	}
+
+	eval_point.reverse();
+
+	Ok(AndCheckOutput {
+		a_eval,
+		b_eval,
+		c_eval,
+		z_challenge: univariate_sumcheck_challenge,
+		eval_point,
 	})
 }

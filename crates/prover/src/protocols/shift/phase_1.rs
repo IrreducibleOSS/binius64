@@ -3,7 +3,7 @@
 use std::{array, ops::Range};
 
 use binius_core::word::Word;
-use binius_field::{BinaryField, Field, PackedField};
+use binius_field::{AESTowerField8b, BinaryField, Field, PackedField};
 use binius_math::{FieldBuffer, inner_product::inner_product_buffers};
 use binius_transcript::{
 	ProverTranscript,
@@ -47,13 +47,16 @@ const LOG_LEN: usize = LOG_WORD_SIZE_BITS + LOG_WORD_SIZE_BITS;
 /// Proves the first phase of the shift reduction.
 /// Computes the g and h multilinears and performs the sumcheck.
 #[instrument(skip_all, name = "prover_phase_1")]
-pub fn prove_phase_1<F: BinaryField, P: PackedField<Scalar = F>, C: Challenger>(
+pub fn prove_phase_1<F, P: PackedField<Scalar = F>, C: Challenger>(
 	key_collection: &KeyCollection,
 	words: &[Word],
 	bitand_data: &OperatorData<F>,
 	intmul_data: &OperatorData<F>,
 	transcript: &mut ProverTranscript<C>,
-) -> Result<SumcheckOutput<F>, Error> {
+) -> Result<SumcheckOutput<F>, Error>
+where
+	F: BinaryField + From<AESTowerField8b>,
+{
 	let [g_triplet_bitand, g_triplet_intmul]: [MultilinearTriplet<P>; 2] =
 		build_g_triplet(words, key_collection, bitand_data, intmul_data)?;
 

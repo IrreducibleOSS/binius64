@@ -180,7 +180,7 @@ pub fn build_key_collection(cs: &ConstraintSystem) -> KeyCollection {
 	let bitand_operand_getters: [fn(&AndConstraint) -> &Operand; BITAND_ARITY] =
 		[|c| &c.a, |c| &c.b, |c| &c.c];
 	let intmul_operand_getters: [fn(&MulConstraint) -> &Operand; INTMUL_ARITY] =
-		[|c| &c.a, |c| &c.b, |c| &c.hi, |c| &c.lo];
+		[|c| &c.a, |c| &c.b, |c| &c.lo, |c| &c.hi];
 
 	bitand_operand_getters
 		.iter()

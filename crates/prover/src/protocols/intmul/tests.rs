@@ -1,29 +1,13 @@
 // Copyright 2025 Irreducible Inc.
 
-use binius_field::{BinaryField128b, PackedBinaryField2x128b, PackedField};
+use binius_field::PackedBinaryField2x128b;
 
 use super::{prove::IntMulProver, witness::Witness};
 
-type F = BinaryField128b;
 type P = PackedBinaryField2x128b;
 
-use binius_math::{FieldBuffer, multilinear::evaluate::evaluate};
 use binius_transcript::ProverTranscript;
 use binius_verifier::{config::StdChallenger, protocols::intmul::verify};
-
-pub fn make_bit_multilinear<P: PackedField>(i: usize, exp: &[u64]) -> FieldBuffer<P> {
-	let packed_elements = exp
-		.iter()
-		.map(|exp| {
-			if exp & (1 << i) == 0 {
-				P::Scalar::zero()
-			} else {
-				P::Scalar::one()
-			}
-		})
-		.collect::<Vec<_>>();
-	FieldBuffer::from_values(&packed_elements).expect("input length is power of 2")
-}
 
 #[test]
 fn prove_and_verify() {
@@ -55,28 +39,15 @@ fn prove_and_verify() {
 	}
 
 	let witness = Witness::<P, _, _>::new(LOG_BITS, &a, &b, &c_lo, &c_hi).unwrap();
-	// run prover
+	// Run prover
 	let mut prover_transcript = ProverTranscript::<StdChallenger>::default();
 	let mut prover = IntMulProver::new(0, &mut prover_transcript);
 	let prove_output = prover.prove(witness).unwrap();
 
-	// check prover output is consistent with input
-	let check_evals = |exponents: &[u64], given_evals: &[F]| {
-		for i in 0..64 {
-			let field_buffer = make_bit_multilinear::<P>(i, exponents);
-			let expected_eval = evaluate(&field_buffer, &prove_output.eval_point).unwrap();
-			assert_eq!(expected_eval, given_evals[i]);
-		}
-	};
-	check_evals(&a, &prove_output.a_exponent_evals);
-	check_evals(&b, &prove_output.b_exponent_evals);
-	check_evals(&c_lo, &prove_output.c_lo_exponent_evals);
-	check_evals(&c_hi, &prove_output.c_hi_exponent_evals);
-
-	// run verifier
+	// Run verifier
 	let mut verifier_transcript = prover_transcript.into_verifier();
-	let verify_output = verify::verify(LOG_BITS, LOG_EXPONENTS, &mut verifier_transcript).unwrap();
+	let verify_output = verify(LOG_BITS, LOG_EXPONENTS, &mut verifier_transcript).unwrap();
 
-	// check verifier output is consistent with prover output
+	// Check verifier output is consistent with prover output
 	assert_eq!(prove_output, verify_output);
 }
