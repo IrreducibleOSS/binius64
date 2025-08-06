@@ -259,17 +259,36 @@ where
 			transcript.message().write_scalar(*coeff);
 		}
 
+		// Debugging
+		let first_col = self.first_col.clone();
+
 		let univariate_sumcheck_challenge = transcript.sample();
 		let univariate_round_message_domain = self.univariate_round_message_domain.clone();
 		let sumcheck_prover = tracing::debug_span!("Fold univariate round").in_scope(|| {
 			self.fold_and_send_reduced_prover(
-				univariate_round_message_domain,
+				univariate_round_message_domain.clone(),
 				univariate_sumcheck_challenge,
 			)
 		});
 
 		let sumcheck_output = tracing::debug_span!("MLE-check remaining rounds")
 			.in_scope(|| prove_single_mlecheck(sumcheck_prover, transcript))?;
+
+		// ============ Debugging ==============
+
+		use binius_math::multilinear::evaluate::evaluate;
+		let verifier_transparent_fold_lookup =
+			FoldLookup::new(&univariate_round_message_domain, univariate_sumcheck_challenge);
+		assert_eq!(
+			evaluate(
+				&first_col.fold(&verifier_transparent_fold_lookup),
+				&sumcheck_output.challenges
+			)
+			.unwrap(),
+			sumcheck_output.multilinear_evals[0]
+		);
+
+		// =====================================
 
 		Ok(ProveAndReductionOutput {
 			sumcheck_output,
