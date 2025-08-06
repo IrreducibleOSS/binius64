@@ -1,7 +1,9 @@
 use binius_core::word::Word;
 
-use super::populate_wires_be;
-use crate::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
+use crate::{
+	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
+	util::pack_bytes_into_wires_be,
+};
 
 /// A vector of bytes of an arbitrary size up to and including the configured `max_len`.
 ///
@@ -47,7 +49,7 @@ impl FixedByteVec {
 	/// # Panics
 	/// * If bytes.len() exceeds self.max_len
 	pub fn populate_bytes_be(&self, w: &mut WitnessFiller, bytes: &[u8]) {
-		populate_wires_be(w, &self.data, bytes);
+		pack_bytes_into_wires_be(w, &self.data, bytes);
 		w[self.len] = Word(bytes.len() as u64);
 	}
 }

@@ -1,7 +1,9 @@
 use binius_core::word::Word;
 
-use super::populate_wires_be;
-use crate::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
+use crate::{
+	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
+	util::pack_bytes_into_wires_be,
+};
 
 /// Base64 encoding (URL-safe, without trailing padding characters) encoding verification.
 ///
@@ -131,7 +133,7 @@ impl Base64UrlSafe {
 	///
 	/// Panics if `data.len()` exceeds the maximum size specified during construction.
 	pub fn populate_decoded(&self, w: &mut WitnessFiller, data: &[u8]) {
-		populate_wires_be(w, &self.decoded, data);
+		pack_bytes_into_wires_be(w, &self.decoded, data);
 	}
 
 	/// Populates the encoded base64 array from a byte slice.
@@ -145,7 +147,7 @@ impl Base64UrlSafe {
 	///
 	/// Panics if `data.len()` exceeds the maximum size specified during construction.
 	pub fn populate_encoded(&self, w: &mut WitnessFiller, data: &[u8]) {
-		populate_wires_be(w, &self.encoded, data);
+		pack_bytes_into_wires_be(w, &self.encoded, data);
 	}
 }
 

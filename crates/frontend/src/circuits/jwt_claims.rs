@@ -1,9 +1,9 @@
 use binius_core::word::Word;
 
-use super::populate_wires_le;
 use crate::{
 	circuits::slice::Slice,
 	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
+	util::pack_bytes_into_wires_le,
 };
 
 /// Represents a single JWT attribute to verify
@@ -25,7 +25,7 @@ impl Attribute {
 	/// # Panics
 	/// Panics if value.len() > max_value_size (determined by self.value.len() * 8)
 	pub fn populate_value(&self, w: &mut WitnessFiller, value: &[u8]) {
-		populate_wires_le(w, &self.value, value);
+		pack_bytes_into_wires_le(w, &self.value, value);
 	}
 }
 
@@ -253,7 +253,7 @@ impl JwtClaims {
 	/// # Panics
 	/// Panics if json.len() > max_len_json (the maximum size specified during construction)
 	pub fn populate_json(&self, w: &mut WitnessFiller, json: &[u8]) {
-		populate_wires_le(w, &self.json, json);
+		pack_bytes_into_wires_le(w, &self.json, json);
 	}
 }
 
