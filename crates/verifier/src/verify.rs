@@ -21,7 +21,7 @@ use itertools::Itertools;
 
 use super::{VerificationError, error::Error, pcs};
 use crate::{
-	and_reduction::verifier::{AndReductionOutput, verify_with_transcript},
+	and_reduction::verifier::{AndCheckOutput, verify_with_transcript},
 	config::{
 		B1, B128, LOG_WORD_SIZE_BITS, LOG_WORDS_PER_ELEM, PROVER_SMALL_FIELD_ZEROCHECK_CHALLENGES,
 		WORD_SIZE_BITS,
@@ -29,7 +29,11 @@ use crate::{
 	fri::{FRIParams, estimate_optimal_arity},
 	hash::PseudoCompressionFunction,
 	merkle_tree::BinaryMerkleTreeScheme,
-	protocols::pubcheck,
+	protocols::{
+		intmul::{IntMulOutput, verify as verify_intmul_reduction},
+		pubcheck::VerifyOutput,
+		shift::{OperatorData, verify as verify_shift_reduction},
+	},
 };
 
 pub const SECURITY_BITS: usize = 96;
@@ -147,19 +151,55 @@ where
 		// Receive the trace commitment.
 		let trace_commitment = transcript.message().read::<Output<MerkleHash>>()?;
 
-		// verify the and reduction
-		let _output: AndReductionOutput<B128> =
-			run_and_check(self.log_witness_words(), transcript)?;
+		// BITAND Reduction
+		let bitand_output: AndCheckOutput<B128> =
+			verify_bitand_reduction(self.log_witness_words(), transcript)?;
 
-		// Sample a challenge point during the shift reduction.
-		let z_challenge = transcript.sample_vec(LOG_WORD_SIZE_BITS);
-		let public_input_challenge = transcript.sample_vec(self.log_public_words());
+		// INTMUL Reduction
+		let n_vars = checked_log_2(self.constraint_system.n_mul_constraints());
+		let intmul_output: IntMulOutput<B128> =
+			verify_intmul_reduction(LOG_WORD_SIZE_BITS, n_vars, transcript).unwrap();
 
-		let pubcheck::VerifyOutput {
+		let bitand_claim = {
+			let AndCheckOutput {
+				a_eval,
+				b_eval,
+				c_eval,
+				z_challenge,
+				eval_point,
+			} = bitand_output;
+			OperatorData::new(z_challenge, eval_point, [a_eval, b_eval, c_eval])
+		};
+		let intmul_claim = {
+			let IntMulOutput {
+				a_exponent_eval,
+				b_exponent_eval,
+				c_hi_exponent_eval,
+				c_lo_exponent_eval,
+				z_challenge,
+				eval_point,
+			} = intmul_output;
+			OperatorData::new(
+				z_challenge,
+				eval_point,
+				[
+					a_exponent_eval,
+					b_exponent_eval,
+					c_hi_exponent_eval,
+					c_lo_exponent_eval,
+				],
+			)
+		};
+
+		let VerifyOutput {
 			witness_eval,
 			public_eval,
-			eval_point: y_challenge,
-		} = pubcheck::verify(self.log_witness_words(), &public_input_challenge, transcript)?;
+			eval_point: mut z_y_challenges,
+		} = verify_shift_reduction(self.constraint_system(), bitand_claim, intmul_claim, transcript)
+			.unwrap();
+
+		let y_challenge = z_y_challenges.split_off(LOG_WORD_SIZE_BITS);
+		let z_challenge = z_y_challenges;
 
 		let expected_public_eval =
 			evaluate_public_mle(public, &z_challenge, &y_challenge[..self.log_public_words()]);
@@ -210,10 +250,10 @@ pub fn evaluate_public_mle<F: BinaryField>(public: &[Word], z_coords: &[F], y_co
 		.expect("z_folded_words constructed with log_len = y_coords.len()")
 }
 
-fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger>(
+fn verify_bitand_reduction<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger>(
 	log_witness_words: usize,
 	transcript: &mut VerifierTranscript<Challenger_>,
-) -> Result<AndReductionOutput<F>, Error> {
+) -> Result<AndCheckOutput<F>, Error> {
 	// The structure of the AND reduction requires that it verifies at least 2^3 word-level
 	// constraints, you can zero-pad if necessary to reach this minimum
 	assert!(log_witness_words >= checked_log_2(binius_core::consts::MIN_AND_CONSTRAINTS));
@@ -240,19 +280,5 @@ fn run_and_check<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger
 		all_zerocheck_challenges.push(*big_field_challenge);
 	}
 
-	let output = verify_with_transcript(
-		&all_zerocheck_challenges,
-		transcript,
-		verifier_message_domain.clone(),
-	)?;
-
-	let verifier_mle_eval_claims = transcript.message().read_scalar_slice::<F>(3)?;
-
-	if output.sumcheck_output.eval
-		== verifier_mle_eval_claims[0] * verifier_mle_eval_claims[1] - verifier_mle_eval_claims[2]
-	{
-		Ok(output)
-	} else {
-		Err(VerificationError::AndReductionMLECheckFailed.into())
-	}
+	verify_with_transcript(&all_zerocheck_challenges, transcript, verifier_message_domain)
 }

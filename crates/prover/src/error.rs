@@ -2,7 +2,10 @@
 
 use binius_math::ntt;
 
-use crate::{fri, protocols::sumcheck};
+use crate::{
+	fri,
+	protocols::{intmul, sumcheck},
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -16,4 +19,6 @@ pub enum Error {
 	Fri(#[from] fri::Error),
 	#[error("transcript error: {0}")]
 	Transcript(#[from] binius_transcript::Error),
+	#[error("integer multiplication error: {0}")]
+	IntMul(#[from] intmul::Error),
 }

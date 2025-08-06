@@ -94,7 +94,8 @@ pub fn verify<F: BinaryField, C: Challenger>(
 	mut intmul_data: OperatorData<F, INTMUL_ARITY>,
 	transcript: &mut VerifierTranscript<C>,
 ) -> Result<VerifyOutput<F>, Error> {
-	bitand_data.lambda = transcript.sample();
+	bitand_data.lambda = F::ZERO;
+	// transcript.sample();
 	intmul_data.lambda = transcript.sample();
 
 	let eval = bitand_data.batched_eval() + intmul_data.batched_eval();

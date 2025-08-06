@@ -31,6 +31,8 @@ fn prove_verify(cs: ConstraintSystem, witness: ValueVec) {
 		.prove(witness.clone(), &mut prover_transcript)
 		.unwrap();
 
+	println!("\n\n\n");
+
 	let mut verifier_transcript = prover_transcript.into_verifier();
 	verifier
 		.verify(witness.public(), &mut verifier_transcript)

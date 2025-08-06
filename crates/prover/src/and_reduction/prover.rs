@@ -6,6 +6,7 @@ use binius_transcript::{
 };
 use binius_verifier::{
 	and_reduction::{
+		AndCheckOutput,
 		univariate::univariate_poly::{GenericPo2UnivariatePoly, UnivariatePolyIsomorphic},
 		utils::constants::{ROWS_PER_HYPERCUBE_VERTEX, SKIPPED_VARS},
 	},
@@ -35,21 +36,6 @@ where
 	small_field_zerocheck_challenges: Vec<PNTTDomain::Scalar>,
 	univariate_round_message: [FChallenge; ROWS_PER_HYPERCUBE_VERTEX],
 	univariate_round_message_domain: BinarySubspace<FChallenge>,
-}
-
-/// Output from the AND reduction proving protocol.
-///
-/// Contains the results after completing both phases of the AND reduction protocol:
-/// the univariate polynomial verification and the multilinear sumcheck reduction.
-pub struct ProveAndReductionOutput<F: Field> {
-	/// The output from the multilinear sumcheck protocol, containing:
-	/// - The final evaluation claim
-	/// - The challenges used in each round
-	/// - The multilinear evaluations at the query point
-	pub sumcheck_output: ProveSingleOutput<F>,
-	/// The challenge value z sampled for Z after the univariate polynomial phase.
-	/// This challenge is used to fold the oblong multilinears before the sumcheck phase.
-	pub univariate_sumcheck_challenge: F,
 }
 
 impl<FChallenge, PNTTDomain> OblongZerocheckProver<FChallenge, PNTTDomain>
@@ -249,7 +235,7 @@ where
 	pub fn prove_with_transcript<TranscriptChallenger>(
 		self,
 		transcript: &mut ProverTranscript<TranscriptChallenger>,
-	) -> Result<ProveAndReductionOutput<FChallenge>, Error>
+	) -> Result<AndCheckOutput<FChallenge>, Error>
 	where
 		TranscriptChallenger: Challenger,
 	{
@@ -268,12 +254,23 @@ where
 			)
 		});
 
-		let sumcheck_output = tracing::debug_span!("MLE-check remaining rounds")
+		let ProveSingleOutput {
+			multilinear_evals: mle_claims,
+			challenges: mut eval_point,
+		} = tracing::debug_span!("MLE-check remaining rounds")
 			.in_scope(|| prove_single_mlecheck(sumcheck_prover, transcript))?;
 
-		Ok(ProveAndReductionOutput {
-			sumcheck_output,
-			univariate_sumcheck_challenge,
+		eval_point.reverse();
+
+		assert_eq!(mle_claims.len(), 3);
+		transcript.message().write_slice(&mle_claims);
+
+		Ok(AndCheckOutput {
+			a_eval: mle_claims[0],
+			b_eval: mle_claims[1],
+			c_eval: mle_claims[2],
+			z_challenge: univariate_sumcheck_challenge,
+			eval_point,
 		})
 	}
 }
@@ -287,10 +284,12 @@ mod test {
 	use binius_math::{BinarySubspace, multilinear::evaluate::evaluate};
 	use binius_transcript::{ProverTranscript, fiat_shamir::CanSample};
 	use binius_verifier::{
-		and_reduction::{utils::constants::SKIPPED_VARS, verifier::verify_with_transcript},
+		and_reduction::{
+			utils::constants::SKIPPED_VARS,
+			verifier::{AndCheckOutput, verify_with_transcript},
+		},
 		config::{B128, StdChallenger},
 	};
-	use itertools::Itertools;
 	use rand::{Rng, SeedableRng, rngs::StdRng};
 
 	use super::OblongZerocheckProver;
@@ -329,8 +328,8 @@ mod test {
 				.map(|(&a, &b)| a & b)
 				.collect(),
 		};
-		// Agreed-upon proof parameter
 
+		// Agreed-upon proof parameter
 		let prover_message_domain =
 			BinarySubspace::<AESTowerField8b>::with_dim(SKIPPED_VARS + 1).unwrap();
 		let verifier_message_domain = prover_message_domain.isomorphic();
@@ -351,18 +350,7 @@ mod test {
 			.prove_with_transcript(&mut prover_challenger)
 			.unwrap();
 
-		let l2h_query_for_evaluation_point = prove_output
-			.sumcheck_output
-			.challenges
-			.clone()
-			.into_iter()
-			.rev()
-			.collect_vec();
-
-		prover_challenger
-			.message()
-			.write_slice(&prove_output.sumcheck_output.multilinear_evals);
-
+		// Verifier is instantiated
 		let mut verifier_challenger = prover_challenger.into_verifier();
 
 		let big_field_zerocheck_challenges =
@@ -378,17 +366,21 @@ mod test {
 			all_zerocheck_challenges.push(*big_field_challenge);
 		}
 
-		let output = verify_with_transcript(
+		let verify_output = verify_with_transcript(
 			&all_zerocheck_challenges,
 			&mut verifier_challenger,
 			verifier_message_domain.clone(),
 		)
 		.unwrap();
 
-		let verifier_mle_eval_claims = verifier_challenger
-			.message()
-			.read_scalar_slice::<B128>(3)
-			.unwrap();
+		assert_eq!(prove_output, verify_output);
+		let AndCheckOutput {
+			a_eval,
+			b_eval,
+			c_eval,
+			z_challenge,
+			eval_point,
+		} = verify_output;
 
 		let verifier_univariate_domain = verifier_message_domain
 			.reduce_dim(SKIPPED_VARS)
@@ -397,28 +389,13 @@ mod test {
 		let one_bit_mlvs = [first_mlv, second_mlv, third_mlv];
 
 		let verifier_transparent_fold_lookup =
-			FoldLookup::new(&verifier_univariate_domain, output.univariate_sumcheck_challenge);
-		for (i, eval) in verifier_mle_eval_claims.iter().enumerate().take(3) {
+			FoldLookup::new(&verifier_univariate_domain, z_challenge);
+		for (i, eval) in [a_eval, b_eval, c_eval].iter().enumerate() {
 			assert_eq!(
-				evaluate(
-					&one_bit_mlvs[i].fold(&verifier_transparent_fold_lookup),
-					&l2h_query_for_evaluation_point
-				)
-				.unwrap(),
+				evaluate(&one_bit_mlvs[i].fold(&verifier_transparent_fold_lookup), &eval_point)
+					.unwrap(),
 				*eval
 			);
 		}
-
-		assert_eq!(
-			output.sumcheck_output.eval,
-			verifier_mle_eval_claims[0] * verifier_mle_eval_claims[1] - verifier_mle_eval_claims[2]
-		);
-
-		// Sanity checks, but not necessary verifier assertions
-		assert_eq!(output.sumcheck_output.challenges, prove_output.sumcheck_output.challenges);
-		assert_eq!(
-			output.univariate_sumcheck_challenge,
-			prove_output.univariate_sumcheck_challenge
-		);
 	}
 }

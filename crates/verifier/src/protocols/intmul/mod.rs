@@ -2,6 +2,7 @@
 
 pub mod common;
 mod error;
-pub mod verify;
-
-pub use error::*;
+mod verify;
+pub use common::IntMulOutput;
+// pub use error::*;
+pub use verify::verify;

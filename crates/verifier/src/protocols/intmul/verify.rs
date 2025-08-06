@@ -1,7 +1,11 @@
 // Copyright 2025 Irreducible Inc.
 
 use binius_field::{BinaryField, Field};
-use binius_math::{multilinear::eq::eq_ind, univariate::evaluate_univariate};
+use binius_math::{
+	BinarySubspace,
+	multilinear::eq::eq_ind,
+	univariate::{evaluate_univariate, lagrange_evals},
+};
 use binius_transcript::{
 	VerifierTranscript,
 	fiat_shamir::{CanSample, Challenger},
@@ -15,25 +19,16 @@ use super::{
 	},
 	error::Error,
 };
-use crate::protocols::sumcheck::{BatchSumcheckOutput, batch_verify};
-
-fn read_scalar<F: Field, C: Challenger>(
-	transcript: &mut VerifierTranscript<C>,
-) -> Result<F, Error> {
-	transcript
-		.message()
-		.read_scalar::<F>()
-		.map_err(Error::from_transcript_read)
-}
+use crate::{
+	config::LOG_WORD_SIZE_BITS,
+	protocols::sumcheck::{BatchSumcheckOutput, batch_verify},
+};
 
 fn read_scalar_slice<F: Field, C: Challenger>(
 	transcript: &mut VerifierTranscript<C>,
 	len: usize,
 ) -> Result<Vec<F>, Error> {
-	transcript
-		.message()
-		.read_scalar_slice::<F>(len)
-		.map_err(Error::from_transcript_read)
+	Ok(transcript.message().read_scalar_slice::<F>(len)?)
 }
 
 struct BivariateProductMleLayerOutput<F: Field> {
@@ -297,10 +292,11 @@ pub fn verify<F: BinaryField, C: Challenger>(
 	assert!(log_bits >= 1);
 	let initial_eval_point: Vec<F> = transcript.sample_vec(n_vars);
 
-	let initial_b_eval: F = read_scalar(transcript)?;
-	let initial_c_eval: F = read_scalar(transcript)?;
+	let mut reader = transcript.message();
+	let initial_b_eval: F = reader.read_scalar::<F>()?;
+	let initial_c_eval: F = reader.read_scalar::<F>()?;
 
-	// phase 1
+	// Phase 1
 	let Phase1Output {
 		eval_point: phase_1_eval_point,
 		b_leaves_evals,
@@ -309,10 +305,10 @@ pub fn verify<F: BinaryField, C: Challenger>(
 	assert_eq!(phase_1_eval_point.len(), n_vars);
 	assert_eq!(b_leaves_evals.len(), 1 << log_bits);
 
-	// phase 2
+	// Phase 2
 	let phase2_output = frobenius_twist(log_bits, &phase_1_eval_point, &b_leaves_evals);
 
-	// phase 3
+	// Phase 3
 	let Phase3Output {
 		eval_point: phase_3_eval_point,
 		b_exponent_evals,
@@ -321,7 +317,7 @@ pub fn verify<F: BinaryField, C: Challenger>(
 		c_hi_root_eval,
 	} = verify_phase_3(log_bits, phase2_output, &initial_eval_point, initial_c_eval, transcript)?;
 
-	// phase 4
+	// Phase 4
 	let Phase4Output {
 		eval_point: phase_4_eval_point,
 		a_evals,
@@ -352,14 +348,23 @@ pub fn verify<F: BinaryField, C: Challenger>(
 		transcript,
 	)?;
 
-	let (a_exponent_evals, c_lo_exponent_evals, c_hi_exponent_evals) =
+	let [a_exponent_evals, c_lo_exponent_evals, c_hi_exponent_evals] =
 		normalize_a_c_exponent_evals(log_bits, scaled_a_c_exponent_evals);
 
+	// Phase 6
+	let z_challenge: F = transcript.sample();
+	let subspace = BinarySubspace::<F>::with_dim(LOG_WORD_SIZE_BITS)?;
+	let l_tilde = lagrange_evals(&subspace, z_challenge);
+	assert_eq!(l_tilde.len(), a_exponent_evals.len());
+
+	let make_final_claim = |evals| izip!(evals, &l_tilde).map(|(x, y)| x * y).sum();
+
 	Ok(IntMulOutput {
+		z_challenge,
 		eval_point: phase_5_eval_point,
-		a_exponent_evals,
-		b_exponent_evals,
-		c_lo_exponent_evals,
-		c_hi_exponent_evals,
+		a_exponent_eval: make_final_claim(a_exponent_evals),
+		b_exponent_eval: make_final_claim(b_exponent_evals),
+		c_lo_exponent_eval: make_final_claim(c_lo_exponent_evals),
+		c_hi_exponent_eval: make_final_claim(c_hi_exponent_evals),
 	})
 }

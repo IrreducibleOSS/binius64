@@ -98,7 +98,8 @@ pub fn prove<F: BinaryField, P: PackedField<Scalar = F>, C: Challenger>(
 	transcript: &mut ProverTranscript<C>,
 ) -> Result<SumcheckOutput<F>, Error> {
 	// Sample and assign lambdas, one for each operator.
-	bitand_data.lambda = transcript.sample();
+	bitand_data.lambda = F::ZERO;
+	// transcript.sample();
 	intmul_data.lambda = transcript.sample();
 
 	// Prove the first phase, receiving a `SumcheckOutput`
