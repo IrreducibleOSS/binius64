@@ -10,10 +10,12 @@ workspace = true
 [dependencies]
 binius-core = { path = "../core" }
 cranelift-entity = { workspace = true }
+hex-literal.workspace = true
 num-bigint = { workspace = true }
 num-integer = { workspace = true }
 serde.workspace = true
 serde_json.workspace = true
+sha3.workspace = true
 
 [dev-dependencies]
 base64 = { workspace = true }

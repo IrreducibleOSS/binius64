@@ -3,6 +3,7 @@ pub mod bignum;
 pub mod concat;
 pub mod fixed_byte_vec;
 pub mod jwt_claims;
+pub mod keccak;
 pub mod rs256;
 pub mod sha256;
 pub mod slice;
