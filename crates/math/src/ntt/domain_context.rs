@@ -40,6 +40,11 @@ fn generate_evals_from_subspace<F: BinaryField>(subspace: &BinarySubspace<F>) ->
 }
 
 /// Works for any $S^{(0)}$ and computes twiddles on-the-fly.
+///
+/// On-the-fly twiddle computation should not be used for running a big NTT or for a complete FRI
+/// folding. In both cases, all twiddles will be accessed eventually, so they might as well be
+/// precomputed. But it could possibly be used e.g. in the FRI verifier, which only accesses a few
+/// selected twiddles.
 #[derive(Clone, Debug)]
 pub struct GenericOnTheFly<F> {
 	/// The $i$'th vector stores $[hat{W}_i (\beta_i), \hat{W}_i (\beta_(i+1)), ...]$.
@@ -211,6 +216,11 @@ fn gao_mateer_basis<F: BinaryField + TraceOneElement>(num_basis_elements: usize)
 ///   a small subfield. This could potentially be used to speed up the NTT if one can implement
 ///   multiplication with an element from a small subfield more efficiently.
 /// - The folding maps for FRI are all $x \mapsto x^2 + x$, no normalization factors needed.
+///
+/// On-the-fly twiddle computation should not be used for running a big NTT or for a complete FRI
+/// folding. In both cases, all twiddles will be accessed eventually, so they might as well be
+/// precomputed. But it could possibly be used e.g. in the FRI verifier, which only accesses a few
+/// selected twiddles.
 #[derive(Clone, Debug)]
 pub struct GaoMateerOnTheFly<F> {
 	/// Stores $[\beta_0, \beta_1, ...]$.
