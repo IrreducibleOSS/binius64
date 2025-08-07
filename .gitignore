@@ -9,3 +9,7 @@ CLAUDE.local.md
 # Mobile directory - ignore everything except run-config.yaml
 /mobile/*
 !/mobile/run-config.yaml
+# Perfetto traces from benchmarks
+perfetto_traces/
+*.perfetto-trace
+.last_perfetto_trace_path
