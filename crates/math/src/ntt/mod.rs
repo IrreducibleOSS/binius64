@@ -15,7 +15,9 @@ mod tests_evaluation;
 pub mod tests_reference;
 
 use binius_field::{BinaryField, PackedField};
-pub use neighbors_last::{NeighborsLastMultiThread, NeighborsLastSingleThread};
+pub use neighbors_last::{
+	NeighborsLastMultiThread, NeighborsLastReference, NeighborsLastSingleThread,
+};
 
 use super::BinarySubspace;
 

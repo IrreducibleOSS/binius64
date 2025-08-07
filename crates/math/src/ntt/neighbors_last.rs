@@ -5,13 +5,57 @@ use std::{
 	slice::from_raw_parts_mut,
 };
 
-use binius_field::PackedField;
+use binius_field::{
+	PackedField,
+	packed::{get_packed_slice, set_packed_slice},
+};
 use binius_utils::rayon::{
 	iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator},
 	slice::ParallelSliceMut,
 };
 
 use super::{AdditiveNTT, DomainContext};
+
+/// Reference implementation of [`AdditiveNTT`].
+///
+/// This is slow. Do not use in production.
+pub struct NeighborsLastReference<DC> {
+	pub domain_context: DC,
+}
+
+impl<DC: DomainContext> AdditiveNTT<DC::Field> for NeighborsLastReference<DC> {
+	fn forward_transform<P: PackedField<Scalar = DC::Field>>(
+		&self,
+		data: &mut [P],
+		skip_early: usize,
+		skip_late: usize,
+	) {
+		let log_d = data.len().ilog2() as usize + P::LOG_WIDTH;
+
+		for layer in skip_early..(log_d - skip_late) {
+			let num_blocks = 1 << layer;
+			let block_size_half = 1 << (log_d - layer - 1);
+			for block in 0..num_blocks {
+				let twiddle = self.domain_context.twiddle(layer, block);
+				let block_start = block << (log_d - layer);
+				for idx0 in block_start..(block_start + block_size_half) {
+					let idx1 = block_size_half | idx0;
+					// perform butterfly
+					let mut u = get_packed_slice(data, idx0);
+					let mut v = get_packed_slice(data, idx1);
+					u += v * twiddle;
+					v += u;
+					set_packed_slice(data, idx0, u);
+					set_packed_slice(data, idx1, v);
+				}
+			}
+		}
+	}
+
+	fn domain_context(&self) -> &impl DomainContext<Field = DC::Field> {
+		&self.domain_context
+	}
+}
 
 /// Runs a **part** of an NTT butterfly network, in depth-first order.
 ///
