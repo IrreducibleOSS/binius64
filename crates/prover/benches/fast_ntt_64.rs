@@ -73,7 +73,7 @@ fn bench_normal_ntt(c: &mut Criterion) {
 		*element = ByteSlicedAES16x16x8b::random(&mut rng);
 	}
 
-	let mut group = c.benchmark_group("normal_ntt_packed");
+	let mut group = c.benchmark_group("normal_ntt_packed_byetsliced");
 	group.throughput(Throughput::Elements(
 		(WORD_SIZE_BITS * PackedAESBinaryField16x8b::WIDTH) as u64,
 	));
@@ -87,7 +87,7 @@ fn bench_normal_ntt(c: &mut Criterion) {
 		log_z: 0,
 	};
 
-	group.bench_function("fast_ntt_64_packed_bytesliced", |b| {
+	group.bench_function("normal_ntt_packed_bytesliced", |b| {
 		b.iter(|| {
 			let _ = ntt.inverse_transform(&mut data, shape, 0, 0, 0);
 
