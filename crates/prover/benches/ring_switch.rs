@@ -1,6 +1,6 @@
 // Copyright 2025 Irreducible Inc.
 
-use binius_field::{BinaryField, ExtensionField, PackedSubfield, arch::OptimalPackedB128};
+use binius_field::{BinaryField, ExtensionField, arch::OptimalPackedB128};
 use binius_math::test_utils::random_field_buffer;
 use binius_prover::ring_switch::{fold_1b_rows, fold_elems_inplace};
 use binius_utils::checked_arithmetics::log2_strict_usize;
@@ -19,7 +19,7 @@ fn bench_fold_1b_rows(c: &mut Criterion) {
 		group.bench_function(format!("log_len={log_len}"), |b| {
 			let mut rng = rand::rng();
 
-			let mat = random_field_buffer::<PackedSubfield<P, B1>>(&mut rng, log_len + log_bits);
+			let mat = random_field_buffer::<P>(&mut rng, log_len);
 			let vec = random_field_buffer::<P>(&mut rng, log_len);
 
 			b.iter(|| fold_1b_rows(&mat, &vec));

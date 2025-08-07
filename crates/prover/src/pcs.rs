@@ -85,18 +85,8 @@ where
 		let suffix_tensor = tracing::debug_span!("Expand evaluation suffix query")
 			.in_scope(|| eq_ind_partial_eval::<P>(eval_point_suffix));
 
-		let s_hat_v =
-			tracing::debug_span!("Compute ring-switching partial evaluations").in_scope(|| {
-				// Cast packed field to its B1 subfield representation for ring switching
-				let packed_b1_view = FieldBuffer::new(
-					self.packed_multilin.log_len() + F::LOG_DEGREE,
-					<P as PackedExtension<B1>>::cast_bases(self.packed_multilin.as_ref()),
-				)
-				.expect(
-					"PackedExtension guarantees that cast_bases increases LOG_WIDTH by LOG_DEGREE",
-				);
-				ring_switch::fold_1b_rows(&packed_b1_view, &suffix_tensor)
-			});
+		let s_hat_v = tracing::debug_span!("Compute ring-switching partial evaluations")
+			.in_scope(|| ring_switch::fold_1b_rows(&self.packed_multilin, &suffix_tensor));
 		transcript.message().write_scalar_slice(s_hat_v.as_ref());
 
 		// basis decompose/recombine s_hat_v across opposite dimension
