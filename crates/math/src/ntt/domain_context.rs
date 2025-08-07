@@ -160,8 +160,12 @@ impl TraceOneElement for binius_field::BinaryField128bGhash {
 ///
 /// ## Preconditions
 ///
+/// - The degree (over $\mathbb{F}_2$) of the field needs to be a tower of two. For example, it does
+///   **not** work with $\mathbb{F}_{2^3}$, but it works with $\mathbb{F}_{2^4}$.
 /// - `num_basis_elements` must be nonzero
 fn gao_mateer_basis<F: BinaryField + TraceOneElement>(num_basis_elements: usize) -> Vec<F> {
+	assert!(F::N_BITS.is_power_of_two());
+
 	// this is beta_(F::N_BITS - 1)
 	// e.g. for a 128-bit field, this is beta_127
 	let mut beta = F::trace_one_element();
@@ -185,21 +189,27 @@ fn gao_mateer_basis<F: BinaryField + TraceOneElement>(num_basis_elements: usize)
 	basis
 }
 
-/// Produces a specific "Gao-Mateer" $S^{(0)}$ and pre-computes twiddles.
+/// Produces a specific "Gao-Mateer" $S^{(0)}$ and computes twiddles on-the-fly. Only works for
+/// binary fields whose degree over $\mathbb{F}_2$ is a power of two.
 ///
-/// A Gao-Mateer basis of the binary field $\mathbb{F}_{2^k}$ is any $\mathbb{F}_2$-basis $(\beta_0,
-/// \beta_1,..., \beta_{k-1})$ with the following properties:
-/// - $\beta_{k-1}$ has trace 1
+/// A Gao-Mateer basis of the binary field $\mathbb{F}_{2^{2^k}}$ is any $\mathbb{F}_2$-basis
+/// $(\beta_0, \beta_1,..., \beta_{2^k - 1})$ with the following properties:
+/// - $\beta_{2^k-1}$ has trace 1
 /// - $\beta_i = \beta_{i+1}^2 + \beta_{i+1}$
 ///
 /// This implies some nice properties:
-/// - $\beta_0 = 1$
+/// - the basis elements with a small index are in a small subfield, in fact
+///   $(\beta_0,...,\beta_{2^l - 1})$ is a basis of $\mathbb{F}_{2^{2^l}}$ for any $l$, and in
+///   particular $beta_0 = 1$
 /// - The subspace polynomial $W_i$ of $\operatorname{span} {\beta_0, ..., beta_(i-1)}$ is defined
 ///   over $\mathbb{F}_2$, i.e., its coefficients are just $0$ or $1$.
 /// - The subspace polynomial is "auto-normalized", meaning $W_i (beta_i) = 1$ so that $\hat{W}_i =
 ///   W_i$.
 /// - The evaluations of the subspace polynomials are just the basis elements: $W_i (\beta_(i + r))
 ///   = \beta_r$ for any $i$ and $r$.
+/// - The previous point together with the first point implies that twiddles in early layers lie in
+///   a small subfield. This could potentially be used to speed up the NTT if one can implement
+///   multiplication with an element from a small subfield more efficiently.
 /// - The folding maps for FRI are all $x \mapsto x^2 + x$, no normalization factors needed.
 #[derive(Clone, Debug)]
 pub struct GaoMateerOnTheFly<F> {
@@ -214,6 +224,8 @@ impl<F: BinaryField + TraceOneElement> GaoMateerOnTheFly<F> {
 	///
 	/// ## Preconditions
 	///
+	/// - The degree (over $\mathbb{F}_2$) of the field needs to be a tower of two. For example, it
+	///   does **not** work with $\mathbb{F}_{2^3}$, but it works with $\mathbb{F}_{2^4}$.
 	/// - `log_domain_size` must be nonzero
 	pub fn generate(log_domain_size: usize) -> Self {
 		let basis: Vec<F> = gao_mateer_basis(log_domain_size);
@@ -249,7 +261,8 @@ impl<F: BinaryField> DomainContext for GaoMateerOnTheFly<F> {
 	}
 }
 
-/// Produces a specific "Gao-Mateer" $S^{(0)}$ and pre-computes twiddles.
+/// Produces a specific "Gao-Mateer" $S^{(0)}$ and pre-computes twiddles. Only works for binary
+/// fields whose degree over $\mathbb{F}_2$ is a power of two.
 ///
 /// For an explanation of this $S^{(0)}$, see [`GaoMateerOnTheFly`].
 #[derive(Clone, Debug)]
@@ -270,6 +283,8 @@ impl<F: BinaryField + TraceOneElement> GaoMateerPreExpanded<F> {
 	///
 	/// ## Preconditions
 	///
+	/// - The degree (over $\mathbb{F}_2$) of the field needs to be a tower of two. For example, it
+	///   does **not** work with $\mathbb{F}_{2^3}$, but it works with $\mathbb{F}_{2^4}$.
 	/// - `log_domain_size` must be nonzero
 	pub fn generate(log_domain_size: usize) -> Self {
 		let basis: Vec<F> = gao_mateer_basis(log_domain_size);

@@ -20,7 +20,7 @@ use super::{AdditiveNTT, DomainContext};
 /// (exclusive).
 ///
 /// For example, suppose `layer=2` and `block=2`.
-/// That means we are in an NTT butterfly network in layer 2 (the third layer) and block 1 (the
+/// That means we are in an NTT butterfly network in layer 2 (the third layer) and block 2 (the
 /// third block in this layer, there are four blocks in total in this layer). `data` contains the
 /// data of this block, so it's only a chunk of the total data used in the NTT. Now suppose
 /// `layer_bound=5`. Then we will process the following butterfly blocks:
@@ -49,8 +49,8 @@ fn forward_depth_first<P: PackedField>(
 	}
 
 	// if the problem size is small, we just do breadth_first (to get rid of the stack overhead)
-	// we also need to do that if the size two times our packing width, i.e. if we only have two
-	// packed elements in our data slice
+	// we also need to do that if the number of scalars is just two times our packing width, i.e. if
+	// we only have two packed elements in our data slice
 	if log_d <= 4 || log_d <= P::LOG_WIDTH + 1 {
 		forward_breadth_first(domain_context, data, log_d, layer, block, layer_bound);
 		return;
