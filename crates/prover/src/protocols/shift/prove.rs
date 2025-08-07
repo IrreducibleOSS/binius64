@@ -10,7 +10,6 @@ use binius_transcript::{
 	fiat_shamir::{CanSample, Challenger},
 };
 use binius_verifier::protocols::sumcheck::SumcheckOutput;
-use tracing::instrument;
 
 use super::{
 	error::Error, key_collection::KeyCollection, phase_1::prove_phase_1, phase_2::prove_phase_2,
@@ -80,6 +79,7 @@ impl<F: Field> PreparedOperatorData<F> {
 /// 3. **Phase 2**: Reduces to witness evaluation using monster multilinear polynomial
 ///
 /// # Parameters
+/// - `log_public_words`: log2 the number of public words
 /// - `key_collection`: Prover's key collection representing the constraint system
 /// - `words`: The witness words (must have power-of-2 length)
 /// - `bitand_data`: Operator data for bit multiplication (AND) constraints
@@ -92,9 +92,8 @@ impl<F: Field> PreparedOperatorData<F> {
 ///
 /// # Requirements
 /// - `words` must have power-of-2 length for efficient multilinear operations
-#[instrument(skip_all, name = "prove")]
 pub fn prove<F, P: PackedField<Scalar = F>, C: Challenger>(
-	inout_n_vars: usize,
+	log_public_words: usize,
 	key_collection: &KeyCollection,
 	words: &[Word],
 	bitand_data: OperatorData<F>,
@@ -128,7 +127,7 @@ where
 	// the witness at oblong point had by univariate
 	// variable `r_j` and multilinear variable `r_y`.
 	let SumcheckOutput { challenges, eval } = prove_phase_2::<_, P, C>(
-		inout_n_vars,
+		log_public_words,
 		key_collection,
 		words,
 		&prepared_bitand_data,
