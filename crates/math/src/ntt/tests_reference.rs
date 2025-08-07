@@ -88,3 +88,33 @@ fn test_equivalence_ntts_domain_contexts_packings() {
 	test_equivalence_ntts_domain_contexts::<PackedBinaryGhash2x128b>();
 	test_equivalence_ntts_domain_contexts::<PackedBinaryGhash4x128b>();
 }
+
+fn test_composition<P: PackedField>()
+where
+	P::Scalar: BinaryField,
+{
+	let log_d = 7;
+	let mut rng = rand::rng();
+	let data_orig: Vec<P> = repeat_with(|| P::random(&mut rng))
+		.take(1 << (log_d - P::LOG_WIDTH))
+		.collect();
+	let mut data = data_orig.clone();
+
+	let subspace = BinarySubspace::<P::Scalar>::with_dim(10).unwrap();
+	let domain_context = GenericPreExpanded::generate_from_subspace(&subspace);
+	let ntt = NeighborsLastReference { domain_context };
+	for skip_early in [0, 1, 2] {
+		for skip_late in [0, 1, 2] {
+			ntt.forward_transform(&mut data, skip_early, skip_late);
+			ntt.inverse_transform(&mut data, skip_early, skip_late);
+			assert_eq!(data, data_orig);
+		}
+	}
+}
+
+#[test]
+fn test_composition_packings() {
+	test_composition::<PackedBinaryGhash1x128b>();
+	test_composition::<PackedBinaryGhash2x128b>();
+	test_composition::<PackedBinaryGhash4x128b>();
+}
