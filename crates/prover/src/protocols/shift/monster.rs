@@ -176,7 +176,7 @@ where
 		.map(|chunk| P::from_scalars(chunk))
 		.collect::<Box<[_]>>();
 
-	let log_len = strict_log_2(monster_multilinear.len())
+	let log_len = strict_log_2(key_collection.key_ranges.len())
 		.expect("same length as constraint system's `key_ranges`");
 	Ok(FieldBuffer::new(log_len, monster_multilinear).expect("checked log_len"))
 }
