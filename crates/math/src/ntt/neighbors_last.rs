@@ -77,7 +77,7 @@ impl<DC: DomainContext> AdditiveNTT<DC::Field> for NeighborsLastReference<DC> {
 /// - `layer=4` `block=11`
 ///
 /// (Just in a different order. We listed breadth-first order, we would process them in
-/// depth-first order).
+/// depth-first order.)
 fn forward_depth_first<P: PackedField>(
 	domain_context: &impl DomainContext<Field = P::Scalar>,
 	data: &mut [P],

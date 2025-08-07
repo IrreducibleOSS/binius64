@@ -200,12 +200,12 @@ fn gao_mateer_basis<F: BinaryField + TraceOneElement>(num_basis_elements: usize)
 /// This implies some nice properties:
 /// - the basis elements with a small index are in a small subfield, in fact
 ///   $(\beta_0,...,\beta_{2^l - 1})$ is a basis of $\mathbb{F}_{2^{2^l}}$ for any $l$, and in
-///   particular $beta_0 = 1$
-/// - The subspace polynomial $W_i$ of $\operatorname{span} {\beta_0, ..., beta_(i-1)}$ is defined
+///   particular $\beta_0 = 1$
+/// - The subspace polynomial $W_i$ of $\operatorname{span} {\beta_0, ..., \beta_{i-1}}$ is defined
 ///   over $\mathbb{F}_2$, i.e., its coefficients are just $0$ or $1$.
-/// - The subspace polynomial is "auto-normalized", meaning $W_i (beta_i) = 1$ so that $\hat{W}_i =
+/// - The subspace polynomial is "auto-normalized", meaning $W_i (\beta_i) = 1$ so that $\hat{W}_i =
 ///   W_i$.
-/// - The evaluations of the subspace polynomials are just the basis elements: $W_i (\beta_(i + r))
+/// - The evaluations of the subspace polynomials are just the basis elements: $W_i (\beta_{i + r})
 ///   = \beta_r$ for any $i$ and $r$.
 /// - The previous point together with the first point implies that twiddles in early layers lie in
 ///   a small subfield. This could potentially be used to speed up the NTT if one can implement
