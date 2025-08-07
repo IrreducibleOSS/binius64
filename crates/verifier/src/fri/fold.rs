@@ -15,7 +15,7 @@ fn fold_pair<F, FS, NTT>(ntt: &NTT, round: usize, index: usize, values: (F, F), 
 where
 	F: BinaryField + ExtensionField<FS>,
 	FS: BinaryField,
-	NTT: AdditiveNTT<FS>,
+	NTT: AdditiveNTT<Field = FS>,
 {
 	// Perform inverse additive NTT butterfly
 	let t = ntt.twiddle(round - 1, index);
@@ -61,7 +61,7 @@ pub fn fold_chunk<F, FS, NTT>(
 where
 	F: BinaryField + ExtensionField<FS>,
 	FS: BinaryField,
-	NTT: AdditiveNTT<FS>,
+	NTT: AdditiveNTT<Field = FS>,
 {
 	let mut log_size = challenges.len();
 
@@ -128,7 +128,7 @@ pub fn fold_interleaved_chunk<F, FS, P, NTT>(
 where
 	F: BinaryField + ExtensionField<FS>,
 	FS: BinaryField,
-	NTT: AdditiveNTT<FS>,
+	NTT: AdditiveNTT<Field = FS>,
 	P: PackedField<Scalar = F>,
 {
 	// Preconditions

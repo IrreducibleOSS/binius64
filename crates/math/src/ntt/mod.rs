@@ -50,7 +50,9 @@ use super::BinarySubspace;
 ///
 /// [LCH14]: <https://arxiv.org/abs/1404.3458>
 /// [DP24]: <https://eprint.iacr.org/2024/504>
-pub trait AdditiveNTT<F: BinaryField> {
+pub trait AdditiveNTT {
+	type Field: BinaryField;
+
 	/// Forward transformation as defined in [DP24], Section 2.3.
 	///
 	/// Arguments:
@@ -63,7 +65,7 @@ pub trait AdditiveNTT<F: BinaryField> {
 	/// Each [`AdditiveNTT`] object defines their own preconditions.
 	///
 	/// [DP24]: <https://eprint.iacr.org/2024/504>
-	fn forward_transform<P: PackedField<Scalar = F>>(
+	fn forward_transform<P: PackedField<Scalar = Self::Field>>(
 		&self,
 		data: &mut [P],
 		skip_early: usize,
@@ -71,7 +73,7 @@ pub trait AdditiveNTT<F: BinaryField> {
 	);
 
 	/// Inverse transformation of [`Self::forward_transform`].
-	fn inverse_transform<P: PackedField<Scalar = F>>(
+	fn inverse_transform<P: PackedField<Scalar = Self::Field>>(
 		&self,
 		data: &mut [P],
 		skip_early: usize,
@@ -79,7 +81,7 @@ pub trait AdditiveNTT<F: BinaryField> {
 	);
 
 	/// The associated [`DomainContext`].
-	fn domain_context(&self) -> &impl DomainContext<Field = F>;
+	fn domain_context(&self) -> &impl DomainContext<Field = Self::Field>;
 
 	/// See [`DomainContext::log_domain_size`].
 	fn log_domain_size(&self) -> usize {
@@ -87,12 +89,12 @@ pub trait AdditiveNTT<F: BinaryField> {
 	}
 
 	/// See [`DomainContext::subspace`].
-	fn subspace(&self, i: usize) -> BinarySubspace<F> {
+	fn subspace(&self, i: usize) -> BinarySubspace<Self::Field> {
 		self.domain_context().subspace(i)
 	}
 
 	/// See [`DomainContext::twiddle`].
-	fn twiddle(&self, i: usize, j: usize) -> F {
+	fn twiddle(&self, i: usize, j: usize) -> Self::Field {
 		self.domain_context().twiddle(i, j)
 	}
 }

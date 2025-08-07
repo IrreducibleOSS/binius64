@@ -28,7 +28,7 @@ pub struct BaseFoldProver<'a, F, P, NTT, MerkleProver, VCS>
 where
 	F: BinaryField,
 	P: PackedField<Scalar = F>,
-	NTT: AdditiveNTT<F> + Sync,
+	NTT: AdditiveNTT<Field = F> + Sync,
 	MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 	VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 {
@@ -41,7 +41,7 @@ impl<'a, F, P, NTT, MerkleProver, VCS> BaseFoldProver<'a, F, P, NTT, MerkleProve
 where
 	F: BinaryField,
 	P: PackedField<Scalar = F>,
-	NTT: AdditiveNTT<F> + Sync,
+	NTT: AdditiveNTT<Field = F> + Sync,
 	MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 	VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 {

@@ -52,7 +52,7 @@ where
 	F: BinaryField + ExtensionField<FA>,
 	FA: BinaryField,
 	P: PackedField<Scalar = F>,
-	NTT: AdditiveNTT<FA> + Sync,
+	NTT: AdditiveNTT<Field = FA> + Sync,
 	MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 	VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 {
@@ -274,7 +274,7 @@ fn fold_interleaved_allocated<F, FS, NTT, P>(
 ) where
 	F: BinaryField + ExtensionField<FS>,
 	FS: BinaryField,
-	NTT: AdditiveNTT<FS> + Sync,
+	NTT: AdditiveNTT<Field = FS> + Sync,
 	P: PackedField<Scalar = F>,
 {
 	assert_eq!(codeword.len(), 1 << (log_len + log_batch_size).saturating_sub(P::LOG_WIDTH));
@@ -318,7 +318,7 @@ fn fold_interleaved<F, FS, NTT, P>(
 where
 	F: BinaryField + ExtensionField<FS>,
 	FS: BinaryField,
-	NTT: AdditiveNTT<FS> + Sync,
+	NTT: AdditiveNTT<Field = FS> + Sync,
 	P: PackedField<Scalar = F>,
 {
 	let mut result =

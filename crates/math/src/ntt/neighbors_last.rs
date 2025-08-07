@@ -23,7 +23,9 @@ pub struct NeighborsLastReference<DC> {
 	pub domain_context: DC,
 }
 
-impl<DC: DomainContext> AdditiveNTT<DC::Field> for NeighborsLastReference<DC> {
+impl<DC: DomainContext> AdditiveNTT for NeighborsLastReference<DC> {
+	type Field = DC::Field;
+
 	fn forward_transform<P: PackedField<Scalar = DC::Field>>(
 		&self,
 		data: &mut [P],
@@ -347,7 +349,9 @@ pub struct NeighborsLastSingleThread<DC> {
 	pub domain_context: DC,
 }
 
-impl<DC: DomainContext> AdditiveNTT<DC::Field> for NeighborsLastSingleThread<DC> {
+impl<DC: DomainContext> AdditiveNTT for NeighborsLastSingleThread<DC> {
+	type Field = DC::Field;
+
 	/// ## Preconditions
 	///
 	/// - `data` has power-of-2 length
@@ -408,7 +412,9 @@ pub struct NeighborsLastMultiThread<DC> {
 	pub log_num_shares: usize,
 }
 
-impl<DC: DomainContext + Sync> AdditiveNTT<DC::Field> for NeighborsLastMultiThread<DC> {
+impl<DC: DomainContext + Sync> AdditiveNTT for NeighborsLastMultiThread<DC> {
+	type Field = DC::Field;
+
 	/// ## Preconditions
 	///
 	/// - `data.len() <= self.log_num_shares`

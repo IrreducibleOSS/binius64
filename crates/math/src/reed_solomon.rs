@@ -35,7 +35,7 @@ impl<F: BinaryField> ReedSolomonCode<F> {
 	}
 
 	pub fn with_ntt_subspace(
-		ntt: &impl AdditiveNTT<F>,
+		ntt: &impl AdditiveNTT<Field = F>,
 		log_dimension: usize,
 		log_inv_rate: usize,
 	) -> Result<Self, Error> {
@@ -99,7 +99,7 @@ impl<F: BinaryField> ReedSolomonCode<F> {
 	/// ## Throws
 	///
 	/// * If the `code` buffer does not have capacity for `len() << log_batch_size` field elements.
-	fn encode_batch_inplace<P: PackedField<Scalar = F>, NTT: AdditiveNTT<F> + Sync>(
+	fn encode_batch_inplace<P: PackedField<Scalar = F>, NTT: AdditiveNTT<Field = F> + Sync>(
 		&self,
 		ntt: &NTT,
 		code: &mut [P],
@@ -164,7 +164,7 @@ impl<F: BinaryField> ReedSolomonCode<F> {
 	/// ## Throws
 	///
 	/// * If the `code` buffer does not have capacity for `len() << log_batch_size` field elements.
-	pub fn encode_ext_batch_inplace<PE: PackedExtension<F>, NTT: AdditiveNTT<F> + Sync>(
+	pub fn encode_ext_batch_inplace<PE: PackedExtension<F>, NTT: AdditiveNTT<Field = F> + Sync>(
 		&self,
 		ntt: &NTT,
 		code: &mut [PE],

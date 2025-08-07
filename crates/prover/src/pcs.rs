@@ -73,7 +73,7 @@ where
 	) -> Result<(), Error>
 	where
 		TranscriptChallenger: Challenger,
-		NTT: AdditiveNTT<F> + Sync,
+		NTT: AdditiveNTT<Field = F> + Sync,
 		MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 		VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 	{
@@ -151,7 +151,7 @@ where
 		basefold_sumcheck_claim: F,
 	) -> Result<BaseFoldProver<'a, F, P, NTT, MerkleProver, VCS>, Error>
 	where
-		NTT: AdditiveNTT<F> + Sync,
+		NTT: AdditiveNTT<Field = F> + Sync,
 		MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 		VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 	{

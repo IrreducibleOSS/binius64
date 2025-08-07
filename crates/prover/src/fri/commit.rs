@@ -33,7 +33,7 @@ where
 	FA: BinaryField,
 	P: PackedField<Scalar = F> + PackedExtension<FA, PackedSubfield = PA>,
 	PA: PackedField<Scalar = FA>,
-	NTT: AdditiveNTT<FA> + Sync,
+	NTT: AdditiveNTT<Field = FA> + Sync,
 	MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 	VCS: MerkleTreeScheme<F>,
 {
@@ -67,7 +67,7 @@ where
 	FA: BinaryField,
 	P: PackedField<Scalar = F> + PackedExtension<FA, PackedSubfield = PA>,
 	PA: PackedField<Scalar = FA>,
-	NTT: AdditiveNTT<FA> + Sync,
+	NTT: AdditiveNTT<Field = FA> + Sync,
 	MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 	VCS: MerkleTreeScheme<F>,
 {

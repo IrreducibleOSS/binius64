@@ -18,8 +18,8 @@ use crate::{
 };
 
 fn test_equivalence<P: PackedField>(
-	ntt_a: &impl AdditiveNTT<P::Scalar>,
-	ntt_b: &impl AdditiveNTT<P::Scalar>,
+	ntt_a: &impl AdditiveNTT<Field = P::Scalar>,
+	ntt_b: &impl AdditiveNTT<Field = P::Scalar>,
 ) where
 	P::Scalar: BinaryField,
 {

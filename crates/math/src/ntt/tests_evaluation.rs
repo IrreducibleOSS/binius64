@@ -241,7 +241,7 @@ fn novel_basis<DC: DomainContext>(domain_context: &DC) -> Vec<Polynomial<DC::Fie
 	novel_basis
 }
 
-fn test_equivalence<F: BinaryField, NTT: AdditiveNTT<F>>(ntt: &NTT) {
+fn test_equivalence<F: BinaryField, NTT: AdditiveNTT<Field = F>>(ntt: &NTT) {
 	let novel_basis = novel_basis(ntt.domain_context());
 	let log_d = ntt.log_domain_size();
 
