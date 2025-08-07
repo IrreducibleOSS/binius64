@@ -4,7 +4,7 @@ use binius_core::{
 	constraint_system::{AndConstraint, ConstraintSystem, MulConstraint, ValueVec},
 	word::Word,
 };
-use binius_field::{AESTowerField8b, BinaryField, Field};
+use binius_field::{AESTowerField8b, BinaryField, Field, PackedBinaryGhash2x128b};
 use binius_frontend::{
 	circuits::sha256::Sha256,
 	compiler::CircuitBuilder,
@@ -238,9 +238,9 @@ pub fn evaluate_witness<F: Field>(words: &[Word], r_jr_y: &[F]) -> F {
 
 #[test]
 fn test_shift_prove_and_verify() {
-	use binius_field::{BinaryField128bGhash, PackedBinaryGhash1x128b, Random};
+	use binius_field::{BinaryField128bGhash, Random};
 	type F = BinaryField128bGhash;
-	type P = PackedBinaryGhash1x128b;
+	type P = PackedBinaryGhash2x128b;
 	let mut rng = StdRng::seed_from_u64(0);
 
 	let mut constraint_systems_to_test = vec![
