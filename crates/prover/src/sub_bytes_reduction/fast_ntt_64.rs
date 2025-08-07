@@ -509,7 +509,7 @@ mod tests {
 
 	#[test]
 	fn test_fast_ntt_linearity() {
-		let mut rng = StdRng::seed_from_u64(42);
+		let mut rng = StdRng::seed_from_u64(0);
 		let subspace = BinarySubspace::<AESTowerField8b>::with_dim(7).unwrap();
 
 		// Generate domains using elements_for_each_subspace
