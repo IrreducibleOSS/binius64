@@ -48,18 +48,18 @@ fn test_equivalence_ntts<P: PackedField>(
 	let ntt_ref = NeighborsLastReference {
 		domain_context: domain_context.clone(),
 	};
-	let ntt_single = NeighborsLastSingleThread {
+	let ntt_single: NeighborsLastSingleThread<_> = NeighborsLastSingleThread {
 		domain_context: domain_context.clone(),
 	};
-	let ntt_multi_0 = NeighborsLastMultiThread {
+	let ntt_multi_0: NeighborsLastMultiThread<_> = NeighborsLastMultiThread {
 		domain_context: domain_context.clone(),
 		log_num_shares: 0,
 	};
-	let ntt_multi_1 = NeighborsLastMultiThread {
+	let ntt_multi_1: NeighborsLastMultiThread<_> = NeighborsLastMultiThread {
 		domain_context: domain_context.clone(),
 		log_num_shares: 1,
 	};
-	let ntt_multi_2 = NeighborsLastMultiThread {
+	let ntt_multi_3: NeighborsLastMultiThread<_> = NeighborsLastMultiThread {
 		domain_context: domain_context.clone(),
 		log_num_shares: 3,
 	};
@@ -67,7 +67,7 @@ fn test_equivalence_ntts<P: PackedField>(
 	test_equivalence::<P>(&ntt_ref, &ntt_single);
 	test_equivalence::<P>(&ntt_ref, &ntt_multi_0);
 	test_equivalence::<P>(&ntt_ref, &ntt_multi_1);
-	test_equivalence::<P>(&ntt_ref, &ntt_multi_2);
+	test_equivalence::<P>(&ntt_ref, &ntt_multi_3);
 }
 
 fn test_equivalence_ntts_domain_contexts<P: PackedField>()

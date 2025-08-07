@@ -64,7 +64,7 @@ fn bench_ntts<F, P>(
 	};
 	group.throughput(throughput);
 
-	let ntt = NeighborsLastSingleThread {
+	let ntt: NeighborsLastSingleThread<_> = NeighborsLastSingleThread {
 		domain_context: domain_context.clone(),
 	};
 	group.bench_function(
@@ -72,7 +72,7 @@ fn bench_ntts<F, P>(
 		|b| thread_pool.install(|| b.iter(|| ntt.forward_transform(data, skip_early, skip_late))),
 	);
 
-	let ntt = NeighborsLastMultiThread {
+	let ntt: NeighborsLastMultiThread<_> = NeighborsLastMultiThread {
 		domain_context: domain_context.clone(),
 		log_num_shares: num_threads.ilog2() as usize,
 	};

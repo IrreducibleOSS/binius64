@@ -279,7 +279,7 @@ fn test_eval() {
 
 	// GaoMateer domain context
 	let domain_context = domain_context::GaoMateerPreExpanded::<F>::generate(LOG_D);
-	let ntt = NeighborsLastSingleThread {
+	let ntt: NeighborsLastSingleThread<_> = NeighborsLastSingleThread {
 		domain_context: domain_context.clone(),
 	};
 	test_equivalence(&ntt);
@@ -287,7 +287,7 @@ fn test_eval() {
 	// Generic domain context with the usual subspace
 	let subspace = BinarySubspace::with_dim(LOG_D).unwrap();
 	let domain_context = domain_context::GenericPreExpanded::<F>::generate_from_subspace(&subspace);
-	let ntt = NeighborsLastSingleThread {
+	let ntt: NeighborsLastSingleThread<_> = NeighborsLastSingleThread {
 		domain_context: domain_context.clone(),
 	};
 	test_equivalence(&ntt);
@@ -296,7 +296,7 @@ fn test_eval() {
 	let basis = vec![F::new(5), F::new(7), F::new(22), F::new(95)];
 	let subspace = BinarySubspace::new_unchecked(basis);
 	let domain_context = domain_context::GenericPreExpanded::<F>::generate_from_subspace(&subspace);
-	let ntt = NeighborsLastSingleThread {
+	let ntt: NeighborsLastSingleThread<_> = NeighborsLastSingleThread {
 		domain_context: domain_context.clone(),
 	};
 	test_equivalence(&ntt);

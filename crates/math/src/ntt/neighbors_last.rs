@@ -16,6 +16,8 @@ use binius_utils::rayon::{
 
 use super::{AdditiveNTT, DomainContext};
 
+const DEFAULT_LOG_BASE_LEN: usize = 4;
+
 /// Reference implementation of [`AdditiveNTT`].
 ///
 /// This is slow. Do not use in production.
@@ -108,7 +110,7 @@ impl<DC: DomainContext> AdditiveNTT for NeighborsLastReference<DC> {
 ///
 /// (Just in a different order. We listed breadth-first order, we would process them in
 /// depth-first order.)
-fn forward_depth_first<P: PackedField>(
+fn forward_depth_first<P: PackedField, const LOG_BASE_LEN: usize>(
 	domain_context: &impl DomainContext<Field = P::Scalar>,
 	data: &mut [P],
 	log_d: usize,
@@ -125,7 +127,7 @@ fn forward_depth_first<P: PackedField>(
 	// if the problem size is small, we just do breadth_first (to get rid of the stack overhead)
 	// we also need to do that if the number of scalars is just two times our packing width, i.e. if
 	// we only have two packed elements in our data slice
-	if log_d <= 4 || log_d <= P::LOG_WIDTH + 1 {
+	if log_d <= LOG_BASE_LEN || log_d <= P::LOG_WIDTH + 1 {
 		forward_breadth_first(domain_context, data, log_d, layer, block, layer_bound);
 		return;
 	}
@@ -146,7 +148,7 @@ fn forward_depth_first<P: PackedField>(
 	}
 
 	// then recurse
-	forward_depth_first(
+	forward_depth_first::<_, LOG_BASE_LEN>(
 		domain_context,
 		&mut data[..block_size_half],
 		log_d - 1,
@@ -154,7 +156,7 @@ fn forward_depth_first<P: PackedField>(
 		block << 1,
 		layer_bound,
 	);
-	forward_depth_first(
+	forward_depth_first::<_, LOG_BASE_LEN>(
 		domain_context,
 		&mut data[block_size_half..],
 		log_d - 1,
@@ -344,12 +346,14 @@ fn input_check<P: PackedField>(data: &[P], skip_early: usize, skip_late: usize) 
 /// NTT algorithm, neighboring elements speak to each other. In the classic FFT that's usually the
 /// case for "decimation in frequency".
 #[derive(Debug)]
-pub struct NeighborsLastSingleThread<DC> {
+pub struct NeighborsLastSingleThread<DC, const LOG_BASE_LEN: usize = DEFAULT_LOG_BASE_LEN> {
 	/// The domain context from which the twiddles are pulled.
 	pub domain_context: DC,
 }
 
-impl<DC: DomainContext> AdditiveNTT for NeighborsLastSingleThread<DC> {
+impl<DC: DomainContext, const LOG_BASE_LEN: usize> AdditiveNTT
+	for NeighborsLastSingleThread<DC, LOG_BASE_LEN>
+{
 	type Field = DC::Field;
 
 	/// ## Preconditions
@@ -372,7 +376,7 @@ impl<DC: DomainContext> AdditiveNTT for NeighborsLastSingleThread<DC> {
 		data.chunks_mut(1 << (log_d_chunk - P::LOG_WIDTH))
 			.enumerate()
 			.for_each(|(block, chunk)| {
-				forward_depth_first(
+				forward_depth_first::<_, LOG_BASE_LEN>(
 					&self.domain_context,
 					chunk,
 					log_d_chunk,
@@ -403,7 +407,7 @@ impl<DC: DomainContext> AdditiveNTT for NeighborsLastSingleThread<DC> {
 /// NTT algorithm, neighboring elements speak to each other. In the classic FFT that's usually the
 /// case for "decimation in frequency".
 #[derive(Debug)]
-pub struct NeighborsLastMultiThread<DC> {
+pub struct NeighborsLastMultiThread<DC, const LOG_BASE_LEN: usize = DEFAULT_LOG_BASE_LEN> {
 	/// The domain context from which the twiddles are pulled.
 	pub domain_context: DC,
 	/// The base-2 logarithm of number of equal-sized shares that the problem should be split into.
@@ -412,7 +416,9 @@ pub struct NeighborsLastMultiThread<DC> {
 	pub log_num_shares: usize,
 }
 
-impl<DC: DomainContext + Sync> AdditiveNTT for NeighborsLastMultiThread<DC> {
+impl<DC: DomainContext + Sync, const LOG_BASE_LEN: usize> AdditiveNTT
+	for NeighborsLastMultiThread<DC, LOG_BASE_LEN>
+{
 	type Field = DC::Field;
 
 	/// ## Preconditions
@@ -444,7 +450,7 @@ impl<DC: DomainContext + Sync> AdditiveNTT for NeighborsLastMultiThread<DC> {
 		data.par_chunks_mut(1 << (log_d_chunk - P::LOG_WIDTH))
 			.enumerate()
 			.for_each(|(block, chunk)| {
-				forward_depth_first(
+				forward_depth_first::<_, LOG_BASE_LEN>(
 					&self.domain_context,
 					chunk,
 					log_d_chunk,

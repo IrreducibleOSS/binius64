@@ -87,7 +87,7 @@ where
 
 		let subspace = BinarySubspace::with_dim(log_code_len)?;
 		let domain_context = GenericOnTheFly::generate_from_subspace(&subspace);
-		let ntt = NeighborsLastSingleThread { domain_context };
+		let ntt: NeighborsLastSingleThread<_> = NeighborsLastSingleThread { domain_context };
 		let fri_params = FRIParams::choose_with_constant_fold_arity(
 			&ntt,
 			log_witness_elems,

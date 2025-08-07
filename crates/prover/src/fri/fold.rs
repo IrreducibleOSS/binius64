@@ -351,7 +351,7 @@ mod tests {
 	fn test_help_fri_compatible_ntt_domains(log_dim: usize, arity: usize) {
 		let subspace = BinarySubspace::with_dim(32).unwrap();
 		let domain_context = GenericOnTheFly::generate_from_subspace(&subspace);
-		let ntt = NeighborsLastSingleThread { domain_context };
+		let ntt: NeighborsLastSingleThread<_> = NeighborsLastSingleThread { domain_context };
 
 		let mut rng = StdRng::seed_from_u64(0);
 		let msg = random_scalars(&mut rng, 1 << (log_dim + arity));
