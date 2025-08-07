@@ -1,0 +1,42 @@
+---
+version: "1.0"
+
+# Default run configuration for mobilebench
+# Customize this file to control how tests are executed
+
+env:
+  RUST_BACKTRACE: "1"
+  RUST_LOG: "info"
+  # Criterion benchmarks need a writable directory for results
+  # {WRITABLE_DIR} is replaced with the app's writable directory at runtime
+  CRITERION_HOME: "{WRITABLE_DIR}/criterion"
+
+settings:
+  default_timeout_seconds: 300  # 5 minutes
+
+defaults:
+  "test.*":
+    runs:
+      - name: "default"
+        args: []
+
+  "bench.*":
+    runs:
+      - name: "default"
+        args: ["--bench"]
+
+  "example.*":
+    runs:
+      - name: "default"
+        args: []
+
+# Add binary-specific configurations below
+binaries:
+# Example:
+# "bench.my_benchmark":
+#   runs:
+#     - name: "multi-threaded"
+#       args: ["--bench"]
+#       env:
+#         RAYON_NUM_THREADS: "8"
+#       timeout_seconds: 600
