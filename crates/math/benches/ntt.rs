@@ -131,9 +131,6 @@ fn bench_fields(c: &mut Criterion) {
 	bench_params::<_, binius_field::PackedBinaryGhash1x128b>(c, "1xGhash", throughput_var);
 	bench_params::<_, binius_field::PackedBinaryGhash2x128b>(c, "2xGhash", throughput_var);
 	bench_params::<_, binius_field::PackedBinaryGhash4x128b>(c, "4xGhash", throughput_var);
-	bench_params::<_, binius_field::PackedBinaryPolyval1x128b>(c, "1xPolyv", throughput_var);
-	bench_params::<_, binius_field::PackedBinaryPolyval2x128b>(c, "2xPolyv", throughput_var);
-	bench_params::<_, binius_field::PackedBinaryPolyval4x128b>(c, "4xPolyv", throughput_var);
 }
 
 /// Gives the number of raw field multiplications that are done for an NTT with specific parameters.
