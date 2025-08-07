@@ -9,7 +9,6 @@ use binius_utils::bail;
 use getset::{CopyGetters, Getters};
 
 use super::{binary_subspace::BinarySubspace, error::Error as MathError, ntt::AdditiveNTT};
-use crate::ntt::{NeighborsLastSingleThread, domain_context::GenericOnTheFly};
 
 /// [Reed–Solomon] codes over binary fields.
 ///
@@ -32,9 +31,7 @@ pub struct ReedSolomonCode<F: BinaryField> {
 impl<F: BinaryField> ReedSolomonCode<F> {
 	pub fn new(log_dimension: usize, log_inv_rate: usize) -> Result<Self, Error> {
 		let subspace = BinarySubspace::with_dim(log_dimension + log_inv_rate)?;
-		let domain_context = GenericOnTheFly::<F>::generate_from_subspace(&subspace);
-		let ntt = NeighborsLastSingleThread { domain_context };
-		Self::with_ntt_subspace(&ntt, log_dimension, log_inv_rate)
+		Self::with_subspace(subspace, log_dimension, log_inv_rate)
 	}
 
 	pub fn with_ntt_subspace(
