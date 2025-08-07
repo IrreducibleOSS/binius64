@@ -24,7 +24,7 @@
 //!
 //! Each round applies the butterfly operation using precomputed domain elements.
 
-use binius_field::{AESTowerField8b, PackedField};
+use binius_field::{BinaryField, PackedField};
 use binius_math::BinarySubspace;
 
 use crate::sub_bytes_reduction::subspace_utils::elements_for_each_subspace_broadcasted;
@@ -48,7 +48,7 @@ use crate::sub_bytes_reduction::subspace_utils::elements_for_each_subspace_broad
 /// - `domain_3`: 8 elements for the fourth round
 /// - `domain_4`: 4 elements for the fifth round
 /// - `domain_5`: 2 elements for the final round (smallest domain)
-pub struct NttDomains<P: PackedField<Scalar = AESTowerField8b>> {
+pub struct NttDomains<P: PackedField<Scalar: BinaryField>> {
 	pub domain_0: [P; 64],
 	pub domain_1: [P; 32],
 	pub domain_2: [P; 16],
@@ -95,8 +95,8 @@ pub struct NttDomains<P: PackedField<Scalar = AESTowerField8b>> {
 /// # Panics
 ///
 /// Panics if the generated domains don't have the expected sizes (64, 32, 16, 8, 4, 2).
-pub fn generate_ntt_domains<P: PackedField<Scalar = AESTowerField8b>>(
-	subspace: BinarySubspace<AESTowerField8b>,
+pub fn generate_ntt_domains<P: PackedField<Scalar: BinaryField>>(
+	subspace: BinarySubspace<P::Scalar>,
 ) -> (NttDomains<P>, NttDomains<P>) {
 	let (inverse_domains, forward_domains) = elements_for_each_subspace_broadcasted(subspace);
 
@@ -192,7 +192,7 @@ pub fn generate_ntt_domains<P: PackedField<Scalar = AESTowerField8b>>(
 /// Each round applies butterfly operations that combine pairs of elements using
 /// the corresponding domain values.
 #[inline(always)]
-pub fn fast_inverse_ntt_64<P: PackedField<Scalar = AESTowerField8b>>(
+pub fn fast_inverse_ntt_64<P: PackedField<Scalar: BinaryField>>(
 	polynomial_evals: &mut [P; 64],
 	domains: &NttDomains<P>,
 ) {
@@ -321,7 +321,7 @@ pub fn fast_inverse_ntt_64<P: PackedField<Scalar = AESTowerField8b>>(
 /// Each round applies butterfly operations that split elements using the
 /// corresponding domain values.
 #[inline(always)]
-pub fn fast_forward_ntt_64<P: PackedField<Scalar = AESTowerField8b>>(
+pub fn fast_forward_ntt_64<P: PackedField<Scalar: BinaryField>>(
 	polynomial_evals: &mut [P; 64],
 	domains: &NttDomains<P>,
 ) {
@@ -456,7 +456,7 @@ pub fn fast_forward_ntt_64<P: PackedField<Scalar = AESTowerField8b>>(
 /// evaluations need to be transformed from one coset of a subspace to another
 /// coset of the same subspace.
 #[inline(always)]
-pub fn fast_ntt_64<P: PackedField<Scalar = AESTowerField8b>>(
+pub fn fast_ntt_64<P: PackedField<Scalar: BinaryField>>(
 	polynomial_evals: &mut [P; 64],
 	intt_domains: &NttDomains<P>,
 	fntt_domains: &NttDomains<P>,
