@@ -51,6 +51,11 @@ use super::BinarySubspace;
 pub trait AdditiveNTT<F: BinaryField> {
 	/// Forward transformation as defined in [DP24], Section 2.3.
 	///
+	/// Arguments:
+	/// - `data` is the data on which the NTT is performed.
+	/// - `skip_early` is the number of early layers that should be skipped
+	/// - `skip_late` is the number of late layers that should be skipped
+	///
 	/// ## Preconditons
 	///
 	/// Each [`AdditiveNTT`] object defines their own preconditions.

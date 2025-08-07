@@ -7,7 +7,7 @@ use binius_field::BinaryField;
 use super::DomainContext;
 use crate::BinarySubspace;
 
-/// Given a basis $S^{(0)}$, computes the evaluations of the the normalized subspace polynomials
+/// Given a basis $S^{(0)}$, computes the evaluations of the normalized subspace polynomials
 /// $hat{W}_i$ on the basis.
 fn generate_evals_from_subspace<F: BinaryField>(subspace: &BinarySubspace<F>) -> Vec<Vec<F>> {
 	let mut evals = Vec::with_capacity(subspace.dim());
@@ -47,6 +47,9 @@ pub struct GenericOnTheFly<F> {
 }
 
 impl<F: BinaryField> GenericOnTheFly<F> {
+	/// Given a basis of $S^{(0)}$, computes a compatible [`DomainContext`].
+	///
+	/// This will _not_ precompute the twiddles; instead they will be computed on-the-fly.
 	pub fn generate_from_subspace(subspace: &BinarySubspace<F>) -> Self {
 		let evals = generate_evals_from_subspace(subspace);
 		Self { evals }
@@ -92,12 +95,15 @@ pub struct GenericPreExpanded<F> {
 	/// The $n - i - 1$'th vector stores $[0, \hat{W}_i (\beta_(i+1)), \hat{W}_i (\beta_(i+2)),
 	/// \hat{W}_i (\beta_(i+2) + \beta_(i+1)), \hat{W}_i (\beta_(i+3)), ...]$.
 	///
-	/// Notice the absence of $\beta_i$ in vector $i$. (Which satisfies $\hat{W}_i (\beta_i) = 1$
+	/// Notice the absence of $\beta_i$ in this. (Which satisfies $\hat{W}_i (\beta_i) = 1$
 	/// and is absorbed in the butterfly operation itself rather than what we call "twiddles".)
 	expanded: Vec<Vec<F>>,
 }
 
 impl<F: BinaryField> GenericPreExpanded<F> {
+	/// Given a basis of $S^{(0)}$, computes a compatible [`DomainContext`].
+	///
+	/// This will _precompute_ the twiddles.
 	pub fn generate_from_subspace(subspace: &BinarySubspace<F>) -> Self {
 		let evals = generate_evals_from_subspace(subspace);
 
@@ -179,7 +185,22 @@ fn gao_mateer_basis<F: BinaryField + TraceOneElement>(num_basis_elements: usize)
 	basis
 }
 
-/// Produces a specific $S^{(0)}$ and computes twiddles on-the-fly.
+/// Produces a specific "Gao-Mateer" $S^{(0)}$ and pre-computes twiddles.
+///
+/// A Gao-Mateer basis of the binary field $\mathbb{F}_{2^k}$ is any $\mathbb{F}_2$-basis $(\beta_0,
+/// \beta_1,..., \beta_{k-1})$ with the following properties:
+/// - $\beta_{k-1}$ has trace 1
+/// - $\beta_i = \beta_{i+1}^2 + \beta_{i+1}$
+///
+/// This implies some nice properties:
+/// - $\beta_0 = 1$
+/// - The subspace polynomial $W_i$ of $\operatorname{span} {\beta_0, ..., beta_(i-1)}$ is defined
+///   over $\mathbb{F}_2$, i.e., its coefficients are just $0$ or $1$.
+/// - The subspace polynomial is "auto-normalized", meaning $W_i (beta_i) = 1$ so that $\hat{W}_i =
+///   W_i$.
+/// - The evaluations of the subspace polynomials are just the basis elements: $W_i (\beta_(i + r))
+///   = \beta_r$ for any $i$ and $r$.
+/// - The folding maps for FRI are all $x \mapsto x^2 + x$, no normalization factors needed.
 #[derive(Clone, Debug)]
 pub struct GaoMateerOnTheFly<F> {
 	/// Stores $[\beta_0, \beta_1, ...]$.
@@ -190,6 +211,10 @@ impl<F: BinaryField + TraceOneElement> GaoMateerOnTheFly<F> {
 	/// Given the intended size of $S^{(0)}$, computes a "nice" Gao-Mateer [`DomainContext`].
 	///
 	/// This will _not_ precompute the twiddles; instead they will be computed on-the-fly.
+	///
+	/// ## Preconditions
+	///
+	/// - `log_domain_size` must be nonzero
 	pub fn generate(log_domain_size: usize) -> Self {
 		let basis: Vec<F> = gao_mateer_basis(log_domain_size);
 
@@ -224,7 +249,9 @@ impl<F: BinaryField> DomainContext for GaoMateerOnTheFly<F> {
 	}
 }
 
-/// Produces a specific $S^{(0)}$ and pre-computes twiddles.
+/// Produces a specific "Gao-Mateer" $S^{(0)}$ and pre-computes twiddles.
+///
+/// For an explanation of this $S^{(0)}$, see [`GaoMateerOnTheFly`].
 #[derive(Clone, Debug)]
 pub struct GaoMateerPreExpanded<F> {
 	/// Stores $[\beta_0, \beta_1, ...]$.
@@ -240,6 +267,10 @@ impl<F: BinaryField + TraceOneElement> GaoMateerPreExpanded<F> {
 	/// Given the intended size of $S^{(0)}$, computes a "nice" Gao-Mateer [`DomainContext`].
 	///
 	/// This will _precompute_ the twiddles.
+	///
+	/// ## Preconditions
+	///
+	/// - `log_domain_size` must be nonzero
 	pub fn generate(log_domain_size: usize) -> Self {
 		let basis: Vec<F> = gao_mateer_basis(log_domain_size);
 
