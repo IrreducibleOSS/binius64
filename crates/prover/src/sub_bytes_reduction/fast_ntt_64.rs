@@ -1,9 +1,53 @@
+//! Fast Number Theoretic Transform (NTT) implementation for polynomials of size 64.
+//!
+//! This module provides specialized NTT algorithms optimized for 64-element polynomials
+//! over binary fields. The implementation uses precomputed domain elements to achieve
+//! high performance through loop unrolling and fixed-size arrays.
+//!
+//! # Overview
+//!
+//! The NTT is a fundamental operation in polynomial arithmetic that transforms between
+//! coefficient and evaluation representations. This implementation specifically handles:
+//! - Fixed size of 64 elements (2^6)
+//! - Binary field arithmetic using AESTowerField8b
+//! - Support for packed field operations for SIMD efficiency
+//!
+//! # Algorithm
+//!
+//! The implementation uses a decimation-in-time (DIT) approach with 6 rounds:
+//! - Round 0: 1 chunk of 64 elements
+//! - Round 1: 2 chunks of 32 elements
+//! - Round 2: 4 chunks of 16 elements
+//! - Round 3: 8 chunks of 8 elements
+//! - Round 4: 16 chunks of 4 elements
+//! - Round 5: 32 chunks of 2 elements
+//!
+//! Each round applies the butterfly operation using precomputed domain elements.
+
 use binius_field::{AESTowerField8b, PackedField};
 use binius_math::BinarySubspace;
 
 use crate::sub_bytes_reduction::subspace_utils::elements_for_each_subspace_broadcasted;
 
-/// Precomputed domains for NTT operations
+/// Precomputed domain elements for efficient NTT operations.
+///
+/// Contains evaluation points for each round of the NTT algorithm, organized by
+/// decreasing domain sizes. The domains are precomputed to avoid repeated
+/// calculations during NTT operations.
+///
+/// # Important Requirements
+///
+/// - All P elements in an NttDomain must be broadcasted values of P::Scalar
+/// - Each NttDomain must contain P::one() among its elements
+///
+/// # Fields
+///
+/// - `domain_0`: 64 elements for the first round (largest domain)
+/// - `domain_1`: 32 elements for the second round
+/// - `domain_2`: 16 elements for the third round
+/// - `domain_3`: 8 elements for the fourth round
+/// - `domain_4`: 4 elements for the fifth round
+/// - `domain_5`: 2 elements for the final round (smallest domain)
 pub struct NttDomains<P: PackedField<Scalar = AESTowerField8b>> {
 	pub domain_0: [P; 64],
 	pub domain_1: [P; 32],
@@ -13,7 +57,44 @@ pub struct NttDomains<P: PackedField<Scalar = AESTowerField8b>> {
 	pub domain_5: [P; 2],
 }
 
-/// Generate NTT domains for a given subspace
+/// Generates precomputed domain elements for both inverse and forward NTT operations.
+///
+/// This function creates two sets of domain elements from a given binary subspace,
+/// one for inverse NTT (INTT) and one for forward NTT (FNTT). The domains are
+/// structured hierarchically, with each layer containing half the elements of the
+/// previous layer.
+///
+/// # Arguments
+///
+/// * `subspace` - A binary subspace of dimension 7 over `AESTowerField8b`. This subspace defines
+///   the overall evaluation domain for the NTT. The function will generate a sequence of
+///   progressively smaller subspaces by repeatedly applying dimension reduction.
+///
+/// # Returns
+///
+/// A tuple `(intt_domains, fntt_domains)` where:
+/// * `intt_domains` - Domain elements for inverse NTT operations
+/// * `fntt_domains` - Domain elements for forward NTT operations
+///
+/// # Domain Properties
+///
+/// The generated domains satisfy the following properties:
+/// - All P elements are broadcasted values of P::Scalar
+/// - Each domain contains P::one() among its elements
+///
+/// # Domain Structure
+///
+/// For each layer i (0 to 5), the domains contain:
+/// - Layer 0: Elements from the first/second half of the full subspace (64 elements)
+/// - Layer 1: Elements from the first/second half of the reduced subspace (32 elements)
+/// - And so on, halving at each layer
+///
+/// The inverse and forward domains at each layer are complementary subsets that
+/// together form the complete subspace at that layer.
+///
+/// # Panics
+///
+/// Panics if the generated domains don't have the expected sizes (64, 32, 16, 8, 4, 2).
 pub fn generate_ntt_domains<P: PackedField<Scalar = AESTowerField8b>>(
 	subspace: BinarySubspace<AESTowerField8b>,
 ) -> (NttDomains<P>, NttDomains<P>) {
@@ -77,7 +158,39 @@ pub fn generate_ntt_domains<P: PackedField<Scalar = AESTowerField8b>>(
 	(intt_domains, fntt_domains)
 }
 
-/// Fast specialized inverse NTT for 2^6 size with provided domains
+/// Performs a fast inverse Number Theoretic Transform on a 64-element array.
+///
+/// This function transforms polynomial evaluations back to coefficient representation
+/// using precomputed domain elements. It implements an optimized inverse NTT specifically
+/// for size 64 (2^6) using loop unrolling and fixed-size arrays.
+///
+/// # Arguments
+///
+/// * `polynomial_evals` - Mutable array of 64 packed field elements containing polynomial
+///   evaluations. This array is modified in-place to contain the coefficients after the transform.
+///
+/// * `domains` - Precomputed domain elements for the inverse NTT operations. These should be the
+///   inverse domains generated by `generate_ntt_domains`.
+///
+/// # Output
+///
+/// After execution, `polynomial_evals` contains the polynomial coefficients in the
+/// novel polynomial basis. This is NOT the standard monomial basis, but rather a
+/// specialized basis adapted to the binary field structure that enables efficient
+/// butterfly operations in the NTT algorithm.
+///
+/// # Algorithm
+///
+/// The inverse NTT uses a decimation-in-time approach with 6 rounds:
+/// - Round 0: Processes 1 chunk of 64 elements using domain_0
+/// - Round 1: Processes 2 chunks of 32 elements using domain_1
+/// - Round 2: Processes 4 chunks of 16 elements using domain_2
+/// - Round 3: Processes 8 chunks of 8 elements using domain_3
+/// - Round 4: Processes 16 chunks of 4 elements using domain_4
+/// - Round 5: Processes 32 chunks of 2 elements using domain_5
+///
+/// Each round applies butterfly operations that combine pairs of elements using
+/// the corresponding domain values.
 #[inline(always)]
 pub fn fast_inverse_ntt_64<P: PackedField<Scalar = AESTowerField8b>>(
 	polynomial_evals: &mut [P; 64],
@@ -172,7 +285,41 @@ pub fn fast_inverse_ntt_64<P: PackedField<Scalar = AESTowerField8b>>(
 	}
 }
 
-/// Fast specialized forward NTT for 2^6 size with provided domains
+/// Performs a fast forward Number Theoretic Transform on a 64-element array.
+///
+/// This function transforms polynomial coefficients in the novel polynomial basis
+/// to evaluation representation using precomputed domain elements. It implements
+/// an optimized forward NTT specifically for size 64 (2^6) using loop unrolling
+/// and fixed-size arrays.
+///
+/// # Arguments
+///
+/// * `polynomial_evals` - Mutable array of 64 packed field elements containing polynomial
+///   coefficients in the novel polynomial basis (as output by `fast_inverse_ntt_64`). This array is
+///   modified in-place to contain the evaluations after the transform.
+///
+/// * `domains` - Precomputed domain elements for the forward NTT operations. These should be the
+///   forward domains generated by `generate_ntt_domains`.
+///
+/// # Output
+///
+/// After execution, `polynomial_evals` contains the polynomial evaluations at the
+/// points in the output domain. The output domain is a shifted version of the input
+/// domain - specifically, each evaluation point is an element from the input subspace
+/// plus the last basis vector of the enclosing subspace.
+///
+/// # Algorithm
+///
+/// The forward NTT reverses the operations of the inverse NTT, using 6 rounds:
+/// - Round 0: Processes 32 chunks of 2 elements using domain_5
+/// - Round 1: Processes 16 chunks of 4 elements using domain_4
+/// - Round 2: Processes 8 chunks of 8 elements using domain_3
+/// - Round 3: Processes 4 chunks of 16 elements using domain_2
+/// - Round 4: Processes 2 chunks of 32 elements using domain_1
+/// - Round 5: Processes 1 chunk of 64 elements using domain_0
+///
+/// Each round applies butterfly operations that split elements using the
+/// corresponding domain values.
 #[inline(always)]
 pub fn fast_forward_ntt_64<P: PackedField<Scalar = AESTowerField8b>>(
 	polynomial_evals: &mut [P; 64],
@@ -277,7 +424,37 @@ pub fn fast_forward_ntt_64<P: PackedField<Scalar = AESTowerField8b>>(
 	}
 }
 
-/// Fast specialized NTT for 2^6 size with provided domains
+/// Performs a complete NTT transform by applying inverse NTT followed by forward NTT.
+///
+/// This function is useful for changing the evaluation domain of a polynomial. It first
+/// converts the evaluations to the novel polynomial basis using inverse NTT, then
+/// re-evaluates at a different set of points using forward NTT.
+///
+/// # Arguments
+///
+/// * `polynomial_evals` - Mutable array of 64 packed field elements containing polynomial
+///   evaluations at the input domain points. After execution, contains evaluations at the output
+///   domain points.
+///
+/// * `intt_domains` - Precomputed domain elements for the inverse NTT operation. These define the
+///   input evaluation domain.
+///
+/// * `fntt_domains` - Precomputed domain elements for the forward NTT operation. These define the
+///   output evaluation domain.
+///
+/// # Domain Relationship
+///
+/// The input and output domains are related as follows:
+/// - Both domains have the same size (64 elements)
+/// - The output domain is a shifted version of the input domain
+/// - Specifically: output_point = input_point + shift_vector
+/// - The union of input and output domains forms a larger binary subspace
+///
+/// # Example Use Case
+///
+/// This function is typically used in cryptographic protocols where polynomial
+/// evaluations need to be transformed from one coset of a subspace to another
+/// coset of the same subspace.
 #[inline(always)]
 pub fn fast_ntt_64<P: PackedField<Scalar = AESTowerField8b>>(
 	polynomial_evals: &mut [P; 64],
