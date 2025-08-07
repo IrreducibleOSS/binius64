@@ -1,7 +1,7 @@
 // Copyright 2025 Irreducible Inc.
 
 use binius_core::constraint_system::{AndConstraint, ConstraintSystem, MulConstraint};
-use binius_field::{BinaryField, Field};
+use binius_field::{AESTowerField8b, BinaryField, Field};
 use binius_math::{multilinear::eq::eq_ind, univariate::evaluate_univariate};
 use binius_transcript::{
 	VerifierTranscript,
@@ -88,12 +88,15 @@ impl<F: Field, const ARITY: usize> OperatorData<F, ARITY> {
 /// - Returns `Error::VerificationFailure` if monster multilinear evaluations don't match expected
 ///   values
 /// - Propagates sumcheck verification errors
-pub fn verify<F: BinaryField, C: Challenger>(
+pub fn verify<F, C: Challenger>(
 	constraint_system: &ConstraintSystem,
 	mut bitand_data: OperatorData<F, BITAND_ARITY>,
 	mut intmul_data: OperatorData<F, INTMUL_ARITY>,
 	transcript: &mut VerifierTranscript<C>,
-) -> Result<VerifyOutput<F>, Error> {
+) -> Result<VerifyOutput<F>, Error>
+where
+	F: BinaryField + From<AESTowerField8b>,
+{
 	bitand_data.lambda = transcript.sample();
 	intmul_data.lambda = transcript.sample();
 
@@ -151,13 +154,13 @@ pub fn verify<F: BinaryField, C: Challenger>(
 
 	// Compute expected monster eval for intmul
 	let expected_monster_eval_for_intmul = {
-		let (a, b, hi, lo) = constraint_system
+		let (a, b, lo, hi) = constraint_system
 			.mul_constraints
 			.iter()
-			.map(|MulConstraint { a, b, hi, lo }| (a, b, hi, lo))
+			.map(|MulConstraint { a, b, hi, lo }| (a, b, lo, hi))
 			.multiunzip();
 		evaluate_monster_multilinear_for_operation(
-			vec![a, b, hi, lo],
+			vec![a, b, lo, hi],
 			intmul_data,
 			&r_j,
 			&r_s,

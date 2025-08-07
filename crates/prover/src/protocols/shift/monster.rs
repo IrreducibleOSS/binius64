@@ -2,7 +2,7 @@
 
 use std::{array, ops::Range};
 
-use binius_field::{BinaryField, PackedField};
+use binius_field::{AESTowerField8b, BinaryField, PackedField};
 use binius_math::{
 	BinarySubspace, FieldBuffer, multilinear::eq::eq_ind_partial_eval, univariate::lagrange_evals,
 };
@@ -32,10 +32,13 @@ use super::{
 ///
 /// Used in phase 1, thus returning a `MultilinearTriplet` defined in `super::phase_1`.
 #[instrument(skip_all, name = "build_h_triplet")]
-pub fn build_h_triplet<F: BinaryField, P: PackedField<Scalar = F>>(
+pub fn build_h_triplet<F, P: PackedField<Scalar = F>>(
 	r_zhat_prime: F,
-) -> Result<MultilinearTriplet<P>, Error> {
-	let subspace = BinarySubspace::<F>::with_dim(LOG_WORD_SIZE_BITS)?;
+) -> Result<MultilinearTriplet<P>, Error>
+where
+	F: BinaryField + From<AESTowerField8b>,
+{
+	let subspace = BinarySubspace::<AESTowerField8b>::with_dim(LOG_WORD_SIZE_BITS)?.isomorphic();
 	let l_tilde = lagrange_evals(&subspace, r_zhat_prime);
 
 	let [mut sll_data, mut srl_data, mut sra_data] =
@@ -100,13 +103,16 @@ pub fn build_h_triplet<F: BinaryField, P: PackedField<Scalar = F>>(
 /// Used in phase 2 of the shift protocol where the prover needs a single multilinear combining
 /// all shift-related constraints for efficient sumcheck computation.
 #[instrument(skip_all, name = "build_monster_multilinear")]
-pub fn build_monster_multilinear<F: BinaryField, P: PackedField<Scalar = F>>(
+pub fn build_monster_multilinear<F, P: PackedField<Scalar = F>>(
 	key_collection: &KeyCollection,
 	bitand_operator_data: &OperatorData<F>,
 	intmul_operator_data: &OperatorData<F>,
 	r_j: &[F],
 	r_s: &[F],
-) -> Result<FieldBuffer<P>, Error> {
+) -> Result<FieldBuffer<P>, Error>
+where
+	F: BinaryField + From<AESTowerField8b>,
+{
 	// Compute lambda powers
 	let bitand_lambda_powers: [F; BITAND_ARITY] =
 		array::from_fn(|i| bitand_operator_data.lambda.pow(1 + i as u64));
@@ -114,7 +120,7 @@ pub fn build_monster_multilinear<F: BinaryField, P: PackedField<Scalar = F>>(
 		array::from_fn(|i| intmul_operator_data.lambda.pow(1 + i as u64));
 
 	// Compute h evaluations
-	let subspace = BinarySubspace::<F>::with_dim(LOG_WORD_SIZE_BITS)?;
+	let subspace = BinarySubspace::<AESTowerField8b>::with_dim(LOG_WORD_SIZE_BITS)?.isomorphic();
 	let [bitand_h_ops, intmul_h_ops] = [
 		bitand_operator_data.r_zhat_prime,
 		intmul_operator_data.r_zhat_prime,
@@ -202,7 +208,9 @@ mod tests {
 			let r_s: Vec<F> = (0..6).map(|_| F::random(&mut rng)).collect();
 
 			// Method 1: Succinct evaluation using `evaluate_h_op`
-			let subspace = BinarySubspace::<F>::with_dim(LOG_WORD_SIZE_BITS).unwrap();
+			let subspace = BinarySubspace::<AESTowerField8b>::with_dim(LOG_WORD_SIZE_BITS)
+				.unwrap()
+				.isomorphic();
 			let l_tilde = lagrange_evals(&subspace, r_zhat_prime);
 			let succinct_evaluations = evaluate_h_op(&l_tilde, &r_j, &r_s);
 

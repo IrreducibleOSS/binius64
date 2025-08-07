@@ -1,7 +1,7 @@
 // Copyright 2025 Irreducible Inc.
 
 use binius_core::constraint_system::{Operand, ShiftedValueIndex};
-use binius_field::{BinaryField, Field};
+use binius_field::{AESTowerField8b, BinaryField, Field};
 use binius_math::{
 	BinarySubspace, multilinear::eq::eq_ind_partial_eval, univariate::lagrange_evals,
 };
@@ -120,18 +120,21 @@ fn evaluate_monster_multilinear_term_for_operand<F: Field>(
 /// where $op$ ranges over the shift variants.
 /// This function computes this expression given corresponding `OperatorData`, as well
 /// as $r_j$, $r_s$, and $r_y$.
-pub fn evaluate_monster_multilinear_for_operation<F: BinaryField, const ARITY: usize>(
+pub fn evaluate_monster_multilinear_for_operation<F, const ARITY: usize>(
 	operand_vecs: Vec<Vec<&Operand>>,
 	operator_data: OperatorData<F, ARITY>,
 	r_j: &[F],
 	r_s: &[F],
 	r_y: &[F],
-) -> Result<F, Error> {
+) -> Result<F, Error>
+where
+	F: BinaryField + From<AESTowerField8b>,
+{
 	let r_x_prime_tensor = eq_ind_partial_eval::<F>(&operator_data.r_x_prime);
 	let r_y_tensor = eq_ind_partial_eval::<F>(r_y);
 	let r_s_tensor = eq_ind_partial_eval::<F>(r_s);
 
-	let subspace = BinarySubspace::<F>::with_dim(LOG_WORD_SIZE_BITS)?;
+	let subspace = BinarySubspace::<AESTowerField8b>::with_dim(LOG_WORD_SIZE_BITS)?.isomorphic();
 	let l_tilde = lagrange_evals(&subspace, operator_data.r_zhat_prime);
 	let h_op_evals = evaluate_h_op(&l_tilde, r_j, r_s);
 

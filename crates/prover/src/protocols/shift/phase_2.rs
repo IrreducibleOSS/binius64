@@ -1,7 +1,7 @@
 // Copyright 2025 Irreducible Inc.
 
 use binius_core::word::Word;
-use binius_field::{BinaryField, Field, PackedField};
+use binius_field::{AESTowerField8b, BinaryField, Field, PackedField};
 use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval};
 use binius_transcript::{
 	ProverTranscript,
@@ -53,7 +53,7 @@ use crate::{
 /// Returns `SumcheckOutput` containing the combined challenges `[r_j, r_y]` and witness evaluation,
 /// or an error if the protocol fails.
 #[instrument(skip_all, name = "prove_phase_2")]
-pub fn prove_phase_2<F: BinaryField, P: PackedField<Scalar = F>, C: Challenger>(
+pub fn prove_phase_2<F, P: PackedField<Scalar = F>, C: Challenger>(
 	inout_n_vars: usize,
 	key_collection: &KeyCollection,
 	words: &[Word],
@@ -61,7 +61,10 @@ pub fn prove_phase_2<F: BinaryField, P: PackedField<Scalar = F>, C: Challenger>(
 	intmul_data: &OperatorData<F>,
 	phase_1_output: SumcheckOutput<F>,
 	transcript: &mut ProverTranscript<C>,
-) -> Result<SumcheckOutput<F>, Error> {
+) -> Result<SumcheckOutput<F>, Error>
+where
+	F: BinaryField + From<AESTowerField8b>,
+{
 	let SumcheckOutput {
 		challenges: mut r_jr_s,
 		eval: gamma,

@@ -3,7 +3,10 @@
 use binius_core::ConstraintSystemError;
 use binius_math::ntt;
 
-use crate::{fri, pcs, protocols::sumcheck};
+use crate::{
+	fri, pcs,
+	protocols::{shift, sumcheck},
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -25,6 +28,8 @@ pub enum Error {
 	ConstraintSystem(#[from] ConstraintSystemError),
 	#[error("invalid proof: {0}")]
 	Verification(#[from] VerificationError),
+	#[error("shift reduction error: {0}")]
+	ShiftReduction(#[from] shift::Error),
 }
 
 #[derive(Debug, thiserror::Error)]

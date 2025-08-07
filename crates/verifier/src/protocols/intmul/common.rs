@@ -5,11 +5,12 @@ use itertools::{iterate, izip};
 
 #[derive(Debug, PartialEq)]
 pub struct IntMulOutput<F> {
+	pub z_challenge: F,
 	pub eval_point: Vec<F>,
-	pub a_exponent_evals: Vec<F>,
-	pub b_exponent_evals: Vec<F>,
-	pub c_lo_exponent_evals: Vec<F>,
-	pub c_hi_exponent_evals: Vec<F>,
+	pub a_eval: F,
+	pub b_eval: F,
+	pub c_lo_eval: F,
+	pub c_hi_eval: F,
 }
 
 pub struct Phase1Output<F> {
@@ -96,10 +97,7 @@ pub fn frobenius_twist<F: BinaryField>(
 	Phase2Output { twisted_claims }
 }
 
-pub fn normalize_a_c_exponent_evals<F: BinaryField>(
-	log_bits: usize,
-	evals: Vec<F>,
-) -> (Vec<F>, Vec<F>, Vec<F>) {
+pub fn normalize_a_c_exponent_evals<F: BinaryField>(log_bits: usize, evals: Vec<F>) -> [Vec<F>; 3] {
 	assert_eq!(evals.len(), 3 << log_bits);
 
 	// for i in 0..1 << log_bits: evals[i] = (1-EvalMLE_i)*1 + EvalMLE_i*g^{2^i} =
@@ -134,5 +132,5 @@ pub fn normalize_a_c_exponent_evals<F: BinaryField>(
 		normalize(c_hi_eval, conjugate);
 	}
 
-	(a_scaled_evals, c_lo_scaled_evals, c_hi_scaled_evals)
+	[a_scaled_evals, c_lo_scaled_evals, c_hi_scaled_evals]
 }

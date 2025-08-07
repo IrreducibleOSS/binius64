@@ -4,7 +4,7 @@ use binius_core::{
 	constraint_system::{AndConstraint, ConstraintSystem, MulConstraint, ValueVec},
 	word::Word,
 };
-use binius_field::{BinaryField, Field};
+use binius_field::{AESTowerField8b, BinaryField, Field};
 use binius_frontend::{
 	circuits::sha256::Sha256,
 	compiler::CircuitBuilder,
@@ -204,8 +204,13 @@ fn compute_intmul_images(constraints: &[MulConstraint], witness: &ValueVec) -> [
 
 // Evaluate the image of the witness applied to the AND or MUL constraints
 // Univariate point is `r_zhat_prime`, multilinear point tensor-expanded is `r_x_prime_tensor`
-fn evaluate_image<F: BinaryField>(image: &[Word], r_zhat_prime: F, r_x_prime_tensor: &[F]) -> F {
-	let subspace = BinarySubspace::<F>::with_dim(LOG_WORD_SIZE_BITS).unwrap();
+fn evaluate_image<F>(image: &[Word], r_zhat_prime: F, r_x_prime_tensor: &[F]) -> F
+where
+	F: BinaryField + From<AESTowerField8b>,
+{
+	let subspace = BinarySubspace::<AESTowerField8b>::with_dim(LOG_WORD_SIZE_BITS)
+		.unwrap()
+		.isomorphic();
 	let l_tilde = lagrange_evals(&subspace, r_zhat_prime);
 	let univariate = image
 		.iter()
@@ -232,7 +237,7 @@ pub fn evaluate_witness<F: Field>(words: &[Word], r_jr_y: &[F]) -> F {
 }
 
 #[test]
-fn test_prove_and_verify() {
+fn test_shift_prove_and_verify() {
 	use binius_field::{BinaryField128bGhash, PackedBinaryGhash1x128b, Random};
 	type F = BinaryField128bGhash;
 	type P = PackedBinaryGhash1x128b;
@@ -323,11 +328,9 @@ fn test_prove_and_verify() {
 				.unwrap();
 
 		// Compute the expected public input evaluation
-		let z_coords = verifier_output.eval_point[..LOG_WORD_SIZE_BITS].to_vec();
-		let y_coords = verifier_output.eval_point
-			[LOG_WORD_SIZE_BITS..LOG_WORD_SIZE_BITS + inout_n_vars]
-			.to_vec();
-		let expected_public_eval = evaluate_public_mle(value_vec.public(), &z_coords, &y_coords);
+		let (z_coords, remaining) = verifier_output.eval_point.split_at(LOG_WORD_SIZE_BITS);
+		let y_coords = &remaining[..inout_n_vars];
+		let expected_public_eval = evaluate_public_mle(value_vec.public(), z_coords, y_coords);
 		// and check consistency with verifier output
 		assert_eq!(expected_public_eval, verifier_output.public_eval);
 
