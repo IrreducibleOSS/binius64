@@ -14,6 +14,7 @@ pub mod rerand_mle;
 mod round_evals;
 pub mod selector_mle;
 mod switchover;
+pub mod x_squared_y_minus_x;
 
 pub use error::*;
 pub use mle_to_sumcheck::*;
