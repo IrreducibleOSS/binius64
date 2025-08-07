@@ -2,7 +2,7 @@ use binius_field::{BinaryField, PackedField};
 use binius_math::BinarySubspace;
 use itertools::Itertools;
 
-use crate::and_reduction::univariate::ntt_lookup::NTTLookup;
+use super::ntt_lookup::NTTLookup;
 
 /// Creates a new NTTLookup from a prover message domain.
 ///

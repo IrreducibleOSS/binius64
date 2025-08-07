@@ -9,7 +9,7 @@ use binius_verifier::{and_reduction::utils::constants::ROWS_PER_HYPERCUBE_VERTEX
 use bytemuck::must_cast_ref;
 use itertools::izip;
 
-use super::{univariate::ntt_lookup::NTTLookup, utils::multivariate::OneBitOblongMultilinear};
+use super::{ntt_lookup::NTTLookup, utils::multivariate::OneBitOblongMultilinear};
 
 /// Generates a univariate polynomial for the sumcheck protocol in AND constraint reduction.
 ///

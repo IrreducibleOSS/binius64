@@ -1,6 +1,6 @@
 pub mod fold_lookup;
+mod ntt_lookup;
 pub mod prover;
 pub mod prover_setup;
 pub mod sumcheck_round_messages;
-pub mod univariate;
 pub mod utils;
