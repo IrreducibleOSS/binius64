@@ -36,7 +36,7 @@ fn bench_fast_ntt_64(c: &mut Criterion) {
 	group.finish();
 }
 
-fn bench_fast_ntt_64_packed(c: &mut Criterion) {
+fn bench_fast_ntt_64_packed_bytesliced(c: &mut Criterion) {
 	let mut rng = StdRng::seed_from_u64(0);
 
 	// Generate the required domains
@@ -49,12 +49,12 @@ fn bench_fast_ntt_64_packed(c: &mut Criterion) {
 		*element = PackedAESBinaryField16x8b::random(&mut rng);
 	}
 
-	let mut group = c.benchmark_group("fast_ntt_64_packed");
+	let mut group = c.benchmark_group("fast_ntt_64_packed_bytesliced");
 	group.throughput(Throughput::Elements(
 		(WORD_SIZE_BITS * PackedAESBinaryField16x8b::WIDTH) as u64,
 	));
 
-	group.bench_function("fast_ntt_64_packed", |b| {
+	group.bench_function("fast_ntt_64_packed_bytesliced", |b| {
 		b.iter(|| {
 			fast_ntt_64(&mut data, &intt_domains, &fntt_domains);
 			data
@@ -87,7 +87,7 @@ fn bench_normal_ntt(c: &mut Criterion) {
 		log_z: 0,
 	};
 
-	group.bench_function("fast_ntt_64_packed", |b| {
+	group.bench_function("fast_ntt_64_packed_bytesliced", |b| {
 		b.iter(|| {
 			let _ = ntt.inverse_transform(&mut data, shape, 0, 0, 0);
 
@@ -100,5 +100,5 @@ fn bench_normal_ntt(c: &mut Criterion) {
 	group.finish();
 }
 
-criterion_group!(benches, bench_fast_ntt_64, bench_fast_ntt_64_packed, bench_normal_ntt);
+criterion_group!(benches, bench_fast_ntt_64, bench_fast_ntt_64_packed_bytesliced, bench_normal_ntt);
 criterion_main!(benches);
