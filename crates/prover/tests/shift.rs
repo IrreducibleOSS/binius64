@@ -238,9 +238,9 @@ pub fn evaluate_witness<F: Field>(words: &[Word], r_jr_y: &[F]) -> F {
 
 #[test]
 fn test_shift_prove_and_verify() {
-	use binius_field::{BinaryField128bGhash, PackedBinaryGhash1x128b, Random};
+	use binius_field::{BinaryField128bGhash, PackedBinaryGhash2x128b, Random};
 	type F = BinaryField128bGhash;
-	type P = PackedBinaryGhash1x128b;
+	type P = PackedBinaryGhash2x128b;
 	let mut rng = StdRng::seed_from_u64(0);
 
 	let mut constraint_systems_to_test = vec![
