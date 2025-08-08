@@ -35,7 +35,6 @@ proptest.workspace = true
 rand = { workspace = true, features = ["std_rng", "thread_rng"] }
 rsa.workspace = true
 tracing-subscriber.workspace = true
-tracing-profile.workspace = true
 sha2.workspace = true
 
 [lib]
