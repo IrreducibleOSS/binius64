@@ -10,16 +10,16 @@ use super::{common::SumcheckProver, error::Error, gruen34::Gruen34};
 use crate::protocols::sumcheck::common::MleCheckProver;
 
 /// A [`SumcheckProver`] implementation that reduces an evaluation claim on a multilinear extension
-/// of the product of two multilinears to evaluation claims on said multilinears. We call such
-/// reductions Mlechecks.
+/// of the composition $A^2 \cdot B - A$ to evaluation claims on the constituent multilinears.
+/// We call such reductions Mlechecks.
 ///
 /// ## Mathematical Definition
-/// * $n \in N$ - number of variables in multilinear polynomials
-/// * $A, B \in F\[x\], x = \(x_1, \ldots, x_n\)$ - multilinears being multiplied
-/// * $(\widetilde{AB})\[x\] = y$ - evaluation claim on the product MLE
+/// * $n \in \mathbb{N}$ - number of variables in multilinear polynomials
+/// * $A, B \in \mathbb{F}[x]$, $x = (x_1, \ldots, x_n)$ - input multilinears
+/// * $(A^2B - A)(x) = y$ - evaluation claim on the composition MLE
 ///
-/// The claim is equivalent to $P(x) = \sum_{v \in B} \widetilde{eq}(v, x) A(v) B(v) = y$, and the
-/// reduction can be achieved by sumchecking the latter degree-3 composition. The paper [Gruen24],
+/// The claim is equivalent to $P(x) = \sum_{v \in \{0,1\}^n} \widetilde{eq}(v, x) (A(v)^2 B(v) - A(v)) = y$,
+/// and the reduction can be achieved by sumchecking this degree-4 composition. The paper [Gruen24],
 /// however, describes a way to partition the $\widetilde{eq}(v, x)$ into three parts in round $j
 /// \in 1, \ldots, n$ during specialization of variable $v_{n-j+1}$, with $j-1$ challenges
 /// $\alpha_i$ already sampled:
@@ -32,15 +32,15 @@ use crate::protocols::sumcheck::common::MleCheckProver;
 /// * (1) is a constant that can be incrementally updated in O(1) time,
 /// * (2) is a linear polynomial that is easy to compute in monomial form specialized to either
 ///   variable
-/// * (3) is a an equality indicator over the claim point suffix
+/// * (3) is an equality indicator over the claim point suffix
 ///
 /// These observations allow us to instead sumcheck:
 /// $$
-/// P'(x) = \sum_{v \in B} \widetilde{eq}(x_1, \ldots, x_{n-j}; v_1, \ldots, v_{n-j}) A(v) B(v)
+/// P'(x) = \sum_{v \in \{0,1\}^n} \widetilde{eq}(x_1, \ldots, x_{n-j}; v_1, \ldots, v_{n-j}) (A(v)^2 B(v) - A(v))
 /// $$
 ///
 /// Which is simpler because:
-/// * $P'(x)$ is degree-2 in $j$-th variable, requiring one less evaluation point
+/// * $P'(x)$ is degree-3 in $j$-th variable (since $A^2 \cdot B - A$ has degree 3), requiring one less evaluation point
 /// * Equality indicator expansion does not depend on $j$-th variable and thus doesn't need to be
 ///   interpolated
 ///
@@ -66,7 +66,7 @@ pub struct XSquaredYMinusXMlecheckProver<P: PackedField> {
 
 impl<F: Field, P: PackedField<Scalar = F>> XSquaredYMinusXMlecheckProver<P> {
 	/// Constructs a prover, given the multilinear polynomial evaluations and the evaluation
-	/// claim on the multilinear extension of their product.
+	/// claim on the multilinear extension of their composition $A^2 \cdot B - A$.
 	pub fn new(
 		multilinears: [FieldBuffer<P>; 2],
 		eval_point: &[F],
@@ -119,7 +119,7 @@ where
 		let (evals_a_0, evals_a_1) = self.multilinears[0].split_half()?;
 		let (evals_b_0, evals_b_1) = self.multilinears[1].split_half()?;
 
-		// Compute F(1) and F(∞) where F = ∑_{v ∈ B} A(v || X) B(v || X) eq(v, z)
+		// Compute R(x) by computing its monomial basis coefficients directly
 		let all_coeffs_but_lowest = (
 			eq_expansion.as_ref(),
 			evals_a_0.as_ref(),
