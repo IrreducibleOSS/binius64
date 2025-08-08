@@ -76,12 +76,10 @@ where
 
 		let subspace = verifier.fri_params().rs_code().subspace();
 		let domain_context = GenericPreExpanded::generate_from_subspace(subspace);
-		// FIXME TODO change number of shares
-		// For equally powered cores, could use the logarithm of
-		// `binius_utils::rayon::current_num_threads()`. For mobile phones, the number of shares
-		// should potentially be more than the number of threads, because the threads/cores have
-		// different performance (but each share has the same amount of work)
-		let log_num_shares = 0;
+		// FIXME TODO For mobile phones, the number of shares should potentially be more than the
+		// number of threads, because the threads/cores have different performance (but in the NTT
+		// each share has the same amount of work)
+		let log_num_shares = binius_utils::rayon::current_num_threads().ilog2() as usize;
 		let ntt = NeighborsLastMultiThread {
 			domain_context,
 			log_num_shares,
