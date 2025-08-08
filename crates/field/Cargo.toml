@@ -33,7 +33,6 @@ rand = { workspace = true, features = ["std_rng", "thread_rng"] }
 default = []
 benchmark_alternative_strategies = []
 trace_multiplications = []
-nightly_features = []
 
 [lib]
 bench = false

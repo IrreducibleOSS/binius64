@@ -8,7 +8,7 @@ mod shared;
 mod strategies;
 
 cfg_if! {
-	if #[cfg(all(feature = "nightly_features", target_arch = "x86_64"))] {
+	if #[cfg(all(target_arch = "x86_64"))] {
 		#[allow(dead_code)]
 		mod portable;
 
