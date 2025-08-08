@@ -103,10 +103,26 @@ jobs:
               echo "ALL_FEATURES_WO_BAIL_PANIC: $ALL_FEATURES_WO_BAIL_PANIC"
               cargo nextest run --workspace --release --features "$ALL_FEATURES_WO_BAIL_PANIC" --no-fail-fast
             rustflags: "-C debug-assertions -C target-cpu=native"
-          - name: "wasm-build"
+          # Build against wasm32-unknown-unknown target to that our libraries compile to wasm.
+          - name: "vanilla-wasm32"
+            command: |
+              cargo build -p binius-prover -p binius-verifier
+            rust-target: "wasm32-unknown-unknown"
+          - name: "wasm32-wasip1"
             command: |
               cargo build -p binius-math -p binius-field -p binius-prover -p binius-verifier --target wasm32-wasip1 --tests --benches
+              cargo test -p binius-math -p binius-field -p binius-prover -p binius-verifier --target wasm32-wasip1 --config "target.'cfg(all())'.runner=['wasmer']"
             rust-target: "wasm32-wasip1"
+        # Exclude wasm targets on ARM64 as the host architecture doesn't affect the results
+        exclude:
+          - machine:
+              name: "arm64"
+            test:
+              name: "vanilla-wasm32"
+          - machine:
+              name: "arm64"
+            test:
+              name: "wasm32-wasip1"
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -131,6 +147,10 @@ jobs:
         run: cargo test -p binius-utils --features platform-diagnostics test_platform_diagnostics -- --nocapture
         env:
           RUSTFLAGS: "-C target-cpu=native"
+      - name: Set up Wasmer
+        uses: wasmerio/setup-wasmer@v2
+        with:
+          version: 'v6.0.1'
       - name: Run command
         run: ${{ matrix.test.command }}
         env:
