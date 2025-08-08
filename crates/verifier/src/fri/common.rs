@@ -64,7 +64,7 @@ where
 	/// * `log_inv_rate` - the binary logarithm of the inverse Reed–Solomon code rate.
 	/// * `arity` - the folding arity.
 	pub fn choose_with_constant_fold_arity(
-		ntt: &impl AdditiveNTT<FA>,
+		ntt: &impl AdditiveNTT<Field = FA>,
 		log_msg_len: usize,
 		security_bits: usize,
 		log_inv_rate: usize,

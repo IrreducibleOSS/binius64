@@ -73,7 +73,7 @@ where
 	) -> Result<(), Error>
 	where
 		TranscriptChallenger: Challenger,
-		NTT: AdditiveNTT<F> + Sync,
+		NTT: AdditiveNTT<Field = F> + Sync,
 		MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 		VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 	{
@@ -151,7 +151,7 @@ where
 		basefold_sumcheck_claim: F,
 	) -> Result<BaseFoldProver<'a, F, P, NTT, MerkleProver, VCS>, Error>
 	where
-		NTT: AdditiveNTT<F> + Sync,
+		NTT: AdditiveNTT<Field = F> + Sync,
 		MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 		VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 	{
@@ -184,8 +184,11 @@ mod test {
 		PackedField,
 	};
 	use binius_math::{
-		FieldBuffer, ReedSolomonCode, inner_product::inner_product,
-		multilinear::eq::eq_ind_partial_eval, ntt::SingleThreadedNTT, test_utils::random_scalars,
+		BinarySubspace, FieldBuffer, ReedSolomonCode,
+		inner_product::inner_product,
+		multilinear::eq::eq_ind_partial_eval,
+		ntt::{NeighborsLastSingleThread, domain_context::GenericOnTheFly},
+		test_utils::random_scalars,
 	};
 	use binius_transcript::ProverTranscript;
 	use binius_verifier::{
@@ -251,7 +254,9 @@ mod test {
 			FRIParams::new(committed_rs_code, fri_log_batch_size, fri_arities, NUM_TEST_QUERIES)?;
 
 		// Commit packed mle codeword
-		let ntt = SingleThreadedNTT::new(fri_params.rs_code().log_len())?;
+		let subspace = BinarySubspace::with_dim(fri_params.rs_code().log_len())?;
+		let domain_context = GenericOnTheFly::generate_from_subspace(&subspace);
+		let ntt: NeighborsLastSingleThread<_> = NeighborsLastSingleThread { domain_context };
 
 		let CommitOutput {
 			commitment: codeword_commitment,
@@ -497,7 +502,9 @@ mod test {
 			FRIParams::new(committed_rs_code, fri_log_batch_size, fri_arities, NUM_TEST_QUERIES)
 				.unwrap();
 
-		let ntt = SingleThreadedNTT::new(fri_params.rs_code().log_len()).unwrap();
+		let subspace = BinarySubspace::with_dim(fri_params.rs_code().log_len()).unwrap();
+		let domain_context = GenericOnTheFly::generate_from_subspace(&subspace);
+		let ntt: NeighborsLastSingleThread<_> = NeighborsLastSingleThread { domain_context };
 
 		let commit_result =
 			fri::commit_interleaved(&fri_params, &ntt, &merkle_prover, packed_buffer.to_ref());

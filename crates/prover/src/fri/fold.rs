@@ -52,7 +52,7 @@ where
 	F: BinaryField + ExtensionField<FA>,
 	FA: BinaryField,
 	P: PackedField<Scalar = F>,
-	NTT: AdditiveNTT<FA> + Sync,
+	NTT: AdditiveNTT<Field = FA> + Sync,
 	MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 	VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 {
@@ -274,7 +274,7 @@ fn fold_interleaved_allocated<F, FS, NTT, P>(
 ) where
 	F: BinaryField + ExtensionField<FS>,
 	FS: BinaryField,
-	NTT: AdditiveNTT<FS> + Sync,
+	NTT: AdditiveNTT<Field = FS> + Sync,
 	P: PackedField<Scalar = F>,
 {
 	assert_eq!(codeword.len(), 1 << (log_len + log_batch_size).saturating_sub(P::LOG_WIDTH));
@@ -318,7 +318,7 @@ fn fold_interleaved<F, FS, NTT, P>(
 where
 	F: BinaryField + ExtensionField<FS>,
 	FS: BinaryField,
-	NTT: AdditiveNTT<FS> + Sync,
+	NTT: AdditiveNTT<Field = FS> + Sync,
 	P: PackedField<Scalar = F>,
 {
 	let mut result =
@@ -330,9 +330,9 @@ where
 #[cfg(test)]
 mod tests {
 	use binius_math::{
-		FieldBuffer,
+		BinarySubspace, FieldBuffer,
 		fold::fold_cols,
-		ntt::{NTTShape, SingleThreadedNTT},
+		ntt::{NeighborsLastSingleThread, domain_context::GenericOnTheFly},
 		test_utils::random_scalars,
 	};
 	use binius_verifier::config::B128;
@@ -349,7 +349,9 @@ mod tests {
 	}
 
 	fn test_help_fri_compatible_ntt_domains(log_dim: usize, arity: usize) {
-		let ntt = SingleThreadedNTT::<B128>::new(32).unwrap();
+		let subspace = BinarySubspace::with_dim(32).unwrap();
+		let domain_context = GenericOnTheFly::generate_from_subspace(&subspace);
+		let ntt: NeighborsLastSingleThread<_> = NeighborsLastSingleThread { domain_context };
 
 		let mut rng = StdRng::seed_from_u64(0);
 		let msg = random_scalars(&mut rng, 1 << (log_dim + arity));
@@ -364,33 +366,13 @@ mod tests {
 
 		// Encode the message over the large domain.
 		let mut codeword = msg;
-		ntt.forward_transform(
-			&mut codeword,
-			NTTShape {
-				log_y: log_dim + arity,
-				..Default::default()
-			},
-			0,
-			0,
-			0,
-		)
-		.unwrap();
+		ntt.forward_transform(&mut codeword, 0, 0);
 
 		// Fold the encoded message using FRI folding.
 		let folded_codeword = fold_interleaved(&ntt, &codeword, &challenges, log_dim + arity, 0);
 
 		// Encode the folded message.
-		ntt.forward_transform(
-			folded_msg.as_mut(),
-			NTTShape {
-				log_y: log_dim,
-				..Default::default()
-			},
-			0,
-			0,
-			0,
-		)
-		.unwrap();
+		ntt.forward_transform(folded_msg.as_mut(), 0, 0);
 
 		// Check that folding and encoding commute.
 		assert_eq!(folded_codeword, folded_msg.as_ref());

@@ -217,7 +217,7 @@ mod test {
 	};
 	use binius_math::{
 		BinarySubspace,
-		ntt::{AdditiveNTT, NTTShape, SingleThreadedNTT},
+		ntt::{AdditiveNTT, NeighborsLastReference, domain_context::GenericOnTheFly},
 	};
 	use binius_verifier::{and_reduction::utils::constants::SKIPPED_VARS, config::B1};
 	use itertools::Itertools;
@@ -295,21 +295,12 @@ mod test {
 				.collect_vec(),
 		);
 
-		let input_ntt = SingleThreadedNTT::with_subspace(&input_subspace).unwrap();
+		let input_domain_context = GenericOnTheFly::generate_from_subspace(&input_subspace);
+		let input_ntt = NeighborsLastReference {
+			domain_context: input_domain_context,
+		};
 
-		input_ntt
-			.inverse_transform(
-				&mut coeffs,
-				NTTShape {
-					log_x: 0,
-					log_y: SKIPPED_VARS,
-					log_z: 0,
-				},
-				0,
-				0,
-				0,
-			)
-			.unwrap();
+		input_ntt.inverse_transform(&mut coeffs, 0, 0);
 
 		let output_subspace = BinarySubspace::new_unchecked(
 			(0..SKIPPED_VARS + 1)
@@ -319,21 +310,12 @@ mod test {
 
 		coeffs.extend(repeat_with(|| AESTowerField8b::ZERO).take(ROWS_PER_HYPERCUBE_VERTEX));
 
-		let output_ntt = SingleThreadedNTT::with_subspace(&output_subspace).unwrap();
+		let output_domain_context = GenericOnTheFly::generate_from_subspace(&output_subspace);
+		let output_ntt = NeighborsLastReference {
+			domain_context: output_domain_context,
+		};
 
-		output_ntt
-			.forward_transform(
-				&mut coeffs,
-				NTTShape {
-					log_x: 0,
-					log_y: SKIPPED_VARS + 1,
-					log_z: 0,
-				},
-				0,
-				0,
-				0,
-			)
-			.unwrap();
+		output_ntt.forward_transform(&mut coeffs, 0, 0);
 
 		for (i, coeff) in coeffs.iter().skip(ROWS_PER_HYPERCUBE_VERTEX).enumerate() {
 			let lookup_result = get_packed_slice(&ntt_lookup_result, i);

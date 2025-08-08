@@ -8,7 +8,9 @@ use binius_field::{
 	util::inner_product_par,
 };
 use binius_math::{
-	ReedSolomonCode, multilinear::eq::eq_ind_partial_eval, ntt::SingleThreadedNTT,
+	BinarySubspace, ReedSolomonCode,
+	multilinear::eq::eq_ind_partial_eval,
+	ntt::{NeighborsLastSingleThread, domain_context::GenericOnTheFly},
 	test_utils::random_field_buffer,
 };
 use binius_transcript::{ProverTranscript, fiat_shamir::CanSample};
@@ -44,7 +46,9 @@ fn test_commit_prove_verify_success<F, FA, P>(
 		FRIParams::new(committed_rs_code, log_batch_size, arities.to_vec(), n_test_queries)
 			.unwrap();
 
-	let ntt = SingleThreadedNTT::new(params.rs_code().log_len()).unwrap();
+	let subspace = BinarySubspace::with_dim(params.rs_code().log_len()).unwrap();
+	let domain_context = GenericOnTheFly::generate_from_subspace(&subspace);
+	let ntt: NeighborsLastSingleThread<_> = NeighborsLastSingleThread { domain_context };
 
 	let n_round_commitments = arities.len();
 

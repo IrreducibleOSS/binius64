@@ -8,11 +8,7 @@ use binius_field::{BinaryField, ExtensionField, PackedExtension, PackedField};
 use binius_utils::bail;
 use getset::{CopyGetters, Getters};
 
-use super::{
-	binary_subspace::BinarySubspace,
-	error::Error as MathError,
-	ntt::{AdditiveNTT, Error as NTTError, NTTShape, SingleThreadedNTT},
-};
+use super::{binary_subspace::BinarySubspace, error::Error as MathError, ntt::AdditiveNTT};
 
 /// [Reed–Solomon] codes over binary fields.
 ///
@@ -34,12 +30,12 @@ pub struct ReedSolomonCode<F: BinaryField> {
 
 impl<F: BinaryField> ReedSolomonCode<F> {
 	pub fn new(log_dimension: usize, log_inv_rate: usize) -> Result<Self, Error> {
-		let ntt = SingleThreadedNTT::new(log_dimension + log_inv_rate)?;
-		Self::with_ntt_subspace(&ntt, log_dimension, log_inv_rate)
+		let subspace = BinarySubspace::with_dim(log_dimension + log_inv_rate)?;
+		Self::with_subspace(subspace, log_dimension, log_inv_rate)
 	}
 
 	pub fn with_ntt_subspace(
-		ntt: &impl AdditiveNTT<F>,
+		ntt: &impl AdditiveNTT<Field = F>,
 		log_dimension: usize,
 		log_inv_rate: usize,
 	) -> Result<Self, Error> {
@@ -103,7 +99,7 @@ impl<F: BinaryField> ReedSolomonCode<F> {
 	/// ## Throws
 	///
 	/// * If the `code` buffer does not have capacity for `len() << log_batch_size` field elements.
-	fn encode_batch_inplace<P: PackedField<Scalar = F>, NTT: AdditiveNTT<F> + Sync>(
+	fn encode_batch_inplace<P: PackedField<Scalar = F>, NTT: AdditiveNTT<Field = F> + Sync>(
 		&self,
 		ntt: &NTT,
 		code: &mut [P],
@@ -149,12 +145,9 @@ impl<F: BinaryField> ReedSolomonCode<F> {
 			chunk.copy_from_slice(first_chunk);
 		}
 
-		let shape = NTTShape {
-			log_x: log_batch_size,
-			log_y: self.log_len(),
-			..Default::default()
-		};
-		ntt.forward_transform(code, shape, 0, 0, self.log_inv_rate)?;
+		let skip_early = self.log_inv_rate;
+		let skip_late = log_batch_size;
+		ntt.forward_transform(code, skip_early, skip_late);
 		Ok(())
 	}
 
@@ -171,7 +164,7 @@ impl<F: BinaryField> ReedSolomonCode<F> {
 	/// ## Throws
 	///
 	/// * If the `code` buffer does not have capacity for `len() << log_batch_size` field elements.
-	pub fn encode_ext_batch_inplace<PE: PackedExtension<F>, NTT: AdditiveNTT<F> + Sync>(
+	pub fn encode_ext_batch_inplace<PE: PackedExtension<F>, NTT: AdditiveNTT<Field = F> + Sync>(
 		&self,
 		ntt: &NTT,
 		code: &mut [PE],
@@ -195,6 +188,4 @@ pub enum Error {
 	SubspaceDimensionMismatch,
 	#[error("math error: {0}")]
 	Math(#[from] MathError),
-	#[error("NTT error: {0}")]
-	NTT(#[from] NTTError),
 }

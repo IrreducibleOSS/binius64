@@ -11,7 +11,7 @@ use binius_field::{
 };
 use binius_math::{
 	BinarySubspace, FieldBuffer,
-	ntt::{MultiThreadedNTT, SingleThreadedNTT, twiddle::PrecomputedTwiddleAccess},
+	ntt::{NeighborsLastMultiThread, domain_context::GenericPreExpanded},
 };
 use binius_transcript::{
 	ProverTranscript,
@@ -54,7 +54,7 @@ use crate::{
 pub struct Prover<P, MerkleCompress, ParallelMerkleHasher: ParallelDigest> {
 	key_collection: KeyCollection,
 	verifier: Verifier<ParallelMerkleHasher::Digest, MerkleCompress>,
-	ntt: MultiThreadedNTT<B128, PrecomputedTwiddleAccess<B128>>,
+	ntt: NeighborsLastMultiThread<GenericPreExpanded<B128>>,
 	merkle_prover: BinaryMerkleTreeProver<B128, ParallelMerkleHasher, MerkleCompress>,
 	_p_marker: PhantomData<P>,
 }
@@ -73,9 +73,18 @@ where
 	/// See [`Prover`] struct documentation for details.
 	pub fn setup(verifier: Verifier<MerkleHash, MerkleCompress>) -> Result<Self, Error> {
 		let key_collection = build_key_collection(verifier.constraint_system());
-		let ntt = SingleThreadedNTT::with_subspace(verifier.fri_params().rs_code().subspace())?
-			.precompute_twiddles()
-			.multithreaded();
+
+		let subspace = verifier.fri_params().rs_code().subspace();
+		let domain_context = GenericPreExpanded::generate_from_subspace(subspace);
+		// FIXME TODO For mobile phones, the number of shares should potentially be more than the
+		// number of threads, because the threads/cores have different performance (but in the NTT
+		// each share has the same amount of work)
+		let log_num_shares = binius_utils::rayon::current_num_threads().ilog2() as usize;
+		let ntt = NeighborsLastMultiThread {
+			domain_context,
+			log_num_shares,
+		};
+
 		let merkle_prover = BinaryMerkleTreeProver::<_, ParallelMerkleHasher, _>::new(
 			verifier.merkle_scheme().compression().clone(),
 		);
