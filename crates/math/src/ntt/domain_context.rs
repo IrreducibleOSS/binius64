@@ -81,9 +81,7 @@ impl<F: BinaryField> DomainContext for GenericOnTheFly<F> {
 
 		let mut i = 1;
 		while block != 0 {
-			if (block & 1) != 0 {
-				twiddle += v[i];
-			}
+			twiddle += v[i] * binius_field::BinaryField1b::from((block & 1) == 1);
 			i += 1;
 			block >>= 1;
 		}
@@ -260,9 +258,7 @@ impl<F: BinaryField> DomainContext for GaoMateerOnTheFly<F> {
 
 		let mut i = 1;
 		while block != 0 {
-			if (block & 1) != 0 {
-				twiddle += self.basis[i];
-			}
+			twiddle += self.basis[i] * binius_field::BinaryField1b::from((block & 1) == 1);
 			i += 1;
 			block >>= 1;
 		}
