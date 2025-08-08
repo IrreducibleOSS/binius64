@@ -63,7 +63,7 @@ pub trait AdditiveNTT {
 	/// ## Preconditons
 	///
 	/// - `data.len()` is a power of 2
-	/// - `skip_early + skip_late` is at most `log2(data.len()) + P::LOG_WIDTH`
+	/// - `skip_early + skip_late <= log2(data.len()) + P::LOG_WIDTH`
 	/// - `log2(data.len()) + P::LOG_WIDTH <= self.log_domain_size() + skip_late`
 	///
 	/// [DP24]: <https://eprint.iacr.org/2024/504>
