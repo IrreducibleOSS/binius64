@@ -47,9 +47,9 @@ where
 				// Split the word into bytes and perform one lookup per byte
 				let word_bytes = word.as_u64().to_le_bytes();
 				word_bytes
-					.into_iter()
+					.iter()
 					.enumerate()
-					.map(|(i_byte, byte)| lookup_table[i_byte][byte as usize])
+					.map(|(i_byte, &byte)| lookup_table[i_byte][byte as usize])
 					.sum()
 			}))
 		})
