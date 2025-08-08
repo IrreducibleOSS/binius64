@@ -2,7 +2,7 @@ use binius_core::word::Word;
 
 use crate::{
 	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
-	util::pack_bytes_into_wires_be,
+	util::pack_bytes_into_wires_le,
 };
 
 /// Base64 encoding (URL-safe, without trailing padding characters) encoding verification.
@@ -28,8 +28,8 @@ use crate::{
 ///
 /// # Input Packing
 ///
-/// - decoded: Pack 8 bytes per 64-bit word in big-endian format
-/// - encoded: Pack 8 base64 characters per 64-bit word in big-endian format
+/// - decoded: Pack 8 bytes per 64-bit word in little-endian format
+/// - encoded: Pack 8 base64 characters per 64-bit word in little-endian format
 /// - len_decoded: Single 64-bit word containing byte count
 pub struct Base64UrlSafe {
 	/// Decoded data array (packed 8 bytes per word).
@@ -133,7 +133,7 @@ impl Base64UrlSafe {
 	///
 	/// Panics if `data.len()` exceeds the maximum size specified during construction.
 	pub fn populate_decoded(&self, w: &mut WitnessFiller, data: &[u8]) {
-		pack_bytes_into_wires_be(w, &self.decoded, data);
+		pack_bytes_into_wires_le(w, &self.decoded, data);
 	}
 
 	/// Populates the encoded base64 array from a byte slice.
@@ -147,7 +147,7 @@ impl Base64UrlSafe {
 	///
 	/// Panics if `data.len()` exceeds the maximum size specified during construction.
 	pub fn populate_encoded(&self, w: &mut WitnessFiller, data: &[u8]) {
-		pack_bytes_into_wires_be(w, &self.encoded, data);
+		pack_bytes_into_wires_le(w, &self.encoded, data);
 	}
 }
 
@@ -234,7 +234,7 @@ fn verify_base64_group(
 /// # Arguments
 ///
 /// * `builder` - Circuit builder
-/// * `words` - Array of 64-bit words, each containing 8 packed bytes in big-endian format
+/// * `words` - Array of 64-bit words, each containing 8 packed bytes in little-endian format
 /// * `byte_idx` - Global byte index to extract
 ///
 /// # Returns
@@ -250,8 +250,7 @@ fn extract_byte(builder: &CircuitBuilder, words: &[Wire], byte_idx: usize) -> Wi
 	}
 
 	let word = words[word_idx];
-	let big_endian_offset = 7 - byte_offset;
-	builder.extract_byte(word, big_endian_offset as u32)
+	builder.extract_byte(word, byte_offset as u32)
 }
 
 /// Computes the number of valid bytes in a base64 group.
