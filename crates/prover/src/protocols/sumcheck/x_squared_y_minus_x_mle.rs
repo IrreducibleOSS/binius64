@@ -277,11 +277,11 @@ mod tests {
 		// Read the multilinear evaluations from the transcript
 		let multilinear_evals: Vec<F> = verifier_transcript.message().read_vec(2).unwrap();
 
-		// Check that the product of the evaluations equals the reduced evaluation
+		// Check that the composition of the evaluations equals the reduced evaluation
 		assert_eq!(
 			multilinear_evals[0].square() * multilinear_evals[1] - multilinear_evals[0],
 			sumcheck_output.eval,
-			"Product of multilinear evaluations should equal the reduced evaluation"
+			"composition of multilinear evaluations should equal the reduced evaluation"
 		);
 
 		// Check that the original multilinears evaluate to the claimed values at the challenge
@@ -349,12 +349,12 @@ mod tests {
 		// Evaluate the equality indicator
 		let eq_ind_eval = eq_ind(eval_point, &reduced_eval_point);
 
-		// Check that the product of the evaluations equals the reduced evaluation
+		// Check that the composition of the evaluations equals the reduced evaluation
 		assert_eq!(
 			(multilinear_evals[0].square() * multilinear_evals[1] - multilinear_evals[0])
 				* eq_ind_eval,
 			sumcheck_output.eval,
-			"Product of multilinear evaluations should equal the reduced evaluation"
+			"composition of multilinear evaluations should equal the reduced evaluation"
 		);
 
 		// Check that the original multilinears evaluate to the claimed values at the challenge
@@ -390,14 +390,14 @@ mod tests {
 		let multilinear_a = random_field_buffer::<P>(&mut rng, n_vars);
 		let multilinear_b = random_field_buffer::<P>(&mut rng, n_vars);
 
-		// Compute product multilinear
+		// Compute composition multilinear
 		let composition = itertools::zip_eq(multilinear_a.as_ref(), multilinear_b.as_ref())
 			.map(|(&l, &r)| l.square() * r - l)
 			.collect_vec();
-		let product_buffer = FieldBuffer::new(n_vars, composition).unwrap();
+		let composition_buffer = FieldBuffer::new(n_vars, composition).unwrap();
 
 		let eval_point = random_scalars::<F>(&mut rng, n_vars);
-		let eval_claim = evaluate(&product_buffer, &eval_point).unwrap();
+		let eval_claim = evaluate(&composition_buffer, &eval_point).unwrap();
 
 		// Create the prover
 		let mlecheck_prover = XSquaredYMinusXMlecheckProver::new(
