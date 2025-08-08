@@ -11,7 +11,7 @@ use binius_transcript::{
 };
 use binius_utils::rayon::prelude::*;
 use binius_verifier::{
-	config::{LOG_WORD_SIZE_BITS, WORD_SIZE_BITS},
+	config::{B1, LOG_WORD_SIZE_BITS, WORD_SIZE_BITS},
 	protocols::{
 		shift::{BITAND_ARITY, INTMUL_ARITY, SHIFT_VARIANT_COUNT},
 		sumcheck::{SumcheckOutput, common::RoundCoeffs},
@@ -200,7 +200,7 @@ fn run_phase_1_sumcheck<
 /// Used in phase 1 to construct the constant size g multilinears
 /// that will participate in the phase 1 sumcheck protocol.
 #[instrument(skip_all, name = "build_g_triplet")]
-fn build_g_triplet<F: Field, P: PackedField<Scalar = F>>(
+fn build_g_triplet<F: BinaryField, P: PackedField<Scalar = F>>(
 	words: &[Word],
 	key_collection: &KeyCollection,
 	bitand_operator_data: &PreparedOperatorData<F>,
@@ -237,12 +237,8 @@ fn build_g_triplet<F: Field, P: PackedField<Scalar = F>>(
 					let start = key.id as usize * WORD_SIZE_BITS;
 					let end = start + WORD_SIZE_BITS;
 
-					let mut word = *word;
-					for val in multilinears[start..end].iter_mut() {
-						if word & Word::ONE == Word::ONE {
-							*val += acc;
-						}
-						word = word >> 1;
+					for (i, val) in multilinears[start..end].iter_mut().enumerate() {
+						*val += acc * B1::from((word.0 >> i) & 1 == 1);
 					}
 				}
 

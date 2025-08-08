@@ -104,12 +104,14 @@ where
 	F: BinaryField + From<AESTowerField8b>,
 {
 	// Sample lambdas, one for each operator.
-	let bitand_lambda: F = transcript.sample();
-	let intmul_lambda: F = transcript.sample();
+	let bitand_lambda = transcript.sample();
+	let intmul_lambda = transcript.sample();
 
 	// Create prepared operator data with sampled lambdas
+	let expand_scope = tracing::debug_span!("Expand tensor queries").entered();
 	let prepared_bitand_data = PreparedOperatorData::new(bitand_data, bitand_lambda);
 	let prepared_intmul_data = PreparedOperatorData::new(intmul_data, intmul_lambda);
+	drop(expand_scope);
 
 	// Prove the first phase, receiving a `SumcheckOutput`
 	// with challenges made of `r_j` and `r_s`,
