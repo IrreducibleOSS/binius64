@@ -24,7 +24,7 @@ use super::{
 	error::Error,
 	key_collection::{KeyCollection, Operation},
 	monster::build_h_triplet,
-	prove::OperatorData,
+	prove::PreparedOperatorData,
 };
 use crate::protocols::sumcheck::{
 	bivariate_product::BivariateProductSumcheckProver, common::SumcheckProver,
@@ -50,8 +50,8 @@ const LOG_LEN: usize = LOG_WORD_SIZE_BITS + LOG_WORD_SIZE_BITS;
 pub fn prove_phase_1<F, P: PackedField<Scalar = F>, C: Challenger>(
 	key_collection: &KeyCollection,
 	words: &[Word],
-	bitand_data: &OperatorData<F>,
-	intmul_data: &OperatorData<F>,
+	bitand_data: &PreparedOperatorData<F>,
+	intmul_data: &PreparedOperatorData<F>,
 	transcript: &mut ProverTranscript<C>,
 ) -> Result<SumcheckOutput<F>, Error>
 where
@@ -203,8 +203,8 @@ fn run_phase_1_sumcheck<
 fn build_g_triplet<F: Field, P: PackedField<Scalar = F>>(
 	words: &[Word],
 	key_collection: &KeyCollection,
-	bitand_operator_data: &OperatorData<F>,
-	intmul_operator_data: &OperatorData<F>,
+	bitand_operator_data: &PreparedOperatorData<F>,
+	intmul_operator_data: &PreparedOperatorData<F>,
 ) -> Result<[MultilinearTriplet<P>; 2], Error> {
 	const BITAND_ACC_SIZE: usize = BITAND_ARITY * SHIFT_VARIANT_COUNT * (1 << LOG_LEN);
 	const INTMUL_ACC_SIZE: usize = INTMUL_ARITY * SHIFT_VARIANT_COUNT * (1 << LOG_LEN);
@@ -289,7 +289,7 @@ fn build_g_triplet<F: Field, P: PackedField<Scalar = F>>(
 #[instrument(skip_all, name = "build_multilinear_triplet_for_operator")]
 fn build_multilinear_triplet_for_operator<F: Field, P: PackedField<Scalar = F>>(
 	multilinears: &[F],
-	operator_data: &OperatorData<F>,
+	operator_data: &PreparedOperatorData<F>,
 	arity: usize,
 ) -> Result<MultilinearTriplet<P>, Error> {
 	let lambda_packed = P::broadcast(operator_data.lambda);

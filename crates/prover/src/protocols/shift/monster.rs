@@ -18,7 +18,7 @@ use super::{
 	error::Error,
 	key_collection::{KeyCollection, Operation},
 	phase_1::MultilinearTriplet,
-	prove::OperatorData,
+	prove::PreparedOperatorData,
 };
 
 /// Constructs the three "h" multilinear polynomials for shift operations at a
@@ -105,8 +105,8 @@ where
 #[instrument(skip_all, name = "build_monster_multilinear")]
 pub fn build_monster_multilinear<F, P: PackedField<Scalar = F>>(
 	key_collection: &KeyCollection,
-	bitand_operator_data: &OperatorData<F>,
-	intmul_operator_data: &OperatorData<F>,
+	bitand_operator_data: &PreparedOperatorData<F>,
+	intmul_operator_data: &PreparedOperatorData<F>,
 	r_j: &[F],
 	r_s: &[F],
 ) -> Result<FieldBuffer<P>, Error>

@@ -11,4 +11,4 @@ mod prove;
 
 pub use error::Error;
 pub use key_collection::{KeyCollection, build_key_collection};
-pub use prove::{OperatorData, prove};
+pub use prove::{OperatorData, PreparedOperatorData, prove};

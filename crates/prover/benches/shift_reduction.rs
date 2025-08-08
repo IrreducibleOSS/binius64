@@ -98,16 +98,16 @@ fn bench_prove_and_verify(c: &mut Criterion) {
 
 		group.bench_function("prove", |b| {
 			b.iter(|| {
-				let prover_bitand_data = OperatorData::new(
-					r_zhat_prime_bitand,
-					r_x_prime_bitand.clone(),
-					bitand_evals.to_vec(),
-				);
-				let prover_intmul_data = OperatorData::new(
-					r_zhat_prime_intmul,
-					r_x_prime_intmul.clone(),
-					intmul_evals.to_vec(),
-				);
+				let prover_bitand_data = OperatorData {
+					evals: bitand_evals.to_vec(),
+					r_zhat_prime: r_zhat_prime_bitand,
+					r_x_prime: r_x_prime_bitand.clone(),
+				};
+				let prover_intmul_data = OperatorData {
+					evals: intmul_evals.to_vec(),
+					r_zhat_prime: r_zhat_prime_intmul,
+					r_x_prime: r_x_prime_intmul.clone(),
+				};
 
 				let mut prover_transcript = ProverTranscript::<StdChallenger>::default();
 
@@ -124,10 +124,16 @@ fn bench_prove_and_verify(c: &mut Criterion) {
 		});
 
 		// Pre-run the prover to get the transcript for verifier benchmarking
-		let prover_bitand_data =
-			OperatorData::new(r_zhat_prime_bitand, r_x_prime_bitand.clone(), bitand_evals.to_vec());
-		let prover_intmul_data =
-			OperatorData::new(r_zhat_prime_intmul, r_x_prime_intmul.clone(), intmul_evals.to_vec());
+		let prover_bitand_data = OperatorData {
+			evals: bitand_evals.to_vec(),
+			r_zhat_prime: r_zhat_prime_bitand,
+			r_x_prime: r_x_prime_bitand.clone(),
+		};
+		let prover_intmul_data = OperatorData {
+			evals: intmul_evals.to_vec(),
+			r_zhat_prime: r_zhat_prime_intmul,
+			r_x_prime: r_x_prime_intmul.clone(),
+		};
 
 		let mut prover_transcript = ProverTranscript::<StdChallenger>::default();
 

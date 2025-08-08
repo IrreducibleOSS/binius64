@@ -24,33 +24,37 @@ use super::{
 /// The `evals` field stores these claim evaluations. The evaluation points consist of:
 /// - `r_zhat_prime`: univariate challenge point (pre-populated)
 /// - `r_x_prime`: multilinear challenge point (pre-populated)
-///
-/// During proving, the prover samples `lambda` for operand weighting and computes the
-/// tensor expansion of `r_x_prime` for efficient proving in both phases.
 #[derive(Debug, Clone)]
 pub struct OperatorData<F: Field> {
 	pub evals: Vec<F>,
 	pub r_zhat_prime: F,
 	pub r_x_prime: Vec<F>,
-	// These fields filled at runtime
+}
+
+/// Prepared operator data for proving.
+///
+/// Contains evaluation claims, challenge points, and precomputed values needed during proving:
+/// - `evals`: evaluation claims for each operand position
+/// - `r_zhat_prime`: univariate challenge point
+/// - `r_x_prime_tensor`: tensor expansion of r_x_prime for efficient proving
+/// - `lambda`: sampled random value for operand weighting
+#[derive(Debug, Clone)]
+pub struct PreparedOperatorData<F: Field> {
+	pub evals: Vec<F>,
+	pub r_zhat_prime: F,
 	pub r_x_prime_tensor: FieldBuffer<F>,
 	pub lambda: F,
 }
 
-impl<F: Field> OperatorData<F> {
-	// Constructs a new operator data instance encoding
-	// evaluation claim with univariate challenge `r_zhat_prime`
-	// multilinear challenge `r_x_prime`, and evaluations `evals`
-	// with one eval for each operand of the operation.
-	pub fn new(r_zhat_prime: F, r_x_prime: Vec<F>, evals: Vec<F>) -> Self {
-		let r_x_prime_tensor = eq_ind_partial_eval::<F>(&r_x_prime);
-
+impl<F: Field> PreparedOperatorData<F> {
+	/// Creates a new prepared operator data from operator data and lambda.
+	pub fn new(operator_data: OperatorData<F>, lambda: F) -> Self {
+		let r_x_prime_tensor = eq_ind_partial_eval::<F>(&operator_data.r_x_prime);
 		Self {
-			evals,
-			lambda: F::ZERO,
-			r_zhat_prime,
-			r_x_prime,
+			evals: operator_data.evals,
+			r_zhat_prime: operator_data.r_zhat_prime,
 			r_x_prime_tensor,
+			lambda,
 		}
 	}
 
@@ -93,22 +97,31 @@ pub fn prove<F, P: PackedField<Scalar = F>, C: Challenger>(
 	inout_n_vars: usize,
 	key_collection: &KeyCollection,
 	words: &[Word],
-	mut bitand_data: OperatorData<F>,
-	mut intmul_data: OperatorData<F>,
+	bitand_data: OperatorData<F>,
+	intmul_data: OperatorData<F>,
 	transcript: &mut ProverTranscript<C>,
 ) -> Result<SumcheckOutput<F>, Error>
 where
 	F: BinaryField + From<AESTowerField8b>,
 {
-	// Sample and assign lambdas, one for each operator.
-	bitand_data.lambda = transcript.sample();
-	intmul_data.lambda = transcript.sample();
+	// Sample lambdas, one for each operator.
+	let bitand_lambda: F = transcript.sample();
+	let intmul_lambda: F = transcript.sample();
+
+	// Create prepared operator data with sampled lambdas
+	let prepared_bitand_data = PreparedOperatorData::new(bitand_data, bitand_lambda);
+	let prepared_intmul_data = PreparedOperatorData::new(intmul_data, intmul_lambda);
 
 	// Prove the first phase, receiving a `SumcheckOutput`
 	// with challenges made of `r_j` and `r_s`,
 	// and eval equal to `gamma` (see paper).
-	let phase_1_output =
-		prove_phase_1::<_, P, C>(key_collection, words, &bitand_data, &intmul_data, transcript)?;
+	let phase_1_output = prove_phase_1::<_, P, C>(
+		key_collection,
+		words,
+		&prepared_bitand_data,
+		&prepared_intmul_data,
+		transcript,
+	)?;
 
 	// Prove the second phase, receiving a `SumcheckOutput`
 	// with challenges `r_y` and eval the evaluation of
@@ -118,8 +131,8 @@ where
 		inout_n_vars,
 		key_collection,
 		words,
-		&bitand_data,
-		&intmul_data,
+		&prepared_bitand_data,
+		&prepared_intmul_data,
 		phase_1_output,
 		transcript,
 	)?;
