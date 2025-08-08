@@ -33,7 +33,7 @@ enum ThroughputVariant {
 ///
 /// `log_y` is computed automatically from `log_x`, `log_z`, and the size of `data`.
 #[allow(clippy::too_many_arguments)]
-fn bench_ntts<F, P>(
+fn bench_ntts<P: PackedField>(
 	group: &mut BenchmarkGroup<WallTime>,
 	throughput_var: ThroughputVariant,
 	thread_pool: &ThreadPool,
@@ -42,15 +42,14 @@ fn bench_ntts<F, P>(
 	skip_early: usize,
 	skip_late: usize,
 ) where
-	F: BinaryField,
-	P: PackedField<Scalar = F>,
+	P::Scalar: BinaryField,
 {
 	// log_d is the total number of scalars in the input
 	assert!(data.len().is_power_of_two());
 	let log_d = data.len().ilog2() as usize + P::LOG_WIDTH;
 
 	let subspace = BinarySubspace::with_dim(log_d - skip_late).unwrap();
-	let domain_context = GenericPreExpanded::generate_from_subspace(&subspace);
+	let domain_context_generic = GenericPreExpanded::generate_from_subspace(&subspace);
 
 	let parameter = format!(
 		"threads={num_threads}/log_d={log_d}/skip_early={skip_early}/skip_late={skip_late}"
@@ -64,29 +63,56 @@ fn bench_ntts<F, P>(
 	};
 	group.throughput(throughput);
 
-	let ntt: NeighborsLastSingleThread<_> = NeighborsLastSingleThread {
-		domain_context: &domain_context,
-	};
-	group.bench_function(
-		BenchmarkId::new("neighbors_last/singlethread/precompute/forward", &parameter),
-		|b| thread_pool.install(|| b.iter(|| ntt.forward_transform(data, skip_early, skip_late))),
-	);
+	macro_rules! run_bench {
+		($ntt:ident, $ntt_name:expr) => {
+			group.bench_function(BenchmarkId::new($ntt_name, &parameter), |b| {
+				thread_pool
+					.install(|| b.iter(|| $ntt.forward_transform(data, skip_early, skip_late)))
+			});
+		};
+	}
 
-	let ntt: NeighborsLastMultiThread<_> = NeighborsLastMultiThread {
-		domain_context: &domain_context,
-		log_num_shares: num_threads.ilog2() as usize,
-	};
-	group.bench_function(
-		BenchmarkId::new("neighbors_last/multithread/precompute/forward", &parameter),
-		|b| thread_pool.install(|| b.iter(|| ntt.forward_transform(data, skip_early, skip_late))),
-	);
+	macro_rules! run_bench_single_thread {
+		($($log_base_len:literal),*) => {
+			$(
+				{
+					let ntt: NeighborsLastSingleThread<_, $log_base_len> = NeighborsLastSingleThread {
+						domain_context: &domain_context_generic,
+					};
+					let ntt_name: &str = concat!("neighbors_last/singlethread/generic/log_base_len=", $log_base_len, "/precompute/forward");
+					run_bench!(ntt, ntt_name);
+				}
+			)*
+		};
+	}
+
+	run_bench_single_thread!(0, 4, 8, 16);
+
+	macro_rules! run_bench_multi_thread {
+		($($log_base_len:literal),*) => {
+			$(
+				{
+					let ntt: NeighborsLastMultiThread<_, $log_base_len> = NeighborsLastMultiThread {
+						domain_context: &domain_context_generic,
+						log_num_shares: num_threads.ilog2() as usize,
+					};
+					let ntt_name: &str = concat!("neighbors_last/multithread/generic/log_base_len=", $log_base_len, "/precompute/forward");
+					run_bench!(ntt, ntt_name);
+				}
+			)*
+		};
+	}
+
+	run_bench_multi_thread!(0, 4, 8, 16);
 }
 
 /// Calls `bench_ntts` with a fixed `PackedField` but different parameters.
-fn bench_params<F, P>(c: &mut Criterion, packed_field_name: &str, throughput_var: ThroughputVariant)
-where
-	F: BinaryField,
-	P: PackedField<Scalar = F>,
+fn bench_params<P: PackedField>(
+	c: &mut Criterion,
+	packed_field_name: &str,
+	throughput_var: ThroughputVariant,
+) where
+	P::Scalar: BinaryField,
 {
 	let mut group = c.benchmark_group(packed_field_name);
 	let mut rng = rand::rng();
@@ -128,9 +154,9 @@ where
 fn bench_fields(c: &mut Criterion) {
 	let throughput_var = determine_throughput_variant();
 
-	bench_params::<_, binius_field::PackedBinaryGhash1x128b>(c, "1xGhash", throughput_var);
-	bench_params::<_, binius_field::PackedBinaryGhash2x128b>(c, "2xGhash", throughput_var);
-	bench_params::<_, binius_field::PackedBinaryGhash4x128b>(c, "4xGhash", throughput_var);
+	bench_params::<binius_field::PackedBinaryGhash1x128b>(c, "1xGhash", throughput_var);
+	bench_params::<binius_field::PackedBinaryGhash2x128b>(c, "2xGhash", throughput_var);
+	bench_params::<binius_field::PackedBinaryGhash4x128b>(c, "4xGhash", throughput_var);
 }
 
 /// Gives the number of raw field multiplications that are done for an NTT with specific parameters.
