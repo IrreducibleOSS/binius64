@@ -41,26 +41,22 @@ fn test_equivalence<P: PackedField>(
 }
 
 fn test_equivalence_ntts<P: PackedField>(
-	domain_context: impl DomainContext<Field = P::Scalar> + Clone + Sync,
+	domain_context: &(impl DomainContext<Field = P::Scalar> + Sync),
 ) where
 	P::Scalar: BinaryField,
 {
-	let ntt_ref = NeighborsLastReference {
-		domain_context: domain_context.clone(),
-	};
-	let ntt_single: NeighborsLastSingleThread<_> = NeighborsLastSingleThread {
-		domain_context: domain_context.clone(),
-	};
+	let ntt_ref = NeighborsLastReference { domain_context };
+	let ntt_single: NeighborsLastSingleThread<_> = NeighborsLastSingleThread { domain_context };
 	let ntt_multi_0: NeighborsLastMultiThread<_> = NeighborsLastMultiThread {
-		domain_context: domain_context.clone(),
+		domain_context,
 		log_num_shares: 0,
 	};
 	let ntt_multi_1: NeighborsLastMultiThread<_> = NeighborsLastMultiThread {
-		domain_context: domain_context.clone(),
+		domain_context,
 		log_num_shares: 1,
 	};
 	let ntt_multi_3: NeighborsLastMultiThread<_> = NeighborsLastMultiThread {
-		domain_context: domain_context.clone(),
+		domain_context,
 		log_num_shares: 3,
 	};
 
@@ -75,11 +71,11 @@ where
 	P::Scalar: BinaryField + TraceOneElement,
 {
 	let dc_1 = GaoMateerPreExpanded::<P::Scalar>::generate(20);
-	test_equivalence_ntts::<P>(dc_1);
+	test_equivalence_ntts::<P>(&dc_1);
 
 	let subspace = BinarySubspace::with_dim(20).unwrap();
 	let dc_2 = GenericPreExpanded::<P::Scalar>::generate_from_subspace(&subspace);
-	test_equivalence_ntts::<P>(dc_2);
+	test_equivalence_ntts::<P>(&dc_2);
 }
 
 #[test]

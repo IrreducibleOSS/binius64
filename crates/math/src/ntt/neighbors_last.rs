@@ -110,6 +110,12 @@ impl<DC: DomainContext> AdditiveNTT for NeighborsLastReference<DC> {
 ///
 /// (Just in a different order. We listed breadth-first order, we would process them in
 /// depth-first order.)
+///
+/// ## Preconditions
+///
+/// - `2^(log_d) == data.len() * packing_width`
+/// - `data.len() >= 2`
+/// - `domain_context` holds all the twiddles up to `layer_bound` (exclusive)
 fn forward_depth_first<P: PackedField, const LOG_BASE_LEN: usize>(
 	domain_context: &impl DomainContext<Field = P::Scalar>,
 	data: &mut [P],
@@ -118,7 +124,10 @@ fn forward_depth_first<P: PackedField, const LOG_BASE_LEN: usize>(
 	block: usize,
 	layer_bound: usize,
 ) {
-	assert_eq!(data.len(), 1usize << (log_d - P::LOG_WIDTH));
+	// check preconditions
+	debug_assert_eq!(data.len() * (1 << P::LOG_WIDTH), 1 << log_d);
+	debug_assert!(data.len() >= 2);
+	debug_assert!(layer_bound <= domain_context.log_domain_size());
 
 	if layer >= layer_bound {
 		return;
@@ -127,7 +136,7 @@ fn forward_depth_first<P: PackedField, const LOG_BASE_LEN: usize>(
 	// if the problem size is small, we just do breadth_first (to get rid of the stack overhead)
 	// we also need to do that if the number of scalars is just two times our packing width, i.e. if
 	// we only have two packed elements in our data slice
-	if log_d <= LOG_BASE_LEN || log_d <= P::LOG_WIDTH + 1 {
+	if log_d <= LOG_BASE_LEN || data.len() <= 2 {
 		forward_breadth_first(domain_context, data, log_d, layer, block, layer_bound);
 		return;
 	}
@@ -167,6 +176,12 @@ fn forward_depth_first<P: PackedField, const LOG_BASE_LEN: usize>(
 }
 
 /// Same as [`forward_depth_first`], but runs in breadth-first order.
+///
+/// ## Preconditions
+///
+/// - `2^(log_d) == data.len() * packing_width`
+/// - `data.len() >= 2`
+/// - `domain_context` holds all the twiddles up to `layer_bound` (exclusive)
 fn forward_breadth_first<P: PackedField>(
 	domain_context: &impl DomainContext<Field = P::Scalar>,
 	data: &mut [P],
@@ -175,8 +190,10 @@ fn forward_breadth_first<P: PackedField>(
 	block: usize,
 	layer_bound: usize,
 ) {
-	assert_eq!(data.len(), 1 << (log_d - P::LOG_WIDTH));
-	assert!(log_d >= 1);
+	// check preconditions
+	debug_assert_eq!(data.len() * (1 << P::LOG_WIDTH), 1 << log_d);
+	debug_assert!(data.len() >= 2);
+	debug_assert!(layer_bound <= domain_context.log_domain_size());
 
 	let num_packed_layers_left = log_d - P::LOG_WIDTH;
 	let first_interleaved_layer = layer + num_packed_layers_left;
@@ -248,9 +265,14 @@ fn forward_breadth_first<P: PackedField>(
 /// Process a layer of the NTT butterfly network in parallel by splitting the work up into
 /// `2^log_num_shares` many shares. This will also split up single *blocks* into multiple shares.
 ///
-/// (The latter is the purpose of this function. If the number of shares is small enough (and the
-/// number of blocks is big enough) so that we don't need to split up blocks, we could just run
+/// (The latter is the whole purpose of this function. If the number of shares is small enough (and
+/// the number of blocks is big enough) so that we don't need to split up blocks, we could just run
 /// [`forward_depth_first`] on disjoint chunks.)
+///
+/// - `2^(log_d) == data.len() * packing_width`
+/// - **Important:** `2^log_num_shares * 2 <= data.len()` (every share is working with whole packed
+///   elements, so every share needs at least 2 packed elements)
+/// - `domain_context` holds the twiddles of `layer`
 fn forward_shared_layer<P: PackedField>(
 	domain_context: &(impl DomainContext<Field = P::Scalar> + Sync),
 	data: &mut [P],
@@ -258,8 +280,12 @@ fn forward_shared_layer<P: PackedField>(
 	layer: usize,
 	log_num_shares: usize,
 ) {
+	// check preconditions
+	debug_assert_eq!(data.len() * (1 << P::LOG_WIDTH), 1 << log_d);
+	debug_assert!(1 << (log_num_shares + 1) <= data.len());
+	debug_assert!(layer < domain_context.log_domain_size());
+
 	let log_num_chunks = log_num_shares + 1;
-	assert!(log_num_chunks <= log_d);
 	let log_d_chunk = log_d - log_num_chunks;
 	let data_ptr = data.as_mut_ptr();
 	let shift = log_num_shares - layer;
@@ -321,8 +347,14 @@ fn with_middle_bit(k: usize, shift: usize) -> (usize, usize) {
 	(k0, k1)
 }
 
-/// Returns `log_d`, the base-2 log of the total number of scalars in the input.
-fn input_check<P: PackedField>(data: &[P], skip_early: usize, skip_late: usize) -> usize {
+/// Checks for the preconditions of the `AdditiveNTT` transforms and returns `log_d`, the base-2 log
+/// of the total number of scalars in the input.
+fn input_check<P: PackedField>(
+	domain_context: &impl DomainContext<Field = P::Scalar>,
+	data: &[P],
+	skip_early: usize,
+	skip_late: usize,
+) -> usize {
 	// we only accept input of power-of-two length
 	assert!(data.len().is_power_of_two());
 	// d = number of scalars in the input
@@ -331,16 +363,16 @@ fn input_check<P: PackedField>(data: &[P], skip_early: usize, skip_late: usize) 
 	// we can't "double-skip" layers
 	assert!(skip_early + skip_late <= log_d);
 
-	// to do interleaving, we need at least 2 input elements
-	let needs_interleaving = skip_late < P::LOG_WIDTH;
-	if needs_interleaving {
-		assert!(data.len() >= 2);
-	}
+	// we need enough twiddles in `domain_context`
+	assert!(log_d <= domain_context.log_domain_size() + skip_late);
 
 	log_d
 }
 
 /// A single-threaded implementation of [`AdditiveNTT`].
+///
+/// The code only makes sure that it's fast for a _large_ data input.
+/// For small inputs, it can be comparatively slow!
 ///
 /// Note that "neighbors last" refers to the memory layout for the NTT: In the _last_ layer of this
 /// NTT algorithm, neighboring elements speak to each other. In the classic FFT that's usually the
@@ -356,13 +388,6 @@ impl<DC: DomainContext, const LOG_BASE_LEN: usize> AdditiveNTT
 {
 	type Field = DC::Field;
 
-	/// ## Preconditions
-	///
-	/// - `data` has power-of-2 length
-	/// - `skip_early + skip_late` is at most the total number of layers needed (which is
-	///   `data.len() + P::LOG_WIDTH`)
-	/// - if interleaved layers are needed (which is the case when `skip_late < P::LOG_WIDTH`) then
-	///   we need `data.len() >= 2`
 	fn forward_transform<P: PackedField<Scalar = DC::Field>>(
 		&self,
 		data: &mut [P],
@@ -370,7 +395,18 @@ impl<DC: DomainContext, const LOG_BASE_LEN: usize> AdditiveNTT
 		skip_late: usize,
 	) {
 		// total number of scalars
-		let log_d = input_check(data, skip_early, skip_late);
+		let log_d = input_check(&self.domain_context, data, skip_early, skip_late);
+
+		// if there is only a single packed element, we don't want to bother with potential
+		// interleaving issues in the future so we just call the (slow) reference NTT
+		if data.len() == 1 {
+			let reference_ntt = NeighborsLastReference {
+				domain_context: &self.domain_context,
+			};
+			reference_ntt.forward_transform(data, skip_early, skip_late);
+			return;
+		}
+
 		// number of scalars per block in layer skip_early
 		let log_d_chunk = log_d - skip_early;
 		data.chunks_mut(1 << (log_d_chunk - P::LOG_WIDTH))
@@ -403,6 +439,9 @@ impl<DC: DomainContext, const LOG_BASE_LEN: usize> AdditiveNTT
 
 /// A multi-threaded implementation of [`AdditiveNTT`].
 ///
+/// The code only makes sure that it's fast for a _large_ data input.
+/// For small inputs, it can be comparatively slow!
+///
 /// Note that "neighbors last" refers to the memory layout for the NTT: In the _last_ layer of this
 /// NTT algorithm, neighboring elements speak to each other. In the classic FFT that's usually the
 /// case for "decimation in frequency".
@@ -421,10 +460,6 @@ impl<DC: DomainContext + Sync, const LOG_BASE_LEN: usize> AdditiveNTT
 {
 	type Field = DC::Field;
 
-	/// ## Preconditions
-	///
-	/// - `data.len() <= self.log_num_shares`
-	/// - everything from [`NeighborsLastSingleThread`]
 	fn forward_transform<P: PackedField<Scalar = DC::Field>>(
 		&self,
 		data: &mut [P],
@@ -432,17 +467,31 @@ impl<DC: DomainContext + Sync, const LOG_BASE_LEN: usize> AdditiveNTT
 		skip_late: usize,
 	) {
 		// total number of scalars
-		let log_d = input_check(data, skip_early, skip_late);
+		let log_d = input_check(&self.domain_context, data, skip_early, skip_late);
 
-		let first_interleaved_layer = log_d - P::LOG_WIDTH;
-		let first_independent_layer = self.log_num_shares;
-		// multiple threads cannot work on the same packed element
-		// NOTE: We could also artificially decrease the number of shares, but then the user would
-		// experience an unexpectedly low performance without warning.
-		assert!(first_independent_layer <= first_interleaved_layer);
+		// if there is only a single packed element, we don't want to bother with potential
+		// interleaving issues in the future so we just call the (slow) reference NTT
+		if data.len() == 1 {
+			let reference_ntt = NeighborsLastReference {
+				domain_context: &self.domain_context,
+			};
+			reference_ntt.forward_transform(data, skip_early, skip_late);
+			return;
+		}
+
+		// Decide on `actual_log_num_shares`, which also determines how many shared rounds we do.
+		// By default this would just be `self.log_num_shares`, but we will potentially decrease it
+		// in order to make sure that `2^log_num_shares * 2 <= data.len()`. This serves two
+		// purposes:
+		// - when we do the shared rounds, each thread should have at 2 packed elements to work
+		//   with, see the precondition of [`forward_shared_layer`]
+		// - when we do the independent rounds, again each share should have `chunk.len() >= 2`
+		//   because this is required by [`forward_depth_first`]
+		let actual_log_num_shares = min(self.log_num_shares, log_d - P::LOG_WIDTH - 1);
+		let first_independent_layer = actual_log_num_shares;
 
 		for layer in skip_early..first_independent_layer {
-			forward_shared_layer(&self.domain_context, data, log_d, layer, self.log_num_shares);
+			forward_shared_layer(&self.domain_context, data, log_d, layer, actual_log_num_shares);
 		}
 
 		let layer = max(first_independent_layer, skip_early);

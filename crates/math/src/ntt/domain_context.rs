@@ -45,7 +45,7 @@ fn generate_evals_from_subspace<F: BinaryField>(subspace: &BinarySubspace<F>) ->
 /// folding. In both cases, all twiddles will be accessed eventually, so they might as well be
 /// precomputed. But it could possibly be used e.g. in the FRI verifier, which only accesses a few
 /// selected twiddles.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct GenericOnTheFly<F> {
 	/// The $i$'th vector stores $[hat{W}_i (\beta_i), \hat{W}_i (\beta_(i+1)), ...]$.
 	evals: Vec<Vec<F>>,
@@ -93,7 +93,7 @@ impl<F: BinaryField> DomainContext for GenericOnTheFly<F> {
 }
 
 /// Works for any $S^{(0)}$ and pre-computes twiddles.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct GenericPreExpanded<F> {
 	/// The $i$'th vector stores $[hat{W}_i (\beta_i), \hat{W}_i (\beta_(i+1)), ...]$.
 	evals: Vec<Vec<F>>,
@@ -221,7 +221,7 @@ fn gao_mateer_basis<F: BinaryField + TraceOneElement>(num_basis_elements: usize)
 /// folding. In both cases, all twiddles will be accessed eventually, so they might as well be
 /// precomputed. But it could possibly be used e.g. in the FRI verifier, which only accesses a few
 /// selected twiddles.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct GaoMateerOnTheFly<F> {
 	/// Stores $[\beta_0, \beta_1, ...]$.
 	basis: Vec<F>,
@@ -275,7 +275,7 @@ impl<F: BinaryField> DomainContext for GaoMateerOnTheFly<F> {
 /// fields whose degree over $\mathbb{F}_2$ is a power of two.
 ///
 /// For an explanation of this $S^{(0)}$, see [`GaoMateerOnTheFly`].
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct GaoMateerPreExpanded<F> {
 	/// Stores $[\beta_0, \beta_1, ...]$.
 	basis: Vec<F>,

@@ -65,7 +65,7 @@ fn bench_ntts<F, P>(
 	group.throughput(throughput);
 
 	let ntt: NeighborsLastSingleThread<_> = NeighborsLastSingleThread {
-		domain_context: domain_context.clone(),
+		domain_context: &domain_context,
 	};
 	group.bench_function(
 		BenchmarkId::new("neighbors_last/singlethread/precompute/forward", &parameter),
@@ -73,7 +73,7 @@ fn bench_ntts<F, P>(
 	);
 
 	let ntt: NeighborsLastMultiThread<_> = NeighborsLastMultiThread {
-		domain_context: domain_context.clone(),
+		domain_context: &domain_context,
 		log_num_shares: num_threads.ilog2() as usize,
 	};
 	group.bench_function(

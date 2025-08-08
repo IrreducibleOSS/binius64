@@ -62,7 +62,9 @@ pub trait AdditiveNTT {
 	///
 	/// ## Preconditons
 	///
-	/// Each [`AdditiveNTT`] object defines their own preconditions.
+	/// - `data.len()` is a power of 2
+	/// - `skip_early + skip_late` is at most `log2(data.len()) + P::LOG_WIDTH`
+	/// - `log2(data.len()) + P::LOG_WIDTH <= self.log_domain_size() + skip_late`
 	///
 	/// [DP24]: <https://eprint.iacr.org/2024/504>
 	fn forward_transform<P: PackedField<Scalar = Self::Field>>(
@@ -73,6 +75,10 @@ pub trait AdditiveNTT {
 	);
 
 	/// Inverse transformation of [`Self::forward_transform`].
+	///
+	/// ## Preconditions
+	///
+	/// - same as [`Self::forward_transform`]
 	fn inverse_transform<P: PackedField<Scalar = Self::Field>>(
 		&self,
 		data: &mut [P],
@@ -135,6 +141,27 @@ pub trait DomainContext {
 	///
 	/// ## Preconditions
 	///
-	/// - `block` must be less than `2^layer`
+	/// - `layer < self.log_domain_size()`
+	/// - `block < 2^layer`
 	fn twiddle(&self, layer: usize, block: usize) -> Self::Field;
+}
+
+/// Make it so that references to a [`DomainContext` implement [`DomainContext`] themselves.
+///
+/// This is useful, for example, if you need two objects that each want to _own_ a
+/// [`DomainContext`], but you don't want to clone the [`DomainContext`].
+impl<T: DomainContext> DomainContext for &T {
+	type Field = T::Field;
+
+	fn log_domain_size(&self) -> usize {
+		(*self).log_domain_size()
+	}
+
+	fn subspace(&self, i: usize) -> BinarySubspace<Self::Field> {
+		(*self).subspace(i)
+	}
+
+	fn twiddle(&self, layer: usize, block: usize) -> Self::Field {
+		(*self).twiddle(layer, block)
+	}
 }
