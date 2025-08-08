@@ -501,7 +501,7 @@ impl<DC: DomainContext + Sync, const LOG_BASE_LEN: usize> AdditiveNTT
 		let actual_log_num_shares = min(self.log_num_shares, log_d - P::LOG_WIDTH - 1);
 		let first_independent_layer = actual_log_num_shares;
 
-		for layer in skip_early..first_independent_layer {
+		for layer in skip_early..min(first_independent_layer, log_d - skip_late) {
 			forward_shared_layer(&self.domain_context, data, log_d, layer, actual_log_num_shares);
 		}
 
