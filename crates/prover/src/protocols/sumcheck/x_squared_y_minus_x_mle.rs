@@ -16,7 +16,7 @@ use crate::protocols::sumcheck::common::MleCheckProver;
 ///
 /// ## Mathematical Definition
 /// * $n \in \mathbb{N}$ - number of variables in multilinear polynomials
-/// * $A, B \in \mathbb{F}[x]$, $x = (x_1, \ldots, x_n)$ - input multilinears
+/// * $A, B \in \mathbb{F}\[x\]$, $x = (x_1, \ldots, x_n)$ - input multilinears
 /// * $(A^2B - A)(x) = y$ - evaluation claim on the composition MLE
 ///
 /// The claim is equivalent to $P(x) = \sum_{v \in \{0,1\}^n} \widetilde{eq}(v, x) (A(v)^2 B(v) -
@@ -144,10 +144,12 @@ where
 				let a_deg0_sq = a_deg0.square();
 				let a_deg1_sq = a_deg1.square();
 
+				let eq_times_a_deg1_sq = eq_i * a_deg1_sq;
+
 				[
 					eq_i * (a_deg0_sq * b_deg1 + a_deg1),
-					eq_i * (a_deg1_sq * b_deg0),
-					eq_i * (a_deg1_sq * b_deg1),
+					eq_times_a_deg1_sq * b_deg0,
+					eq_times_a_deg1_sq * b_deg1,
 				]
 			})
 			.reduce(|| [P::zero(); 3], |lhs, rhs| array::from_fn(|i| lhs[i] + rhs[i]));
