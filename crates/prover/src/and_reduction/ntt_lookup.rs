@@ -216,7 +216,7 @@ mod test {
 		packed::{get_packed_slice, set_packed_slice},
 	};
 	use binius_math::{
-		BinarySubspace,
+		BinarySubspace, FieldBuffer,
 		ntt::{AdditiveNTT, NeighborsLastReference, domain_context::GenericOnTheFly},
 	};
 	use binius_verifier::{and_reduction::utils::constants::SKIPPED_VARS, config::B1};
@@ -283,9 +283,7 @@ mod test {
 		let output_domain: Vec<_> = (ROWS_PER_HYPERCUBE_VERTEX..2 * ROWS_PER_HYPERCUBE_VERTEX)
 			.map(|x| AESTowerField8b::new(x as u8))
 			.collect();
-		println!("start precompute");
 		let ntt_lookup = NTTLookup::<PackedAESBinaryField16x8b>::new(&input_domain, &output_domain);
-		println!("done precompute");
 
 		let ntt_lookup_result = ntt_lookup.ntt(coeffs_packed_iter_u8);
 
@@ -300,7 +298,11 @@ mod test {
 			domain_context: input_domain_context,
 		};
 
-		input_ntt.inverse_transform(&mut coeffs, 0, 0);
+		input_ntt.inverse_transform(
+			FieldBuffer::new(coeffs.len().ilog2() as usize, coeffs.as_mut()).unwrap(),
+			0,
+			0,
+		);
 
 		let output_subspace = BinarySubspace::new_unchecked(
 			(0..SKIPPED_VARS + 1)
@@ -315,7 +317,11 @@ mod test {
 			domain_context: output_domain_context,
 		};
 
-		output_ntt.forward_transform(&mut coeffs, 0, 0);
+		output_ntt.forward_transform(
+			FieldBuffer::new(coeffs.len().ilog2() as usize, coeffs.as_mut()).unwrap(),
+			0,
+			0,
+		);
 
 		for (i, coeff) in coeffs.iter().skip(ROWS_PER_HYPERCUBE_VERTEX).enumerate() {
 			let lookup_result = get_packed_slice(&ntt_lookup_result, i);

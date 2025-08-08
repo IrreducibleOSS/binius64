@@ -8,6 +8,8 @@ use binius_field::{BinaryField, ExtensionField, PackedExtension, PackedField};
 use binius_utils::bail;
 use getset::{CopyGetters, Getters};
 
+use crate::FieldBuffer;
+
 use super::{binary_subspace::BinarySubspace, error::Error as MathError, ntt::AdditiveNTT};
 
 /// [Reed–Solomon] codes over binary fields.
@@ -147,7 +149,11 @@ impl<F: BinaryField> ReedSolomonCode<F> {
 
 		let skip_early = self.log_inv_rate;
 		let skip_late = log_batch_size;
-		ntt.forward_transform(code, skip_early, skip_late);
+		ntt.forward_transform(
+			FieldBuffer::new(self.log_len() + log_batch_size, code).unwrap(),
+			skip_early,
+			skip_late,
+		);
 		Ok(())
 	}
 

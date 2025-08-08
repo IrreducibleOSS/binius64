@@ -2,17 +2,17 @@
 
 use std::{
 	cmp::{max, min},
+	ops::DerefMut,
 	slice::from_raw_parts_mut,
 };
 
-use binius_field::{
-	PackedField,
-	packed::{get_packed_slice, set_packed_slice},
-};
+use binius_field::PackedField;
 use binius_utils::rayon::{
 	iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator},
 	slice::ParallelSliceMut,
 };
+
+use crate::FieldBuffer;
 
 use super::{AdditiveNTT, DomainContext};
 
@@ -28,13 +28,13 @@ pub struct NeighborsLastReference<DC> {
 impl<DC: DomainContext> AdditiveNTT for NeighborsLastReference<DC> {
 	type Field = DC::Field;
 
-	fn forward_transform<P: PackedField<Scalar = DC::Field>>(
+	fn forward_transform<P: PackedField<Scalar = Self::Field>, Data: DerefMut<Target = [P]>>(
 		&self,
-		data: &mut [P],
+		mut data: FieldBuffer<P, Data>,
 		skip_early: usize,
 		skip_late: usize,
 	) {
-		let log_d = data.len().ilog2() as usize + P::LOG_WIDTH;
+		let log_d = data.log_len();
 
 		for layer in skip_early..(log_d - skip_late) {
 			let num_blocks = 1 << layer;
@@ -45,24 +45,24 @@ impl<DC: DomainContext> AdditiveNTT for NeighborsLastReference<DC> {
 				for idx0 in block_start..(block_start + block_size_half) {
 					let idx1 = block_size_half | idx0;
 					// perform butterfly
-					let mut u = get_packed_slice(data, idx0);
-					let mut v = get_packed_slice(data, idx1);
+					let mut u = data.get(idx0).unwrap();
+					let mut v = data.get(idx1).unwrap();
 					u += v * twiddle;
 					v += u;
-					set_packed_slice(data, idx0, u);
-					set_packed_slice(data, idx1, v);
+					data.set(idx0, u).unwrap();
+					data.set(idx1, v).unwrap();
 				}
 			}
 		}
 	}
 
-	fn inverse_transform<P: PackedField<Scalar = DC::Field>>(
+	fn inverse_transform<P: PackedField<Scalar = Self::Field>, Data: DerefMut<Target = [P]>>(
 		&self,
-		data: &mut [P],
+		mut data: FieldBuffer<P, Data>,
 		skip_early: usize,
 		skip_late: usize,
 	) {
-		let log_d = data.len().ilog2() as usize + P::LOG_WIDTH;
+		let log_d = data.log_len();
 
 		for layer in (skip_early..(log_d - skip_late)).rev() {
 			let num_blocks = 1 << layer;
@@ -73,12 +73,12 @@ impl<DC: DomainContext> AdditiveNTT for NeighborsLastReference<DC> {
 				for idx0 in block_start..(block_start + block_size_half) {
 					let idx1 = block_size_half | idx0;
 					// perform butterfly
-					let mut u = get_packed_slice(data, idx0);
-					let mut v = get_packed_slice(data, idx1);
+					let mut u = data.get(idx0).unwrap();
+					let mut v = data.get(idx1).unwrap();
 					v += u;
 					u += v * twiddle;
-					set_packed_slice(data, idx0, u);
-					set_packed_slice(data, idx1, v);
+					data.set(idx0, u).unwrap();
+					data.set(idx1, v).unwrap();
 				}
 			}
 		}
@@ -395,12 +395,14 @@ impl<DC: DomainContext, const LOG_BASE_LEN: usize> AdditiveNTT
 {
 	type Field = DC::Field;
 
-	fn forward_transform<P: PackedField<Scalar = DC::Field>>(
+	fn forward_transform<P: PackedField<Scalar = Self::Field>, Data: DerefMut<Target = [P]>>(
 		&self,
-		data: &mut [P],
+		mut data_orig: FieldBuffer<P, Data>,
 		skip_early: usize,
 		skip_late: usize,
 	) {
+		let data = data_orig.as_mut();
+
 		// total number of scalars
 		let log_d = input_check(&self.domain_context, data, skip_early, skip_late);
 
@@ -410,7 +412,7 @@ impl<DC: DomainContext, const LOG_BASE_LEN: usize> AdditiveNTT
 			let reference_ntt = NeighborsLastReference {
 				domain_context: &self.domain_context,
 			};
-			reference_ntt.forward_transform(data, skip_early, skip_late);
+			reference_ntt.forward_transform(data_orig, skip_early, skip_late);
 			return;
 		}
 
@@ -430,9 +432,9 @@ impl<DC: DomainContext, const LOG_BASE_LEN: usize> AdditiveNTT
 			});
 	}
 
-	fn inverse_transform<P: PackedField<Scalar = DC::Field>>(
+	fn inverse_transform<P: PackedField<Scalar = Self::Field>, Data: DerefMut<Target = [P]>>(
 		&self,
-		_data: &mut [P],
+		mut _data_orig: FieldBuffer<P, Data>,
 		_skip_early: usize,
 		_skip_late: usize,
 	) {
@@ -471,12 +473,14 @@ impl<DC: DomainContext + Sync, const LOG_BASE_LEN: usize> AdditiveNTT
 {
 	type Field = DC::Field;
 
-	fn forward_transform<P: PackedField<Scalar = DC::Field>>(
+	fn forward_transform<P: PackedField<Scalar = Self::Field>, Data: DerefMut<Target = [P]>>(
 		&self,
-		data: &mut [P],
+		mut data_orig: FieldBuffer<P, Data>,
 		skip_early: usize,
 		skip_late: usize,
 	) {
+		let data = data_orig.as_mut();
+
 		// total number of scalars
 		let log_d = input_check(&self.domain_context, data, skip_early, skip_late);
 
@@ -486,7 +490,7 @@ impl<DC: DomainContext + Sync, const LOG_BASE_LEN: usize> AdditiveNTT
 			let reference_ntt = NeighborsLastReference {
 				domain_context: &self.domain_context,
 			};
-			reference_ntt.forward_transform(data, skip_early, skip_late);
+			reference_ntt.forward_transform(data_orig, skip_early, skip_late);
 			return;
 		}
 
@@ -521,9 +525,9 @@ impl<DC: DomainContext + Sync, const LOG_BASE_LEN: usize> AdditiveNTT
 			});
 	}
 
-	fn inverse_transform<P: PackedField<Scalar = DC::Field>>(
+	fn inverse_transform<P: PackedField<Scalar = Self::Field>, Data: DerefMut<Target = [P]>>(
 		&self,
-		_data: &mut [P],
+		mut _data_orig: FieldBuffer<P, Data>,
 		_skip_early: usize,
 		_skip_late: usize,
 	) {

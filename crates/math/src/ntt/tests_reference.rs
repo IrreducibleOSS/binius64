@@ -10,7 +10,7 @@ use binius_field::{
 
 use super::{AdditiveNTT, DomainContext};
 use crate::{
-	BinarySubspace,
+	BinarySubspace, FieldBuffer,
 	ntt::{
 		NeighborsLastMultiThread, NeighborsLastReference, NeighborsLastSingleThread,
 		domain_context::{GaoMateerPreExpanded, GenericPreExpanded, TraceOneElement},
@@ -33,8 +33,16 @@ fn test_equivalence<P: PackedField>(
 
 	for skip_early in [0, 3, 7] {
 		for skip_late in [0, 3, 7] {
-			ntt_a.forward_transform(&mut data_a, skip_early, skip_late);
-			ntt_b.forward_transform(&mut data_b, skip_early, skip_late);
+			ntt_a.forward_transform(
+				FieldBuffer::new(log_d, data_a.as_mut()).unwrap(),
+				skip_early,
+				skip_late,
+			);
+			ntt_b.forward_transform(
+				FieldBuffer::new(log_d, data_b.as_mut()).unwrap(),
+				skip_early,
+				skip_late,
+			);
 			assert_eq!(data_a, data_b)
 		}
 	}
@@ -106,8 +114,16 @@ where
 	let ntt = NeighborsLastReference { domain_context };
 	for skip_early in [0, 1, 2] {
 		for skip_late in [0, 1, 2] {
-			ntt.forward_transform(&mut data, skip_early, skip_late);
-			ntt.inverse_transform(&mut data, skip_early, skip_late);
+			ntt.forward_transform(
+				FieldBuffer::new(log_d, data.as_mut()).unwrap(),
+				skip_early,
+				skip_late,
+			);
+			ntt.inverse_transform(
+				FieldBuffer::new(log_d, data.as_mut()).unwrap(),
+				skip_early,
+				skip_late,
+			);
 			assert_eq!(data, data_orig);
 		}
 	}

@@ -14,10 +14,14 @@ mod tests_evaluation;
 #[cfg(test)]
 pub mod tests_reference;
 
+use std::ops::DerefMut;
+
 use binius_field::{BinaryField, PackedField};
 pub use neighbors_last::{
 	NeighborsLastMultiThread, NeighborsLastReference, NeighborsLastSingleThread,
 };
+
+use crate::FieldBuffer;
 
 use super::BinarySubspace;
 
@@ -67,21 +71,23 @@ pub trait AdditiveNTT {
 	/// - `log2(data.len()) + P::LOG_WIDTH <= self.log_domain_size() + skip_late`
 	///
 	/// [DP24]: <https://eprint.iacr.org/2024/504>
-	fn forward_transform<P: PackedField<Scalar = Self::Field>>(
+	fn forward_transform<P: PackedField<Scalar = Self::Field>, Data: DerefMut<Target = [P]>>(
 		&self,
-		data: &mut [P],
+		data: FieldBuffer<P, Data>,
 		skip_early: usize,
 		skip_late: usize,
 	);
 
 	/// Inverse transformation of [`Self::forward_transform`].
 	///
+	/// Note that "early" layers here refer to "early" time in the forward transform, i.e. layers with low index in the forward transform.
+	///
 	/// ## Preconditions
 	///
 	/// - same as [`Self::forward_transform`]
-	fn inverse_transform<P: PackedField<Scalar = Self::Field>>(
+	fn inverse_transform<P: PackedField<Scalar = Self::Field>, Data: DerefMut<Target = [P]>>(
 		&self,
-		data: &mut [P],
+		data: FieldBuffer<P, Data>,
 		skip_early: usize,
 		skip_late: usize,
 	);
