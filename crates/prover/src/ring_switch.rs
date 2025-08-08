@@ -3,8 +3,10 @@
 use std::{iter, ops::Deref};
 
 use binius_field::{
-	BinaryField, ExtensionField, PackedField, UnderlierWithBitOps, WithUnderlier,
-	byte_iteration::{ByteIteratorCallback, can_iterate_bytes, iterate_bytes},
+	BinaryField, ExtensionField, Field, PackedField, UnderlierWithBitOps, WithUnderlier,
+	byte_iteration::{
+		ByteIteratorCallback, can_iterate_bytes, create_partial_sums_lookup_tables, iterate_bytes,
+	},
 };
 use binius_math::{
 	FieldBuffer, inner_product::inner_product_subfield, multilinear::eq::eq_ind_partial_eval,
@@ -51,11 +53,46 @@ where
 {
 	assert_eq!(vec.log_len(), F::LOG_DEGREE); // precondition
 
-	// TODO: Try optimizing this using the Method of Four Russians. The trait interfaces for
-	// byte-decomposing the packed elements `P` are missing.
+	let lookup_table = if can_iterate_bytes::<F>() {
+		create_partial_sums_lookup_tables::<F>(vec.as_ref())
+	} else {
+		Vec::new()
+	};
+
 	elems.as_mut().par_iter_mut().for_each(|packed_elem| {
 		*packed_elem = P::from_scalars(packed_elem.into_iter().map(|scalar| {
-			inner_product_subfield(scalar.into_iter_bases(), vec.as_ref().iter().copied())
+			// The first branch is an optimized version of the second one for the case
+			// when `F` can be byte-iterated.
+			if can_iterate_bytes::<F>() {
+				struct Callback<'a, F: Field> {
+					accumulator: F,
+					lookup_table: &'a [F],
+				}
+
+				impl<'a, F: Field> ByteIteratorCallback for Callback<'a, F> {
+					fn call(&mut self, bytes: impl Iterator<Item = u8>) {
+						assert_eq!(self.lookup_table.len(), 256 * std::mem::size_of::<F>());
+
+						for (i, byte) in bytes.enumerate() {
+							self.accumulator +=
+								// Safety: the size of the table is checked by the assert above
+								unsafe {
+								*self.lookup_table.get_unchecked(i * 256 + (byte as usize))
+							};
+						}
+					}
+				}
+
+				let mut callback = Callback {
+					accumulator: F::ZERO,
+					lookup_table: &lookup_table,
+				};
+				iterate_bytes(&[scalar], &mut callback);
+				callback.accumulator
+			} else {
+				// Fallback to the inner product with the basis elements.
+				inner_product_subfield(scalar.into_iter_bases(), vec.as_ref().iter().copied())
+			}
 		}));
 	});
 
@@ -112,7 +149,7 @@ where
 
 								for (byte_index, byte) in bytes.enumerate() {
 									let offset = byte_index * 8;
-									let masks = mask_map[byte as usize];
+									let masks = &mask_map[byte as usize];
 
 									for (bit_index, &mask) in masks.iter().enumerate() {
 										unsafe {
