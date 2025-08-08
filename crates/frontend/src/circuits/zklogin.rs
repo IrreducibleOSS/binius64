@@ -302,7 +302,7 @@ impl ZkLogin {
 			.map(|_| b.add_witness())
 			.collect();
 
-		let jwt_signing_payload = FixedByteVec::from_wires(
+		let jwt_signing_payload = FixedByteVec::new(
 			jwt_signing_payload_sha256_message.clone(),
 			jwt_signing_payload_sha256_len,
 		);
