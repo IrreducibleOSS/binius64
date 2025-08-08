@@ -93,13 +93,15 @@ impl CircuitBuilder {
 		// So we create a mapping between a `Wire` to the final `ValueIndex`.
 		let mut wire_mapping = SecondaryMap::new();
 		let total_wires = graph.wires.len();
-		let mut w_const: Vec<Wire> = Vec::with_capacity(total_wires);
+		let mut w_const: Vec<(Wire, Word)> = Vec::with_capacity(total_wires);
 		let mut w_inout: Vec<Wire> = Vec::with_capacity(total_wires);
 		let mut w_witness: Vec<Wire> = Vec::with_capacity(total_wires);
 		let mut w_internal: Vec<Wire> = Vec::with_capacity(total_wires);
 		for (wire, wire_data) in graph.wires.iter() {
 			match wire_data.kind {
-				WireKind::Constant(_) => w_const.push(wire),
+				WireKind::Constant(ref value) => {
+					w_const.push((wire, *value));
+				}
 				WireKind::Inout => w_inout.push(wire),
 				WireKind::Witness => w_witness.push(wire),
 				WireKind::Internal => w_internal.push(wire),
@@ -111,6 +113,10 @@ impl CircuitBuilder {
 		let n_witness = w_witness.len();
 		let n_internal = w_internal.len();
 
+		// Sort the wires pointing to the constant section of the input value vector ascending
+		// to their values.
+		w_const.sort_by_key(|&(_, value)| value);
+
 		// First, allocate the indices for the public section of the value vec. The public section
 		// consists of constant wires followed by inout wires.
 		//
@@ -118,8 +124,10 @@ impl CircuitBuilder {
 		//
 		// Finally, allocate wires for witness values and internal wires.
 		let mut cur_index: u32 = 0;
-		for wire in w_const {
+		let mut constants = Vec::with_capacity(n_const);
+		for (wire, value) in w_const {
 			wire_mapping[wire] = ValueIndex(cur_index);
+			constants.push(value);
 			cur_index += 1;
 		}
 		let offset_inout = cur_index as usize;
@@ -151,12 +159,8 @@ impl CircuitBuilder {
 			gate::constrain(gate_id, &graph, &mut builder);
 		}
 		let (and_constraints, mul_constraints) = builder.build(&wire_mapping);
-		let cs = ConstraintSystem::new(
-			graph.const_pool.pool.keys().cloned().collect::<Vec<_>>(),
-			value_vec_layout,
-			and_constraints,
-			mul_constraints,
-		);
+		let cs =
+			ConstraintSystem::new(constants, value_vec_layout, and_constraints, mul_constraints);
 
 		Circuit::new(graph, cs, wire_mapping)
 	}

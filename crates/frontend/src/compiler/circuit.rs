@@ -8,7 +8,7 @@ use cranelift_entity::SecondaryMap;
 
 use super::gate;
 use crate::compiler::{
-	gate_graph::{GateGraph, Wire, WireKind},
+	gate_graph::{GateGraph, Wire},
 	pathspec::PathSpec,
 };
 
@@ -138,11 +138,9 @@ impl Circuit {
 	/// In case the circuit is not satisfiable (any assertion fails), this function will return
 	/// an error with a list of assertion failure messages.
 	pub fn populate_wire_witness(&self, w: &mut WitnessFiller) -> Result<(), PopulateError> {
-		// Fill constants
-		for (wire, wire_data) in self.gate_graph.wires.iter() {
-			if let WireKind::Constant(value) = wire_data.kind {
-				w[wire] = value;
-			}
+		// Fill the constant part from the witness.
+		for (index, constant) in self.constraint_system.constants.iter().enumerate() {
+			w.value_vec.set(index, *constant);
 		}
 
 		// Evaluate all gates
