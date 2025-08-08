@@ -3,7 +3,7 @@ use std::{
 	ops::{BitAnd, BitOr, BitXor, Not, Shl, Shr},
 };
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Word(pub u64);
 
 impl Word {
