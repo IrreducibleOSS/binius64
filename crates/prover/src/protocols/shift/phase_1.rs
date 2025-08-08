@@ -3,7 +3,9 @@
 use std::{array, ops::Range};
 
 use binius_core::word::Word;
-use binius_field::{AESTowerField8b, BinaryField, Field, PackedField};
+use binius_field::{
+	AESTowerField8b, BinaryField, Field, PackedField, UnderlierWithBitOps, WithUnderlier,
+};
 use binius_math::{FieldBuffer, inner_product::inner_product_buffers};
 use binius_transcript::{
 	ProverTranscript,
@@ -11,7 +13,7 @@ use binius_transcript::{
 };
 use binius_utils::rayon::prelude::*;
 use binius_verifier::{
-	config::{B1, LOG_WORD_SIZE_BITS, WORD_SIZE_BITS},
+	config::{LOG_WORD_SIZE_BITS, WORD_SIZE_BITS, WORD_SIZE_BYTES},
 	protocols::{
 		shift::{BITAND_ARITY, INTMUL_ARITY, SHIFT_VARIANT_COUNT},
 		sumcheck::{SumcheckOutput, common::RoundCoeffs},
@@ -55,7 +57,7 @@ pub fn prove_phase_1<F, P: PackedField<Scalar = F>, C: Challenger>(
 	transcript: &mut ProverTranscript<C>,
 ) -> Result<SumcheckOutput<F>, Error>
 where
-	F: BinaryField + From<AESTowerField8b>,
+	F: BinaryField + From<AESTowerField8b> + WithUnderlier<Underlier: UnderlierWithBitOps>,
 {
 	let [g_triplet_bitand, g_triplet_intmul]: [MultilinearTriplet<P>; 2] =
 		build_g_triplet(words, key_collection, bitand_data, intmul_data)?;
@@ -200,7 +202,10 @@ fn run_phase_1_sumcheck<
 /// Used in phase 1 to construct the constant size g multilinears
 /// that will participate in the phase 1 sumcheck protocol.
 #[instrument(skip_all, name = "build_g_triplet")]
-fn build_g_triplet<F: BinaryField, P: PackedField<Scalar = F>>(
+fn build_g_triplet<
+	F: BinaryField + WithUnderlier<Underlier: UnderlierWithBitOps>,
+	P: PackedField<Scalar = F>,
+>(
 	words: &[Word],
 	key_collection: &KeyCollection,
 	bitand_operator_data: &PreparedOperatorData<F>,
@@ -208,6 +213,17 @@ fn build_g_triplet<F: BinaryField, P: PackedField<Scalar = F>>(
 ) -> Result<[MultilinearTriplet<P>; 2], Error> {
 	const BITAND_ACC_SIZE: usize = BITAND_ARITY * SHIFT_VARIANT_COUNT * (1 << LOG_LEN);
 	const INTMUL_ACC_SIZE: usize = INTMUL_ARITY * SHIFT_VARIANT_COUNT * (1 << LOG_LEN);
+
+	// A map from a byte to 8 values, where `i`-th value is filled with a `i`-th bit from the byte.
+	let masks_map: [[F::Underlier; 8]; 256] = std::array::from_fn(|byte| {
+		std::array::from_fn(|bit| {
+			if byte & (1 << bit) != 0 {
+				F::Underlier::ONES
+			} else {
+				F::Underlier::ZERO
+			}
+		})
+	});
 
 	let (bitand_multilinears, intmul_multilinears) = words
 		.par_iter()
@@ -232,13 +248,32 @@ fn build_g_triplet<F: BinaryField, P: PackedField<Scalar = F>>(
 						}
 					};
 
-					let acc = key.accumulate(&key_collection.constraint_indices, tensor.as_ref());
+					let acc = key
+						.accumulate(&key_collection.constraint_indices, tensor.as_ref())
+						.to_underlier();
 
+					// The following loop is an optimized version of the following
+					// for i in 0..WORD_SIZE_BITS {
+					//     if get_bit(word, i) {
+					//         values[start + i] += acc;
+					//     }
+					// }
 					let start = key.id as usize * WORD_SIZE_BITS;
-					let end = start + WORD_SIZE_BITS;
-
-					for (i, val) in multilinears[start..end].iter_mut().enumerate() {
-						*val += acc * B1::from((word.0 >> i) & 1 == 1);
+					let word_bytes = word.0.to_le_bytes();
+					for (&byte, values) in word_bytes.iter().zip(
+						multilinears[start..start + WORD_SIZE_BITS]
+							.chunks_exact_mut(WORD_SIZE_BYTES),
+					) {
+						let masks = masks_map[byte as usize];
+						for bit_index in 0..8 {
+							// Safety:
+							// - `values` is guaranteed to be 8 elements long due to the chunking
+							// - `bit_index` is always in bounds because we iterate over 0..8
+							unsafe {
+								*values.get_unchecked_mut(bit_index).to_underlier_ref_mut() ^=
+									*masks.get_unchecked(bit_index) & acc;
+							}
+						}
 					}
 				}
 

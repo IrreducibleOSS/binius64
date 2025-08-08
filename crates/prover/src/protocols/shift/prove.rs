@@ -1,7 +1,9 @@
 // Copyright 2025 Irreducible Inc.
 
 use binius_core::word::Word;
-use binius_field::{AESTowerField8b, BinaryField, Field, PackedField};
+use binius_field::{
+	AESTowerField8b, BinaryField, Field, PackedField, UnderlierWithBitOps, WithUnderlier,
+};
 use binius_math::{
 	FieldBuffer, multilinear::eq::eq_ind_partial_eval, univariate::evaluate_univariate,
 };
@@ -101,7 +103,7 @@ pub fn prove<F, P: PackedField<Scalar = F>, C: Challenger>(
 	transcript: &mut ProverTranscript<C>,
 ) -> Result<SumcheckOutput<F>, Error>
 where
-	F: BinaryField + From<AESTowerField8b>,
+	F: BinaryField + From<AESTowerField8b> + WithUnderlier<Underlier: UnderlierWithBitOps>,
 {
 	// Sample lambdas, one for each operator.
 	let bitand_lambda = transcript.sample();

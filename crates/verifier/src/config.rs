@@ -2,7 +2,7 @@
 
 use binius_field::{AESTowerField8b, BinaryField, BinaryField1b, BinaryField128bGhash};
 use binius_transcript::fiat_shamir::HasherChallenger;
-use binius_utils::checked_arithmetics::checked_log_2;
+use binius_utils::checked_arithmetics::{checked_int_div, checked_log_2};
 
 use super::hash::StdDigest;
 
@@ -15,6 +15,7 @@ pub type StdChallenger = HasherChallenger<StdDigest>;
 
 /// The protocol proves constraint systems over 64-bit words.
 pub const WORD_SIZE_BITS: usize = 64;
+pub const WORD_SIZE_BYTES: usize = checked_int_div(WORD_SIZE_BITS, 8);
 
 /// log2 of [`WORD_SIZE_BITS`].
 pub const LOG_WORD_SIZE_BITS: usize = checked_log_2(WORD_SIZE_BITS);
