@@ -158,7 +158,11 @@ where
 				z_challenge,
 				eval_point,
 			} = bitand_output;
-			OperatorData::new(z_challenge, eval_point, vec![a_eval, b_eval, c_eval])
+			OperatorData {
+				evals: vec![a_eval, b_eval, c_eval],
+				r_zhat_prime: z_challenge,
+				r_x_prime: eval_point,
+			}
 		};
 		let intmul_claim = {
 			let IntMulOutput {
@@ -169,7 +173,11 @@ where
 				z_challenge,
 				eval_point,
 			} = intmul_output;
-			OperatorData::new(z_challenge, eval_point, vec![a_eval, b_eval, c_lo_eval, c_hi_eval])
+			OperatorData {
+				evals: vec![a_eval, b_eval, c_lo_eval, c_hi_eval],
+				r_zhat_prime: z_challenge,
+				r_x_prime: eval_point,
+			}
 		};
 
 		// Shift reduction

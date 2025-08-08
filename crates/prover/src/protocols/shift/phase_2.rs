@@ -13,7 +13,7 @@ use tracing::instrument;
 
 use super::{
 	error::Error, key_collection::KeyCollection, monster::build_monster_multilinear,
-	prove::OperatorData,
+	prove::PreparedOperatorData,
 };
 use crate::{
 	fold_word::fold_words,
@@ -57,8 +57,8 @@ pub fn prove_phase_2<F, P: PackedField<Scalar = F>, C: Challenger>(
 	inout_n_vars: usize,
 	key_collection: &KeyCollection,
 	words: &[Word],
-	bitand_data: &OperatorData<F>,
-	intmul_data: &OperatorData<F>,
+	bitand_data: &PreparedOperatorData<F>,
+	intmul_data: &PreparedOperatorData<F>,
 	phase_1_output: SumcheckOutput<F>,
 	transcript: &mut ProverTranscript<C>,
 ) -> Result<SumcheckOutput<F>, Error>

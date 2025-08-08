@@ -298,10 +298,16 @@ fn test_shift_prove_and_verify() {
 		// Create prover transcript and call the prover
 		let mut prover_transcript = ProverTranscript::<StdChallenger>::default();
 
-		let prover_bitand_data =
-			OperatorData::new(r_zhat_prime_bitand, r_x_prime_bitand.clone(), bitand_evals.to_vec());
-		let prover_intmul_data =
-			OperatorData::new(r_zhat_prime_intmul, r_x_prime_intmul.clone(), intmul_evals.to_vec());
+		let prover_bitand_data = OperatorData {
+			evals: bitand_evals.to_vec(),
+			r_zhat_prime: r_zhat_prime_bitand,
+			r_x_prime: r_x_prime_bitand.clone(),
+		};
+		let prover_intmul_data = OperatorData {
+			evals: intmul_evals.to_vec(),
+			r_zhat_prime: r_zhat_prime_intmul,
+			r_x_prime: r_x_prime_intmul.clone(),
+		};
 
 		let inout_n_vars = strict_log_2(cs.value_vec_layout.offset_witness).unwrap();
 
