@@ -30,9 +30,9 @@ proptest.workspace = true
 rand = { workspace = true, features = ["std_rng", "thread_rng"] }
 
 [features]
+default = []
 benchmark_alternative_strategies = []
 trace_multiplications = []
-default = ["nightly_features"]
 nightly_features = []
 
 [lib]

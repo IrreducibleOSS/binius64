@@ -198,7 +198,6 @@ This approach provides:
 ## Development Conventions
 
 ### Toolchain Requirements
-- Uses Rust nightly (see rust-toolchain.toml for specific version)
 - All operations are 64-bit word-based (fundamental to Binius64 design)
 - Heavy performance optimization with SIMD support
 - Pre-commit hooks run rustfmt and clippy automatically
