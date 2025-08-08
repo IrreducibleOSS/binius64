@@ -89,7 +89,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
       - name: Install deps
-        run: sudo yum -y install gcc openssl-devel curl jq z3-devel clang pkg-config cmake
+        run: sudo yum -y install gcc openssl-devel curl jq z3-devel clang pkg-config
       - name: Install cargo-nextest
         uses: taiki-e/install-action@v2
         with:

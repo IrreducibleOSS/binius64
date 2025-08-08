@@ -17,7 +17,7 @@ serde_json.workspace = true
 
 [dev-dependencies]
 base64 = { workspace = true }
-jwt-simple = { workspace = true }
+jwt-simple = { workspace = true, features=["pure-rust"] }
 rand = { workspace = true, features = ["std_rng", "thread_rng"] }
 rsa = { workspace = true, features = ["sha2"] }
 hex-literal = { workspace = true }
