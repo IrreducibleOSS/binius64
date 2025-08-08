@@ -111,6 +111,9 @@ impl<DC: DomainContext> AdditiveNTT for NeighborsLastReference<DC> {
 /// (Just in a different order. We listed breadth-first order, we would process them in
 /// depth-first order.)
 ///
+/// The const generic `LOG_BASE_LEN` determines for which `log_d` we call the breadth-first
+/// implementation as a base case.
+///
 /// ## Preconditions
 ///
 /// - `2^(log_d) == data.len() * packing_width`
@@ -374,6 +377,10 @@ fn input_check<P: PackedField>(
 /// The code only makes sure that it's fast for a _large_ data input.
 /// For small inputs, it can be comparatively slow!
 ///
+/// The implementation is depth-first, but calls a breadth-first implementation as a base case.
+/// The const generic `LOG_BASE_LEN` determines for scalar input length we call the breadth-first
+/// implementation as a base case.
+///
 /// Note that "neighbors last" refers to the memory layout for the NTT: In the _last_ layer of this
 /// NTT algorithm, neighboring elements speak to each other. In the classic FFT that's usually the
 /// case for "decimation in frequency".
@@ -441,6 +448,10 @@ impl<DC: DomainContext, const LOG_BASE_LEN: usize> AdditiveNTT
 ///
 /// The code only makes sure that it's fast for a _large_ data input.
 /// For small inputs, it can be comparatively slow!
+///
+/// The implementation is depth-first, but calls a breadth-first implementation as a base case.
+/// The const generic `LOG_BASE_LEN` determines for scalar input length we call the breadth-first
+/// implementation as a base case.
 ///
 /// Note that "neighbors last" refers to the memory layout for the NTT: In the _last_ layer of this
 /// NTT algorithm, neighboring elements speak to each other. In the classic FFT that's usually the
