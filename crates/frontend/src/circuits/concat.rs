@@ -770,7 +770,6 @@ mod tests {
 				// Verify empty terms are handled correctly
 				let mut term_specs = vec![];
 				for i in 0..n_terms {
-					#[allow(clippy::manual_is_multiple_of)]
 					if i % 2 == 0 {
 						term_specs.push((vec![], 8));
 					} else {

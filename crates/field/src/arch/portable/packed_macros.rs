@@ -217,7 +217,7 @@ pub(crate) mod portable_macros {
 		($impl_macro:ident $name:ident, (None)) => {};
 		($impl_macro:ident $name:ident, (if $cond:ident $gfni_x86_strategy:tt else $fallback:tt)) => {
 			cfg_if! {
-				if #[cfg(all(target_arch = "x86_64", target_feature = "sse2", target_feature = "gfni", feature = "nightly_features"))] {
+				if #[cfg(all(target_arch = "x86_64", target_feature = "sse2", target_feature = "gfni"))] {
 					$impl_macro!($name => $crate::$gfni_x86_strategy);
 				} else {
 					$impl_macro!($name @ $crate::arch::$fallback);
