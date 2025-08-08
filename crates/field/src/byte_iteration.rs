@@ -8,7 +8,8 @@ use bytemuck::{Pod, zeroed_vec};
 use crate::{
 	AESTowerField8b, AESTowerField16b, AESTowerField32b, AESTowerField64b, AESTowerField128b,
 	BinaryField8b, BinaryField16b, BinaryField32b, BinaryField64b, BinaryField128b,
-	BinaryField128bPolyval, PackedField,
+	BinaryField128bGhash, BinaryField128bPolyval, PackedBinaryGhash1x128b, PackedBinaryGhash2x128b,
+	PackedBinaryGhash4x128b, PackedField,
 	arch::{
 		byte_sliced::*, packed_8::*, packed_16::*, packed_32::*, packed_64::*, packed_128::*,
 		packed_256::*, packed_512::*, packed_aes_8::*, packed_aes_16::*, packed_aes_32::*,
@@ -127,6 +128,12 @@ unsafe impl SequentialBytes for BinaryField128bPolyval {}
 unsafe impl SequentialBytes for PackedBinaryPolyval1x128b {}
 unsafe impl SequentialBytes for PackedBinaryPolyval2x128b {}
 unsafe impl SequentialBytes for PackedBinaryPolyval4x128b {}
+
+unsafe impl SequentialBytes for BinaryField128bGhash {}
+
+unsafe impl SequentialBytes for PackedBinaryGhash1x128b {}
+unsafe impl SequentialBytes for PackedBinaryGhash2x128b {}
+unsafe impl SequentialBytes for PackedBinaryGhash4x128b {}
 
 /// Returns true if T implements `SequentialBytes` trait.
 /// Use a hack that exploits that array copying is optimized for the `Copy` types.

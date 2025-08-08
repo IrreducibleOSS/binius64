@@ -214,17 +214,6 @@ fn build_g_triplet<
 	const BITAND_ACC_SIZE: usize = BITAND_ARITY * SHIFT_VARIANT_COUNT * (1 << LOG_LEN);
 	const INTMUL_ACC_SIZE: usize = INTMUL_ARITY * SHIFT_VARIANT_COUNT * (1 << LOG_LEN);
 
-	// A map from a byte to 8 values, where `i`-th value is filled with a `i`-th bit from the byte.
-	let masks_map: [[F::Underlier; 8]; 256] = std::array::from_fn(|byte| {
-		std::array::from_fn(|bit| {
-			if byte & (1 << bit) != 0 {
-				F::Underlier::ONES
-			} else {
-				F::Underlier::ZERO
-			}
-		})
-	});
-
 	let (bitand_multilinears, intmul_multilinears) = words
 		.par_iter()
 		.zip(key_collection.key_ranges.par_iter())
@@ -260,11 +249,12 @@ fn build_g_triplet<
 					// }
 					let start = key.id as usize * WORD_SIZE_BITS;
 					let word_bytes = word.0.to_le_bytes();
+					let masks_map = F::Underlier::BYTE_MASK_MAP;
 					for (&byte, values) in word_bytes.iter().zip(
 						multilinears[start..start + WORD_SIZE_BITS]
 							.chunks_exact_mut(WORD_SIZE_BYTES),
 					) {
-						let masks = masks_map[byte as usize];
+						let masks = &masks_map[byte as usize];
 						for bit_index in 0..8 {
 							// Safety:
 							// - `values` is guaranteed to be 8 elements long due to the chunking

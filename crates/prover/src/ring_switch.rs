@@ -2,7 +2,10 @@
 
 use std::{iter, ops::Deref};
 
-use binius_field::{BinaryField, ExtensionField, PackedField};
+use binius_field::{
+	BinaryField, ExtensionField, PackedField, UnderlierWithBitOps, WithUnderlier,
+	byte_iteration::{ByteIteratorCallback, can_iterate_bytes, iterate_bytes},
+};
 use binius_math::{
 	FieldBuffer, inner_product::inner_product_subfield, multilinear::eq::eq_ind_partial_eval,
 };
@@ -77,7 +80,7 @@ where
 ///   the field extension degree
 pub fn fold_1b_rows<F, P, Data>(mat: &FieldBuffer<P, Data>, vec: &FieldBuffer<P>) -> FieldBuffer<F>
 where
-	F: BinaryField,
+	F: BinaryField + WithUnderlier<Underlier: UnderlierWithBitOps>,
 	P: PackedField<Scalar = F>,
 	Data: Deref<Target = [P]>,
 {
@@ -90,8 +93,50 @@ where
 			|| FieldBuffer::zeros(log_scalar_bit_width),
 			|mut acc, (vec_packed_i, mat_packed_i)| {
 				for (vec_i, mat_i) in iter::zip(vec_packed_i.iter(), mat_packed_i.iter()) {
-					for (acc_i, bit_i) in iter::zip(acc.as_mut(), mat_i.iter_bases()) {
-						*acc_i += vec_i * bit_i;
+					// The first branch is an optimized version of the second one for the case
+					// when `F` can be byte-iterated.
+					// Use a precompute mask table to get 8 masks for every byte in `F`.
+					if can_iterate_bytes::<F>() {
+						struct Callback<'a, P: PackedField<Scalar: WithUnderlier>> {
+							vec_i: <P::Scalar as WithUnderlier>::Underlier,
+							acc: &'a mut FieldBuffer<P>,
+						}
+
+						impl<P: PackedField<Scalar: WithUnderlier<Underlier: UnderlierWithBitOps>>>
+							ByteIteratorCallback for Callback<'_, P>
+						{
+							#[inline]
+							fn call(&mut self, bytes: impl Iterator<Item = u8>) {
+								let mask_map =
+									<P::Scalar as WithUnderlier>::Underlier::BYTE_MASK_MAP;
+
+								for (byte_index, byte) in bytes.enumerate() {
+									let offset = byte_index * 8;
+									let masks = mask_map[byte as usize];
+
+									for (bit_index, &mask) in masks.iter().enumerate() {
+										unsafe {
+											*self
+												.acc
+												.as_mut()
+												.get_unchecked_mut(offset + bit_index) += P::Scalar::from_underlier(self.vec_i & mask)
+										}
+									}
+								}
+							}
+						}
+
+						iterate_bytes(
+							&[mat_i],
+							&mut Callback {
+								vec_i: vec_i.to_underlier(),
+								acc: &mut acc,
+							},
+						);
+					} else {
+						for (acc_i, bit_i) in iter::zip(acc.as_mut(), mat_i.iter_bases()) {
+							*acc_i += vec_i * bit_i;
+						}
 					}
 				}
 				acc
