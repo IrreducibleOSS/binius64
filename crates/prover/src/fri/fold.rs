@@ -366,13 +366,13 @@ mod tests {
 
 		// Encode the message over the large domain.
 		let mut codeword = msg;
-		ntt.forward_transform(&mut codeword, 0, 0);
+		ntt.forward_transform(FieldBuffer::new(log_dim + arity, codeword.as_mut()).unwrap(), 0, 0);
 
 		// Fold the encoded message using FRI folding.
 		let folded_codeword = fold_interleaved(&ntt, &codeword, &challenges, log_dim + arity, 0);
 
 		// Encode the folded message.
-		ntt.forward_transform(folded_msg.as_mut(), 0, 0);
+		ntt.forward_transform(folded_msg.to_mut(), 0, 0);
 
 		// Check that folding and encoding commute.
 		assert_eq!(folded_codeword, folded_msg.as_ref());

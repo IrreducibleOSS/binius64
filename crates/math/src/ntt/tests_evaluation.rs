@@ -9,7 +9,7 @@ use std::{
 use binius_field::{BinaryField, Field};
 
 use crate::{
-	BinarySubspace,
+	BinarySubspace, FieldBuffer,
 	ntt::{
 		AdditiveNTT, DomainContext, NeighborsLastSingleThread,
 		domain_context::{self},
@@ -266,7 +266,7 @@ fn test_equivalence<F: BinaryField, NTT: AdditiveNTT<Field = F>>(ntt: &NTT) {
 
 	// way 2 to compute evaluations: use NTT
 	let mut ntt_data = novel_coeffs.clone();
-	ntt.forward_transform(&mut ntt_data, 0, 0);
+	ntt.forward_transform(FieldBuffer::new(log_d, ntt_data.as_mut()).unwrap(), 0, 0);
 
 	// check equivalence
 	assert_eq!(ntt_data, evals);

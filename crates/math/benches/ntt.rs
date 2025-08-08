@@ -2,7 +2,7 @@ use std::iter::repeat_with;
 
 use binius_field::{BinaryField, PackedField};
 use binius_math::{
-	BinarySubspace,
+	BinarySubspace, FieldBuffer,
 	ntt::{
 		AdditiveNTT, NeighborsLastMultiThread, NeighborsLastSingleThread,
 		domain_context::GenericPreExpanded,
@@ -66,8 +66,15 @@ fn bench_ntts<P: PackedField>(
 	macro_rules! run_bench {
 		($ntt:ident, $ntt_name:expr) => {
 			group.bench_function(BenchmarkId::new($ntt_name, &parameter), |b| {
-				thread_pool
-					.install(|| b.iter(|| $ntt.forward_transform(data, skip_early, skip_late)))
+				thread_pool.install(|| {
+					b.iter(|| {
+						$ntt.forward_transform(
+							FieldBuffer::new(log_d, data.as_mut()).unwrap(),
+							skip_early,
+							skip_late,
+						)
+					})
+				})
 			});
 		};
 	}
