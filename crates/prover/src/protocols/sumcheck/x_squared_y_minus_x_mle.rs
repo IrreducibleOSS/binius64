@@ -3,9 +3,10 @@
 use std::array;
 
 use binius_field::{Field, PackedField};
-use binius_math::{multilinear::fold::fold_highest_var_inplace, FieldBuffer};
+use binius_math::{FieldBuffer, multilinear::fold::fold_highest_var_inplace};
 use binius_utils::rayon::prelude::*;
 use binius_verifier::protocols::sumcheck::RoundCoeffs;
+
 use super::{common::SumcheckProver, error::Error, gruen34::Gruen34};
 use crate::protocols::sumcheck::common::MleCheckProver;
 
@@ -18,11 +19,11 @@ use crate::protocols::sumcheck::common::MleCheckProver;
 /// * $A, B \in \mathbb{F}[x]$, $x = (x_1, \ldots, x_n)$ - input multilinears
 /// * $(A^2B - A)(x) = y$ - evaluation claim on the composition MLE
 ///
-/// The claim is equivalent to $P(x) = \sum_{v \in \{0,1\}^n} \widetilde{eq}(v, x) (A(v)^2 B(v) - A(v)) = y$,
-/// and the reduction can be achieved by sumchecking this degree-4 composition. The paper [Gruen24],
-/// however, describes a way to partition the $\widetilde{eq}(v, x)$ into three parts in round $j
-/// \in 1, \ldots, n$ during specialization of variable $v_{n-j+1}$, with $j-1$ challenges
-/// $\alpha_i$ already sampled:
+/// The claim is equivalent to $P(x) = \sum_{v \in \{0,1\}^n} \widetilde{eq}(v, x) (A(v)^2 B(v) -
+/// A(v)) = y$, and the reduction can be achieved by sumchecking this degree-4 composition. The
+/// paper [Gruen24], however, describes a way to partition the $\widetilde{eq}(v, x)$ into three
+/// parts in round $j \in 1, \ldots, n$ during specialization of variable $v_{n-j+1}$, with $j-1$
+/// challenges $\alpha_i$ already sampled:
 ///
 /// $$ \widetilde{eq}(x_{n-j+2}, \ldots, x_n; \alpha_{j-1}, \ldots, \alpha_{1}) \tag{1} $$
 /// $$ \widetilde{eq}(x_{n-j+1}; v_{n-j+1}) \tag{2} $$
@@ -36,11 +37,12 @@ use crate::protocols::sumcheck::common::MleCheckProver;
 ///
 /// These observations allow us to instead sumcheck:
 /// $$
-/// P'(x) = \sum_{v \in \{0,1\}^n} \widetilde{eq}(x_1, \ldots, x_{n-j}; v_1, \ldots, v_{n-j}) (A(v)^2 B(v) - A(v))
-/// $$
+/// P'(x) = \sum_{v \in \{0,1\}^n} \widetilde{eq}(x_1, \ldots, x_{n-j}; v_1, \ldots, v_{n-j})
+/// (A(v)^2 B(v) - A(v)) $$
 ///
 /// Which is simpler because:
-/// * $P'(x)$ is degree-3 in $j$-th variable (since $A^2 \cdot B - A$ has degree 3), requiring one less evaluation point
+/// * $P'(x)$ is degree-3 in $j$-th variable (since $A^2 \cdot B - A$ has degree 3), requiring one
+///   less evaluation point
 /// * Equality indicator expansion does not depend on $j$-th variable and thus doesn't need to be
 ///   interpolated
 ///
@@ -150,13 +152,16 @@ where
 			})
 			.reduce(|| [P::zero(); 3], |lhs, rhs| array::from_fn(|i| lhs[i] + rhs[i]));
 
-		let all_coeffs_but_lowest: [F;3] = array::from_fn(|i|{all_coeffs_but_lowest[i].iter().sum()});
+		let all_coeffs_but_lowest: [F; 3] =
+			array::from_fn(|i| all_coeffs_but_lowest[i].iter().sum());
 
 		let alpha: F = self.gruen34.next_coordinate();
-		let lowest_coeff: F = *last_eval + (alpha * (all_coeffs_but_lowest[0] + all_coeffs_but_lowest[1] + all_coeffs_but_lowest[2]));
+		let lowest_coeff: F = *last_eval
+			+ (alpha
+				* (all_coeffs_but_lowest[0] + all_coeffs_but_lowest[1] + all_coeffs_but_lowest[2]));
 		let mut round_coeffs = vec![lowest_coeff];
 		round_coeffs.extend_from_slice(&all_coeffs_but_lowest);
-		
+
 		let round_coeffs = RoundCoeffs(round_coeffs);
 
 		self.last_coeffs_or_eval = RoundCoeffsOrEval::Coeffs(round_coeffs.clone());
@@ -230,11 +235,11 @@ mod tests {
 		protocols::{mlecheck, sumcheck::verify},
 	};
 	use itertools::{self, Itertools};
-	use rand::{prelude::StdRng, SeedableRng};
+	use rand::{SeedableRng, prelude::StdRng};
 
 	use super::*;
 	use crate::protocols::sumcheck::{
-		prove::prove_single, prove_single_mlecheck, MleToSumCheckDecorator,
+		MleToSumCheckDecorator, prove::prove_single, prove_single_mlecheck,
 	};
 
 	fn test_mlecheck_prove_verify<F, P>(
