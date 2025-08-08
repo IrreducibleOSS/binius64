@@ -135,6 +135,7 @@ where
 				// (b_1 * x + b_0) - (a_1 * x + a_0) = (a_1^2 * x^2 + a_0^2) * (b_1 * x + b_0) -
 				// (a_1 * x + a_0) = a_1^2 * b_1 * x^3 + a_1^2 * b_0 * x^2 + (a_0^2 * b_1 +
 				// a_1) *x + (a_0^2 * b_0) + a_0
+				// We compute all terms except the constant term R(0) below
 				let a_deg0 = evals_a_0_i;
 				let b_deg0 = evals_b_0_i;
 
@@ -158,6 +159,10 @@ where
 			array::from_fn(|i| all_coeffs_but_lowest[i].iter().sum());
 
 		let alpha: F = self.gruen34.next_coordinate();
+
+		// last_eval = eq(alpha,0)*R(0) + eq(alpha,1)*R(1) = (1+alpha)*R(0) + alpha*R(1)
+		// let R(x) = R_0 + R_1x + R_2x^2 + R_3x^3, then last_eval = (1+alpha) * R_0 + alpha * (R_0
+		// + R_1 + R_2 + R_3) = alpha * (R_1 + R_2 + R_3) + R_0
 		let lowest_coeff: F = *last_eval
 			+ (alpha
 				* (all_coeffs_but_lowest[0] + all_coeffs_but_lowest[1] + all_coeffs_but_lowest[2]));
