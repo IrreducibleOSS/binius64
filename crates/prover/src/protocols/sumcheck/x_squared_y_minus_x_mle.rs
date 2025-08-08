@@ -261,8 +261,6 @@ mod tests {
 			.message()
 			.write_slice(&output.multilinear_evals);
 
-		println!("prover write mle evals: {:?}", output.multilinear_evals);
-
 		// Convert to verifier transcript and run verification
 		let mut verifier_transcript = prover_transcript.into_verifier();
 		let sumcheck_output = mlecheck::verify::<F, _>(
@@ -278,7 +276,6 @@ mod tests {
 
 		// Read the multilinear evaluations from the transcript
 		let multilinear_evals: Vec<F> = verifier_transcript.message().read_vec(2).unwrap();
-		println!("verifier read mle evals: {:?}", multilinear_evals);
 
 		// Check that the product of the evaluations equals the reduced evaluation
 		assert_eq!(
@@ -331,8 +328,6 @@ mod tests {
 			.message()
 			.write_slice(&output.multilinear_evals);
 
-		println!("prover write mle evals: {:?}", output.multilinear_evals);
-
 		// Convert to verifier transcript and run verification
 		let mut verifier_transcript = prover_transcript.into_verifier();
 		let sumcheck_output = verify::<F, _>(
@@ -350,8 +345,6 @@ mod tests {
 
 		// Read the multilinear evaluations from the transcript
 		let multilinear_evals: Vec<F> = verifier_transcript.message().read_vec(2).unwrap();
-
-		println!("verifier read mle evals: {:?}", multilinear_evals);
 
 		// Evaluate the equality indicator
 		let eq_ind_eval = eq_ind(eval_point, &reduced_eval_point);
