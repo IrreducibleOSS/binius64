@@ -56,3 +56,4 @@ pub use packed_polyval::*;
 pub use polyval::*;
 pub use random::Random;
 pub use transpose::{Error as TransposeError, square_transpose};
+pub use underlier::{UnderlierWithBitOps, WithUnderlier};
