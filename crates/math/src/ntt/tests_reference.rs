@@ -55,15 +55,20 @@ fn test_equivalence_ntts<P: PackedField>(
 		domain_context,
 		log_num_shares: 1,
 	};
-	let ntt_multi_3: NeighborsLastMultiThread<_> = NeighborsLastMultiThread {
+	let ntt_multi_2: NeighborsLastMultiThread<_> = NeighborsLastMultiThread {
 		domain_context,
-		log_num_shares: 3,
+		log_num_shares: 2,
+	};
+	let ntt_multi_1000: NeighborsLastMultiThread<_> = NeighborsLastMultiThread {
+		domain_context,
+		log_num_shares: 1000,
 	};
 
 	test_equivalence::<P>(&ntt_ref, &ntt_single);
 	test_equivalence::<P>(&ntt_ref, &ntt_multi_0);
 	test_equivalence::<P>(&ntt_ref, &ntt_multi_1);
-	test_equivalence::<P>(&ntt_ref, &ntt_multi_3);
+	test_equivalence::<P>(&ntt_ref, &ntt_multi_2);
+	test_equivalence::<P>(&ntt_ref, &ntt_multi_1000);
 }
 
 fn test_equivalence_ntts_domain_contexts<P: PackedField>()
