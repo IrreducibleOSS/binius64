@@ -152,7 +152,7 @@ mod tests {
 	use crate::protocols::sumcheck::prove::prove_single;
 
 	#[test]
-	fn test_bivariate_product_sumcheck() {
+	fn test_x2y_minus_x_sumcheck() {
 		type F = OptimalB128;
 		type P = OptimalPackedB128;
 
