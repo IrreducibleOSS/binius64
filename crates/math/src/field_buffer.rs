@@ -189,10 +189,8 @@ impl<P: PackedField, Data: Deref<Target = [P]>> FieldBuffer<P, Data> {
 
 	/// Borrows the buffer as a [`FieldSlice`].
 	pub fn to_ref(&self) -> FieldSlice<'_, P> {
-		FieldBuffer {
-			log_len: self.log_len,
-			values: FieldSliceData::Slice(&self.values),
-		}
+		FieldSlice::from_slice(self.log_len, &self.values)
+			.expect("log_len matches values.len() by struct invariant")
 	}
 
 	/// Get a field element at the given index.
@@ -375,10 +373,8 @@ impl<P: PackedField, Data: Deref<Target = [P]>> FieldBuffer<P, Data> {
 impl<P: PackedField, Data: DerefMut<Target = [P]>> FieldBuffer<P, Data> {
 	/// Borrows the buffer mutably as a [`FieldSliceMut`].
 	pub fn to_mut(&mut self) -> FieldSliceMut<'_, P> {
-		FieldBuffer {
-			log_len: self.log_len,
-			values: FieldSliceDataMut::Slice(&mut self.values),
-		}
+		FieldSliceMut::from_slice(self.log_len, &mut self.values)
+			.expect("log_len matches values.len() by struct invariant")
 	}
 
 	/// Set a field element at the given index.
@@ -603,6 +599,30 @@ pub type FieldSlice<'a, P> = FieldBuffer<P, FieldSliceData<'a, P>>;
 
 /// Alias for a field buffer over a mutably borrowed slice.
 pub type FieldSliceMut<'a, P> = FieldBuffer<P, FieldSliceDataMut<'a, P>>;
+
+impl<'a, P: PackedField> FieldSlice<'a, P> {
+	/// Create a new FieldSlice from a slice of packed values.
+	///
+	/// # Throws
+	///
+	/// * `IncorrectArgumentLength` if the number of field elements does not fit the `slice.len()`
+	///   exactly.
+	pub fn from_slice(log_len: usize, slice: &'a [P]) -> Result<Self, Error> {
+		FieldBuffer::new(log_len, FieldSliceData::Slice(slice))
+	}
+}
+
+impl<'a, P: PackedField> FieldSliceMut<'a, P> {
+	/// Create a new FieldSliceMut from a mutable slice of packed values.
+	///
+	/// # Throws
+	///
+	/// * `IncorrectArgumentLength` if the number of field elements does not fit the `slice.len()`
+	///   exactly.
+	pub fn from_slice(log_len: usize, slice: &'a mut [P]) -> Result<Self, Error> {
+		FieldBuffer::new(log_len, FieldSliceDataMut::Slice(slice))
+	}
+}
 
 #[derive(Debug)]
 pub enum FieldSliceData<'a, P> {
