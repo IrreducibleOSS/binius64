@@ -95,19 +95,27 @@ where
 		.into_par_iter()
 		.map(|(a_chunk, b_chunk, c_chunk, &eq_weight)| {
 			let mut summed_ntt = [PNTTDomain::zero(); ROWS_PER_HYPERCUBE_VERTEX / 16];
+			let lookup = ntt_lookup.get_lookup();
 
 			for (a_i, b_i, c_i, &weight) in izip!(a_chunk, b_chunk, c_chunk, &eq_ind_small) {
 				let col_1_bytes = must_cast_ref::<_, [u8; 8]>(&a_i.0);
 				let col_2_bytes = must_cast_ref::<_, [u8; 8]>(&b_i.0);
 				let col_3_bytes = must_cast_ref::<_, [u8; 8]>(&c_i.0);
 
-				let first_col_ntt = ntt_lookup.ntt(col_1_bytes.iter().copied());
-				let second_col_ntt = ntt_lookup.ntt(col_2_bytes.iter().copied());
-				let third_col_ntt = ntt_lookup.ntt(col_3_bytes.iter().copied());
+				// In this cycle, we compute the NTT for each column using the lookup table.
+				// We are not using the `NTTLookup::ntt` method directly for performance reasons.
+				for (summed_ntt, lookup) in izip!(&mut summed_ntt, lookup) {
+					let mut first_col_ntt = PNTTDomain::zero();
+					let mut second_col_ntt = PNTTDomain::zero();
+					let mut third_col_ntt = PNTTDomain::zero();
 
-				for i in 0..ROWS_PER_HYPERCUBE_VERTEX / 16 {
-					summed_ntt[i] +=
-						(first_col_ntt[i] * second_col_ntt[i] - third_col_ntt[i]) * weight;
+					for byte_index in 0..8 {
+						first_col_ntt += lookup[col_1_bytes[byte_index] as usize][byte_index];
+						second_col_ntt += lookup[col_2_bytes[byte_index] as usize][byte_index];
+						third_col_ntt += lookup[col_3_bytes[byte_index] as usize][byte_index];
+					}
+
+					*summed_ntt += (first_col_ntt * second_col_ntt - third_col_ntt) * weight;
 				}
 			}
 

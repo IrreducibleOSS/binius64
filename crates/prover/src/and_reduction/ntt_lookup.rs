@@ -34,9 +34,7 @@
 
 use std::vec;
 
-use binius_field::{
-	BinaryField, BinaryField1b, Field, PackedBinaryField8x1b, PackedField, packed::set_packed_slice,
-};
+use binius_field::{BinaryField, BinaryField1b, Field, PackedBinaryField8x1b, PackedField};
 use binius_math::BinarySubspace;
 use binius_verifier::and_reduction::{
 	univariate::univariate_lagrange::{
@@ -52,23 +50,22 @@ use binius_verifier::and_reduction::{
 ///
 /// ## Structure
 ///
-/// The internal data structure is a 3-dimensional vector `Vec<Vec<Vec<P>>>` where:
-/// - **First dimension**: Index of the 8-bit chunk within the 64-bit input (0-7)
-/// - **Second dimension**: The 8-bit value (0-255) representing coefficient combinations
-/// - **Third dimension**: Packed field elements containing the NTT evaluations
+/// The internal data structure is a boxed 3-dimensional array `Box<[[[P; 8]; 256]; 4]>` where:
+/// - **First dimension**: Packed field element index (0-3)
+/// - **Second dimension**: The 8-bit value (0-255) representing coefficient combinations  
+/// - **Third dimension**: Index of the 8-bit chunk within the 64-bit input (0-7)
 ///
 /// ## Memory Layout
 ///
-/// For each of the 8 byte positions and 256 possible byte values, we store
-/// `ROWS_PER_HYPERCUBE_VERTEX / PackedField::WIDTH` packed field elements containing
-/// the precomputed NTT evaluations.
+/// For each of the 4 packed field elements, 256 possible byte values, and 8 byte positions,
+/// we store the precomputed NTT evaluations in a contiguous boxed array structure.
 ///
 /// ## Type Parameters
 ///
 /// - `P`: The packed field type used for storing precomputed values. Must implement `PackedField`
 ///   with a scalar type that is a binary field.
 #[derive(Clone)]
-pub struct NTTLookup<P>(Vec<Vec<Vec<P>>>);
+pub struct NTTLookup<P>(Box<[[[P; 8]; 256]; 4]>);
 
 impl<PNTTDomain> NTTLookup<PNTTDomain>
 where
@@ -98,11 +95,7 @@ where
 		assert_eq!(ntt_output_domain.len(), ROWS_PER_HYPERCUBE_VERTEX);
 		assert_eq!(ntt_input_domain.dim(), SKIPPED_VARS);
 
-		let mut lookup =
-			vec![
-				vec![vec![PNTTDomain::zero(); ntt_output_domain.len() / PNTTDomain::WIDTH]; 1 << 8];
-				ROWS_PER_HYPERCUBE_VERTEX / 8
-			];
+		let mut lookup = Box::new([[[PNTTDomain::zero(); 8]; 256]; 4]);
 
 		let mut eval_point_basis_point_to_numerator =
 			vec![
@@ -144,26 +137,26 @@ where
 							[basis_point_idx] * lagrange_basis_coeffs[basis_point_idx])
 							* inverse_denominator;
 					}
-					set_packed_slice(
-						&mut lookup[eight_bit_chunk_idx][coefficient_as_bit_string as usize],
-						eval_point_idx,
-						result,
-					);
+
+					let packed_idx = eval_point_idx / PNTTDomain::WIDTH; // 0, 1, 2, or 3
+					let scalar_idx = eval_point_idx % PNTTDomain::WIDTH; // 0-15
+					lookup[packed_idx][coefficient_as_bit_string as usize][eight_bit_chunk_idx]
+						.set(scalar_idx, result);
 				}
 			}
 		}
 
-		for this_byte_lookup in lookup.iter_mut() {
+		// Build combined coefficient lookup table
+		for packed_idx in 0..4 {
 			for coefficient_as_bit_string in 0..1 << 8 {
-				let mut result =
-					vec![PNTTDomain::zero(); ROWS_PER_HYPERCUBE_VERTEX / PNTTDomain::WIDTH];
+				let mut result = [PNTTDomain::zero(); 8];
 				for bit_in_string in 0..8 {
 					let this_one_hot = coefficient_as_bit_string & 1 << bit_in_string;
-					for (i, result_packed_elem) in result.iter_mut().enumerate() {
-						*result_packed_elem += this_byte_lookup[this_one_hot][i];
+					for byte_idx in 0..8 {
+						result[byte_idx] += lookup[packed_idx][this_one_hot][byte_idx];
 					}
 				}
-				this_byte_lookup[coefficient_as_bit_string] = result;
+				lookup[packed_idx][coefficient_as_bit_string] = result;
 			}
 		}
 		NTTLookup(lookup)
@@ -179,6 +172,10 @@ where
 	/// bytes B₀, B₁, ..., B₇, then NTT(c) = NTT(B₀) + NTT(B₁) + ... + NTT(B₇)
 	/// where each NTT(Bᵢ) is retrieved from the precomputed lookup table.
 	///
+	/// Currently this method is used only for testing or reference purposes.
+	/// In `univariate_round_message_extension_domain` we are accessing the lookup tables directly
+	/// calculating 3 ntt evaluations at the same time as it appears to be more efficient.
+	///
 	/// ## Parameters
 	///
 	/// - `coeffs_in_byte_chunks`: Iterator yielding exactly 8 bytes, where each byte represents 8
@@ -188,6 +185,7 @@ where
 	///
 	/// Array of `ROWS_PER_HYPERCUBE_VERTEX / 16` packed field elements containing
 	/// the NTT evaluations at all points in the output domain.
+	#[cfg(test)]
 	#[inline]
 	pub fn ntt(
 		&self,
@@ -195,14 +193,22 @@ where
 	) -> [PNTTDomain; ROWS_PER_HYPERCUBE_VERTEX / 16] {
 		let mut result = [PNTTDomain::zero(); ROWS_PER_HYPERCUBE_VERTEX / 16];
 
-		for (eight_bit_chunk_idx, eight_bit_chunk) in coeffs_in_byte_chunks.into_iter().enumerate()
-		{
-			for j in 0..ROWS_PER_HYPERCUBE_VERTEX / 16 {
-				result[j] += self.0[eight_bit_chunk_idx][eight_bit_chunk as usize][j];
+		let byte_chunks: Vec<u8> = coeffs_in_byte_chunks.into_iter().collect();
+
+		for j in 0..ROWS_PER_HYPERCUBE_VERTEX / 16 {
+			for (eight_bit_chunk_idx, eight_bit_chunk) in byte_chunks.iter().enumerate() {
+				// New indexing: [packed_idx][byte_value][byte_pos]
+				result[j] += self.0[j][*eight_bit_chunk as usize][eight_bit_chunk_idx];
 			}
 		}
 
 		result
+	}
+
+	/// Returns a reference to the NTT lookup table.
+	#[inline]
+	pub fn get_lookup(&self) -> &[[[PNTTDomain; 8]; 256]; 4] {
+		&self.0
 	}
 }
 
