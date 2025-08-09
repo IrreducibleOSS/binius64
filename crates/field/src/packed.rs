@@ -175,6 +175,7 @@ pub trait PackedField:
 	/// If the number of values in the sequence is less than the packing width, the remaining
 	/// elements are set to zero. If greater than the packing width, the excess elements are
 	/// ignored.
+	#[inline]
 	fn from_scalars(values: impl IntoIterator<Item=Self::Scalar>) -> Self {
 		let mut result = Self::default();
 		for (i, val) in values.into_iter().take(Self::WIDTH).enumerate() {

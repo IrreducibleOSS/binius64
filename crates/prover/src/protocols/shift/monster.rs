@@ -154,26 +154,26 @@ where
 
 	let monster_multilinear = key_collection
 		.key_ranges
-		.par_iter()
-		.map(|Range { start, end }| {
-			key_collection.keys[*start as usize..*end as usize]
-				.iter()
-				.map(|key| {
-					let (tensor, scalars) = match key.operation {
-						Operation::BitwiseAnd => {
-							(&bitand_operator_data.r_x_prime_tensor, &bitand_scalars)
-						}
-						Operation::IntegerMul => {
-							(&intmul_operator_data.r_x_prime_tensor, &intmul_scalars)
-						}
-					};
-					key.accumulate(&key_collection.constraint_indices, tensor.as_ref())
-						* scalars[key.id as usize]
-				})
-				.sum()
+		.par_chunks(P::WIDTH)
+		.map(|chunk| {
+			P::from_scalars(chunk.iter().map(|Range { start, end }| {
+				key_collection.keys[*start as usize..*end as usize]
+					.iter()
+					.map(|key| {
+						let (tensor, scalars) = match key.operation {
+							Operation::BitwiseAnd => {
+								(&bitand_operator_data.r_x_prime_tensor, &bitand_scalars)
+							}
+							Operation::IntegerMul => {
+								(&intmul_operator_data.r_x_prime_tensor, &intmul_scalars)
+							}
+						};
+						key.accumulate(&key_collection.constraint_indices, tensor.as_ref())
+							* scalars[key.id as usize]
+					})
+					.sum()
+			}))
 		})
-		.chunks(P::WIDTH)
-		.map(|chunk| P::from_scalars(chunk))
 		.collect::<Box<[_]>>();
 
 	let log_len = strict_log_2(key_collection.key_ranges.len())
