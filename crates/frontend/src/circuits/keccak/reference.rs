@@ -35,13 +35,6 @@ pub const R: [u32; 25] = [
 	0x2D, 0x0F, 0x15, 0x08, 0x12, 0x02, 0x3D, 0x38, 0x0E,
 ];
 
-// Precomputed π destination: NEXT[i] = dest index of source lane i (i = x+5*y)
-// Using (x',y') = (y, (2x + 3y) mod 5), dest = x' + 5*y'
-pub const NEXT: [usize; 25] = [
-	0x0, 0xA, 0x14, 0x05, 0x0F, 0x10, 0x01, 0x0B, 0x15, 0x06, 0x07, 0x11, 0x02, 0x0C, 0x16, 0x17,
-	0x08, 0x12, 0x03, 0x0D, 14, 24, 9, 19, 4,
-];
-
 #[inline(always)]
 pub const fn idx(x: usize, y: usize) -> usize {
 	x + 5 * y
@@ -114,26 +107,13 @@ pub fn theta_reference(state: &mut [u64; 25], round: usize) {
 #[inline(always)]
 #[allow(unused_variables)]
 pub fn rho_pi_reference(state: &mut [u64; 25], round: usize) {
-	// ρ ∘ π (your existing cycle-walk code)
-	let mut visited: u32 = 0;
-	for start in 0..25 {
-		if (visited >> start) & 1 != 0 {
-			continue;
-		}
-		let mut i = start;
-		let mut carry = state[i].rotate_left(R[i]);
-		loop {
-			let j = NEXT[i];
-			let next_carry = state[j].rotate_left(R[j]);
-			state[j] = carry;
-			visited |= 1 << i;
-			i = j;
-			if i == start {
-				break;
-			}
-			carry = next_carry;
+	let mut temp = [state[0]; 25];
+	for y in 0..5 {
+		for x in 0..5 {
+			temp[idx(y, (2 * x + 3 * y) % 5)] = state[idx(x, y)].rotate_left(R[idx(x, y)]);
 		}
 	}
+	*state = temp;
 }
 
 pub fn iota_reference(state: &mut [u64; 25], round: usize) {
@@ -171,16 +151,15 @@ pub fn keccak_f1600_reference(state: &mut [u64; 25]) {
 
 #[cfg(test)]
 mod tests {
-	use std::iter::repeat_n;
-
-	use rand::Rng;
+	use rand::{Rng, SeedableRng, rngs::StdRng};
 	use sha3::{Digest, Keccak256};
+	use std::iter::repeat_n;
 
 	use super::*;
 
 	#[test]
 	fn test_keccak_crate_vs_reference() {
-		let mut rng = rand::rng();
+		let mut rng = StdRng::seed_from_u64(0);
 
 		let message = repeat_n(rng.random_range(0..=255), 100).collect::<Vec<_>>();
 
