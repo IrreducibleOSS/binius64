@@ -30,6 +30,8 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: rustfmt
+      - name: Install nightly toolchain for rustfmt
+        run: rustup toolchain install nightly-2025-08-11 --component rustfmt
       - name: Setup Python
         uses: actions/setup-python@v5
         with:

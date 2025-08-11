@@ -8,9 +8,8 @@ use binius_field::{BinaryField, ExtensionField, PackedExtension, PackedField};
 use binius_utils::bail;
 use getset::{CopyGetters, Getters};
 
-use crate::FieldBuffer;
-
 use super::{binary_subspace::BinarySubspace, error::Error as MathError, ntt::AdditiveNTT};
+use crate::FieldBuffer;
 
 /// [Reed–Solomon] codes over binary fields.
 ///

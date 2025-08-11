@@ -52,7 +52,7 @@ use binius_verifier::and_reduction::{
 ///
 /// The internal data structure is a boxed 3-dimensional array `Box<[[[P; 8]; 256]; 4]>` where:
 /// - **First dimension**: Packed field element index (0-3)
-/// - **Second dimension**: The 8-bit value (0-255) representing coefficient combinations  
+/// - **Second dimension**: The 8-bit value (0-255) representing coefficient combinations
 /// - **Third dimension**: Index of the 8-bit chunk within the 64-bit input (0-7)
 ///
 /// ## Memory Layout
