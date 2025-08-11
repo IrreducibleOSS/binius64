@@ -130,7 +130,7 @@ impl<F: BinaryField> ReedSolomonCode<F> {
 
 		// First, if the message is less than the packing width, we need to repeat it to fill one
 		// packed element.
-		if self.dim() + log_batch_size < P::LOG_WIDTH {
+		if self.log_dim() + log_batch_size < P::LOG_WIDTH {
 			let repeated_values = code[0]
 				.into_iter()
 				.take(1 << (self.log_dim() + log_batch_size))
@@ -197,15 +197,15 @@ pub enum Error {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
 	use binius_field::{
 		BinaryField, PackedBinaryGhash1x128b, PackedBinaryGhash4x128b, PackedField,
 	};
 	use rand::{SeedableRng, rngs::StdRng};
 
+	use super::*;
 	use crate::{
 		FieldBuffer,
-		ntt::{NeighborsLastSingleThread, domain_context::GenericPreExpanded},
+		ntt::{NeighborsLastReference, domain_context::GenericPreExpanded},
 		test_utils::random_field_buffer,
 	};
 
@@ -224,7 +224,7 @@ mod tests {
 		// Create NTT with matching subspace
 		let subspace = rs_code.subspace().clone();
 		let domain_context = GenericPreExpanded::<P::Scalar>::generate_from_subspace(&subspace);
-		let ntt: NeighborsLastSingleThread<_, 4> = NeighborsLastSingleThread {
+		let ntt = NeighborsLastReference {
 			domain_context: &domain_context,
 		};
 
@@ -292,8 +292,7 @@ mod tests {
 		test_encode_batch_inplace_helper::<PackedBinaryGhash4x128b>(6, 2, 1);
 		test_encode_batch_inplace_helper::<PackedBinaryGhash4x128b>(8, 3, 2);
 
-		// TODO: Fix bug causing test failure
-		// // Test where message length is less than the packing width and codeword length is greater.
-		// test_encode_batch_inplace_helper::<PackedBinaryGhash4x128b>(1, 2, 0);
+		// Test where message length is less than the packing width and codeword length is greater.
+		test_encode_batch_inplace_helper::<PackedBinaryGhash4x128b>(1, 2, 0);
 	}
 }
