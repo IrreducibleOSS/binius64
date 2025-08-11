@@ -1,7 +1,9 @@
 use binius_core::word::Word;
 
-use crate::circuits::keccak::reference::{R, RC, idx};
-use crate::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
+use crate::{
+	circuits::keccak::reference::{R, RC, idx},
+	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
+};
 
 pub const PADDING_BYTE: u8 = 0x01;
 
