@@ -22,11 +22,7 @@ impl Permutation {
 	/// ## Arguments
 	///
 	/// * `b` - The circuit builder to use.
-	pub fn new(b: &CircuitBuilder) -> Self {
-		let input_state = State {
-			words: std::array::from_fn(|_| b.add_inout()),
-		};
-
+	pub fn new(b: &CircuitBuilder, input_state: State) -> Self {
 		let mut output_state = input_state;
 		Self::keccak_f1600(b, &mut output_state.words);
 
@@ -180,20 +176,24 @@ mod tests {
 	fn test_keccak_permutation() {
 		let mut rng = StdRng::seed_from_u64(0);
 
-		let input_state = rng.random::<[u64; 25]>();
-
 		let builder = CircuitBuilder::new();
-		let permutation = Permutation::new(&builder);
+
+		let input_words = State {
+			words: std::array::from_fn(|_| builder.add_inout()),
+		};
+
+		let permutation = Permutation::new(&builder, input_words);
 
 		let circuit = builder.build();
 
 		let mut w = circuit.new_witness_filler();
 
-		permutation.populate_state(&mut w, input_state);
+		let initial_state = rng.random::<[u64; 25]>();
+		permutation.populate_state(&mut w, initial_state);
 
 		circuit.populate_wire_witness(&mut w).unwrap();
 
-		let mut expected_output = input_state;
+		let mut expected_output = initial_state;
 		keccak_f1600_reference(&mut expected_output);
 
 		for i in 0..25 {
