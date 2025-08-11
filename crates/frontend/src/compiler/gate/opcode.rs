@@ -44,7 +44,9 @@ pub struct OpcodeShape {
 }
 
 impl Opcode {
-	pub fn shape(&self) -> OpcodeShape {
+	pub fn shape(&self, dimensions: &[usize]) -> OpcodeShape {
+		assert_eq!(self.is_const_shape(), dimensions.is_empty());
+
 		match self {
 			// Bitwise operations
 			Opcode::Band => gate::band::shape(),
@@ -76,5 +78,9 @@ impl Opcode {
 			Opcode::AssertBand0 => gate::assert_band_0::shape(),
 			Opcode::AssertEqCond => gate::assert_eq_cond::shape(),
 		}
+	}
+
+	pub fn is_const_shape(&self) -> bool {
+		true
 	}
 }

@@ -4,7 +4,7 @@ use binius_core::word::Word;
 use cranelift_entity::{PrimaryMap, SecondaryMap, entity_impl};
 
 use crate::compiler::{
-	gate::opcode::Opcode,
+	gate::opcode::{Opcode, OpcodeShape},
 	pathspec::{PathSpec, PathSpecTree},
 };
 
@@ -90,11 +90,18 @@ pub struct GateData {
 	///
 	/// The length of the immediates is specified by the opcode's shape.
 	pub immediates: Vec<u32>,
+
+	/// The dimensions of this gate.
+	///
+	/// This is empty for gates of constant shape. When the shape is variable, the number of
+	/// input, output and internal wires is a function of non-empty `dimensions`. This function is
+	/// typically linear.
+	pub dimensions: Vec<usize>,
 }
 
 impl GateData {
 	pub fn gate_param(&self) -> GateParam<'_> {
-		let shape = self.opcode.shape();
+		let shape = self.shape();
 		let start_const = 0;
 		let end_const = shape.const_in.len();
 		let start_input = end_const;
@@ -112,13 +119,19 @@ impl GateData {
 		}
 	}
 
+	/// The gate shape (takes dimensions into account).
+	pub fn shape(&self) -> OpcodeShape {
+		self.opcode.shape(&self.dimensions)
+	}
+
 	/// Ensures the gate has the right shape.
 	pub fn validate_shape(&self) {
+		let shape = self.shape();
 		let gate_param = self.gate_param();
-		assert_eq!(gate_param.inputs.len(), self.opcode.shape().n_in);
-		assert_eq!(gate_param.outputs.len(), self.opcode.shape().n_out);
-		assert_eq!(gate_param.internal.len(), self.opcode.shape().n_internal);
-		assert_eq!(self.immediates.len(), self.opcode.shape().n_imm);
+		assert_eq!(gate_param.inputs.len(), shape.n_in);
+		assert_eq!(gate_param.outputs.len(), shape.n_out);
+		assert_eq!(gate_param.internal.len(), shape.n_internal);
+		assert_eq!(self.immediates.len(), shape.n_imm);
 	}
 }
 
@@ -187,7 +200,7 @@ impl GateGraph {
 		inputs: impl IntoIterator<Item = Wire>,
 		outputs: impl IntoIterator<Item = Wire>,
 	) -> Gate {
-		self.emit_gate_internal(gate_origin, opcode, inputs, outputs, &[])
+		self.emit_gate_internal(gate_origin, opcode, inputs, outputs, &[], &[])
 	}
 
 	/// Emits a gate with the given opcode, inputs, outputs and a single immediate argument.
@@ -199,7 +212,7 @@ impl GateGraph {
 		outputs: impl IntoIterator<Item = Wire>,
 		imm32: u32,
 	) -> Gate {
-		self.emit_gate_internal(gate_origin, opcode, inputs, outputs, &[imm32])
+		self.emit_gate_internal(gate_origin, opcode, inputs, outputs, &[], &[imm32])
 	}
 
 	/// Creates a gate inline with the given opcode's shape parametrized with the inputs, outputs
@@ -212,9 +225,10 @@ impl GateGraph {
 		opcode: Opcode,
 		inputs: impl IntoIterator<Item = Wire>,
 		outputs: impl IntoIterator<Item = Wire>,
+		dimensions: &[usize],
 		immediates: &[u32],
 	) -> Gate {
-		let shape = opcode.shape();
+		let shape = opcode.shape(dimensions);
 		let mut wires: Vec<Wire> =
 			Vec::with_capacity(shape.const_in.len() + shape.n_in + shape.n_out + shape.n_internal);
 		for c in shape.const_in {
@@ -228,6 +242,7 @@ impl GateGraph {
 		let data = GateData {
 			opcode,
 			wires,
+			dimensions: dimensions.to_vec(),
 			immediates: immediates.to_vec(),
 		};
 		data.validate_shape();
