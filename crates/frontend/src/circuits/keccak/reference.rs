@@ -151,9 +151,10 @@ pub fn keccak_f1600_reference(state: &mut [u64; 25]) {
 
 #[cfg(test)]
 mod tests {
+	use std::iter::repeat_n;
+
 	use rand::{Rng, SeedableRng, rngs::StdRng};
 	use sha3::{Digest, Keccak256};
-	use std::iter::repeat_n;
 
 	use super::*;
 
