@@ -1,6 +1,6 @@
 //! BigUint modular inverse
 //!
-//! Returns `base` and `modulus` represented by little-endian arrays of 64-bit limbs returns
+//! Given `base` and `modulus` represented by little-endian arrays of 64-bit limbs returns
 //! `inverse` such as `base * inverse = 1 (mod modulus)`. If `base` and `modulus` are not coprime
 //! then `inverse` is set to zero.
 //!
