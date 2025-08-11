@@ -22,6 +22,7 @@ pub mod icmp_eq;
 pub mod icmp_ult;
 pub mod imul;
 pub mod isub_bin_bout;
+pub mod mod_inverse_hint;
 pub mod mod_reduce_hint;
 pub mod rotr32;
 pub mod shl;
@@ -51,6 +52,7 @@ pub fn constrain(gate: Gate, graph: &GateGraph, builder: &mut ConstraintBuilder)
 		Opcode::Shl => shl::constrain(gate, data, builder),
 		// Hints do not introduce constraints
 		Opcode::ModReduceHint => (),
+		Opcode::ModInverseHint => (),
 	}
 }
 
@@ -78,5 +80,6 @@ pub fn evaluate(gate: Gate, graph: &GateGraph, w: &mut circuit::WitnessFiller) {
 		Opcode::Shr => shr::evaluate(gate, data, w),
 		Opcode::Shl => shl::evaluate(gate, data, w),
 		Opcode::ModReduceHint => mod_reduce_hint::evaluate(gate, data, w),
+		Opcode::ModInverseHint => mod_inverse_hint::evaluate(gate, data, w),
 	}
 }

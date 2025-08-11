@@ -537,4 +537,29 @@ impl CircuitBuilder {
 		);
 		outputs
 	}
+
+	/// Modular inverse.
+	///
+	/// Computes the modular inverse of `base` modulo `modulus`.
+	/// Returns zero if `base` and `modulus` are not coprime.
+	///
+	/// This is a hint - a deterministic computation that happens only on the prover side.
+	/// The result should be additionally constrained by using bignum circuits to check that
+	/// `base * inverse = 1 (mod modulus)`.
+	pub fn mod_inverse_hint(&self, base: &[Wire], modulus: &[Wire]) -> Vec<Wire> {
+		let outputs = (0..modulus.len())
+			.map(|_| self.add_internal())
+			.collect::<Vec<_>>();
+
+		let mut graph = self.graph_mut();
+		graph.emit_gate_generic(
+			self.current_path,
+			Opcode::ModInverseHint,
+			base.iter().chain(modulus).copied(),
+			outputs.iter().copied(),
+			&[base.len(), modulus.len()],
+			&[],
+		);
+		outputs
+	}
 }
