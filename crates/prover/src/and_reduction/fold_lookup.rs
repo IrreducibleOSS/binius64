@@ -8,11 +8,15 @@ use binius_verifier::and_reduction::univariate::univariate_lagrange::lexicograph
 /// enabling fast evaluation of univariate polynomials represented as packed binary coefficients.
 /// The lookup table is organized by byte chunks to enable efficient batch processing.
 ///
+/// Uses a boxed 2D array for better memory layout and cache performance than Vec<Vec<_>>.
+///
 /// # Type Parameters
 /// * `F` - The field type for the evaluation result
 /// * `LOG_UNIVARIATE_POLY_COEFFS` - The logarithm base 2 of the number of coefficients in the
 ///   univariate polynomial
-pub struct FoldLookup<F, const LOG_UNIVARIATE_POLY_COEFFS: usize>(Vec<Vec<F>>);
+pub struct FoldLookup<F, const LOG_UNIVARIATE_POLY_COEFFS: usize> {
+	lookup_table: Box<[[F; 256]]>,
+}
 
 impl<F, const LOG_UNIVARIATE_POLY_COEFFS: usize> FoldLookup<F, LOG_UNIVARIATE_POLY_COEFFS>
 where
@@ -38,8 +42,9 @@ where
 		let _span = tracing::debug_span!("precompute_fold_lookup").entered();
 
 		let univariate_poly_coeffs = 1 << LOG_UNIVARIATE_POLY_COEFFS;
+		let outer_size = univariate_poly_coeffs / 8;
 
-		let mut lookup_table = vec![vec![F::ZERO; 1 << 8]; univariate_poly_coeffs / 8];
+		let mut lookup_table = vec![[F::ZERO; 256]; outer_size].into_boxed_slice();
 
 		let lagrange_coeffs: Vec<_> =
 			lexicographic_lagrange_basis_vectors::<F, F>(challenge, univariate_domain);
@@ -60,7 +65,7 @@ where
 			}
 		}
 
-		Self(lookup_table)
+		Self { lookup_table }
 	}
 
 	/// Evaluates a univariate polynomial at the precomputed point using the lookup table.
@@ -78,7 +83,9 @@ where
 	pub fn fold_one_bit_univariate(&self, coeffs_byte_chunks: impl Iterator<Item = u8>) -> F {
 		coeffs_byte_chunks
 			.enumerate()
-			.map(|(byte_chunk_idx, eight_coeffs)| self.0[byte_chunk_idx][eight_coeffs as usize])
+			.map(|(byte_chunk_idx, eight_coeffs)| {
+				self.lookup_table[byte_chunk_idx][eight_coeffs as usize]
+			})
 			.sum()
 	}
 }
