@@ -117,8 +117,9 @@ impl Sha256 {
 		let n_blocks = (max_len + 9).div_ceil(64);
 		let n_words = n_blocks * 8;
 
-		let len_check = builder.icmp_ult(builder.add_constant_64(max_len as u64), len);
-		builder.assert_0("1.len_check", len_check);
+		// Assert that len <= max_len by checking that !(max_len < len)
+		let len_exceeds_max = builder.icmp_ult(builder.add_constant_64(max_len as u64), len);
+		builder.assert_0("1.len_check", len_exceeds_max);
 
 		// ---- 2. Message padding and compression setup
 		//
@@ -609,6 +610,7 @@ impl Sha256 {
 
 #[cfg(test)]
 mod tests {
+	use binius_core::Word;
 	use hex_literal::hex;
 
 	use super::Sha256;
@@ -864,6 +866,29 @@ mod tests {
 		// This should fail when the circuit checks constraints
 		let result = circuit.populate_wire_witness(&mut w);
 		assert!(result.is_err());
+	}
+
+	#[test]
+	fn test_length_exceeds_max_rejection() {
+		// Test that providing a length > max_len causes circuit to reject
+		let max_len = 3;
+		let mut b = compiler::CircuitBuilder::new();
+		let c = mk_circuit(&mut b, max_len);
+		let circuit = b.build();
+		let mut w = circuit.new_witness_filler();
+
+		let message = b"abc";
+		// Bypass the API safety check and set the length wire directly
+		w[c.len] = Word((max_len + 1) as u64);
+		c.populate_message(&mut w, message);
+		c.populate_digest(
+			&mut w,
+			hex!("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
+		);
+
+		// This should fail at the length check assertion in the circuit
+		let result = circuit.populate_wire_witness(&mut w);
+		assert!(result.is_err(), "Circuit should reject length > max_len");
 	}
 
 	#[test]
