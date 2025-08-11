@@ -383,7 +383,6 @@ mod tests {
 	use sha3::{Digest, Keccak256};
 
 	use super::Keccak;
-
 	use crate::{
 		compiler::{CircuitBuilder, Wire},
 		constraint_verifier::verify_constraints,
