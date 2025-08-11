@@ -3,14 +3,13 @@
 use binius_field::{BinaryField, Field};
 use itertools::{iterate, izip};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct IntMulOutput<F> {
-	pub z_challenge: F,
 	pub eval_point: Vec<F>,
-	pub a_eval: F,
-	pub b_eval: F,
-	pub c_lo_eval: F,
-	pub c_hi_eval: F,
+	pub a_evals: Vec<F>,
+	pub b_evals: Vec<F>,
+	pub c_lo_evals: Vec<F>,
+	pub c_hi_evals: Vec<F>,
 }
 
 pub struct Phase1Output<F> {

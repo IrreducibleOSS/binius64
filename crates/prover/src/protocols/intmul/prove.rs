@@ -3,21 +3,15 @@
 use std::marker::PhantomData;
 
 use binius_field::{BinaryField, PackedField};
-use binius_math::{
-	BinarySubspace, field_buffer::FieldBuffer, multilinear::evaluate::evaluate,
-	univariate::lagrange_evals,
-};
+use binius_math::{field_buffer::FieldBuffer, multilinear::evaluate::evaluate};
 use binius_transcript::{
 	ProverTranscript,
 	fiat_shamir::{CanSample, Challenger},
 };
 use binius_utils::bitwise::Bitwise;
-use binius_verifier::{
-	config::LOG_WORD_SIZE_BITS,
-	protocols::intmul::common::{
-		IntMulOutput, Phase1Output, Phase2Output, Phase3Output, Phase4Output, Phase5Output,
-		frobenius_twist, make_phase_3_output, normalize_a_c_exponent_evals,
-	},
+use binius_verifier::protocols::intmul::common::{
+	IntMulOutput, Phase1Output, Phase2Output, Phase3Output, Phase4Output, Phase5Output,
+	frobenius_twist, make_phase_3_output, normalize_a_c_exponent_evals,
 };
 use either::Either;
 use itertools::{Itertools, izip};
@@ -177,21 +171,12 @@ where
 		let [a_exponent_evals, c_lo_exponent_evals, c_hi_exponent_evals] =
 			normalize_a_c_exponent_evals(log_bits, scaled_a_c_exponent_evals);
 
-		// Phase 6
-		let z_challenge: F = self.transcript.sample();
-		let subspace = BinarySubspace::<F>::with_dim(LOG_WORD_SIZE_BITS)?;
-		let l_tilde = lagrange_evals(&subspace, z_challenge);
-		assert_eq!(l_tilde.len(), a_exponent_evals.len());
-
-		let make_final_claim = |evals| izip!(evals, &l_tilde).map(|(x, y)| x * y).sum();
-
 		Ok(IntMulOutput {
-			z_challenge,
 			eval_point: phase5_eval_point,
-			a_eval: make_final_claim(a_exponent_evals),
-			b_eval: make_final_claim(b_exponent_evals),
-			c_lo_eval: make_final_claim(c_lo_exponent_evals),
-			c_hi_eval: make_final_claim(c_hi_exponent_evals),
+			a_evals: a_exponent_evals,
+			b_evals: b_exponent_evals,
+			c_lo_evals: c_lo_exponent_evals,
+			c_hi_evals: c_hi_exponent_evals,
 		})
 	}
 
