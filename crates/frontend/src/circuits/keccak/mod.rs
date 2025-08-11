@@ -117,7 +117,7 @@ impl Keccak {
 	///
 	/// This is done by ensuring that the supposed digest is correctly found at the end of the
 	/// states collected during the absorption of the message. By doing this, we ensure that
-	/// digest not only are correctly computed using the keccak permutation but that they
+	/// digests not only are correctly computed using the keccak permutation but that they
 	/// emerge after the expected number of permutations.
 	fn constrain_claimed_digest(
 		b: &CircuitBuilder,
