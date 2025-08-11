@@ -5,7 +5,7 @@ repos:
     name: Run `rustfmt`
     language: rust
     types: [rust]
-    entry: cargo fmt --check
+    entry: cargo +nightly-2025-08-11 fmt --check
     pass_filenames: false
     stages: [pre-commit]
   - id: clippy
