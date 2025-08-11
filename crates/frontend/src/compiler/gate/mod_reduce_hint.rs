@@ -1,4 +1,4 @@
-//! BigUint modular
+//! BigUint modular reduction
 //!
 //! Returns `dividend % modulus`, numbers represented by little-endian arrays of 64-bit limbs.
 //!

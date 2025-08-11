@@ -209,7 +209,49 @@ fn test_mod_reduce_hint_div_by_zero() {
 
 	assert_eq!(r.len(), 2);
 	assert_eq!(w[r[0]], Word(0));
-	assert_eq!(w[r[0]], Word(0));
+	assert_eq!(w[r[1]], Word(0));
+}
+
+#[test]
+fn test_mod_inverse_hint() {
+	let builder = CircuitBuilder::new();
+
+	let b = builder.add_constant_64(0x123456789abcdef0);
+
+	// M12 = 2^127-1
+	let m0 = builder.add_constant_64(u64::MAX);
+	let m1 = builder.add_constant_64((1u64 << 63) - 1);
+
+	let inv = builder.mod_inverse_hint(&[b], &[m0, m1]);
+
+	let circuit = builder.build();
+	let mut w = circuit.new_witness_filler();
+	circuit.populate_wire_witness(&mut w).unwrap();
+
+	assert_eq!(inv.len(), 2);
+	assert_eq!(w[inv[0]], Word(0xe5a542e11f99750a));
+	assert_eq!(w[inv[1]], Word(0x1849faf75fbb9752));
+}
+
+#[test]
+fn test_mod_inverse_hint_non_coprime() {
+	let builder = CircuitBuilder::new();
+
+	let b = builder.add_constant_64((1 << 19) - 1);
+
+	// M7 * M11 = (2^19-1)*(2^107-1)
+	let m0 = builder.add_constant_64(0xfffffffffff80001);
+	let m1 = builder.add_constant_64(0x3ffff7ffffffffff);
+
+	let inv = builder.mod_inverse_hint(&[b], &[m0, m1]);
+
+	let circuit = builder.build();
+	let mut w = circuit.new_witness_filler();
+	circuit.populate_wire_witness(&mut w).unwrap();
+
+	assert_eq!(inv.len(), 2);
+	assert_eq!(w[inv[0]], Word::ZERO);
+	assert_eq!(w[inv[1]], Word::ZERO);
 }
 
 fn prop_check_icmp_ult(a: u64, b: u64, expected_result: Word) {

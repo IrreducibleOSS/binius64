@@ -36,6 +36,7 @@ pub enum Opcode {
 
 	// Hints
 	ModReduceHint,
+	ModInverseHint,
 }
 
 pub struct OpcodeShape {
@@ -83,6 +84,7 @@ impl Opcode {
 
 			// Hints (no constraints)
 			Opcode::ModReduceHint => gate::mod_reduce_hint::shape(dimensions),
+			Opcode::ModInverseHint => gate::mod_inverse_hint::shape(dimensions),
 		}
 	}
 
@@ -90,6 +92,7 @@ impl Opcode {
 		#[allow(clippy::match_like_matches_macro)]
 		match self {
 			Opcode::ModReduceHint => false,
+			Opcode::ModInverseHint => false,
 			_ => true,
 		}
 	}
