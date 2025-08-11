@@ -512,4 +512,29 @@ impl CircuitBuilder {
 		graph.emit_gate_imm(self.current_path, Opcode::ExtractByte, [word], [z], j);
 		z
 	}
+
+	/// Modular reduction.
+	///
+	/// Computes the remainder of the division of `dividend` by `modulus`. Returns zero if `modulus`
+	/// is zero.
+	///
+	/// This is a hint - a deterministic computation that happens only on the prover side.
+	/// The result should be additionally constrained by using bignum circuits to check that
+	/// `remainder + modulus * quotient == dividend`.
+	pub fn mod_reduce_hint(&self, dividend: &[Wire], modulus: &[Wire]) -> Vec<Wire> {
+		let outputs = (0..modulus.len())
+			.map(|_| self.add_internal())
+			.collect::<Vec<_>>();
+
+		let mut graph = self.graph_mut();
+		graph.emit_gate_generic(
+			self.current_path,
+			Opcode::ModReduceHint,
+			dividend.iter().chain(modulus).copied(),
+			outputs.iter().copied(),
+			&[dividend.len(), modulus.len()],
+			&[],
+		);
+		outputs
+	}
 }

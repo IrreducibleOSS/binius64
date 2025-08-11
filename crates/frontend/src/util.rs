@@ -100,3 +100,21 @@ pub fn pack_bytes_into_wires_le(w: &mut WitnessFiller, wires: &[Wire], bytes: &[
 		w[wires[i]] = Word::ZERO;
 	}
 }
+
+/// Returns a BigUint from u64 limbs with little-endian ordering
+pub fn num_biguint_from_u64_limbs(limbs: &[u64]) -> num_bigint::BigUint {
+	let mut bytes = Vec::with_capacity(limbs.len() * 8);
+	for &word in limbs {
+		bytes.extend_from_slice(&word.to_le_bytes());
+	}
+	num_bigint::BigUint::from_bytes_le(&bytes)
+}
+
+/// Returns a BigUint from u64 limbs assigned to wires
+pub fn num_biguint_from_wires(w: &WitnessFiller, wires: &[Wire]) -> num_bigint::BigUint {
+	let limbs = wires
+		.iter()
+		.map(|&wire| w[wire].as_u64())
+		.collect::<Vec<_>>();
+	num_biguint_from_u64_limbs(&limbs)
+}

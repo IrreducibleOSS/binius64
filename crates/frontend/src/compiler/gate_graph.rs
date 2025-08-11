@@ -200,7 +200,7 @@ impl GateGraph {
 		inputs: impl IntoIterator<Item = Wire>,
 		outputs: impl IntoIterator<Item = Wire>,
 	) -> Gate {
-		self.emit_gate_internal(gate_origin, opcode, inputs, outputs, &[], &[])
+		self.emit_gate_generic(gate_origin, opcode, inputs, outputs, &[], &[])
 	}
 
 	/// Emits a gate with the given opcode, inputs, outputs and a single immediate argument.
@@ -212,14 +212,14 @@ impl GateGraph {
 		outputs: impl IntoIterator<Item = Wire>,
 		imm32: u32,
 	) -> Gate {
-		self.emit_gate_internal(gate_origin, opcode, inputs, outputs, &[], &[imm32])
+		self.emit_gate_generic(gate_origin, opcode, inputs, outputs, &[], &[imm32])
 	}
 
 	/// Creates a gate inline with the given opcode's shape parametrized with the inputs, outputs
 	/// and immediates.
 	///
 	/// Panics if the resulting opcode shape is not valid.
-	fn emit_gate_internal(
+	pub fn emit_gate_generic(
 		&mut self,
 		gate_origin: PathSpec,
 		opcode: Opcode,
