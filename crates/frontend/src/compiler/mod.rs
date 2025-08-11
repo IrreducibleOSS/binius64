@@ -523,7 +523,7 @@ impl CircuitBuilder {
 	/// `remainder + modulus * quotient == dividend`.
 	pub fn mod_reduce_hint(&self, dividend: &[Wire], modulus: &[Wire]) -> Vec<Wire> {
 		let outputs = (0..modulus.len())
-			.map(|_| self.add_witness())
+			.map(|_| self.add_internal())
 			.collect::<Vec<_>>();
 
 		let mut graph = self.graph_mut();
