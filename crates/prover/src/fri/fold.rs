@@ -329,17 +329,17 @@ where
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use binius_math::test_utils::random_field_buffer;
 	use binius_math::{
 		BinarySubspace,
 		fold::fold_cols,
 		ntt::{NeighborsLastSingleThread, domain_context::GenericOnTheFly},
-		test_utils::random_scalars,
+		test_utils::{random_field_buffer, random_scalars},
 	};
 	use binius_verifier::config::B128;
 	use proptest::prelude::*;
 	use rand::prelude::*;
+
+	use super::*;
 
 	proptest! {
 		#[test]

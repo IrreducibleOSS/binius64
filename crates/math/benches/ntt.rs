@@ -1,11 +1,11 @@
 use binius_field::{BinaryField, PackedField};
-use binius_math::test_utils::random_field_buffer;
 use binius_math::{
 	BinarySubspace, FieldBuffer,
 	ntt::{
 		AdditiveNTT, NeighborsLastMultiThread, NeighborsLastSingleThread,
 		domain_context::GenericPreExpanded,
 	},
+	test_utils::random_field_buffer,
 };
 use binius_utils::{
 	env::boolean_env_flag_set,

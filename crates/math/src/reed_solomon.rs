@@ -4,13 +4,12 @@
 //!
 //! See [`ReedSolomonCode`] for details.
 
-use crate::FieldSliceMut;
 use binius_field::{BinaryField, ExtensionField, PackedExtension, PackedField};
 use binius_utils::bail;
 use getset::{CopyGetters, Getters};
 
 use super::{binary_subspace::BinarySubspace, error::Error as MathError, ntt::AdditiveNTT};
-use crate::FieldBuffer;
+use crate::FieldSliceMut;
 
 /// [Reed–Solomon] codes over binary fields.
 ///
@@ -123,23 +122,30 @@ impl<F: BinaryField> ReedSolomonCode<F> {
 
 		// Repeat the message to fill the entire buffer.
 
-		// First, if the message is less than the packing width, we need to repeat it to fill one
+		// If the message is less than the packing width, we need to repeat it to fill one
 		// packed element.
-		if self.log_dim() + log_batch_size < P::LOG_WIDTH {
+		let chunk_size = self.log_dim() + log_batch_size;
+		let chunk_size = if chunk_size < P::LOG_WIDTH {
 			let elem_0 = &mut code.as_mut()[0];
 			let repeated_values = elem_0
 				.into_iter()
 				.take(1 << (self.log_dim() + log_batch_size))
 				.cycle();
 			*elem_0 = P::from_scalars(repeated_values);
-		}
+			P::LOG_WIDTH
+		} else {
+			chunk_size
+		};
 
-		// Repeat the packed message to fill the entire buffer.
-		let mut chunks =
-			code.chunks_mut(1 << (self.log_dim() + log_batch_size).saturating_sub(P::LOG_WIDTH));
-		let first_chunk = chunks.next().expect("code is not empty; checked above");
-		for chunk in chunks {
-			chunk.copy_from_slice(first_chunk);
+		if chunk_size < code.log_len() {
+			let mut chunks = code.chunks_mut(chunk_size).expect(
+				"chunk_size >= P::LOG_WIDTH from assignment above; \
+				chunk_size < code.log_len() in conditional",
+			);
+			let first_chunk = chunks.next().expect("chunks_mut cannot be empty");
+			for mut chunk in chunks {
+				chunk.as_mut().copy_from_slice(first_chunk.as_ref());
+			}
 		}
 
 		let skip_early = self.log_inv_rate;

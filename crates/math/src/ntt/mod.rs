@@ -19,9 +19,8 @@ pub use neighbors_last::{
 	NeighborsLastMultiThread, NeighborsLastReference, NeighborsLastSingleThread,
 };
 
-use crate::FieldSliceMut;
-
 use super::BinarySubspace;
+use crate::FieldSliceMut;
 
 /// The binary field additive NTT.
 ///

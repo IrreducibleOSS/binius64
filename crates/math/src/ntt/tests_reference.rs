@@ -8,13 +8,13 @@ use binius_field::{
 use rand::prelude::*;
 
 use super::{AdditiveNTT, DomainContext};
-use crate::test_utils::random_field_buffer;
 use crate::{
 	BinarySubspace,
 	ntt::{
 		NeighborsLastMultiThread, NeighborsLastReference, NeighborsLastSingleThread,
 		domain_context::{GaoMateerPreExpanded, GenericPreExpanded, TraceOneElement},
 	},
+	test_utils::random_field_buffer,
 };
 
 fn test_equivalence<P: PackedField>(

@@ -216,7 +216,6 @@ where
 mod test {
 	use std::iter::repeat_with;
 
-	use super::{NTTLookup, ROWS_PER_HYPERCUBE_VERTEX};
 	use binius_field::{
 		AESTowerField8b, Field, PackedAESBinaryField16x8b, PackedBinaryField8x1b, PackedField,
 		Random,
@@ -229,6 +228,8 @@ mod test {
 	use binius_verifier::{and_reduction::utils::constants::SKIPPED_VARS, config::B1};
 	use itertools::Itertools;
 	use rand::{SeedableRng, rngs::StdRng};
+
+	use super::{NTTLookup, ROWS_PER_HYPERCUBE_VERTEX};
 
 	/// Tests NTT accuracy on a well-known polynomial with a single coefficient set.
 	///

@@ -1,17 +1,18 @@
 //! This module tests that running the NTT is equivalent to evaluating the respective polynomial at
 //! the respective points of $S^{(0)}$.
 
-use binius_field::{BinaryField, Field};
-use rand::prelude::*;
 use std::ops::{Add, AddAssign, Mul, MulAssign};
 
-use crate::test_utils::random_field_buffer;
+use binius_field::{BinaryField, Field};
+use rand::prelude::*;
+
 use crate::{
 	BinarySubspace,
 	ntt::{
 		AdditiveNTT, DomainContext, NeighborsLastSingleThread,
 		domain_context::{self},
 	},
+	test_utils::random_field_buffer,
 };
 
 /// Represents a univariate polynomial with coefficients in a field.
