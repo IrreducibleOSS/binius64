@@ -161,21 +161,16 @@ fn round(builder: &CircuitBuilder, round: usize, state: State, w: &[Wire; 64]) -
 	State([a, b, c, d, e, f, g, h])
 }
 
-/// Ch(e,f,g)   = XOR( AND(e,f), AND( NOT(e), g ) )
+/// Ch(e,f,g) = (e AND f) XOR (NOT e AND g)
+///           = g XOR (e AND (f XOR g))
 fn ch(builder: &CircuitBuilder, e: Wire, f: Wire, g: Wire) -> Wire {
-	let a = builder.band(e, f);
-	let a1 = builder.bnot(e);
-	let b1 = builder.band(a1, g);
-	builder.bxor(a, b1)
+	builder.bxor(g, builder.band(e, builder.bxor(f, g)))
 }
 
-/// Maj(a,b,c)  = XOR( XOR( AND(a,b), AND(a,c) ), AND(b,c) )
+/// Maj(a,b,c) = (a AND b) XOR (a AND c) XOR (b AND c)
+///            = (a AND (b XOR c)) XOR (b AND c)
 fn maj(builder: &CircuitBuilder, a: Wire, b: Wire, c: Wire) -> Wire {
-	let a1 = builder.band(a, b);
-	let a2 = builder.band(a, c);
-	let a3 = builder.bxor(a1, a2);
-	let a4 = builder.band(b, c);
-	builder.bxor(a3, a4)
+	builder.bxor(builder.band(a, builder.bxor(b, c)), builder.band(b, c))
 }
 
 /// Σ0(a)       = XOR( XOR( ROTR(a,  2), ROTR(a, 13) ), ROTR(a, 22) )
