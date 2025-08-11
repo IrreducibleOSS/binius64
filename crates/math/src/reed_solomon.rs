@@ -4,6 +4,7 @@
 //!
 //! See [`ReedSolomonCode`] for details.
 
+use crate::FieldSliceMut;
 use binius_field::{BinaryField, ExtensionField, PackedExtension, PackedField};
 use binius_utils::bail;
 use getset::{CopyGetters, Getters};
@@ -109,14 +110,8 @@ impl<F: BinaryField> ReedSolomonCode<F> {
 		if ntt.subspace(self.log_len()) != self.subspace {
 			bail!(Error::EncoderSubspaceMismatch);
 		}
-		let expected_buffer_len =
-			1 << (self.log_len() + log_batch_size).saturating_sub(P::LOG_WIDTH);
-		if code.len() != expected_buffer_len {
-			bail!(Error::IncorrectBufferLength {
-				expected: expected_buffer_len,
-				actual: code.len(),
-			});
-		}
+
+		let mut code = FieldSliceMut::from_slice(self.log_len() + log_batch_size, code)?;
 
 		let _scope = tracing::trace_span!(
 			"Reed–Solomon encode",
@@ -131,11 +126,12 @@ impl<F: BinaryField> ReedSolomonCode<F> {
 		// First, if the message is less than the packing width, we need to repeat it to fill one
 		// packed element.
 		if self.log_dim() + log_batch_size < P::LOG_WIDTH {
-			let repeated_values = code[0]
+			let elem_0 = &mut code.as_mut()[0];
+			let repeated_values = elem_0
 				.into_iter()
 				.take(1 << (self.log_dim() + log_batch_size))
 				.cycle();
-			code[0] = P::from_scalars(repeated_values);
+			*elem_0 = P::from_scalars(repeated_values);
 		}
 
 		// Repeat the packed message to fill the entire buffer.
@@ -148,11 +144,7 @@ impl<F: BinaryField> ReedSolomonCode<F> {
 
 		let skip_early = self.log_inv_rate;
 		let skip_late = log_batch_size;
-		ntt.forward_transform(
-			FieldBuffer::new(self.log_len() + log_batch_size, code).unwrap(),
-			skip_early,
-			skip_late,
-		);
+		ntt.forward_transform(code, skip_early, skip_late);
 		Ok(())
 	}
 
@@ -185,8 +177,6 @@ impl<F: BinaryField> ReedSolomonCode<F> {
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-	#[error("incorrect buffer length: expected {expected}, got {actual}")]
-	IncorrectBufferLength { expected: usize, actual: usize },
 	#[error("the evaluation domain of the code does not match the subspace of the NTT encoder")]
 	EncoderSubspaceMismatch,
 	#[error("the dimension of the evaluation domain of the code does not match the parameters")]

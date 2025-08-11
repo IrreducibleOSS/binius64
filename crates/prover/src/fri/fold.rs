@@ -329,8 +329,10 @@ where
 
 #[cfg(test)]
 mod tests {
+	use super::*;
+	use binius_math::test_utils::random_field_buffer;
 	use binius_math::{
-		BinarySubspace, FieldBuffer,
+		BinarySubspace,
 		fold::fold_cols,
 		ntt::{NeighborsLastSingleThread, domain_context::GenericOnTheFly},
 		test_utils::random_scalars,
@@ -338,8 +340,6 @@ mod tests {
 	use binius_verifier::config::B128;
 	use proptest::prelude::*;
 	use rand::prelude::*;
-
-	use super::*;
 
 	proptest! {
 		#[test]
@@ -354,22 +354,22 @@ mod tests {
 		let ntt: NeighborsLastSingleThread<_> = NeighborsLastSingleThread { domain_context };
 
 		let mut rng = StdRng::seed_from_u64(0);
-		let msg = random_scalars(&mut rng, 1 << (log_dim + arity));
+		let msg = random_field_buffer(&mut rng, log_dim + arity);
 		let challenges = random_scalars(&mut rng, arity);
 
 		let query = eq_ind_partial_eval::<B128>(&challenges);
 
 		// Fold the message using regular folding.
-		let msg_buffer = FieldBuffer::new(log_dim + arity, msg.as_slice()).unwrap();
-		let mut folded_msg = fold_cols(&msg_buffer, &query).unwrap();
+		let mut folded_msg = fold_cols(&msg, &query).unwrap();
 		assert_eq!(folded_msg.log_len(), log_dim);
 
 		// Encode the message over the large domain.
 		let mut codeword = msg;
-		ntt.forward_transform(FieldBuffer::new(log_dim + arity, codeword.as_mut()).unwrap(), 0, 0);
+		ntt.forward_transform(codeword.to_mut(), 0, 0);
 
 		// Fold the encoded message using FRI folding.
-		let folded_codeword = fold_interleaved(&ntt, &codeword, &challenges, log_dim + arity, 0);
+		let folded_codeword =
+			fold_interleaved(&ntt, codeword.as_ref(), &challenges, log_dim + arity, 0);
 
 		// Encode the folded message.
 		ntt.forward_transform(folded_msg.to_mut(), 0, 0);
