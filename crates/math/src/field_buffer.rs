@@ -189,7 +189,7 @@ impl<P: PackedField, Data: Deref<Target = [P]>> FieldBuffer<P, Data> {
 
 	/// Borrows the buffer as a [`FieldSlice`].
 	pub fn to_ref(&self) -> FieldSlice<'_, P> {
-		FieldSlice::from_slice(self.log_len, &self.values)
+		FieldSlice::from_slice(self.log_len, self.as_ref())
 			.expect("log_len matches values.len() by struct invariant")
 	}
 
@@ -373,7 +373,7 @@ impl<P: PackedField, Data: Deref<Target = [P]>> FieldBuffer<P, Data> {
 impl<P: PackedField, Data: DerefMut<Target = [P]>> FieldBuffer<P, Data> {
 	/// Borrows the buffer mutably as a [`FieldSliceMut`].
 	pub fn to_mut(&mut self) -> FieldSliceMut<'_, P> {
-		FieldSliceMut::from_slice(self.log_len, &mut self.values)
+		FieldSliceMut::from_slice(self.log_len, self.as_mut())
 			.expect("log_len matches values.len() by struct invariant")
 	}
 
@@ -612,6 +612,14 @@ impl<'a, P: PackedField> FieldSlice<'a, P> {
 	}
 }
 
+impl<'a, P: PackedField, Data: Deref<Target = [P]>> From<&'a FieldBuffer<P, Data>>
+	for FieldSlice<'a, P>
+{
+	fn from(buffer: &'a FieldBuffer<P, Data>) -> Self {
+		buffer.to_ref()
+	}
+}
+
 impl<'a, P: PackedField> FieldSliceMut<'a, P> {
 	/// Create a new FieldSliceMut from a mutable slice of packed values.
 	///
@@ -621,6 +629,14 @@ impl<'a, P: PackedField> FieldSliceMut<'a, P> {
 	///   exactly.
 	pub fn from_slice(log_len: usize, slice: &'a mut [P]) -> Result<Self, Error> {
 		FieldBuffer::new(log_len, FieldSliceDataMut::Slice(slice))
+	}
+}
+
+impl<'a, P: PackedField, Data: DerefMut<Target = [P]>> From<&'a mut FieldBuffer<P, Data>>
+	for FieldSliceMut<'a, P>
+{
+	fn from(buffer: &'a mut FieldBuffer<P, Data>) -> Self {
+		buffer.to_mut()
 	}
 }
 
