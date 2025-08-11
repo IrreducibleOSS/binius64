@@ -1,4 +1,4 @@
-use binius_core::word::Word;
+use binius_core::{consts::WORD_SIZE_BITS, word::Word};
 
 use super::{
 	addsub::{add, sub},
@@ -6,9 +6,6 @@ use super::{
 	mul::mul,
 };
 use crate::compiler::CircuitBuilder;
-
-/// TODO: this should be moved from binius-verifier to binius-core
-const WORD_SIZE_BITS: usize = 64;
 
 /// Modular reduction verification for BigUint.
 ///

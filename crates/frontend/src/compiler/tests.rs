@@ -171,6 +171,47 @@ fn test_isub_bin_bout_from_zero() {
 	assert_eq!(w[bout_wire], Word(u64::MAX));
 }
 
+#[test]
+fn test_mod_reduce_hint() {
+	let builder = CircuitBuilder::new();
+
+	// (2^128-1) % (2^64-5) = 24
+	let d0 = builder.add_constant_64(u64::MAX);
+	let d1 = builder.add_constant_64(u64::MAX);
+
+	let m = builder.add_constant_64(u64::MAX - 4);
+
+	let r = builder.mod_reduce_hint(&[d0, d1], &[m]);
+
+	let circuit = builder.build();
+	let mut w = circuit.new_witness_filler();
+	circuit.populate_wire_witness(&mut w).unwrap();
+
+	assert_eq!(r.len(), 1);
+	assert_eq!(w[r[0]], Word(24));
+}
+
+#[test]
+fn test_mod_reduce_hint_div_by_zero() {
+	let builder = CircuitBuilder::new();
+
+	let d0 = builder.add_constant_64(u64::MAX);
+	let d1 = builder.add_constant_64(u64::MAX);
+
+	let m0 = builder.add_constant_64(0);
+	let m1 = builder.add_constant_64(0);
+
+	let r = builder.mod_reduce_hint(&[d0, d1], &[m0, m1]);
+
+	let circuit = builder.build();
+	let mut w = circuit.new_witness_filler();
+	circuit.populate_wire_witness(&mut w).unwrap();
+
+	assert_eq!(r.len(), 2);
+	assert_eq!(w[r[0]], Word(0));
+	assert_eq!(w[r[0]], Word(0));
+}
+
 fn prop_check_icmp_ult(a: u64, b: u64, expected_result: Word) {
 	let builder = CircuitBuilder::new();
 	let a_wire = builder.add_constant_64(a);

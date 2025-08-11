@@ -33,6 +33,9 @@ pub enum Opcode {
 	Assert0,
 	AssertBand0,
 	AssertEqCond,
+
+	// Hints
+	ModReduceHint,
 }
 
 pub struct OpcodeShape {
@@ -77,10 +80,17 @@ impl Opcode {
 			Opcode::Assert0 => gate::assert_0::shape(),
 			Opcode::AssertBand0 => gate::assert_band_0::shape(),
 			Opcode::AssertEqCond => gate::assert_eq_cond::shape(),
+
+			// Hints (no constraints)
+			Opcode::ModReduceHint => gate::mod_reduce_hint::shape(dimensions),
 		}
 	}
 
 	pub fn is_const_shape(&self) -> bool {
-		true
+		#[allow(clippy::match_like_matches_macro)]
+		match self {
+			Opcode::ModReduceHint => false,
+			_ => true,
+		}
 	}
 }

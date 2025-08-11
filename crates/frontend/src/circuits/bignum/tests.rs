@@ -6,16 +6,8 @@ use super::*;
 use crate::{
 	compiler::{CircuitBuilder, circuit::WitnessFiller},
 	constraint_verifier::verify_constraints,
+	util::num_biguint_from_u64_limbs as from_u64_limbs,
 };
-
-/// Returns a BigUint from u64 limbs with little-endian ordering
-fn from_u64_limbs(limbs: &[u64]) -> num_bigint::BigUint {
-	let mut bytes = Vec::with_capacity(limbs.len() * 8);
-	for &word in limbs {
-		bytes.extend_from_slice(&word.to_le_bytes());
-	}
-	num_bigint::BigUint::from_bytes_le(&bytes)
-}
 
 /// Convert witness BigUint to num_bigint::BigUint for computation.
 ///
