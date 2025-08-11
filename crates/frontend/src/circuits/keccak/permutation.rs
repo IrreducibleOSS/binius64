@@ -162,6 +162,9 @@ pub fn rotate_left(b: &CircuitBuilder, x: Wire, n: u32) -> Wire {
 
 #[cfg(test)]
 mod tests {
+	use binius_core::word::Word;
+	use rand::{Rng, SeedableRng, rngs::StdRng};
+
 	use super::*;
 	use crate::{
 		circuits::keccak::reference::{
@@ -171,8 +174,6 @@ mod tests {
 		compiler::CircuitBuilder,
 		constraint_verifier::verify_constraints,
 	};
-	use binius_core::word::Word;
-	use rand::{Rng, SeedableRng, rngs::StdRng};
 
 	#[test]
 	fn test_keccak_permutation() {
