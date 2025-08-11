@@ -4,7 +4,6 @@ use crate::{
 	circuits::keccak::reference::{R, RC, idx},
 	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
 };
-
 pub const PADDING_BYTE: u8 = 0x01;
 
 #[derive(Clone, Copy)]
