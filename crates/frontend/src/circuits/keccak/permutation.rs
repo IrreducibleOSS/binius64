@@ -103,11 +103,11 @@ impl Permutation {
 		);
 
 		// D[x] = C[x-1] ^ rotl1(C[x+1])
-		let d0 = b.bxor(c4, rotate_left(b, c1, 1));
-		let d1 = b.bxor(c0, rotate_left(b, c2, 1));
-		let d2 = b.bxor(c1, rotate_left(b, c3, 1));
-		let d3 = b.bxor(c2, rotate_left(b, c4, 1));
-		let d4 = b.bxor(c3, rotate_left(b, c0, 1));
+		let d0 = b.bxor(c4, b.rotl_64(c1, 1));
+		let d1 = b.bxor(c0, b.rotl_64(c2, 1));
+		let d2 = b.bxor(c1, b.rotl_64(c3, 1));
+		let d3 = b.bxor(c2, b.rotl_64(c4, 1));
+		let d4 = b.bxor(c3, b.rotl_64(c0, 1));
 
 		// A'[x,y] = A[x,y] ^ D[x]
 		for y in 0..5 {
@@ -139,7 +139,11 @@ impl Permutation {
 		let mut temp = [state[0]; 25];
 		for y in 0..5 {
 			for x in 0..5 {
-				temp[idx(y, (2 * x + 3 * y) % 5)] = rotate_left(b, state[idx(x, y)], R[idx(x, y)]);
+				// no need to rotate if rotating by 0
+				if R[idx(x, y)] == 0 {
+					continue;
+				}
+				temp[idx(y, (2 * x + 3 * y) % 5)] = b.rotl_64(state[idx(x, y)], R[idx(x, y)]);
 			}
 		}
 		*state = temp;
@@ -148,15 +152,6 @@ impl Permutation {
 	fn iota(b: &CircuitBuilder, state: &mut [Wire; 25], round: usize) {
 		let rc_wire = b.add_constant(Word(RC[round]));
 		state[0] = b.bxor(state[0], rc_wire);
-	}
-}
-
-pub fn rotate_left(b: &CircuitBuilder, x: Wire, n: u32) -> Wire {
-	let k = n % 64;
-	if k == 0 {
-		x
-	} else {
-		b.bxor(b.shl(x, k), b.shr(x, 64 - k))
 	}
 }
 
