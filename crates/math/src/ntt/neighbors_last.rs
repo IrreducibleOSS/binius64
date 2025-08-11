@@ -12,9 +12,8 @@ use binius_utils::rayon::{
 	slice::ParallelSliceMut,
 };
 
-use crate::FieldBuffer;
-
 use super::{AdditiveNTT, DomainContext};
+use crate::FieldBuffer;
 
 const DEFAULT_LOG_BASE_LEN: usize = 4;
 

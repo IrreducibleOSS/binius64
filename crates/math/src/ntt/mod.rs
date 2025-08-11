@@ -21,9 +21,8 @@ pub use neighbors_last::{
 	NeighborsLastMultiThread, NeighborsLastReference, NeighborsLastSingleThread,
 };
 
-use crate::FieldBuffer;
-
 use super::BinarySubspace;
+use crate::FieldBuffer;
 
 /// The binary field additive NTT.
 ///
@@ -80,7 +79,8 @@ pub trait AdditiveNTT {
 
 	/// Inverse transformation of [`Self::forward_transform`].
 	///
-	/// Note that "early" layers here refer to "early" time in the forward transform, i.e. layers with low index in the forward transform.
+	/// Note that "early" layers here refer to "early" time in the forward transform, i.e. layers
+	/// with low index in the forward transform.
 	///
 	/// ## Preconditions
 	///
