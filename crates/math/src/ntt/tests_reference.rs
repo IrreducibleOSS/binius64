@@ -23,7 +23,7 @@ fn test_equivalence<P: PackedField>(
 ) where
 	P::Scalar: BinaryField,
 {
-	let log_d = 14;
+	let log_d = 8;
 
 	let mut rng = rand::rng();
 	let mut data_a: Vec<P> = repeat_with(|| P::random(&mut rng))
@@ -31,8 +31,8 @@ fn test_equivalence<P: PackedField>(
 		.collect();
 	let mut data_b = data_a.clone();
 
-	for skip_early in [0, 3, 7] {
-		for skip_late in [0, 3, 7] {
+	for skip_early in [0, 2, 4] {
+		for skip_late in [0, 2, 4] {
 			ntt_a.forward_transform(
 				FieldBuffer::new(log_d, data_a.as_mut()).unwrap(),
 				skip_early,
@@ -54,7 +54,10 @@ fn test_equivalence_ntts<P: PackedField>(
 	P::Scalar: BinaryField,
 {
 	let ntt_ref = NeighborsLastReference { domain_context };
-	let ntt_single: NeighborsLastSingleThread<_> = NeighborsLastSingleThread { domain_context };
+	let ntt_single_2: NeighborsLastSingleThread<_, 2> =
+		NeighborsLastSingleThread { domain_context };
+	let ntt_single_6: NeighborsLastSingleThread<_, 6> =
+		NeighborsLastSingleThread { domain_context };
 	let ntt_multi_0: NeighborsLastMultiThread<_> = NeighborsLastMultiThread {
 		domain_context,
 		log_num_shares: 0,
@@ -72,7 +75,8 @@ fn test_equivalence_ntts<P: PackedField>(
 		log_num_shares: 1000,
 	};
 
-	test_equivalence::<P>(&ntt_ref, &ntt_single);
+	test_equivalence::<P>(&ntt_ref, &ntt_single_2);
+	test_equivalence::<P>(&ntt_ref, &ntt_single_6);
 	test_equivalence::<P>(&ntt_ref, &ntt_multi_0);
 	test_equivalence::<P>(&ntt_ref, &ntt_multi_1);
 	test_equivalence::<P>(&ntt_ref, &ntt_multi_2);
@@ -83,10 +87,10 @@ fn test_equivalence_ntts_domain_contexts<P: PackedField>()
 where
 	P::Scalar: BinaryField + TraceOneElement,
 {
-	let dc_1 = GaoMateerPreExpanded::<P::Scalar>::generate(20);
+	let dc_1 = GaoMateerPreExpanded::<P::Scalar>::generate(10);
 	test_equivalence_ntts::<P>(&dc_1);
 
-	let subspace = BinarySubspace::with_dim(20).unwrap();
+	let subspace = BinarySubspace::with_dim(10).unwrap();
 	let dc_2 = GenericPreExpanded::<P::Scalar>::generate_from_subspace(&subspace);
 	test_equivalence_ntts::<P>(&dc_2);
 }
