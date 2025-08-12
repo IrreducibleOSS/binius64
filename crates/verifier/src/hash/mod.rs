@@ -7,3 +7,5 @@ pub use serialization::*;
 /// The standard digest is SHA-256.
 pub type StdDigest = sha2::Sha256;
 pub type StdCompression = compress::sha256::Sha256Compression;
+
+pub mod vision;
