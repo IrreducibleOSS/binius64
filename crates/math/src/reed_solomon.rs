@@ -130,7 +130,7 @@ impl<F: BinaryField> ReedSolomonCode<F> {
 
 		// First, if the message is less than the packing width, we need to repeat it to fill one
 		// packed element.
-		if self.dim() + log_batch_size < P::LOG_WIDTH {
+		if self.log_dim() + log_batch_size < P::LOG_WIDTH {
 			let repeated_values = code[0]
 				.into_iter()
 				.take(1 << (self.log_dim() + log_batch_size))
@@ -193,4 +193,106 @@ pub enum Error {
 	SubspaceDimensionMismatch,
 	#[error("math error: {0}")]
 	Math(#[from] MathError),
+}
+
+#[cfg(test)]
+mod tests {
+	use binius_field::{
+		BinaryField, PackedBinaryGhash1x128b, PackedBinaryGhash4x128b, PackedField,
+	};
+	use rand::{SeedableRng, rngs::StdRng};
+
+	use super::*;
+	use crate::{
+		FieldBuffer,
+		ntt::{NeighborsLastReference, domain_context::GenericPreExpanded},
+		test_utils::random_field_buffer,
+	};
+
+	fn test_encode_batch_inplace_helper<P: PackedField>(
+		log_dim: usize,
+		log_inv_rate: usize,
+		log_batch_size: usize,
+	) where
+		P::Scalar: BinaryField,
+	{
+		let mut rng = StdRng::seed_from_u64(0);
+
+		let rs_code = ReedSolomonCode::<P::Scalar>::new(log_dim, log_inv_rate)
+			.expect("Failed to create Reed-Solomon code");
+
+		// Create NTT with matching subspace
+		let subspace = rs_code.subspace().clone();
+		let domain_context = GenericPreExpanded::<P::Scalar>::generate_from_subspace(&subspace);
+		let ntt = NeighborsLastReference {
+			domain_context: &domain_context,
+		};
+
+		// Generate random message buffer
+		let message = random_field_buffer::<P>(&mut rng, log_dim + log_batch_size);
+
+		// Create two clones with capacity for encoding
+		let log_encoded_len = rs_code.log_len() + log_batch_size;
+
+		// Method 1: Use encode_batch_inplace
+		// Create buffer with message data but with capacity for the full encoding
+		let mut encoded_data = message.as_ref().to_vec();
+		// Resize to have capacity for encoding
+		let encoded_capacity = 1 << log_encoded_len.saturating_sub(P::LOG_WIDTH);
+		encoded_data.resize(encoded_capacity, P::zero());
+
+		let mut encoded_buffer =
+			FieldBuffer::new_truncated(log_dim + log_batch_size, encoded_data.into_boxed_slice())
+				.expect("Failed to create encoded buffer");
+
+		// Zero-extend to encoding size
+		encoded_buffer
+			.zero_extend(log_encoded_len)
+			.expect("Failed to zero-extend encoded buffer");
+
+		rs_code
+			.encode_batch_inplace(&ntt, encoded_buffer.as_mut(), log_batch_size)
+			.expect("encode_batch_inplace failed");
+
+		// Method 2: Reference implementation - apply NTT with zero-padded coefficients
+		// Create buffer with message data but with capacity for the full encoding
+		let mut reference_data = message.as_ref().to_vec();
+		// Resize to have capacity for encoding
+		reference_data.resize(encoded_capacity, P::zero());
+
+		let mut reference_buffer =
+			FieldBuffer::new_truncated(log_dim + log_batch_size, reference_data.into_boxed_slice())
+				.expect("Failed to create reference buffer");
+
+		// Zero-extend to encoding size
+		reference_buffer
+			.zero_extend(log_encoded_len)
+			.expect("Failed to zero-extend reference buffer");
+
+		// Perform large NTT with zero-padded coefficients.
+		ntt.forward_transform(reference_buffer.to_mut(), 0, log_batch_size);
+
+		// Compare results
+		assert_eq!(
+			encoded_buffer.as_ref(),
+			reference_buffer.as_ref(),
+			"encode_batch_inplace result differs from reference NTT implementation"
+		);
+	}
+
+	#[test]
+	fn test_encode_batch_inplace() {
+		// Test with PackedBinaryGhash1x128b
+		test_encode_batch_inplace_helper::<PackedBinaryGhash1x128b>(4, 2, 0);
+		test_encode_batch_inplace_helper::<PackedBinaryGhash1x128b>(6, 2, 1);
+		test_encode_batch_inplace_helper::<PackedBinaryGhash1x128b>(8, 3, 2);
+
+		// Test with PackedBinaryGhash4x128b
+		test_encode_batch_inplace_helper::<PackedBinaryGhash4x128b>(4, 2, 0);
+		test_encode_batch_inplace_helper::<PackedBinaryGhash4x128b>(6, 2, 1);
+		test_encode_batch_inplace_helper::<PackedBinaryGhash4x128b>(8, 3, 2);
+
+		// Test where message length is less than the packing width and codeword length is greater.
+		test_encode_batch_inplace_helper::<PackedBinaryGhash4x128b>(1, 2, 0);
+	}
 }
