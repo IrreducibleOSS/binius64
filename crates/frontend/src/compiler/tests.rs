@@ -172,7 +172,7 @@ fn test_isub_bin_bout_from_zero() {
 }
 
 #[test]
-fn test_mod_reduce_hint() {
+fn test_biguint_divide_hint() {
 	let builder = CircuitBuilder::new();
 
 	// (2^128-1) % (2^64-5) = 24
@@ -181,7 +181,7 @@ fn test_mod_reduce_hint() {
 
 	let m = builder.add_constant_64(u64::MAX - 4);
 
-	let r = builder.mod_reduce_hint(&[d0, d1], &[m]);
+	let (q, r) = builder.biguint_divide_hint(&[d0, d1], &[m]);
 
 	let circuit = builder.build();
 	let mut w = circuit.new_witness_filler();
@@ -189,10 +189,14 @@ fn test_mod_reduce_hint() {
 
 	assert_eq!(r.len(), 1);
 	assert_eq!(w[r[0]], Word(24));
+
+	assert_eq!(q.len(), 2);
+	assert_eq!(w[q[0]], Word(5));
+	assert_eq!(w[q[1]], Word(1));
 }
 
 #[test]
-fn test_mod_reduce_hint_div_by_zero() {
+fn test_biguint_divide_hint_div_by_zero() {
 	let builder = CircuitBuilder::new();
 
 	let d0 = builder.add_constant_64(u64::MAX);
@@ -201,7 +205,7 @@ fn test_mod_reduce_hint_div_by_zero() {
 	let m0 = builder.add_constant_64(0);
 	let m1 = builder.add_constant_64(0);
 
-	let r = builder.mod_reduce_hint(&[d0, d1], &[m0, m1]);
+	let (q, r) = builder.biguint_divide_hint(&[d0, d1], &[m0, m1]);
 
 	let circuit = builder.build();
 	let mut w = circuit.new_witness_filler();
@@ -210,6 +214,10 @@ fn test_mod_reduce_hint_div_by_zero() {
 	assert_eq!(r.len(), 2);
 	assert_eq!(w[r[0]], Word(0));
 	assert_eq!(w[r[1]], Word(0));
+
+	assert_eq!(q.len(), 2);
+	assert_eq!(w[q[0]], Word(0));
+	assert_eq!(w[q[1]], Word(0));
 }
 
 #[test]

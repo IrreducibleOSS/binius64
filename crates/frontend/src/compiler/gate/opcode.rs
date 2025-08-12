@@ -36,7 +36,7 @@ pub enum Opcode {
 	AssertEqCond,
 
 	// Hints
-	ModReduceHint,
+	BigUintDivideHint,
 	ModInverseHint,
 }
 
@@ -85,7 +85,7 @@ impl Opcode {
 			Opcode::AssertEqCond => gate::assert_eq_cond::shape(),
 
 			// Hints (no constraints)
-			Opcode::ModReduceHint => gate::mod_reduce_hint::shape(dimensions),
+			Opcode::BigUintDivideHint => gate::biguint_divide_hint::shape(dimensions),
 			Opcode::ModInverseHint => gate::mod_inverse_hint::shape(dimensions),
 		}
 	}
@@ -93,7 +93,7 @@ impl Opcode {
 	pub fn is_const_shape(&self) -> bool {
 		#[allow(clippy::match_like_matches_macro)]
 		match self {
-			Opcode::ModReduceHint => false,
+			Opcode::BigUintDivideHint => false,
 			Opcode::ModInverseHint => false,
 			_ => true,
 		}
