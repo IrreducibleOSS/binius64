@@ -13,6 +13,7 @@ pub mod assert_band_0;
 pub mod assert_eq;
 pub mod assert_eq_cond;
 pub mod band;
+pub mod biguint_divide_hint;
 pub mod bor;
 pub mod bxor;
 pub mod extract_byte;
@@ -23,7 +24,6 @@ pub mod icmp_ult;
 pub mod imul;
 pub mod isub_bin_bout;
 pub mod mod_inverse_hint;
-pub mod mod_reduce_hint;
 pub mod rotl64;
 pub mod rotr32;
 pub mod shl;
@@ -53,7 +53,7 @@ pub fn constrain(gate: Gate, graph: &GateGraph, builder: &mut ConstraintBuilder)
 		Opcode::Shr => shr::constrain(gate, data, builder),
 		Opcode::Shl => shl::constrain(gate, data, builder),
 		// Hints do not introduce constraints
-		Opcode::ModReduceHint => (),
+		Opcode::BigUintDivideHint => (),
 		Opcode::ModInverseHint => (),
 	}
 }
@@ -82,7 +82,7 @@ pub fn evaluate(gate: Gate, graph: &GateGraph, w: &mut circuit::WitnessFiller) {
 		Opcode::ExtractByte => extract_byte::evaluate(gate, data, w),
 		Opcode::Shr => shr::evaluate(gate, data, w),
 		Opcode::Shl => shl::evaluate(gate, data, w),
-		Opcode::ModReduceHint => mod_reduce_hint::evaluate(gate, data, w),
+		Opcode::BigUintDivideHint => biguint_divide_hint::evaluate(gate, data, w),
 		Opcode::ModInverseHint => mod_inverse_hint::evaluate(gate, data, w),
 	}
 }

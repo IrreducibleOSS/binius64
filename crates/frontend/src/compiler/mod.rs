@@ -521,29 +521,37 @@ impl CircuitBuilder {
 		z
 	}
 
-	/// Modular reduction.
+	/// BigUint division.
 	///
-	/// Computes the remainder of the division of `dividend` by `modulus`. Returns zero if `modulus`
-	/// is zero.
+	/// Returns `(quotient, remainder)` of the division of `dividend` by `divisor`.
 	///
 	/// This is a hint - a deterministic computation that happens only on the prover side.
 	/// The result should be additionally constrained by using bignum circuits to check that
-	/// `remainder + modulus * quotient == dividend`.
-	pub fn mod_reduce_hint(&self, dividend: &[Wire], modulus: &[Wire]) -> Vec<Wire> {
-		let outputs = (0..modulus.len())
+	/// `remainder + divisor * quotient == dividend`.
+	pub fn biguint_divide_hint(
+		&self,
+		dividend: &[Wire],
+		divisor: &[Wire],
+	) -> (Vec<Wire>, Vec<Wire>) {
+		let quotient = (0..dividend.len())
+			.map(|_| self.add_internal())
+			.collect::<Vec<_>>();
+
+		let remainder = (0..divisor.len())
 			.map(|_| self.add_internal())
 			.collect::<Vec<_>>();
 
 		let mut graph = self.graph_mut();
 		graph.emit_gate_generic(
 			self.current_path,
-			Opcode::ModReduceHint,
-			dividend.iter().chain(modulus).copied(),
-			outputs.iter().copied(),
-			&[dividend.len(), modulus.len()],
+			Opcode::BigUintDivideHint,
+			dividend.iter().chain(divisor).copied(),
+			quotient.iter().chain(&remainder).copied(),
+			&[dividend.len(), divisor.len()],
 			&[],
 		);
-		outputs
+
+		(quotient, remainder)
 	}
 
 	/// Modular inverse.
