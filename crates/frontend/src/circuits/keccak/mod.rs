@@ -290,10 +290,7 @@ impl Keccak {
 	/// * digest - The expected 32-byte Keccak-256 digest
 	pub fn populate_digest(&self, w: &mut WitnessFiller<'_>, digest: [u8; 32]) {
 		for (i, bytes) in digest.chunks(8).enumerate() {
-			let mut word = 0u64;
-			for (j, &byte) in bytes.iter().enumerate() {
-				word |= (byte as u64) << (j * 8);
-			}
+			let word = u64::from_le_bytes(bytes.try_into().unwrap());
 			w[self.digest[i]] = Word(word);
 		}
 	}
@@ -336,12 +333,11 @@ impl Keccak {
 		for block_idx in 0..self.n_blocks {
 			for word_idx in 0..N_WORDS_PER_BLOCK {
 				let byte_offset = block_idx * RATE_BYTES + word_idx * 8;
-				let mut word = 0u64;
-				for j in 0..8 {
-					if byte_offset + j < padded_bytes.len() {
-						word |= (padded_bytes[byte_offset + j] as u64) << (j * 8);
-					}
-				}
+				let word = u64::from_le_bytes(
+					padded_bytes[byte_offset..byte_offset + 8]
+						.try_into()
+						.unwrap(),
+				);
 				w[self.padded_message[block_idx][word_idx]] = Word(word);
 			}
 		}
