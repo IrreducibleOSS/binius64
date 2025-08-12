@@ -47,7 +47,7 @@ impl Keccak {
 		assert!(max_len > 0, "max_len must be positive");
 
 		// number of blocks needed for the maximum sized message
-		let n_blocks = (max_len + 2).div_ceil(RATE_BYTES);
+		let n_blocks = (max_len + 1).div_ceil(RATE_BYTES);
 
 		// constrain the message length claim to be explicitly within bounds
 		let len_check = b.icmp_ult(b.add_constant_64(max_len as u64), len);
@@ -183,7 +183,7 @@ impl Keccak {
 		is_final_block_flags: Vec<Wire>,
 	) {
 		// number of blocks needed for the maximum sized message
-		let n_blocks = (max_len + 2).div_ceil(RATE_BYTES);
+		let n_blocks = (max_len + 1).div_ceil(RATE_BYTES);
 
 		// number of words per
 		let n_words_per_block = RATE_BYTES / 8;
@@ -331,7 +331,7 @@ impl Keccak {
 			}
 		}
 
-		let n_blocks = (self.max_len + 2).div_ceil(RATE_BYTES);
+		let n_blocks = (self.max_len + 1).div_ceil(RATE_BYTES);
 		let mut padded_bytes = vec![0u8; n_blocks * RATE_BYTES];
 
 		padded_bytes[..message_bytes.len()].copy_from_slice(message_bytes);
