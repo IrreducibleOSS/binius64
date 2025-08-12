@@ -12,6 +12,7 @@ use binius_field::{
 use binius_math::{
 	BinarySubspace, FieldBuffer,
 	ntt::{NeighborsLastMultiThread, domain_context::GenericPreExpanded},
+	univariate::lagrange_evals,
 };
 use binius_transcript::{
 	ProverTranscript,
@@ -28,6 +29,7 @@ use binius_verifier::{
 	protocols::{intmul::IntMulOutput, sumcheck::SumcheckOutput},
 };
 use digest::{Digest, FixedOutputReset, Output, core_api::BlockSizeUser};
+use itertools::izip;
 
 use super::error::Error;
 use crate::{
@@ -146,48 +148,54 @@ where
 		let bitand_scope =
 			tracing::debug_span!("BitAnd reduction", n_constraints = cs.and_constraints.len())
 				.entered();
-		let bitand_witness = build_bitand_witness(&cs.and_constraints, witness.combined_witness());
-		let bitand_output = prove_bitand_reduction::<B128, _>(bitand_witness, transcript)?;
-		drop(bitand_scope);
-
-		// IntMul reduction
-		let intmul_scope =
-			tracing::debug_span!("IntMul reduction", n_constraints = cs.mul_constraints.len())
-				.entered();
-		let mul_witness = build_intmul_witness(&cs.mul_constraints, witness.combined_witness());
-		let intmul_output = prove_intmul_reduction::<_, P, _>(mul_witness, transcript)?;
-		drop(intmul_scope);
-
-		// Translate from BitAnd and IntMul reduction outputs to Shift reduction inputs
 		let bitand_claim = {
+			let bitand_witness =
+				build_bitand_witness(&cs.and_constraints, witness.combined_witness());
 			let AndCheckOutput {
 				a_eval,
 				b_eval,
 				c_eval,
 				z_challenge,
 				eval_point,
-			} = bitand_output;
+			} = prove_bitand_reduction::<B128, _>(bitand_witness, transcript)?;
 			OperatorData {
 				evals: vec![a_eval, b_eval, c_eval],
 				r_zhat_prime: z_challenge,
 				r_x_prime: eval_point,
 			}
 		};
+		drop(bitand_scope);
+
+		// IntMul reduction
+		let intmul_scope =
+			tracing::debug_span!("IntMul reduction", n_constraints = cs.mul_constraints.len())
+				.entered();
 		let intmul_claim = {
+			let mul_witness = build_intmul_witness(&cs.mul_constraints, witness.combined_witness());
 			let IntMulOutput {
-				a_eval,
-				b_eval,
-				c_lo_eval,
-				c_hi_eval,
-				z_challenge,
 				eval_point,
-			} = intmul_output;
+				a_evals,
+				b_evals,
+				c_lo_evals,
+				c_hi_evals,
+			} = prove_intmul_reduction::<_, P, _>(mul_witness, transcript)?;
+
+			let z_challenge = transcript.sample();
+			let subspace = BinarySubspace::<B8>::with_dim(LOG_WORD_SIZE_BITS)?.isomorphic();
+			let l_tilde = lagrange_evals(&subspace, z_challenge);
+			let make_final_claim = |evals| izip!(evals, &l_tilde).map(|(x, y)| x * y).sum();
 			OperatorData {
-				evals: vec![a_eval, b_eval, c_lo_eval, c_hi_eval],
+				evals: vec![
+					make_final_claim(a_evals),
+					make_final_claim(b_evals),
+					make_final_claim(c_lo_evals),
+					make_final_claim(c_hi_evals),
+				],
 				r_zhat_prime: z_challenge,
 				r_x_prime: eval_point,
 			}
 		};
+		drop(intmul_scope);
 
 		// Shift reduction
 		let shift_scope = tracing::debug_span!("Shift reduction").entered();

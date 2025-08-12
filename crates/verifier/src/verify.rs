@@ -1,12 +1,13 @@
 // Copyright 2025 Irreducible Inc.
 
 use binius_core::{constraint_system::ConstraintSystem, word::Word};
-use binius_field::{AESTowerField8b, BinaryField};
+use binius_field::{AESTowerField8b as B8, BinaryField};
 use binius_math::{
 	BinarySubspace, FieldBuffer,
 	inner_product::inner_product_subfield,
 	multilinear::{eq::eq_ind_partial_eval, evaluate::evaluate_inplace},
 	ntt::{NeighborsLastSingleThread, domain_context::GenericOnTheFly},
+	univariate::lagrange_evals,
 };
 use binius_transcript::{
 	VerifierTranscript,
@@ -17,7 +18,7 @@ use binius_utils::{
 	checked_arithmetics::{checked_log_2, log2_ceil_usize},
 };
 use digest::{Digest, Output, core_api::BlockSizeUser};
-use itertools::Itertools;
+use itertools::{Itertools, izip};
 
 use super::{VerificationError, error::Error, pcs};
 use crate::{
@@ -154,36 +155,44 @@ where
 		let trace_commitment = transcript.message().read::<Output<MerkleHash>>()?;
 
 		// BitAnd reduction
-		let log_n_and_constraints = checked_log_2(self.constraint_system.n_and_constraints());
-		let bitand_output: AndCheckOutput<B128> =
-			verify_bitand_reduction(log_n_and_constraints, transcript)?;
-
-		// IntMul reduction
-		let log_n_mul_constraints = checked_log_2(self.constraint_system.n_mul_constraints());
-		let intmul_output: IntMulOutput<B128> =
-			verify_intmul_reduction(LOG_WORD_SIZE_BITS, log_n_mul_constraints, transcript).unwrap();
-
-		// Translate from BitAnd and IntMul reduction outputs to Shift reduction inputs
 		let bitand_claim = {
+			let log_n_constraints = checked_log_2(self.constraint_system.n_and_constraints());
 			let AndCheckOutput {
 				a_eval,
 				b_eval,
 				c_eval,
 				z_challenge,
 				eval_point,
-			} = bitand_output;
+			}: AndCheckOutput<B128> = verify_bitand_reduction(log_n_constraints, transcript)?;
 			OperatorData::new(z_challenge, eval_point, [a_eval, b_eval, c_eval])
 		};
+
+		// IntMul reduction
 		let intmul_claim = {
+			let log_n_constraints = checked_log_2(self.constraint_system.n_mul_constraints());
 			let IntMulOutput {
-				a_eval,
-				b_eval,
-				c_lo_eval,
-				c_hi_eval,
+				a_evals,
+				b_evals,
+				c_lo_evals,
+				c_hi_evals,
+				eval_point,
+			}: IntMulOutput<B128> =
+				verify_intmul_reduction(LOG_WORD_SIZE_BITS, log_n_constraints, transcript).unwrap();
+
+			let z_challenge = transcript.sample();
+			let subspace = BinarySubspace::<B8>::with_dim(LOG_WORD_SIZE_BITS)?.isomorphic();
+			let l_tilde = lagrange_evals(&subspace, z_challenge);
+			let make_final_claim = |evals| izip!(evals, &l_tilde).map(|(x, y)| x * y).sum();
+			OperatorData::new(
 				z_challenge,
 				eval_point,
-			} = intmul_output;
-			OperatorData::new(z_challenge, eval_point, [a_eval, b_eval, c_lo_eval, c_hi_eval])
+				[
+					make_final_claim(a_evals),
+					make_final_claim(b_evals),
+					make_final_claim(c_lo_evals),
+					make_final_claim(c_hi_evals),
+				],
+			)
 		};
 
 		// Shift reduction
@@ -242,7 +251,7 @@ pub fn evaluate_public_mle<F: BinaryField>(public: &[Word], z_coords: &[F], y_co
 		.expect("z_folded_words constructed with log_len = y_coords.len()")
 }
 
-fn verify_bitand_reduction<F: BinaryField + From<AESTowerField8b>, Challenger_: Challenger>(
+fn verify_bitand_reduction<F: BinaryField + From<B8>, Challenger_: Challenger>(
 	log_constraint_count: usize,
 	transcript: &mut VerifierTranscript<Challenger_>,
 ) -> Result<AndCheckOutput<F>, Error> {
@@ -259,10 +268,9 @@ fn verify_bitand_reduction<F: BinaryField + From<AESTowerField8b>, Challenger_: 
 		.map(F::from)
 		.collect_vec();
 
-	let verifier_message_domain =
-		BinarySubspace::<AESTowerField8b>::with_dim(LOG_WORD_SIZE_BITS + 1)
-			.expect("dim is positive and less than field dim")
-			.isomorphic();
+	let verifier_message_domain = BinarySubspace::<B8>::with_dim(LOG_WORD_SIZE_BITS + 1)
+		.expect("dim is positive and less than field dim")
+		.isomorphic();
 
 	for small_field_challenge in small_field_zerocheck_challenges {
 		all_zerocheck_challenges.push(small_field_challenge);

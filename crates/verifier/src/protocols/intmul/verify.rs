@@ -1,11 +1,7 @@
 // Copyright 2025 Irreducible Inc.
 
 use binius_field::{BinaryField, Field};
-use binius_math::{
-	BinarySubspace,
-	multilinear::eq::eq_ind,
-	univariate::{evaluate_univariate, lagrange_evals},
-};
+use binius_math::{multilinear::eq::eq_ind, univariate::evaluate_univariate};
 use binius_transcript::{
 	VerifierTranscript,
 	fiat_shamir::{CanSample, Challenger},
@@ -19,10 +15,7 @@ use super::{
 	},
 	error::Error,
 };
-use crate::{
-	config::LOG_WORD_SIZE_BITS,
-	protocols::sumcheck::{BatchSumcheckOutput, batch_verify},
-};
+use crate::protocols::sumcheck::{BatchSumcheckOutput, batch_verify};
 
 fn read_scalar_slice<F: Field, C: Challenger>(
 	transcript: &mut VerifierTranscript<C>,
@@ -351,20 +344,11 @@ pub fn verify<F: BinaryField, C: Challenger>(
 	let [a_exponent_evals, c_lo_exponent_evals, c_hi_exponent_evals] =
 		normalize_a_c_exponent_evals(log_bits, scaled_a_c_exponent_evals);
 
-	// Phase 6
-	let z_challenge: F = transcript.sample();
-	let subspace = BinarySubspace::<F>::with_dim(LOG_WORD_SIZE_BITS)?;
-	let l_tilde = lagrange_evals(&subspace, z_challenge);
-	assert_eq!(l_tilde.len(), a_exponent_evals.len());
-
-	let make_final_claim = |evals| izip!(evals, &l_tilde).map(|(x, y)| x * y).sum();
-
 	Ok(IntMulOutput {
-		z_challenge,
 		eval_point: phase_5_eval_point,
-		a_eval: make_final_claim(a_exponent_evals),
-		b_eval: make_final_claim(b_exponent_evals),
-		c_lo_eval: make_final_claim(c_lo_exponent_evals),
-		c_hi_eval: make_final_claim(c_hi_exponent_evals),
+		a_evals: a_exponent_evals,
+		b_evals: b_exponent_evals,
+		c_lo_evals: c_lo_exponent_evals,
+		c_hi_evals: c_hi_exponent_evals,
 	})
 }
