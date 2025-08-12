@@ -234,11 +234,7 @@ impl Keccak {
 			let is_partial = b.icmp_eq(word_idx_wire, word_boundary);
 			let is_after_partial = b.icmp_ult(word_boundary, word_idx_wire);
 
-			let message_word = if word_index < message.len() {
-				message[word_index]
-			} else {
-				b.add_constant_64(0)
-			};
+			let message_word = *message.get(word_index).unwrap_or(&b.add_constant_64(0));
 
 			// If the word ends up being a full word, then we must ensure the padded word and the
 			// message word match exactly
