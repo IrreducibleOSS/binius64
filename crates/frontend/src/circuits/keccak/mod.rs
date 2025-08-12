@@ -176,40 +176,33 @@ impl Keccak {
 	///
 	/// Keccak splits a message of words into 'rate blocks', which are fixed size word arrays of size
 	/// N_WORDS_PER_BLOCK. This partitions a message into chunks of words small enough to be fed into
-	/// the permutation function during absorption. As a result, a message may not neatly into a whole
+	/// the permutation function during absorption. As a result, a message may not neatly fit into a whole
 	/// number of rate blocks. To account for this, Keccak uses a padding scheme where following the
-	/// end of a message, a padding byte 0x01 is inserted. The end of each rate block is also delimted
+	/// end of a message, a padding byte 0x01 is inserted. The end of each rate block is also delimited
 	/// by a top bit 0x80.
 	///
-	/// As a result, three cases must be handled to ensure padding is correct.
+	/// As a result, three important cases must be handled to ensure padding is correct.
 	///
-	/// 1. The final word of a message embedded within the final block partition of a message comes before
-	///    the final word of that block.
+	/// 1. The final word of a message comes before the final word of the block.
 	///
-	/// 2. The final word of a message embedded within the final block partition of a message is in the
-	///    final word of that block but the final byte of that word is not the final byte. This means
-	///    the padding byte and the top bit are in the same word but within different bytes.
+	/// 2. The final word of a message is in the final word of that block but the final byte of that word
+	///    is not the final byte of the block. This means the padding byte and the top bit are in the same
+	///    word but within different bytes.
 	///
-	/// 3. The final word of a message embedded within the final block partition of a message is in the
-	///    final word and the final byte of the block. Meaning that the padding byte and the top bit are
-	///    within the same byte.
-	pub fn constrain_message_padding(
+	/// 3. The final word of a message is in the final word and the final byte of the block. Meaning that
+	///    the padding byte and the top bit are within the same byte.
+	///
+	fn constrain_message_padding(
 		b: &CircuitBuilder,
-		supposed_length: Wire,
+		len: Wire,
 		message: Vec<Wire>,
 		n_blocks: usize,
 		padded_message: Vec<[Wire; N_WORDS_PER_BLOCK]>,
 		is_final_block_flags: Vec<Wire>,
 	) {
-		let n_rate_words = n_blocks * N_WORDS_PER_BLOCK;
+		let total_rate_words = n_blocks * N_WORDS_PER_BLOCK;
 
-		// padding positions word boundary
-		let word_boundary = b.shr(supposed_length, 3);
-
-		// Padding constraints - fully constrain the padding to match (message, len)
-		let r = b.band(supposed_length, b.add_constant_64(7)); // byte offset in partial word
-
-		// Precompute partial word padding constants
+		// bit masks for extracting up to the possible locations for the pad byte within a word
 		const LOW_MASK: [u64; 8] = [
 			0,
 			0x0000_00FF,
@@ -221,6 +214,7 @@ impl Keccak {
 			0xFF_FFFF_FFFF_FFFF,
 		];
 
+		// possible pad byte placements within a word
 		const PAD_BYTE: [u64; 8] = [
 			0x01,
 			0x01_00,
@@ -232,31 +226,34 @@ impl Keccak {
 			0x01_00_00_00_00_00_00_00,
 		];
 
-		for word_index in 0..n_rate_words {
-			// Retrieve the word of the supposed padded message corresponding to the final padded
-			// word
+		let word_boundary = b.shr(len, 3);
+
+		// byte offset for where the pad byte is within a partial word given the claimed length
+		let r = b.band(len, b.add_constant_64(7));
+
+		// Within the final Srate block, ensure that the pad byte and top bit are where they are supposed to be
+		for word_index in 0..total_rate_words {
+			// Retrieve the word of the supposed padded message corresponding to the final padded word
 			let block_idx = word_index / N_WORDS_PER_BLOCK;
 			let word_in_block = word_index % N_WORDS_PER_BLOCK;
 			let padded_word = padded_message[block_idx][word_in_block];
 
-			// Get the flag for whether this is the final block
-			let final_blk = is_final_block_flags[block_idx];
-
-			// determine whether this is a full, partial, or after the partial word padding
+			// a potentially padded word is at this index
 			let word_idx_wire = b.add_constant_64(word_index as u64);
-			let is_full = b.icmp_ult(word_idx_wire, word_boundary);
-			let is_partial = b.icmp_eq(word_idx_wire, word_boundary);
-			let is_after_partial = b.icmp_ult(word_boundary, word_idx_wire);
-
 			let message_word = *message.get(word_index).unwrap_or(&b.add_constant_64(0));
 
-			// If the word ends up being a full word, then we must ensure the padded word and the
-			// message word match exactly
-			b.assert_eq_cond("full", message_word, padded_word, is_full);
+			//  true if message ends exactly at the block boundary
+			let msg_last_full = b.icmp_ult(word_idx_wire, word_boundary);
 
-			// If the word ends up being a partial word, then we must ensure that for one of the 8
-			// possible padding byte placements for an 8-byte word, that the padded word matches the
-			// message word
+			// true if last block word is the last word of msg, so it will be the same as the word boundary
+			let block_last_is_msg_last = b.icmp_eq(word_idx_wire, word_boundary);
+
+			// In the case where the word is full and is also the last word in the block, it should
+			// match the original msg word.
+			b.assert_eq_cond("full", message_word, padded_word, msg_last_full);
+
+			// When the last word of the message is not full, we expect a paddingbyte to be somewhere within the
+			// word. Since the top bit will also be in this word.
 			let mut expected_partial = b.add_constant_64(0);
 			for k in 0..8 {
 				let r_is_k = b.icmp_eq(r, b.add_constant_64(k as u64));
@@ -267,46 +264,41 @@ impl Keccak {
 
 				expected_partial = b.bxor(expected_partial, b.band(r_is_k, cand));
 			}
-			b.assert_eq_cond("partial", expected_partial, padded_word, is_partial);
 
-			// zeros after partial word (except last word of final block)
-			let is_last = b.icmp_eq(b.add_constant_64(word_in_block as u64), b.add_constant_64(16));
-			let not_last = b.bnot(is_last);
-			let must_be_zero = b.band(final_blk, b.band(is_after_partial, not_last));
+			// this will be true if the current word is the last word of the block
+			let is_last_block_word = b.icmp_eq(
+				b.add_constant_64(word_in_block as u64),
+				b.add_constant_64(N_WORDS_PER_BLOCK as u64 - 1),
+			);
+
+			// this will be true if the current word is the last word of the block and the last word of the
+			// message is the last word of the block
+			let partial_and_last = b.band(block_last_is_msg_last, is_last_block_word);
+
+			// Set the top bit into the expected partial word after it has had its padding byte set
+			// If this is not the last word of the block, the expected partial word will not change
+			let top_bit_const = b.add_constant_64(0x80_00_00_00_00_00_00_00u64);
+			let extra_0x80 = b.band(partial_and_last, top_bit_const);
+			let expected_for_partial = b.bxor(expected_partial, extra_0x80);
+
+			// If the last block word is the last word of the message, then assert that the partial word matches
+			b.assert_eq_cond("partial", expected_for_partial, padded_word, block_last_is_msg_last);
+
+			let is_final_block = is_final_block_flags[block_idx];
+
+			// Only assert 0x80 alone when it's the last word but NOT partial
+			let last_not_partial = b.band(is_last_block_word, b.bnot(block_last_is_msg_last));
+			let last_in_final_block = b.band(is_final_block, last_not_partial);
+			b.assert_eq_cond("0x80", padded_word, top_bit_const, last_in_final_block);
+
+			// Words after the partial word (but before last word) should be zero
+			let is_after_partial = b.icmp_ult(word_boundary, word_idx_wire);
+			let not_last = b.bnot(is_last_block_word);
+			let must_be_zero = b.band(is_final_block, b.band(is_after_partial, not_last));
 			b.assert_eq_cond("zeros", padded_word, b.add_constant_64(0), must_be_zero);
 
-			// 0x80 in last word of final block
-			let put_0x80 = b.band(final_blk, is_last);
-			let last_const = b.add_constant_64(0x80_00_00_00_00_00_00_00u64);
-			b.assert_eq_cond("0x80", padded_word, last_const, put_0x80);
-
-			// // ! new?
-			// // To handle the case where the last word is a single byte, we must ensure that
-			// let last_const = b.add_constant_64(0x80_00_00_00_00_00_00_00u64);
-			// let guard_last_final = b.band(final_blk, is_last);
-
-			// // (A) last word == partial word: add 0x80 on top of expected_partial
-			// let guard_last_is_partial = b.band(guard_last_final, is_partial);
-			// let expected_last_when_partial = b.bxor(expected_partial, last_const);
-			// b.assert_eq_cond(
-			//     "last_word_with_partial_plus_0x80",
-			//     padded_word,
-			//     expected_last_when_partial,
-			//     guard_last_is_partial,
-			// );
-
-			// // (B) last word not partial: exactly 0x80 in MSB byte of that word
-			// let guard_last_not_partial = b.band(guard_last_final, b.bnot(is_partial));
-			// b.assert_eq_cond(
-			//     "last_word_exact_0x80",
-			//     padded_word,
-			//     last_const,
-			//     guard_last_not_partial,
-			// );
-
 			// All words after final block must be zero
-			let after_final =
-				b.icmp_ult(supposed_length, b.add_constant_64((block_idx * RATE_BYTES) as u64));
+			let after_final = b.icmp_ult(len, b.add_constant_64((block_idx * RATE_BYTES) as u64));
 			b.assert_eq_cond("after", padded_word, b.add_constant_64(0), after_final);
 		}
 	}
@@ -390,7 +382,13 @@ impl Keccak {
 		let mut words = Vec::with_capacity(n_words);
 		for i in 0..n_words {
 			if i * 8 < bytes.len() {
-				let word = u64::from_le_bytes(bytes[i * 8..(i + 1) * 8].try_into().unwrap());
+				// to handle messages that are not multiples of 64, bytes are copied into
+				// a little endian byte array and then converted to a u64
+				let start = i * 8;
+				let end = ((i + 1) * 8).min(bytes.len());
+				let mut word_bytes = [0u8; 8];
+				word_bytes[..end - start].copy_from_slice(&bytes[start..end]);
+				let word = u64::from_le_bytes(word_bytes);
 				words.push(word);
 			}
 		}
