@@ -460,6 +460,7 @@ mod tests {
 	}
 
 	#[test]
+	#[allow(deprecated)]
 	fn test_valid_message() {
 		let mut rng = StdRng::seed_from_u64(0);
 
@@ -472,6 +473,7 @@ mod tests {
 
 	#[test]
 	#[should_panic]
+	#[allow(deprecated)]
 	fn test_message_too_long() {
 		let mut rng = StdRng::seed_from_u64(0);
 
