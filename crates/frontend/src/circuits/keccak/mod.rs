@@ -7,6 +7,7 @@ use permutation::Permutation;
 use crate::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
 
 pub const RATE_BYTES: usize = 136;
+pub const N_WORDS_PER_BLOCK: usize = RATE_BYTES / 8;
 
 /// Keccak-256 circuit that can handle variable-length inputs up to a specified maximum length.
 ///
@@ -58,13 +59,8 @@ impl Keccak {
 		let (permutation_states, padded_message) = Self::compute_digest(b, n_blocks);
 
 		// ensure digest was correctly computed by keccak
-		let is_final_block_flags = Self::constrain_claimed_digest(
-			b,
-			permutation_states,
-			digest,
-			len,
-			n_blocks,
-		);
+		let is_final_block_flags =
+			Self::constrain_claimed_digest(b, permutation_states, digest, len, n_blocks);
 
 		// ensure message padding matches keccak expectations
 		Self::constrain_message_padding(
@@ -91,7 +87,7 @@ impl Keccak {
 	/// Repeatedly absorb blocks into the state, this forms the digest computation.
 	fn compute_digest(b: &CircuitBuilder, n_blocks: usize) -> (Vec<[Wire; 25]>, Vec<Vec<Wire>>) {
 		let padded_message: Vec<Vec<Wire>> = (0..n_blocks)
-			.map(|_| (0..17).map(|_| b.add_witness()).collect())
+			.map(|_| (0..N_WORDS_PER_BLOCK).map(|_| b.add_witness()).collect())
 			.collect();
 
 		// zero initialized keccak state
@@ -103,7 +99,7 @@ impl Keccak {
 		for block_no in 0..n_blocks {
 			let state_in = states[block_no];
 			let mut xored_state = state_in;
-			for i in 0..(RATE_BYTES / 8) {
+			for i in 0..N_WORDS_PER_BLOCK {
 				xored_state[i] = b.bxor(state_in[i], padded_message[block_no][i]);
 			}
 
@@ -184,8 +180,7 @@ impl Keccak {
 		padded_message: Vec<Vec<Wire>>,
 		is_final_block_flags: Vec<Wire>,
 	) {
-		let n_words_per_block = RATE_BYTES / 8;
-		let n_rate_words = n_blocks * n_words_per_block;
+		let n_rate_words = n_blocks * N_WORDS_PER_BLOCK;
 
 		// padding positions word boundary
 		let word_boundary = b.shr(supposed_length, 3);
@@ -219,8 +214,8 @@ impl Keccak {
 		for word_index in 0..n_rate_words {
 			// Retrieve the word of the supposed padded message corresponding to the final padded
 			// word
-			let block_idx = word_index / n_words_per_block;
-			let word_in_block = word_index % n_words_per_block;
+			let block_idx = word_index / N_WORDS_PER_BLOCK;
+			let word_in_block = word_index % N_WORDS_PER_BLOCK;
 			let padded_word = padded_message[block_idx][word_in_block];
 
 			// Get the flag for whether this is the final block
@@ -339,7 +334,7 @@ impl Keccak {
 		padded_bytes[padding_block_end] |= 0x80;
 
 		for block_idx in 0..self.n_blocks {
-			for word_idx in 0..17 {
+			for word_idx in 0..N_WORDS_PER_BLOCK {
 				let byte_offset = block_idx * RATE_BYTES + word_idx * 8;
 				let mut word = 0u64;
 				for j in 0..8 {
@@ -411,11 +406,6 @@ mod tests {
 		circuit.populate_wire_witness(&mut w).unwrap();
 		let cs = circuit.constraint_system();
 		verify_constraints(cs, &w.into_value_vec()).unwrap();
-
-		println!("Gates: {}", circuit.n_gates());
-		println!("constraint system AND constraint vector length: {}", cs.and_constraints.len());
-		println!("constraint system MUL constraint vector length: {}", cs.mul_constraints.len());
-		println!("json: {}", circuit.simple_json_dump());
 	}
 
 	#[test]
