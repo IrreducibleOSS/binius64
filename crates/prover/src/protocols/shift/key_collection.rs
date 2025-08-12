@@ -10,6 +10,7 @@ use binius_core::{
 	consts::LOG_WORD_SIZE_BITS,
 };
 use binius_field::Field;
+use itertools::Itertools;
 
 use super::{BITAND_ARITY, INTMUL_ARITY, PreparedOperatorData};
 
@@ -90,18 +91,26 @@ impl Key {
 		operator_data: &PreparedOperatorData<F>,
 	) -> F {
 		let Range { start, end } = self.range;
-		constraint_indices[start as usize..end as usize]
+		let mut iter = constraint_indices[start as usize..end as usize]
 			.iter()
-			.map(
-				|ConstraintIndex {
-				     operand_index,
-				     constraint_index,
-				 }| {
-					operator_data.r_x_prime_tensor.as_ref()[*constraint_index as usize]
-						* operator_data.lambda_powers[*operand_index as usize]
-				},
-			)
-			.sum()
+			.peekable();
+
+		let mut ret = F::ZERO;
+		while let Some(index_ref) = iter.peek() {
+			let operand_index = index_ref.operand_index;
+
+			// Reduce the number of multiplications by factoring out the λ power over the sum of
+			// terms with the same operand index.
+			let acc = iter
+				.peeking_take_while(|index_ref| index_ref.operand_index == operand_index)
+				.map(|index_ref| {
+					operator_data.r_x_prime_tensor.as_ref()[index_ref.constraint_index as usize]
+				})
+				.sum::<F>();
+
+			ret += acc * operator_data.lambda_powers[operand_index as usize]
+		}
+		ret
 	}
 }
 
@@ -249,12 +258,21 @@ pub fn build_key_collection(cs: &ConstraintSystem) -> KeyCollection {
 	let mut constraint_indices = Vec::new();
 
 	for builder_key in builder_key_lists.into_iter().flatten() {
+		let BuilderKey {
+			id,
+			operation,
+			constraint_indices: mut builder_constraint_indices,
+		} = builder_key;
+
+		// Sort constraint indices by operand index so we can save work in [`Key::accumulate`].
+		builder_constraint_indices.sort_by_key(|constraint_index| constraint_index.operand_index);
+
 		let start = constraint_indices.len() as u32;
-		constraint_indices.extend(builder_key.constraint_indices);
+		constraint_indices.extend(builder_constraint_indices);
 		let end = constraint_indices.len() as u32;
 		keys.push(Key {
-			id: builder_key.id,
-			operation: builder_key.operation,
+			id,
+			operation,
 			range: start..end,
 		});
 	}
