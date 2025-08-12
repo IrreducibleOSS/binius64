@@ -6,6 +6,7 @@ use permutation::Permutation;
 
 use crate::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
 
+pub const N_WORDS_PER_STATE: usize = 25;
 pub const RATE_BYTES: usize = 136;
 pub const N_WORDS_PER_BLOCK: usize = RATE_BYTES / 8;
 
@@ -22,7 +23,7 @@ pub struct Keccak {
 	pub len: Wire,
 	pub digest: [Wire; 4],
 	pub message: Vec<Wire>,
-	padded_message: Vec<Vec<Wire>>,
+	padded_message: Vec<[Wire; N_WORDS_PER_BLOCK]>,
 	n_blocks: usize,
 }
 
@@ -85,15 +86,18 @@ impl Keccak {
 	/// Computes keccak-256 digest of a padded message.
 	///
 	/// Repeatedly absorb blocks into the state, this forms the digest computation.
-	fn compute_digest(b: &CircuitBuilder, n_blocks: usize) -> (Vec<[Wire; 25]>, Vec<Vec<Wire>>) {
-		let padded_message: Vec<Vec<Wire>> = (0..n_blocks)
-			.map(|_| (0..N_WORDS_PER_BLOCK).map(|_| b.add_witness()).collect())
+	fn compute_digest(
+		b: &CircuitBuilder,
+		n_blocks: usize,
+	) -> (Vec<[Wire; N_WORDS_PER_STATE]>, Vec<[Wire; N_WORDS_PER_BLOCK]>) {
+		let padded_message: Vec<[Wire; N_WORDS_PER_BLOCK]> = (0..n_blocks)
+			.map(|_| std::array::from_fn(|_| b.add_witness()))
 			.collect();
 
 		// zero initialized keccak state
-		let mut states: Vec<[Wire; 25]> = Vec::with_capacity(n_blocks + 1);
+		let mut states: Vec<[Wire; N_WORDS_PER_STATE]> = Vec::with_capacity(n_blocks + 1);
 		let zero = b.add_constant(Word::ZERO);
-		states.push([zero; 25]);
+		states.push([zero; N_WORDS_PER_STATE]);
 
 		// xor next message block into state and permute
 		for block_no in 0..n_blocks {
@@ -119,7 +123,7 @@ impl Keccak {
 	/// emerge after the expected number of permutations.
 	fn constrain_claimed_digest(
 		b: &CircuitBuilder,
-		computed_states: Vec<[Wire; 25]>,
+		computed_states: Vec<[Wire; N_WORDS_PER_STATE]>,
 		digest: [Wire; 4],
 		length: Wire,
 		n_blocks: usize,
@@ -177,7 +181,7 @@ impl Keccak {
 		supposed_length: Wire,
 		message: Vec<Wire>,
 		n_blocks: usize,
-		padded_message: Vec<Vec<Wire>>,
+		padded_message: Vec<[Wire; N_WORDS_PER_BLOCK]>,
 		is_final_block_flags: Vec<Wire>,
 	) {
 		let n_rate_words = n_blocks * N_WORDS_PER_BLOCK;
