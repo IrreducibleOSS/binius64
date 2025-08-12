@@ -2,7 +2,6 @@
 
 use std::{
 	cmp::{max, min},
-	ops::DerefMut,
 	slice::from_raw_parts_mut,
 };
 
@@ -13,7 +12,7 @@ use binius_utils::rayon::{
 };
 
 use super::{AdditiveNTT, DomainContext};
-use crate::FieldBuffer;
+use crate::{FieldSlice, FieldSliceMut};
 
 const DEFAULT_LOG_BASE_LEN: usize = 4;
 
@@ -27,9 +26,9 @@ pub struct NeighborsLastReference<DC> {
 impl<DC: DomainContext> AdditiveNTT for NeighborsLastReference<DC> {
 	type Field = DC::Field;
 
-	fn forward_transform<P: PackedField<Scalar = Self::Field>, Data: DerefMut<Target = [P]>>(
+	fn forward_transform<P: PackedField<Scalar = Self::Field>>(
 		&self,
-		mut data: FieldBuffer<P, Data>,
+		mut data: FieldSliceMut<P>,
 		skip_early: usize,
 		skip_late: usize,
 	) {
@@ -55,9 +54,9 @@ impl<DC: DomainContext> AdditiveNTT for NeighborsLastReference<DC> {
 		}
 	}
 
-	fn inverse_transform<P: PackedField<Scalar = Self::Field>, Data: DerefMut<Target = [P]>>(
+	fn inverse_transform<P: PackedField<Scalar = Self::Field>>(
 		&self,
-		mut data: FieldBuffer<P, Data>,
+		mut data: FieldSliceMut<P>,
 		skip_early: usize,
 		skip_late: usize,
 	) {
@@ -353,14 +352,11 @@ fn with_middle_bit(k: usize, shift: usize) -> (usize, usize) {
 /// of the total number of scalars in the input.
 fn input_check<P: PackedField>(
 	domain_context: &impl DomainContext<Field = P::Scalar>,
-	data: &[P],
+	data: FieldSlice<P>,
 	skip_early: usize,
 	skip_late: usize,
 ) -> usize {
-	// we only accept input of power-of-two length
-	assert!(data.len().is_power_of_two());
-	// d = number of scalars in the input
-	let log_d = data.len().ilog2() as usize + P::LOG_WIDTH;
+	let log_d = data.log_len();
 
 	// we can't "double-skip" layers
 	assert!(skip_early + skip_late <= log_d);
@@ -394,16 +390,16 @@ impl<DC: DomainContext, const LOG_BASE_LEN: usize> AdditiveNTT
 {
 	type Field = DC::Field;
 
-	fn forward_transform<P: PackedField<Scalar = Self::Field>, Data: DerefMut<Target = [P]>>(
+	fn forward_transform<P: PackedField<Scalar = Self::Field>>(
 		&self,
-		mut data_orig: FieldBuffer<P, Data>,
+		mut data_orig: FieldSliceMut<P>,
 		skip_early: usize,
 		skip_late: usize,
 	) {
-		let data = data_orig.as_mut();
-
 		// total number of scalars
-		let log_d = input_check(&self.domain_context, data, skip_early, skip_late);
+		let log_d = input_check(&self.domain_context, data_orig.to_ref(), skip_early, skip_late);
+
+		let data = data_orig.as_mut();
 
 		// if there is only a single packed element, we don't want to bother with potential
 		// interleaving issues in the future so we just call the (slow) reference NTT
@@ -431,9 +427,9 @@ impl<DC: DomainContext, const LOG_BASE_LEN: usize> AdditiveNTT
 			});
 	}
 
-	fn inverse_transform<P: PackedField<Scalar = Self::Field>, Data: DerefMut<Target = [P]>>(
+	fn inverse_transform<P: PackedField<Scalar = Self::Field>>(
 		&self,
-		mut _data_orig: FieldBuffer<P, Data>,
+		mut _data_orig: FieldSliceMut<P>,
 		_skip_early: usize,
 		_skip_late: usize,
 	) {
@@ -472,16 +468,16 @@ impl<DC: DomainContext + Sync, const LOG_BASE_LEN: usize> AdditiveNTT
 {
 	type Field = DC::Field;
 
-	fn forward_transform<P: PackedField<Scalar = Self::Field>, Data: DerefMut<Target = [P]>>(
+	fn forward_transform<P: PackedField<Scalar = Self::Field>>(
 		&self,
-		mut data_orig: FieldBuffer<P, Data>,
+		mut data_orig: FieldSliceMut<P>,
 		skip_early: usize,
 		skip_late: usize,
 	) {
-		let data = data_orig.as_mut();
-
 		// total number of scalars
-		let log_d = input_check(&self.domain_context, data, skip_early, skip_late);
+		let log_d = input_check(&self.domain_context, data_orig.to_ref(), skip_early, skip_late);
+
+		let data = data_orig.as_mut();
 
 		// if there is only a single packed element, we don't want to bother with potential
 		// interleaving issues in the future so we just call the (slow) reference NTT
@@ -524,9 +520,9 @@ impl<DC: DomainContext + Sync, const LOG_BASE_LEN: usize> AdditiveNTT
 			});
 	}
 
-	fn inverse_transform<P: PackedField<Scalar = Self::Field>, Data: DerefMut<Target = [P]>>(
+	fn inverse_transform<P: PackedField<Scalar = Self::Field>>(
 		&self,
-		mut _data_orig: FieldBuffer<P, Data>,
+		mut _data_orig: FieldSliceMut<P>,
 		_skip_early: usize,
 		_skip_late: usize,
 	) {

@@ -1,20 +1,20 @@
 //! This module tests that the NTT implementations are equivalent to a simple reference
 //! implementation.
 
-use std::iter::repeat_with;
-
 use binius_field::{
 	BinaryField, PackedBinaryGhash1x128b, PackedBinaryGhash2x128b, PackedBinaryGhash4x128b,
 	PackedField,
 };
+use rand::prelude::*;
 
 use super::{AdditiveNTT, DomainContext};
 use crate::{
-	BinarySubspace, FieldBuffer,
+	BinarySubspace,
 	ntt::{
 		NeighborsLastMultiThread, NeighborsLastReference, NeighborsLastSingleThread,
 		domain_context::{GaoMateerPreExpanded, GenericPreExpanded, TraceOneElement},
 	},
+	test_utils::random_field_buffer,
 };
 
 fn test_equivalence<P: PackedField>(
@@ -25,24 +25,14 @@ fn test_equivalence<P: PackedField>(
 {
 	let log_d = 8;
 
-	let mut rng = rand::rng();
-	let mut data_a: Vec<P> = repeat_with(|| P::random(&mut rng))
-		.take(1 << (log_d - P::LOG_WIDTH))
-		.collect();
+	let mut rng = StdRng::seed_from_u64(0);
+	let mut data_a = random_field_buffer::<P>(&mut rng, log_d);
 	let mut data_b = data_a.clone();
 
 	for skip_early in [0, 2, 4] {
 		for skip_late in [0, 2, 4] {
-			ntt_a.forward_transform(
-				FieldBuffer::new(log_d, data_a.as_mut()).unwrap(),
-				skip_early,
-				skip_late,
-			);
-			ntt_b.forward_transform(
-				FieldBuffer::new(log_d, data_b.as_mut()).unwrap(),
-				skip_early,
-				skip_late,
-			);
+			ntt_a.forward_transform(data_a.to_mut(), skip_early, skip_late);
+			ntt_b.forward_transform(data_b.to_mut(), skip_early, skip_late);
 			assert_eq!(data_a, data_b)
 		}
 	}
@@ -107,10 +97,8 @@ where
 	P::Scalar: BinaryField,
 {
 	let log_d = 7;
-	let mut rng = rand::rng();
-	let data_orig: Vec<P> = repeat_with(|| P::random(&mut rng))
-		.take(1 << (log_d - P::LOG_WIDTH))
-		.collect();
+	let mut rng = StdRng::seed_from_u64(0);
+	let data_orig = random_field_buffer::<P>(&mut rng, log_d);
 	let mut data = data_orig.clone();
 
 	let subspace = BinarySubspace::<P::Scalar>::with_dim(10).unwrap();
@@ -118,16 +106,8 @@ where
 	let ntt = NeighborsLastReference { domain_context };
 	for skip_early in [0, 1, 2] {
 		for skip_late in [0, 1, 2] {
-			ntt.forward_transform(
-				FieldBuffer::new(log_d, data.as_mut()).unwrap(),
-				skip_early,
-				skip_late,
-			);
-			ntt.inverse_transform(
-				FieldBuffer::new(log_d, data.as_mut()).unwrap(),
-				skip_early,
-				skip_late,
-			);
+			ntt.forward_transform(data.to_mut(), skip_early, skip_late);
+			ntt.inverse_transform(data.to_mut(), skip_early, skip_late);
 			assert_eq!(data, data_orig);
 		}
 	}

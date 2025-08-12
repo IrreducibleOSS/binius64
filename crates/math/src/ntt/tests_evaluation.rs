@@ -1,19 +1,18 @@
 //! This module tests that running the NTT is equivalent to evaluating the respective polynomial at
 //! the respective points of $S^{(0)}$.
 
-use std::{
-	iter::repeat_with,
-	ops::{Add, AddAssign, Mul, MulAssign},
-};
+use std::ops::{Add, AddAssign, Mul, MulAssign};
 
 use binius_field::{BinaryField, Field};
+use rand::prelude::*;
 
 use crate::{
-	BinarySubspace, FieldBuffer,
+	BinarySubspace,
 	ntt::{
 		AdditiveNTT, DomainContext, NeighborsLastSingleThread,
 		domain_context::{self},
 	},
+	test_utils::random_field_buffer,
 };
 
 /// Represents a univariate polynomial with coefficients in a field.
@@ -246,16 +245,14 @@ fn test_equivalence<F: BinaryField, NTT: AdditiveNTT<Field = F>>(ntt: &NTT) {
 	let log_d = ntt.log_domain_size();
 
 	// generate random coefficients for the novel basis
-	let mut rng = rand::rng();
-	let novel_coeffs: Vec<F> = repeat_with(|| F::random(&mut rng))
-		.take(1 << log_d)
-		.collect();
+	let mut rng = StdRng::seed_from_u64(0);
+	let novel_coeffs = random_field_buffer::<F>(&mut rng, log_d);
 
 	// way 1 to compute evaluations: compute polynomial and evaluate
 	assert_eq!(novel_basis.len(), novel_coeffs.len());
 	let poly = novel_basis
 		.iter()
-		.zip(&novel_coeffs)
+		.zip(novel_coeffs.as_ref())
 		.fold(Polynomial::zero(), |acc, (b, coeff)| acc + b * *coeff);
 	let evals: Vec<_> = ntt
 		.domain_context()
@@ -266,10 +263,10 @@ fn test_equivalence<F: BinaryField, NTT: AdditiveNTT<Field = F>>(ntt: &NTT) {
 
 	// way 2 to compute evaluations: use NTT
 	let mut ntt_data = novel_coeffs.clone();
-	ntt.forward_transform(FieldBuffer::new(log_d, ntt_data.as_mut()).unwrap(), 0, 0);
+	ntt.forward_transform(ntt_data.to_mut(), 0, 0);
 
 	// check equivalence
-	assert_eq!(ntt_data, evals);
+	assert_eq!(ntt_data.as_ref(), &evals);
 }
 
 #[test]

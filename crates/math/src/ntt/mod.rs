@@ -14,15 +14,13 @@ mod tests_evaluation;
 #[cfg(test)]
 pub mod tests_reference;
 
-use std::ops::DerefMut;
-
 use binius_field::{BinaryField, PackedField};
 pub use neighbors_last::{
 	NeighborsLastMultiThread, NeighborsLastReference, NeighborsLastSingleThread,
 };
 
 use super::BinarySubspace;
-use crate::FieldBuffer;
+use crate::FieldSliceMut;
 
 /// The binary field additive NTT.
 ///
@@ -70,9 +68,9 @@ pub trait AdditiveNTT {
 	/// - `log2(data.len()) + P::LOG_WIDTH <= self.log_domain_size() + skip_late`
 	///
 	/// [DP24]: <https://eprint.iacr.org/2024/504>
-	fn forward_transform<P: PackedField<Scalar = Self::Field>, Data: DerefMut<Target = [P]>>(
+	fn forward_transform<P: PackedField<Scalar = Self::Field>>(
 		&self,
-		data: FieldBuffer<P, Data>,
+		data: FieldSliceMut<P>,
 		skip_early: usize,
 		skip_late: usize,
 	);
@@ -85,9 +83,9 @@ pub trait AdditiveNTT {
 	/// ## Preconditions
 	///
 	/// - same as [`Self::forward_transform`]
-	fn inverse_transform<P: PackedField<Scalar = Self::Field>, Data: DerefMut<Target = [P]>>(
+	fn inverse_transform<P: PackedField<Scalar = Self::Field>>(
 		&self,
-		data: FieldBuffer<P, Data>,
+		data: FieldSliceMut<P>,
 		skip_early: usize,
 		skip_late: usize,
 	);

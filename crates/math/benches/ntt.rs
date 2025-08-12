@@ -1,5 +1,3 @@
-use std::iter::repeat_with;
-
 use binius_field::{BinaryField, PackedField};
 use binius_math::{
 	BinarySubspace, FieldBuffer,
@@ -7,6 +5,7 @@ use binius_math::{
 		AdditiveNTT, NeighborsLastMultiThread, NeighborsLastSingleThread,
 		domain_context::GenericPreExpanded,
 	},
+	test_utils::random_field_buffer,
 };
 use binius_utils::{
 	env::boolean_env_flag_set,
@@ -38,15 +37,13 @@ fn bench_ntts<P: PackedField>(
 	throughput_var: ThroughputVariant,
 	thread_pool: &ThreadPool,
 	num_threads: usize,
-	data: &mut [P],
+	data: &mut FieldBuffer<P>,
 	skip_early: usize,
 	skip_late: usize,
 ) where
 	P::Scalar: BinaryField,
 {
-	// log_d is the total number of scalars in the input
-	assert!(data.len().is_power_of_two());
-	let log_d = data.len().ilog2() as usize + P::LOG_WIDTH;
+	let log_d = data.log_len();
 
 	let subspace = BinarySubspace::with_dim(log_d - skip_late).unwrap();
 	let domain_context_generic = GenericPreExpanded::generate_from_subspace(&subspace);
@@ -56,7 +53,9 @@ fn bench_ntts<P: PackedField>(
 	);
 
 	let throughput = match throughput_var {
-		ThroughputVariant::Standard => Throughput::Bytes(std::mem::size_of_val(data) as u64),
+		ThroughputVariant::Standard => {
+			Throughput::Bytes(std::mem::size_of_val(data.as_ref()) as u64)
+		}
 		ThroughputVariant::Multiplication => {
 			Throughput::Elements(num_muls(log_d, skip_early, skip_late))
 		}
@@ -67,13 +66,7 @@ fn bench_ntts<P: PackedField>(
 		($ntt:ident, $ntt_name:expr) => {
 			group.bench_function(BenchmarkId::new($ntt_name, &parameter), |b| {
 				thread_pool.install(|| {
-					b.iter(|| {
-						$ntt.forward_transform(
-							FieldBuffer::new(log_d, data.as_mut()).unwrap(),
-							skip_early,
-							skip_late,
-						)
-					})
+					b.iter(|| $ntt.forward_transform(data.to_mut(), skip_early, skip_late))
 				})
 			});
 		};
@@ -130,9 +123,7 @@ fn bench_params<P: PackedField>(
 			.build()
 			.unwrap();
 		for log_d in [18, 24, 27] {
-			let mut data: Vec<P> = repeat_with(|| P::random(&mut rng))
-				.take(1usize << (log_d - P::LOG_WIDTH))
-				.collect();
+			let mut data = random_field_buffer::<P>(&mut rng, log_d);
 
 			if log_d >= 24 {
 				group.sample_size(10);

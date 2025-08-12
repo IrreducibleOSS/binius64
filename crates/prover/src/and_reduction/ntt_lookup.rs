@@ -222,7 +222,7 @@ mod test {
 		packed::{get_packed_slice, set_packed_slice},
 	};
 	use binius_math::{
-		BinarySubspace, FieldBuffer,
+		BinarySubspace, FieldSliceMut,
 		ntt::{AdditiveNTT, NeighborsLastReference, domain_context::GenericOnTheFly},
 	};
 	use binius_verifier::{and_reduction::utils::constants::SKIPPED_VARS, config::B1};
@@ -305,7 +305,7 @@ mod test {
 		};
 
 		input_ntt.inverse_transform(
-			FieldBuffer::new(coeffs.len().ilog2() as usize, coeffs.as_mut()).unwrap(),
+			FieldSliceMut::from_slice(coeffs.len().ilog2() as usize, coeffs.as_mut()).unwrap(),
 			0,
 			0,
 		);
@@ -324,7 +324,7 @@ mod test {
 		};
 
 		output_ntt.forward_transform(
-			FieldBuffer::new(coeffs.len().ilog2() as usize, coeffs.as_mut()).unwrap(),
+			FieldSliceMut::from_slice(coeffs.len().ilog2() as usize, coeffs.as_mut()).unwrap(),
 			0,
 			0,
 		);
