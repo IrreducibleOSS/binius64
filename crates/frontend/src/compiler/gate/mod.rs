@@ -1,7 +1,8 @@
 use crate::compiler::{
-	circuit,
 	constraint_builder::ConstraintBuilder,
-	gate_graph::{Gate, GateGraph},
+	eval_form::BytecodeBuilder,
+	gate_graph::{Gate, GateData, GateGraph},
+	hints::{BigUintDivideHint, HintRegistry, ModInverseHint},
 };
 
 pub mod opcode;
@@ -58,31 +59,56 @@ pub fn constrain(gate: Gate, graph: &GateGraph, builder: &mut ConstraintBuilder)
 	}
 }
 
-pub fn evaluate(gate: Gate, graph: &GateGraph, w: &mut circuit::WitnessFiller) {
-	let data = &graph.gates[gate];
-	let assertion_path = graph.assertion_names[gate];
-
+/// Emit bytecode for a single gate
+pub fn emit_gate_bytecode(
+	gate: Gate,
+	data: &GateData,
+	graph: &GateGraph,
+	builder: &mut BytecodeBuilder,
+	wire_to_reg: impl Fn(crate::compiler::gate_graph::Wire) -> u32 + Copy,
+	hint_registry: &mut HintRegistry,
+) {
 	match data.opcode {
-		Opcode::Band => band::evaluate(gate, data, w),
-		Opcode::Bxor => bxor::evaluate(gate, data, w),
-		Opcode::Bor => bor::evaluate(gate, data, w),
-		Opcode::IaddCinCout => iadd_cin_cout::evaluate(gate, data, w),
-		Opcode::Iadd32 => iadd32::evaluate(gate, data, w),
-		Opcode::IsubBinBout => isub_bin_bout::evaluate(gate, data, w),
-		Opcode::Shr32 => shr32::evaluate(gate, data, w),
-		Opcode::Rotr32 => rotr32::evaluate(gate, data, w),
-		Opcode::Rotl64 => rotl64::evaluate(gate, data, w),
-		Opcode::AssertEq => assert_eq::evaluate(gate, data, assertion_path, w),
-		Opcode::Assert0 => assert_0::evaluate(gate, data, assertion_path, w),
-		Opcode::AssertBand0 => assert_band_0::evaluate(gate, data, assertion_path, w),
-		Opcode::Imul => imul::evaluate(gate, data, w),
-		Opcode::AssertEqCond => assert_eq_cond::evaluate(gate, data, assertion_path, w),
-		Opcode::IcmpUlt => icmp_ult::evaluate(gate, data, w),
-		Opcode::IcmpEq => icmp_eq::evaluate(gate, data, w),
-		Opcode::ExtractByte => extract_byte::evaluate(gate, data, w),
-		Opcode::Shr => shr::evaluate(gate, data, w),
-		Opcode::Shl => shl::evaluate(gate, data, w),
-		Opcode::BigUintDivideHint => biguint_divide_hint::evaluate(gate, data, w),
-		Opcode::ModInverseHint => mod_inverse_hint::evaluate(gate, data, w),
+		Opcode::Band => band::emit_eval_bytecode(gate, data, builder, wire_to_reg),
+		Opcode::Bxor => bxor::emit_eval_bytecode(gate, data, builder, wire_to_reg),
+		Opcode::Bor => bor::emit_eval_bytecode(gate, data, builder, wire_to_reg),
+		Opcode::IaddCinCout => iadd_cin_cout::emit_eval_bytecode(gate, data, builder, wire_to_reg),
+		Opcode::Iadd32 => iadd32::emit_eval_bytecode(gate, data, builder, wire_to_reg),
+		Opcode::IsubBinBout => isub_bin_bout::emit_eval_bytecode(gate, data, builder, wire_to_reg),
+		Opcode::Shr32 => shr32::emit_eval_bytecode(gate, data, builder, wire_to_reg),
+		Opcode::Rotr32 => rotr32::emit_eval_bytecode(gate, data, builder, wire_to_reg),
+		Opcode::Rotl64 => rotl64::emit_eval_bytecode(gate, data, builder, wire_to_reg),
+		Opcode::AssertEq => {
+			let assertion_path = graph.assertion_names[gate];
+			assert_eq::emit_eval_bytecode(gate, data, assertion_path, builder, wire_to_reg)
+		}
+		Opcode::Assert0 => {
+			let assertion_path = graph.assertion_names[gate];
+			assert_0::emit_eval_bytecode(gate, data, assertion_path, builder, wire_to_reg)
+		}
+		Opcode::AssertBand0 => {
+			let assertion_path = graph.assertion_names[gate];
+			assert_band_0::emit_eval_bytecode(gate, data, assertion_path, builder, wire_to_reg)
+		}
+		Opcode::AssertEqCond => {
+			let assertion_path = graph.assertion_names[gate];
+			assert_eq_cond::emit_eval_bytecode(gate, data, assertion_path, builder, wire_to_reg)
+		}
+		Opcode::Imul => imul::emit_eval_bytecode(gate, data, builder, wire_to_reg),
+		Opcode::IcmpUlt => icmp_ult::emit_eval_bytecode(gate, data, builder, wire_to_reg),
+		Opcode::IcmpEq => icmp_eq::emit_eval_bytecode(gate, data, builder, wire_to_reg),
+		Opcode::ExtractByte => extract_byte::emit_eval_bytecode(gate, data, builder, wire_to_reg),
+		Opcode::Shr => shr::emit_eval_bytecode(gate, data, builder, wire_to_reg),
+		Opcode::Shl => shl::emit_eval_bytecode(gate, data, builder, wire_to_reg),
+
+		// Hint-based gates
+		Opcode::ModInverseHint => {
+			let hint_id = hint_registry.register(Box::new(ModInverseHint::new()));
+			mod_inverse_hint::emit_eval_bytecode(gate, data, builder, wire_to_reg, hint_id)
+		}
+		Opcode::BigUintDivideHint => {
+			let hint_id = hint_registry.register(Box::new(BigUintDivideHint::new()));
+			biguint_divide_hint::emit_eval_bytecode(gate, data, builder, wire_to_reg, hint_id)
+		}
 	}
 }

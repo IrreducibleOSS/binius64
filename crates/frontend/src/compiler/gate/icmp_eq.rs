@@ -25,18 +25,18 @@
 use binius_core::word::Word;
 
 use crate::compiler::{
-	circuit,
 	constraint_builder::{ConstraintBuilder, empty, sar, sll, xor2, xor3},
 	gate::opcode::OpcodeShape,
-	gate_graph::{Gate, GateData, GateParam},
+	gate_graph::{Gate, GateData, GateParam, Wire},
 };
 
 pub fn shape() -> OpcodeShape {
 	OpcodeShape {
-		const_in: &[],
+		const_in: &[Word::ZERO], // Need zero constant for cin
 		n_in: 3,
 		n_out: 1,
 		n_internal: 1,
+		n_scratch: 3, // Need 3 scratch registers for intermediate computations
 		n_imm: 0,
 	}
 }
@@ -75,21 +75,45 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 		.build();
 }
 
-pub fn evaluate(_gate: Gate, data: &GateData, w: &mut circuit::WitnessFiller) {
+pub fn emit_eval_bytecode(
+	_gate: Gate,
+	data: &GateData,
+	builder: &mut crate::compiler::eval_form::BytecodeBuilder,
+	wire_to_reg: impl Fn(Wire) -> u32,
+) {
 	let GateParam {
+		constants,
 		inputs,
 		outputs,
 		internal,
+		scratch,
 		..
 	} = data.gate_param();
-	let [x, y, _all_1] = inputs else {
+	let [zero] = constants else { unreachable!() };
+	let [x, y, all_1] = inputs else {
 		unreachable!()
 	};
 	let [out_mask] = outputs else { unreachable!() };
 	let [cout] = internal else { unreachable!() };
+	let [scratch_diff, scratch_sum_unused, scratch_sar] = scratch else {
+		unreachable!()
+	};
 
-	let diff = w[*x] ^ w[*y];
-	let (_, cout_val) = Word::ALL_ONE.iadd_cin_cout(diff, Word::ZERO);
-	w[*cout] = cout_val;
-	w[*out_mask] = !cout_val.sar(63);
+	// Compute diff = x ^ y
+	builder.emit_bxor(wire_to_reg(*scratch_diff), wire_to_reg(*x), wire_to_reg(*y));
+
+	// Compute carry bits from all_1 + diff
+	builder.emit_iadd_cin_cout(
+		wire_to_reg(*scratch_sum_unused), // sum (unused)
+		wire_to_reg(*cout),               // cout
+		wire_to_reg(*all_1),              // all_1
+		wire_to_reg(*scratch_diff),       // diff
+		wire_to_reg(*zero),               // cin = 0
+	);
+
+	// Broadcast MSB: scratch_sar = cout >> 63 (arithmetic)
+	builder.emit_sar(wire_to_reg(*scratch_sar), wire_to_reg(*cout), 63);
+
+	// Invert: out_mask = scratch_sar ^ all_1
+	builder.emit_bxor(wire_to_reg(*out_mask), wire_to_reg(*scratch_sar), wire_to_reg(*all_1));
 }

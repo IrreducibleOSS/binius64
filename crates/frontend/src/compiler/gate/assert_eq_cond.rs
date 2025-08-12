@@ -13,13 +13,10 @@
 //! The gate generates 1 AND constraint:
 //! - `(x ⊕ y) ∧ mask = 0`
 
-use binius_core::word::Word;
-
 use crate::compiler::{
-	circuit,
 	constraint_builder::{ConstraintBuilder, empty, xor2},
 	gate::opcode::OpcodeShape,
-	gate_graph::{Gate, GateData, GateParam},
+	gate_graph::{Gate, GateData, GateParam, Wire},
 	pathspec::PathSpec,
 };
 
@@ -29,6 +26,7 @@ pub fn shape() -> OpcodeShape {
 		n_in: 3,
 		n_out: 0,
 		n_internal: 0,
+		n_scratch: 0,
 		n_imm: 0,
 	}
 }
@@ -41,19 +39,19 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 	builder.and().a(xor2(*x, *y)).b(*mask).c(empty()).build();
 }
 
-pub fn evaluate(
+pub fn emit_eval_bytecode(
 	_gate: Gate,
 	data: &GateData,
 	assertion_path: PathSpec,
-	w: &mut circuit::WitnessFiller,
+	builder: &mut crate::compiler::eval_form::BytecodeBuilder,
+	wire_to_reg: impl Fn(Wire) -> u32,
 ) {
 	let GateParam { inputs, .. } = data.gate_param();
 	let [x, y, mask] = inputs else { unreachable!() };
-
-	let diff = w[*x] ^ w[*y];
-	if (diff & w[*mask]) != Word::ZERO {
-		w.flag_assertion_failed(assertion_path, |w| {
-			format!("({:?} ^ {:?}) & {:?} != 0", w[*x], w[*y], w[*mask])
-		});
-	}
+	builder.emit_assert_cond(
+		wire_to_reg(*mask),
+		wire_to_reg(*x),
+		wire_to_reg(*y),
+		assertion_path.as_u32(),
+	);
 }

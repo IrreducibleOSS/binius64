@@ -1,10 +1,9 @@
 use binius_core::word::Word;
 
 use crate::compiler::{
-	circuit,
 	constraint_builder::{ConstraintBuilder, sll, srl, xor3, xor4},
 	gate::opcode::OpcodeShape,
-	gate_graph::{Gate, GateData, GateParam},
+	gate_graph::{Gate, GateData, GateParam, Wire},
 };
 
 pub fn shape() -> OpcodeShape {
@@ -13,6 +12,7 @@ pub fn shape() -> OpcodeShape {
 		n_in: 3,
 		n_out: 2,
 		n_internal: 1,
+		n_scratch: 0,
 		n_imm: 0,
 	}
 }
@@ -54,7 +54,12 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 		.build();
 }
 
-pub fn evaluate(_gate: Gate, data: &GateData, w: &mut circuit::WitnessFiller) {
+pub fn emit_eval_bytecode(
+	_gate: Gate,
+	data: &GateData,
+	builder: &mut crate::compiler::eval_form::BytecodeBuilder,
+	wire_to_reg: impl Fn(Wire) -> u32,
+) {
 	let GateParam {
 		inputs, outputs, ..
 	} = data.gate_param();
@@ -62,12 +67,11 @@ pub fn evaluate(_gate: Gate, data: &GateData, w: &mut circuit::WitnessFiller) {
 	let [diff, bout] = outputs else {
 		unreachable!()
 	};
-
-	let a_val = w[*a];
-	let b_val = w[*b];
-	let borrow_bit = w[*bin] >> 63;
-	let (diff_val, borrow_out) = a_val.isub_bin_bout(b_val, borrow_bit);
-
-	w[*diff] = diff_val;
-	w[*bout] = borrow_out;
+	builder.emit_isub_bin_bout(
+		wire_to_reg(*diff),
+		wire_to_reg(*bout),
+		wire_to_reg(*a),
+		wire_to_reg(*b),
+		wire_to_reg(*bin),
+	);
 }

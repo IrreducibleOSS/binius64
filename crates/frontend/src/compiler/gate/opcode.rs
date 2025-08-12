@@ -45,6 +45,7 @@ pub struct OpcodeShape {
 	pub n_in: usize,
 	pub n_out: usize,
 	pub n_internal: usize,
+	pub n_scratch: usize,
 	pub n_imm: usize,
 }
 

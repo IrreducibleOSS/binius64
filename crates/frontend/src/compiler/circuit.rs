@@ -6,8 +6,8 @@ use binius_core::{
 };
 use cranelift_entity::SecondaryMap;
 
-use super::gate;
 use crate::compiler::{
+	eval_form::EvalForm,
 	gate_graph::{GateGraph, Wire},
 	pathspec::PathSpec,
 };
@@ -86,6 +86,7 @@ pub struct Circuit {
 	gate_graph: GateGraph,
 	constraint_system: ConstraintSystem,
 	wire_mapping: SecondaryMap<Wire, ValueIndex>,
+	eval_form: EvalForm,
 }
 
 impl Circuit {
@@ -95,12 +96,14 @@ impl Circuit {
 		gate_graph: GateGraph,
 		constraint_system: ConstraintSystem,
 		wire_mapping: SecondaryMap<Wire, ValueIndex>,
+		eval_form: EvalForm,
 	) -> Self {
 		assert!(constraint_system.value_vec_layout.validate().is_ok());
 		Self {
 			gate_graph,
 			constraint_system,
 			wire_mapping,
+			eval_form,
 		}
 	}
 
@@ -143,30 +146,8 @@ impl Circuit {
 			w.value_vec.set(index, *constant);
 		}
 
-		// Evaluate all gates
-		for (gate_id, _) in self.gate_graph.gates.iter() {
-			gate::evaluate(gate_id, &self.gate_graph, w);
-		}
-
-		if !w.ignore_assertions && w.assertion_failed_count > 0 {
-			// There were some assertions, we should resolve the assertion locations.
-			return Err(PopulateError {
-				messages: w
-					.assertion_failed_message_vec
-					.iter()
-					.map(|(path_spec, message)| {
-						let mut full_assertion_msg = String::with_capacity(message.len() + 128);
-						self.gate_graph
-							.path_spec_tree
-							.stringify(*path_spec, &mut full_assertion_msg);
-						full_assertion_msg.push_str(" failed: ");
-						full_assertion_msg.push_str(message);
-						full_assertion_msg
-					})
-					.collect(),
-				total_count: w.assertion_failed_count,
-			});
-		}
+		// Execute the evaluation form - it modifies the ValueVec in place
+		self.eval_form.evaluate(&mut w.value_vec)?;
 
 		Ok(())
 	}

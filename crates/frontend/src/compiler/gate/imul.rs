@@ -2,10 +2,9 @@
 //! Uses the MulConstraint: X * Y = (HI << 64) | LO
 
 use crate::compiler::{
-	circuit,
 	constraint_builder::ConstraintBuilder,
 	gate::opcode::OpcodeShape,
-	gate_graph::{Gate, GateData, GateParam},
+	gate_graph::{Gate, GateData, GateParam, Wire},
 };
 
 pub fn shape() -> OpcodeShape {
@@ -14,6 +13,7 @@ pub fn shape() -> OpcodeShape {
 		n_in: 2,
 		n_out: 2,
 		n_internal: 0,
+		n_scratch: 0,
 		n_imm: 0,
 	}
 }
@@ -29,14 +29,16 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 	builder.mul().a(*x).b(*y).hi(*hi).lo(*lo).build();
 }
 
-pub fn evaluate(_gate: Gate, data: &GateData, w: &mut circuit::WitnessFiller) {
+pub fn emit_eval_bytecode(
+	_gate: Gate,
+	data: &GateData,
+	builder: &mut crate::compiler::eval_form::BytecodeBuilder,
+	wire_to_reg: impl Fn(Wire) -> u32,
+) {
 	let GateParam {
 		inputs, outputs, ..
 	} = data.gate_param();
 	let [x, y] = inputs else { unreachable!() };
 	let [hi, lo] = outputs else { unreachable!() };
-
-	let (hi_val, lo_val) = w[*x].imul(w[*y]);
-	w[*hi] = hi_val;
-	w[*lo] = lo_val;
+	builder.emit_imul(wire_to_reg(*hi), wire_to_reg(*lo), wire_to_reg(*x), wire_to_reg(*y));
 }
