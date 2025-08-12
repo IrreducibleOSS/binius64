@@ -234,7 +234,7 @@ impl Keccak {
 			b.assert_eq_cond("full", message_word, padded_word, is_full);
 
 			// If the word ends up being a partial word, then we must ensure that for one of the 8
-			// possible padding byte placement for an 8-byte word, that the padded word matches the
+			// possible padding byte placements for an 8-byte word, that the padded word matches the
 			// message word
 			let mut expected_partial = b.add_constant_64(0);
 			for k in 0..8 {
@@ -344,14 +344,10 @@ impl Keccak {
 	fn pack_bytes_into_words(&self, bytes: &[u8], n_words: usize) -> Vec<u64> {
 		let mut words = Vec::with_capacity(n_words);
 		for i in 0..n_words {
-			let mut word = 0u64;
-			for j in 0..8 {
-				let byte_idx = i * 8 + j;
-				if byte_idx < bytes.len() {
-					word |= (bytes[byte_idx] as u64) << (j * 8);
-				}
+			if i * 8 < bytes.len() {
+				let word = u64::from_le_bytes(bytes[i * 8..(i + 1) * 8].try_into().unwrap());
+				words.push(word);
 			}
-			words.push(word);
 		}
 
 		words
