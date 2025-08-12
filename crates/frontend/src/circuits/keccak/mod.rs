@@ -18,9 +18,9 @@ pub const RATE_BYTES: usize = 136;
 /// * `message` - Vector of wires representing the input message
 pub struct Keccak {
 	pub max_len: usize,
-	pub claimed_len: Wire,
-	pub claimed_digest: [Wire; 4],
-	pub claimed_message: Vec<Wire>,
+	pub len: Wire,
+	pub digest: [Wire; 4],
+	pub message: Vec<Wire>,
 	padded_message: Vec<Vec<Wire>>,
 }
 
@@ -31,18 +31,18 @@ impl Keccak {
 	///
 	/// * `builder` - circuit builder object
 	/// * `max_len` - max message length in bytes for this circuit instance
-	/// * `claimed_len` - wire representing the claimed input message length in bytes
-	/// * `claimed_digest` - array of 4 wires representing the claimed 256-bit output digest
-	/// * `claimed_message` - vector of wires representing the claimed input message
+	/// * `len` - wire representing the claimed input message length in bytes
+	/// * `digest` - array of 4 wires representing the claimed 256-bit output digest
+	/// * `message` - vector of wires representing the claimed input message
 	///
 	/// ## Preconditions
 	/// * max_len > 0
 	pub fn new(
 		b: &CircuitBuilder,
 		max_len: usize,
-		claimed_len: Wire,
-		claimed_digest: [Wire; 4],
-		claimed_message: Vec<Wire>,
+		len: Wire,
+		digest: [Wire; 4],
+		message: Vec<Wire>,
 	) -> Self {
 		assert!(max_len > 0, "max_len must be positive");
 
@@ -50,7 +50,7 @@ impl Keccak {
 		let n_blocks = (max_len + 2).div_ceil(RATE_BYTES);
 
 		// constrain the message length claim to be explicitly within bounds
-		let len_check = b.icmp_ult(b.add_constant_64(max_len as u64), claimed_len);
+		let len_check = b.icmp_ult(b.add_constant_64(max_len as u64), len);
 		b.assert_0("len_check", len_check);
 
 		// run keccak function, producing the intermediate states between permutations
@@ -60,16 +60,16 @@ impl Keccak {
 		let is_final_block_flags = Self::constrain_claimed_digest(
 			b,
 			permutation_states,
-			claimed_digest,
-			claimed_len,
+			digest,
+			len,
 			n_blocks,
 		);
 
 		// ensure message padding matches keccak expectations
 		Self::constrain_message_padding(
 			b,
-			claimed_len,
-			claimed_message.clone(),
+			len,
+			message.clone(),
 			max_len,
 			padded_message.clone(),
 			is_final_block_flags,
@@ -77,9 +77,9 @@ impl Keccak {
 
 		Self {
 			max_len,
-			claimed_len,
-			claimed_digest,
-			claimed_message,
+			len,
+			digest,
+			message,
 			padded_message,
 		}
 	}
@@ -290,7 +290,7 @@ impl Keccak {
 			len_bytes,
 			self.max_len
 		);
-		w[self.claimed_len] = Word(len_bytes as u64);
+		w[self.len] = Word(len_bytes as u64);
 	}
 
 	/// Populates the witness with the expected digest value packed into 4 64-bit words
@@ -305,7 +305,7 @@ impl Keccak {
 			for (j, &byte) in bytes.iter().enumerate() {
 				word |= (byte as u64) << (j * 8);
 			}
-			w[self.claimed_digest[i]] = Word(word);
+			w[self.digest[i]] = Word(word);
 		}
 	}
 
@@ -326,8 +326,8 @@ impl Keccak {
 		// populate message words from input bytes
 		let words = self.pack_bytes_into_words(message_bytes, self.max_len.div_ceil(8));
 		for (i, word) in words.iter().enumerate() {
-			if i < self.claimed_message.len() {
-				w[self.claimed_message[i]] = Word(*word);
+			if i < self.message.len() {
+				w[self.message[i]] = Word(*word);
 			}
 		}
 
