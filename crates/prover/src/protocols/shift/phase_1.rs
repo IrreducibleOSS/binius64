@@ -313,9 +313,11 @@ fn build_multilinear_triplet_for_operator<F: Field, P: PackedField<Scalar = F>>(
 	operator_data: &PreparedOperatorData<F>,
 	arity: usize,
 ) -> Result<MultilinearTriplet<P>, Error> {
-	let lambda_packed = P::broadcast(operator_data.lambda);
-	let lambda_powers = (0..arity)
-		.map(|i| lambda_packed.pow(1 + i as u64))
+	let lambda_powers = operator_data
+		.lambda_powers
+		.iter()
+		.copied()
+		.map(P::broadcast)
 		.collect::<Vec<_>>();
 
 	let [mut sll_buffers, mut srl_buffers, mut sra_buffers] =
