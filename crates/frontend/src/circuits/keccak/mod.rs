@@ -122,8 +122,8 @@ impl Keccak {
 	fn constrain_claimed_digest(
 		b: &CircuitBuilder,
 		computed_states: Vec<[Wire; 25]>,
-		claimed_digest: [Wire; 4],
-		claimed_length: Wire,
+		digest: [Wire; 4],
+		length: Wire,
 		n_blocks: usize,
 	) -> Vec<Wire> {
 		let zero = b.add_constant(Word::ZERO);
@@ -146,11 +146,11 @@ impl Keccak {
 			let ge_start = if block_no == 0 {
 				b.add_constant(Word::ALL_ONE) // block 0 always len >= 0
 			} else {
-				b.bnot(b.icmp_ult(claimed_length, block_start))
+				b.bnot(b.icmp_ult(length, block_start))
 			};
 
 			// supposed length < block_end
-			let lt_end = b.icmp_ult(claimed_length, block_end);
+			let lt_end = b.icmp_ult(length, block_end);
 
 			// the final block will fall within the range: len < block_end and len >= block_start
 			let is_final_block = b.band(ge_start, lt_end);
@@ -165,7 +165,7 @@ impl Keccak {
 			}
 		}
 
-		b.assert_eq_v("claimed digest is correct", computed_digest, claimed_digest);
+		b.assert_eq_v("claimed digest is correct", computed_digest, digest);
 
 		is_final_block_flags
 	}
