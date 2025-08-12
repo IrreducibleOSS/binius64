@@ -174,24 +174,23 @@ impl Keccak {
 
 	/// Constrains message padding to match keccak expectations
 	///
-	/// Keccak splits a message of words into 'rate blocks', which are fixed size word arrays of size
-	/// N_WORDS_PER_BLOCK. This partitions a message into chunks of words small enough to be fed into
-	/// the permutation function during absorption. As a result, a message may not neatly fit into a whole
-	/// number of rate blocks. To account for this, Keccak uses a padding scheme where following the
-	/// end of a message, a padding byte 0x01 is inserted. The end of each rate block is also delimited
-	/// by a top bit 0x80.
+	/// Keccak splits a message of words into 'rate blocks', which are fixed size word arrays of
+	/// size N_WORDS_PER_BLOCK. This partitions a message into chunks of words small enough to be
+	/// fed into the permutation function during absorption. As a result, a message may not neatly
+	/// fit into a whole number of rate blocks. To account for this, Keccak uses a padding scheme
+	/// where following the end of a message, a padding byte 0x01 is inserted. The end of each rate
+	/// block is also delimited by a top bit 0x80.
 	///
 	/// As a result, three important cases must be handled to ensure padding is correct.
 	///
 	/// 1. The final word of a message comes before the final word of the block.
 	///
-	/// 2. The final word of a message is in the final word of that block but the final byte of that word
-	///    is not the final byte of the block. This means the padding byte and the top bit are in the same
-	///    word but within different bytes.
+	/// 2. The final word of a message is in the final word of that block but the final byte of that
+	///    word is not the final byte of the block. This means the padding byte and the top bit are
+	///    in the same word but within different bytes.
 	///
-	/// 3. The final word of a message is in the final word and the final byte of the block. Meaning that
-	///    the padding byte and the top bit are within the same byte.
-	///
+	/// 3. The final word of a message is in the final word and the final byte of the block. Meaning
+	///    that the padding byte and the top bit are within the same byte.
 	fn constrain_message_padding(
 		b: &CircuitBuilder,
 		len: Wire,
@@ -228,15 +227,16 @@ impl Keccak {
 
 		let word_boundary = b.shr(len, 3);
 
-		let one = b.add_constant_64(1);
 		let zero = b.add_constant_64(0);
 
 		// byte offset for where the pad byte is within a partial word given the claimed length
 		let r = b.band(len, b.add_constant_64(7));
 
-		// Within the final Srate block, ensure that the pad byte and top bit are where they are supposed to be
+		// Within the final rate block, ensure that the pad byte and top bit are where they are
+		// supposed to be
 		for word_index in 0..total_rate_words {
-			// Retrieve the word of the supposed padded message corresponding to the final padded word
+			// Retrieve the word of the supposed padded message corresponding to the final padded
+			// word
 			let block_idx = word_index / N_WORDS_PER_BLOCK;
 			let word_in_block = word_index % N_WORDS_PER_BLOCK;
 			let padded_word = padded_message[block_idx][word_in_block];
@@ -248,15 +248,16 @@ impl Keccak {
 			//  true if message ends exactly at the block boundary
 			let msg_last_full = b.icmp_ult(word_idx_wire, word_boundary);
 
-			// true if last block word is the last word of msg, so it will be the same as the word boundary
+			// true if last block word is the last word of msg, so it will be the same as the word
+			// boundary
 			let block_last_is_msg_last = b.icmp_eq(word_idx_wire, word_boundary);
 
 			// In the case where the word is full and is also the last word in the block, it should
 			// match the original msg word.
 			b.assert_eq_cond("full", message_word, padded_word, msg_last_full);
 
-			// When the last word of the message is not full, we expect a paddingbyte to be somewhere within the
-			// word. Since the top bit will also be in this word.
+			// When the last word of the message is not full, we expect a padding byte to be
+			// somewhere within the word. Since the top bit will also be in this word.
 			let mut expected_partial = zero;
 			for k in 0..8 {
 				let r_is_k = b.icmp_eq(r, b.add_constant_64(k as u64));
@@ -274,8 +275,8 @@ impl Keccak {
 				b.add_constant_64(N_WORDS_PER_BLOCK as u64 - 1),
 			);
 
-			// this will be true if the current word is the last word of the block and the last word of the
-			// message is the last word of the block
+			// this will be true if the current word is the last word of the block and the last word
+			// of the message is the last word of the block
 			let partial_and_last = b.band(block_last_is_msg_last, is_last_block_word);
 
 			// Set the top bit into the expected partial word after it has had its padding byte set
@@ -284,7 +285,8 @@ impl Keccak {
 			let extra_0x80 = b.band(partial_and_last, top_bit_const);
 			let expected_for_partial = b.bxor(expected_partial, extra_0x80);
 
-			// If the last block word is the last word of the message, then assert that the partial word matches
+			// If the last block word is the last word of the message, then assert that the partial
+			// word matches
 			b.assert_eq_cond(
 				"partial matches expected",
 				expected_for_partial,
@@ -501,8 +503,9 @@ mod tests {
 		validate_keccak_circuit(&message, expected_digest, max_message_len);
 	}
 
-	/// This message ends within four bytes of the rate block boundary. This means that the padding byte
-	/// and the top bit are in the same word of the final block, but within different bytes in that word.
+	/// This message ends within four bytes of the rate block boundary. This means that the padding
+	/// byte and the top bit are in the same word of the final block, but within different bytes in
+	/// that word.
 	///
 	/// Final rate block word:
 	///
@@ -516,8 +519,8 @@ mod tests {
 		validate_keccak_circuit(&message, expected_digest, max_message_len);
 	}
 
-	/// This message ends within one byte of the final rate block boundary. This means that the padding
-	/// byte and the top bit are in the same word of the final block, and the same byte.
+	/// This message ends within one byte of the final rate block boundary. This means that the
+	/// padding byte and the top bit are in the same word of the final block, and the same byte.
 	///
 	/// Final rate block word:
 	///
