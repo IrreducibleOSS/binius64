@@ -158,16 +158,18 @@ where
 				key_collection.keys[*start as usize..*end as usize]
 					.iter()
 					.map(|key| {
-						let (tensor, scalars) = match key.operation {
-							Operation::BitwiseAnd => {
-								(&bitand_operator_data.r_x_prime_tensor, &bitand_scalars)
-							}
-							Operation::IntegerMul => {
-								(&intmul_operator_data.r_x_prime_tensor, &intmul_scalars)
-							}
+						let (operator_data, scalars) = match key.operation {
+							Operation::BitwiseAnd => (bitand_operator_data, &bitand_scalars),
+							Operation::IntegerMul => (intmul_operator_data, &intmul_scalars),
 						};
-						key.accumulate(&key_collection.constraint_indices, tensor.as_ref())
-							* scalars[key.id as usize]
+						let acc = key.accumulate(
+							&key_collection.constraint_indices,
+							operator_data.r_x_prime_tensor.as_ref(),
+						);
+
+						let augemented_key = key.id as usize
+							+ key.operand_index as usize * SHIFT_VARIANT_COUNT * WORD_SIZE_BITS;
+						acc * scalars[augemented_key]
 					})
 					.sum()
 			}))

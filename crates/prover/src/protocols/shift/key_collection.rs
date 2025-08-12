@@ -2,13 +2,16 @@
 
 use std::ops::Range;
 
-use binius_core::constraint_system::{
-	AndConstraint, ConstraintSystem, MulConstraint, Operand, ShiftedValueIndex,
+use binius_core::{
+	ShiftVariant,
+	constraint_system::{
+		AndConstraint, ConstraintSystem, MulConstraint, Operand, ShiftedValueIndex,
+	},
+	consts::LOG_WORD_SIZE_BITS,
 };
 use binius_field::Field;
-use binius_verifier::config::WORD_SIZE_BITS;
 
-use super::{BITAND_ARITY, INTMUL_ARITY, SHIFT_VARIANT_COUNT};
+use super::{BITAND_ARITY, INTMUL_ARITY};
 
 /// Represents the type of operations handled by the shift protocol.
 ///
@@ -72,6 +75,7 @@ pub enum Operation {
 #[derive(Debug, Clone)]
 pub struct Key {
 	pub operation: Operation,
+	pub operand_index: u8,
 	pub id: u16,
 	pub range: Range<u32>,
 }
@@ -126,6 +130,7 @@ pub struct KeyCollection {
 struct BuilderKey {
 	pub id: u16,
 	pub operation: Operation,
+	pub operand_index: u8,
 	pub constraint_indices: Vec<u32>,
 }
 
@@ -147,21 +152,25 @@ fn update_with_operand(
 		{
 			// Access and update the builder keys corresponding to the word index (`value_index.0`)
 			let builder_keys = &mut builder_key_lists[value_index.0 as usize];
-			// Encode (operand_index, shift_variant, shift_amount) into a single ID
-			let id = (operand_index as u16 * SHIFT_VARIANT_COUNT as u16 + *shift_variant as u16)
-				* WORD_SIZE_BITS as u16
-				+ *amount as u16;
+			// Encode (shift_variant, shift_amount) into a single ID
+			let shift_variant_val: u16 = match shift_variant {
+				ShiftVariant::Sll => 0,
+				ShiftVariant::Slr => 1,
+				ShiftVariant::Sar => 2,
+			};
+			let id = (shift_variant_val << LOG_WORD_SIZE_BITS) + *amount as u16;
+			let operand_index = operand_index as u8;
 
 			// Find existing builder key or create a new one for this (operation, id) pair
-			if let Some(builder_key) = builder_keys
-				.iter_mut()
-				.find(|key| key.id == id && key.operation == operation)
-			{
+			if let Some(builder_key) = builder_keys.iter_mut().find(|key| {
+				key.id == id && key.operation == operation && key.operand_index == operand_index
+			}) {
 				builder_key.constraint_indices.push(constraint_idx as u32);
 			} else {
 				builder_keys.push(BuilderKey {
 					id,
 					operation,
+					operand_index,
 					constraint_indices: vec![constraint_idx as u32],
 				});
 			}
@@ -226,6 +235,7 @@ pub fn build_key_collection(cs: &ConstraintSystem) -> KeyCollection {
 		keys.push(Key {
 			id: builder_key.id,
 			operation: builder_key.operation,
+			operand_index: builder_key.operand_index,
 			range: start..end,
 		});
 	}
