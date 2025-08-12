@@ -3,7 +3,7 @@
 use std::{iter, ops::Deref};
 
 use binius_field::{
-	BinaryField, ExtensionField, Field, PackedField, UnderlierWithBitOps, WithUnderlier,
+	BinaryField, ExtensionField, Field, PackedField,
 	byte_iteration::{
 		ByteIteratorCallback, can_iterate_bytes, create_partial_sums_lookup_tables, iterate_bytes,
 	},
@@ -117,7 +117,7 @@ where
 ///   the field extension degree
 pub fn fold_1b_rows<F, P, Data>(mat: &FieldBuffer<P, Data>, vec: &FieldBuffer<P>) -> FieldBuffer<F>
 where
-	F: BinaryField + WithUnderlier<Underlier: UnderlierWithBitOps>,
+	F: BinaryField,
 	P: PackedField<Scalar = F>,
 	Data: Deref<Target = [P]>,
 {
@@ -134,18 +134,15 @@ where
 					// when `F` can be byte-iterated.
 					// Use a precompute mask table to get 8 masks for every byte in `F`.
 					if can_iterate_bytes::<F>() {
-						struct Callback<'a, P: PackedField<Scalar: WithUnderlier>> {
-							vec_i: <P::Scalar as WithUnderlier>::Underlier,
+						struct Callback<'a, P: PackedField> {
+							vec_i: P::Scalar,
 							acc: &'a mut FieldBuffer<P>,
 						}
 
-						impl<P: PackedField<Scalar: WithUnderlier<Underlier: UnderlierWithBitOps>>>
-							ByteIteratorCallback for Callback<'_, P>
-						{
+						impl<P: PackedField<Scalar: BinaryField>> ByteIteratorCallback for Callback<'_, P> {
 							#[inline]
 							fn call(&mut self, bytes: impl Iterator<Item = u8>) {
-								let mask_map =
-									<P::Scalar as WithUnderlier>::Underlier::BYTE_MASK_MAP;
+								let mask_map = &P::Scalar::BYTE_MASK_MAP;
 
 								for (byte_index, byte) in bytes.enumerate() {
 									let offset = byte_index * 8;
@@ -156,7 +153,7 @@ where
 											*self
 												.acc
 												.as_mut()
-												.get_unchecked_mut(offset + bit_index) += P::Scalar::from_underlier(self.vec_i & mask)
+												.get_unchecked_mut(offset + bit_index) += P::Scalar::mul_as_bases(self.vec_i, mask)
 										}
 									}
 								}
@@ -166,7 +163,7 @@ where
 						iterate_bytes(
 							&[mat_i],
 							&mut Callback {
-								vec_i: vec_i.to_underlier(),
+								vec_i,
 								acc: &mut acc,
 							},
 						);

@@ -25,6 +25,24 @@ use crate::{
 pub trait BinaryField: ExtensionField<BinaryField1b> {
 	const N_BITS: usize = Self::DEGREE;
 	const MULTIPLICATIVE_GENERATOR: Self;
+	const ALL_ONES: Self;
+
+	// A map from a byte to 8 values, where `i`-th value is filled with a `i`-th bit from the byte.
+	const BYTE_MASK_MAP: [[Self; 8]; 256] = const {
+		let mut map = [[Self::ZERO; 8]; 256];
+		let mut byte = 0;
+		while byte < 256 {
+			let mut bit = 0;
+			while bit < 8 {
+				if (byte & (1 << bit)) != 0 {
+					map[byte][bit] = Self::ALL_ONES;
+				}
+				bit += 1;
+			}
+			byte += 1;
+		}
+		map
+	};
 }
 
 /// A binary field *isomorphic* to a binary tower field.
@@ -331,6 +349,7 @@ macro_rules! binary_field {
 
 		impl BinaryField for $name {
 			const MULTIPLICATIVE_GENERATOR: $name = $name($gen);
+			const ALL_ONES: $name = $name(<$typ as crate::underlier::UnderlierWithBitOps>::ONES);
 		}
 
 		impl From<$typ> for $name {
@@ -648,6 +667,22 @@ macro_rules! impl_field_extension {
 			fn square_transpose(values: &mut [Self]) -> Result<(), Error> {
 				crate::transpose::square_transforms_extension_field::<$subfield_name, Self>(values)
 					.map_err(|_| Error::ExtensionDegreeMismatch)
+			}
+
+			#[inline]
+			fn mul_as_bases(self, other: Self) -> Self {
+				use crate::as_packed_field::AsSinglePacked;
+				use crate::PackedExtension;
+				use crate::packed::PackedField;
+
+				let self_packed = self.to_single_packed();
+				let other_packed = other.to_single_packed();
+				let self_bases_packed = PackedExtension::<$subfield_name>::cast_base(self_packed);
+				let other_bases_packed = PackedExtension::<$subfield_name>::cast_base(other_packed);
+				let mul_bases = self_bases_packed * other_bases_packed;
+				let mul_packed: <Self as AsSinglePacked>::Packed = PackedExtension::<$subfield_name>::cast_ext(mul_bases);
+
+				mul_packed.get(0)
 			}
 		}
 	};

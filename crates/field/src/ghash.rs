@@ -447,6 +447,11 @@ impl ExtensionField<BinaryField1b> for BinaryField128bGhash {
 		square_transforms_extension_field::<BinaryField1b, Self>(values)
 			.map_err(|_| Error::ExtensionDegreeMismatch)
 	}
+
+	#[inline]
+	fn mul_as_bases(self, other: Self) -> Self {
+		Self(self.0 & other.0)
+	}
 }
 
 impl SerializeBytes for BinaryField128bGhash {
@@ -466,6 +471,7 @@ impl DeserializeBytes for BinaryField128bGhash {
 
 impl BinaryField for BinaryField128bGhash {
 	const MULTIPLICATIVE_GENERATOR: Self = Self(0x494ef99794d5244f9152df59d87a9186);
+	const ALL_ONES: Self = Self(u128::MAX);
 }
 
 impl TowerField for BinaryField128bGhash {

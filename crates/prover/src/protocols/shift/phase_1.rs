@@ -3,9 +3,7 @@
 use std::{array, ops::Range};
 
 use binius_core::word::Word;
-use binius_field::{
-	AESTowerField8b, BinaryField, Field, PackedField, UnderlierWithBitOps, WithUnderlier,
-};
+use binius_field::{AESTowerField8b, BinaryField, Field, PackedField};
 use binius_math::{FieldBuffer, inner_product::inner_product_buffers};
 use binius_transcript::{
 	ProverTranscript,
@@ -57,7 +55,7 @@ pub fn prove_phase_1<F, P: PackedField<Scalar = F>, C: Challenger>(
 	transcript: &mut ProverTranscript<C>,
 ) -> Result<SumcheckOutput<F>, Error>
 where
-	F: BinaryField + From<AESTowerField8b> + WithUnderlier<Underlier: UnderlierWithBitOps>,
+	F: BinaryField + From<AESTowerField8b>,
 {
 	let [g_triplet_bitand, g_triplet_intmul]: [MultilinearTriplet<P>; 2] =
 		build_g_triplet(words, key_collection, bitand_data, intmul_data)?;
@@ -202,10 +200,7 @@ fn run_phase_1_sumcheck<
 /// Used in phase 1 to construct the constant size g multilinears
 /// that will participate in the phase 1 sumcheck protocol.
 #[instrument(skip_all, name = "build_g_triplet")]
-fn build_g_triplet<
-	F: BinaryField + WithUnderlier<Underlier: UnderlierWithBitOps>,
-	P: PackedField<Scalar = F>,
->(
+fn build_g_triplet<F: BinaryField, P: PackedField<Scalar = F>>(
 	words: &[Word],
 	key_collection: &KeyCollection,
 	bitand_operator_data: &PreparedOperatorData<F>,
@@ -237,9 +232,7 @@ fn build_g_triplet<
 						}
 					};
 
-					let acc = key
-						.accumulate(&key_collection.constraint_indices, tensor.as_ref())
-						.to_underlier();
+					let acc = key.accumulate(&key_collection.constraint_indices, tensor.as_ref());
 
 					// The following loop is an optimized version of the following
 					// for i in 0..WORD_SIZE_BITS {
@@ -249,7 +242,7 @@ fn build_g_triplet<
 					// }
 					let start = key.id as usize * WORD_SIZE_BITS;
 					let word_bytes = word.0.to_le_bytes();
-					let masks_map = F::Underlier::BYTE_MASK_MAP;
+					let masks_map = F::BYTE_MASK_MAP;
 					for (&byte, values) in word_bytes.iter().zip(
 						multilinears[start..start + WORD_SIZE_BITS]
 							.chunks_exact_mut(WORD_SIZE_BYTES),
@@ -260,8 +253,8 @@ fn build_g_triplet<
 							// - `values` is guaranteed to be 8 elements long due to the chunking
 							// - `bit_index` is always in bounds because we iterate over 0..8
 							unsafe {
-								*values.get_unchecked_mut(bit_index).to_underlier_ref_mut() ^=
-									*masks.get_unchecked(bit_index) & acc;
+								*values.get_unchecked_mut(bit_index) +=
+									F::mul_as_bases(*masks.get_unchecked(bit_index), acc);
 							}
 						}
 					}

@@ -86,6 +86,10 @@ pub trait ExtensionField<F: Field>:
 
 	/// Transpose square block of subfield elements within `values` in place.
 	fn square_transpose(values: &mut [Self]) -> Result<(), Error>;
+
+	/// Multiplies two extension field elements as if they were represented in their base field
+	/// elements.
+	fn mul_as_bases(self, other: Self) -> Self;
 }
 
 impl<F: Field> ExtensionField<F> for F {
@@ -138,5 +142,10 @@ impl<F: Field> ExtensionField<F> for F {
 		}
 
 		Ok(())
+	}
+
+	#[inline]
+	fn mul_as_bases(self, other: Self) -> Self {
+		self * other
 	}
 }

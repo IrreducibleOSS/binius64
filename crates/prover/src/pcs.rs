@@ -1,8 +1,6 @@
 // Copyright 2025 Irreducible Inc.
 
-use binius_field::{
-	BinaryField, ExtensionField, PackedExtension, PackedField, UnderlierWithBitOps, WithUnderlier,
-};
+use binius_field::{BinaryField, ExtensionField, PackedExtension, PackedField};
 use binius_math::{
 	FieldBuffer, inner_product::inner_product, multilinear::eq::eq_ind_partial_eval,
 	ntt::AdditiveNTT, tensor_algebra::TensorAlgebra,
@@ -32,7 +30,7 @@ pub struct OneBitPCSProver<P: PackedField> {
 
 impl<F, P> OneBitPCSProver<P>
 where
-	F: BinaryField + WithUnderlier<Underlier: UnderlierWithBitOps>,
+	F: BinaryField,
 	P: PackedExtension<B1> + PackedField<Scalar = F>,
 {
 	/// Create a new ring switched PCS prover.

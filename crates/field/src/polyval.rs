@@ -462,6 +462,11 @@ impl ExtensionField<BinaryField1b> for BinaryField128bPolyval {
 		square_transforms_extension_field::<BinaryField1b, Self>(values)
 			.map_err(|_| Error::ExtensionDegreeMismatch)
 	}
+
+	#[inline]
+	fn mul_as_bases(self, other: Self) -> Self {
+		Self(self.0 & other.0)
+	}
 }
 
 impl SerializeBytes for BinaryField128bPolyval {
@@ -481,6 +486,7 @@ impl DeserializeBytes for BinaryField128bPolyval {
 
 impl BinaryField for BinaryField128bPolyval {
 	const MULTIPLICATIVE_GENERATOR: Self = Self(0x72bdf2504ce49c03105433c1c25a4a7);
+	const ALL_ONES: Self = Self(u128::MAX);
 }
 
 impl TowerField for BinaryField128bPolyval {
