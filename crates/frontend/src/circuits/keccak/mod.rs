@@ -536,7 +536,7 @@ mod tests {
 		validate_keccak_circuit(&message, expected_digest, max_message_len);
 	}
 
-	/// This message ends 8 bytes before the final rate block boundary. This means that the padding 
+	/// This message ends 8 bytes before the final rate block boundary. This means that the padding
 	/// byte and the top bit are in the same word of the finalblock word, but there are no message
 	/// words in the final block.
 	///
