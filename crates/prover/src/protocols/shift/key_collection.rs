@@ -1,6 +1,6 @@
 // Copyright 2025 Irreducible Inc.
 
-use std::ops::Range;
+use std::{iter, mem, ops::Range};
 
 use binius_core::{
 	ShiftVariant,
@@ -10,7 +10,6 @@ use binius_core::{
 	consts::LOG_WORD_SIZE_BITS,
 };
 use binius_field::Field;
-use itertools::Itertools;
 
 use super::{BITAND_ARITY, INTMUL_ARITY, PreparedOperatorData};
 
@@ -81,36 +80,57 @@ pub struct Key {
 }
 
 impl Key {
-	/// Given a tensor of evaluations, sums the values at positions corresponding
-	/// to all constraints that use this shift variant and amount.
-	/// Requires the `constraint_indices` slice from the `KeyCollection`.
+	/// Accumulates the partial evaluations of an operation matrix for the key, partitioned by
+	/// operand index.
+	///
+	/// A [`Key`] references the operation constraints where one witness word is an operand. This
+	/// accumulates the partial evaluation of the operation matrix for this key.
+	///
+	/// ## Returns
+	/// An iterator of tuples, where the first is the operand ID in the operation and the second is
+	/// the accumulated value of the partial evaluation tensor.
+	#[inline]
+	pub fn accumulate_by_operand<'a, F: Field>(
+		&'a self,
+		constraint_indices: &'a [ConstraintIndex],
+		operator_data: &'a PreparedOperatorData<F>,
+	) -> impl Iterator<Item = (usize, F)> + 'a {
+		let Range { start, end } = self.range;
+
+		let mut iter = constraint_indices[start as usize..end as usize].iter();
+		let mut acc = F::ZERO;
+		let mut maybe_current = iter.next();
+		iter::from_fn(move || {
+			let current = maybe_current?;
+
+			acc += operator_data.r_x_prime_tensor.as_ref()[current.constraint_index as usize];
+			for next in &mut iter {
+				maybe_current = Some(next);
+				if next.operand_index != current.operand_index {
+					let ret = mem::take(&mut acc);
+					return Some((current.operand_index as usize, ret));
+				}
+				acc += operator_data.r_x_prime_tensor.as_ref()[next.constraint_index as usize];
+			}
+
+			maybe_current = None;
+			Some((current.operand_index as usize, mem::take(&mut acc)))
+		})
+	}
+
+	/// Accumulates the partial evaluation of an operation matrix for the key.
+	///
+	/// A [`Key`] references the operation constraints where one witness word is an operand. This
+	/// accumulates the partial evaluation of the operation matrix for this key.
 	#[inline]
 	pub fn accumulate<F: Field>(
 		&self,
 		constraint_indices: &[ConstraintIndex],
 		operator_data: &PreparedOperatorData<F>,
 	) -> F {
-		let Range { start, end } = self.range;
-		let mut iter = constraint_indices[start as usize..end as usize]
-			.iter()
-			.peekable();
-
-		let mut ret = F::ZERO;
-		while let Some(index_ref) = iter.peek() {
-			let operand_index = index_ref.operand_index;
-
-			// Reduce the number of multiplications by factoring out the λ power over the sum of
-			// terms with the same operand index.
-			let acc = iter
-				.peeking_take_while(|index_ref| index_ref.operand_index == operand_index)
-				.map(|index_ref| {
-					operator_data.r_x_prime_tensor.as_ref()[index_ref.constraint_index as usize]
-				})
-				.sum::<F>();
-
-			ret += acc * operator_data.lambda_powers[operand_index as usize]
-		}
-		ret
+		self.accumulate_by_operand(constraint_indices, operator_data)
+			.map(|(operand_index, acc)| acc * operator_data.lambda_powers[operand_index])
+			.sum()
 	}
 }
 
