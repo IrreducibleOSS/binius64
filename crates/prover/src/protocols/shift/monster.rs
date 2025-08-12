@@ -14,7 +14,7 @@ use binius_verifier::{
 use tracing::instrument;
 
 use super::{
-	BITAND_ARITY, INTMUL_ARITY, SHIFT_VARIANT_COUNT,
+	SHIFT_VARIANT_COUNT,
 	error::Error,
 	key_collection::{KeyCollection, Operation},
 	phase_1::MultilinearTriplet,
@@ -113,10 +113,6 @@ pub fn build_monster_multilinear<F, P: PackedField<Scalar = F>>(
 where
 	F: BinaryField + From<AESTowerField8b>,
 {
-	// Compute lambda powers
-	let bitand_lambda_powers = bitand_operator_data.lambda_powers.clone();
-	let intmul_lambda_powers = intmul_operator_data.lambda_powers.clone();
-
 	// Compute h evaluations
 	let subspace = BinarySubspace::<AESTowerField8b>::with_dim(LOG_WORD_SIZE_BITS)?.isomorphic();
 	let [bitand_h_ops, intmul_h_ops] = [
@@ -131,24 +127,20 @@ where
 	let r_s_tensor = eq_ind_partial_eval::<F>(r_s);
 
 	// Allocate and populate the scalars
-	let mut bitand_scalars = vec![F::ZERO; BITAND_ARITY * SHIFT_VARIANT_COUNT * WORD_SIZE_BITS];
-	let mut intmul_scalars = vec![F::ZERO; INTMUL_ARITY * SHIFT_VARIANT_COUNT * WORD_SIZE_BITS];
+	let mut bitand_scalars = vec![F::ZERO; SHIFT_VARIANT_COUNT * WORD_SIZE_BITS];
+	let mut intmul_scalars = vec![F::ZERO; SHIFT_VARIANT_COUNT * WORD_SIZE_BITS];
 
-	let populate_scalars = |scalars: &mut [F], arity: usize, lambda_powers: &[F], h_ops: &[F]| {
-		for operand_idx in 0..arity {
-			for op in 0..SHIFT_VARIANT_COUNT {
-				let operand_op_idx = operand_idx * SHIFT_VARIANT_COUNT + op;
-				let operand_op_scalar = lambda_powers[operand_idx] * h_ops[op];
-				for s in 0..WORD_SIZE_BITS {
-					let operand_op_s_idx = operand_op_idx * WORD_SIZE_BITS + s;
-					scalars[operand_op_s_idx] = operand_op_scalar * r_s_tensor.as_ref()[s];
-				}
+	let populate_scalars = |scalars: &mut [F], h_ops: &[F]| {
+		for op in 0..SHIFT_VARIANT_COUNT {
+			for s in 0..WORD_SIZE_BITS {
+				let operand_op_s_idx = op * WORD_SIZE_BITS + s;
+				scalars[operand_op_s_idx] = h_ops[op] * r_s_tensor.as_ref()[s];
 			}
 		}
 	};
 
-	populate_scalars(&mut bitand_scalars, BITAND_ARITY, &bitand_lambda_powers, &bitand_h_ops);
-	populate_scalars(&mut intmul_scalars, INTMUL_ARITY, &intmul_lambda_powers, &intmul_h_ops);
+	populate_scalars(&mut bitand_scalars, &bitand_h_ops);
+	populate_scalars(&mut intmul_scalars, &intmul_h_ops);
 
 	let monster_multilinear = key_collection
 		.key_ranges
@@ -162,14 +154,8 @@ where
 							Operation::BitwiseAnd => (bitand_operator_data, &bitand_scalars),
 							Operation::IntegerMul => (intmul_operator_data, &intmul_scalars),
 						};
-						let acc = key.accumulate(
-							&key_collection.constraint_indices,
-							operator_data.r_x_prime_tensor.as_ref(),
-						);
-
-						let augemented_key = key.id as usize
-							+ key.operand_index as usize * SHIFT_VARIANT_COUNT * WORD_SIZE_BITS;
-						acc * scalars[augemented_key]
+						let acc = key.accumulate(&key_collection.constraint_indices, operator_data);
+						acc * scalars[key.id as usize]
 					})
 					.sum()
 			}))

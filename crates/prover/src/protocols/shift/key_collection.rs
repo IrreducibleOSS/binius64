@@ -11,7 +11,7 @@ use binius_core::{
 };
 use binius_field::Field;
 
-use super::{BITAND_ARITY, INTMUL_ARITY};
+use super::{BITAND_ARITY, INTMUL_ARITY, PreparedOperatorData};
 
 /// Represents the type of operations handled by the shift protocol.
 ///
@@ -75,7 +75,6 @@ pub enum Operation {
 #[derive(Debug, Clone)]
 pub struct Key {
 	pub operation: Operation,
-	pub operand_index: u8,
 	pub id: u16,
 	pub range: Range<u32>,
 }
@@ -85,11 +84,23 @@ impl Key {
 	/// to all constraints that use this shift variant and amount.
 	/// Requires the `constraint_indices` slice from the `KeyCollection`.
 	#[inline]
-	pub fn accumulate<F: Field>(&self, constraint_indices: &[u32], tensor: &[F]) -> F {
+	pub fn accumulate<F: Field>(
+		&self,
+		constraint_indices: &[ConstraintIndex],
+		operator_data: &PreparedOperatorData<F>,
+	) -> F {
 		let Range { start, end } = self.range;
 		constraint_indices[start as usize..end as usize]
 			.iter()
-			.map(|&i| tensor[i as usize])
+			.map(
+				|ConstraintIndex {
+				     operand_index,
+				     constraint_index,
+				 }| {
+					operator_data.r_x_prime_tensor.as_ref()[*constraint_index as usize]
+						* operator_data.lambda_powers[*operand_index as usize]
+				},
+			)
 			.sum()
 	}
 }
@@ -117,7 +128,7 @@ impl Key {
 pub struct KeyCollection {
 	pub keys: Vec<Key>,
 	pub key_ranges: Vec<Range<u32>>,
-	pub constraint_indices: Vec<u32>,
+	pub constraint_indices: Vec<ConstraintIndex>,
 }
 
 /// A `BuilderKey` is a key that is being built up during `KeyCollection`
@@ -130,8 +141,14 @@ pub struct KeyCollection {
 struct BuilderKey {
 	pub id: u16,
 	pub operation: Operation,
-	pub operand_index: u8,
-	pub constraint_indices: Vec<u32>,
+	pub constraint_indices: Vec<ConstraintIndex>,
+}
+
+/// Indexes a reference to a shifted value index, appearing in a constraint operand.
+#[derive(Debug, Clone)]
+pub struct ConstraintIndex {
+	operand_index: u8,
+	constraint_index: u32,
 }
 
 /// Updates the list of `BuilderKey` objects with respect to an operand of an operation during
@@ -159,19 +176,22 @@ fn update_with_operand(
 				ShiftVariant::Sar => 2,
 			};
 			let id = (shift_variant_val << LOG_WORD_SIZE_BITS) + *amount as u16;
-			let operand_index = operand_index as u8;
 
 			// Find existing builder key or create a new one for this (operation, id) pair
-			if let Some(builder_key) = builder_keys.iter_mut().find(|key| {
-				key.id == id && key.operation == operation && key.operand_index == operand_index
-			}) {
-				builder_key.constraint_indices.push(constraint_idx as u32);
+			let constraint_index = ConstraintIndex {
+				operand_index: operand_index as u8,
+				constraint_index: constraint_idx as u32,
+			};
+			if let Some(builder_key) = builder_keys
+				.iter_mut()
+				.find(|key| key.id == id && key.operation == operation)
+			{
+				builder_key.constraint_indices.push(constraint_index);
 			} else {
 				builder_keys.push(BuilderKey {
 					id,
 					operation,
-					operand_index,
-					constraint_indices: vec![constraint_idx as u32],
+					constraint_indices: vec![constraint_index],
 				});
 			}
 		}
@@ -230,12 +250,11 @@ pub fn build_key_collection(cs: &ConstraintSystem) -> KeyCollection {
 
 	for builder_key in builder_key_lists.into_iter().flatten() {
 		let start = constraint_indices.len() as u32;
-		constraint_indices.extend(&builder_key.constraint_indices);
+		constraint_indices.extend(builder_key.constraint_indices);
 		let end = constraint_indices.len() as u32;
 		keys.push(Key {
 			id: builder_key.id,
 			operation: builder_key.operation,
-			operand_index: builder_key.operand_index,
 			range: start..end,
 		});
 	}
