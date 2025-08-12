@@ -58,7 +58,7 @@ impl Opcode {
 			Opcode::Band => gate::band::shape(),
 			Opcode::Bxor => gate::bxor::shape(),
 			Opcode::Bor => gate::bor::shape(),
-			Opcode::NaryBxor => gate::n_ary_bxor::shape(),
+			Opcode::NaryBxor => gate::n_ary_bxor::shape(dimensions),
 
 			// Arithmetic
 			Opcode::IaddCinCout => gate::iadd_cin_cout::shape(),
@@ -97,6 +97,7 @@ impl Opcode {
 		match self {
 			Opcode::ModReduceHint => false,
 			Opcode::ModInverseHint => false,
+			Opcode::NaryBxor => false,
 			_ => true,
 		}
 	}

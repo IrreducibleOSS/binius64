@@ -244,6 +244,8 @@ impl<'a> MulConstraintBuilder<'a> {
 	}
 }
 
+const MAX_NARY_XOR_TERMS: usize = 8;
+
 /// Expression for building wire operands - all variants are Copy
 #[derive(Copy, Clone)]
 pub enum WireExpr {
@@ -255,6 +257,8 @@ pub enum WireExpr {
 	Xor2(WireExprTerm, WireExprTerm),
 	Xor3(WireExprTerm, WireExprTerm, WireExprTerm),
 	Xor4(WireExprTerm, WireExprTerm, WireExprTerm, WireExprTerm),
+	/// N-ary XOR - up to a MAX_NARY_XOR_TERMS due to heap allocation from Copy
+	NaryXor([Option<WireExprTerm>; MAX_NARY_XOR_TERMS], u8), 
 	/// Empty operand (represents 0)
 	Empty,
 }
@@ -302,6 +306,13 @@ impl WireExpr {
 				c.to_shifted_wire(),
 				d.to_shifted_wire(),
 			],
+			WireExpr::NaryXor(terms, count) => {
+				terms.iter()
+					.take(count as usize)
+					.filter_map(|t| t.as_ref())
+					.map(|t| t.to_shifted_wire())
+					.collect()
+			},
 			WireExpr::Empty => vec![],
 		}
 	}
@@ -363,6 +374,17 @@ pub fn xor4(
 	d: impl Into<WireExprTerm>,
 ) -> WireExpr {
 	WireExpr::Xor4(a.into(), b.into(), c.into(), d.into())
+}
+
+pub fn n_ary_xor(terms: &[Wire]) -> WireExpr {
+	assert!(terms.len() <= 8, "N-ary XOR supports up to 8 terms");
+	
+	let mut array = [None; 8];
+	for (i, &wire) in terms.iter().enumerate() {
+		array[i] = Some(WireExprTerm::Wire(wire));
+	}
+	
+	WireExpr::NaryXor(array, terms.len() as u8)
 }
 
 // Empty operand helper
