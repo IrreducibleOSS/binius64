@@ -535,4 +535,20 @@ mod tests {
 		let expected_digest = keccak_crate(&message);
 		validate_keccak_circuit(&message, expected_digest, max_message_len);
 	}
+
+	/// This message ends 8 bytes before the final rate block boundary. This means that the padding 
+	/// byte and the top bit are in the same word of the finalblock word, but there are no message
+	/// words in the final block.
+	///
+	/// Final rate block word:
+	///
+	///  [b1, b2, b3, b4, b5, b6, b7, b8] [0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80]
+	#[test]
+	fn test_message_ends_in_final_word_and_final_byte_with_padding() {
+		let message = vec![0xFF; RATE_BYTES - 8];
+
+		let max_message_len = 1024;
+		let expected_digest = keccak_crate(&message);
+		validate_keccak_circuit(&message, expected_digest, max_message_len);
+	}
 }
