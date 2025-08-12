@@ -22,6 +22,7 @@ pub struct Keccak {
 	pub digest: [Wire; 4],
 	pub message: Vec<Wire>,
 	padded_message: Vec<Vec<Wire>>,
+	n_blocks: usize,
 }
 
 impl Keccak {
@@ -70,7 +71,7 @@ impl Keccak {
 			b,
 			len,
 			message.clone(),
-			max_len,
+			n_blocks,
 			padded_message.clone(),
 			is_final_block_flags,
 		);
@@ -81,6 +82,7 @@ impl Keccak {
 			digest,
 			message,
 			padded_message,
+			n_blocks,
 		}
 	}
 
@@ -178,14 +180,10 @@ impl Keccak {
 		b: &CircuitBuilder,
 		supposed_length: Wire,
 		message: Vec<Wire>,
-		max_len: usize,
+		n_blocks: usize,
 		padded_message: Vec<Vec<Wire>>,
 		is_final_block_flags: Vec<Wire>,
 	) {
-		// number of blocks needed for the maximum sized message
-		let n_blocks = (max_len + 1).div_ceil(RATE_BYTES);
-
-		// number of words per
 		let n_words_per_block = RATE_BYTES / 8;
 		let n_rate_words = n_blocks * n_words_per_block;
 
@@ -327,8 +325,7 @@ impl Keccak {
 			}
 		}
 
-		let n_blocks = (self.max_len + 1).div_ceil(RATE_BYTES);
-		let mut padded_bytes = vec![0u8; n_blocks * RATE_BYTES];
+		let mut padded_bytes = vec![0u8; self.n_blocks * RATE_BYTES];
 
 		padded_bytes[..message_bytes.len()].copy_from_slice(message_bytes);
 
@@ -341,7 +338,7 @@ impl Keccak {
 		let padding_block_end = padding_block_start + RATE_BYTES - 1;
 		padded_bytes[padding_block_end] |= 0x80;
 
-		for block_idx in 0..n_blocks {
+		for block_idx in 0..self.n_blocks {
 			for word_idx in 0..17 {
 				let byte_offset = block_idx * RATE_BYTES + word_idx * 8;
 				let mut word = 0u64;
