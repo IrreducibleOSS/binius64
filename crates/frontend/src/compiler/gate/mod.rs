@@ -24,12 +24,12 @@ pub mod imul;
 pub mod isub_bin_bout;
 pub mod mod_inverse_hint;
 pub mod mod_reduce_hint;
+pub mod n_ary_bxor;
 pub mod rotl64;
 pub mod rotr32;
 pub mod shl;
 pub mod shr;
 pub mod shr32;
-pub mod n_ary_bxor;
 
 pub fn constrain(gate: Gate, graph: &GateGraph, builder: &mut ConstraintBuilder) {
 	let data = &graph.gates[gate];

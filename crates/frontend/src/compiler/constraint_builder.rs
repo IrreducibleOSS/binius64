@@ -258,7 +258,7 @@ pub enum WireExpr {
 	Xor3(WireExprTerm, WireExprTerm, WireExprTerm),
 	Xor4(WireExprTerm, WireExprTerm, WireExprTerm, WireExprTerm),
 	/// N-ary XOR - up to a MAX_NARY_XOR_TERMS due to heap allocation from Copy
-	NaryXor([Option<WireExprTerm>; MAX_NARY_XOR_TERMS], u8), 
+	NaryXor([Option<WireExprTerm>; MAX_NARY_XOR_TERMS], u8),
 	/// Empty operand (represents 0)
 	Empty,
 }
@@ -306,13 +306,12 @@ impl WireExpr {
 				c.to_shifted_wire(),
 				d.to_shifted_wire(),
 			],
-			WireExpr::NaryXor(terms, count) => {
-				terms.iter()
-					.take(count as usize)
-					.filter_map(|t| t.as_ref())
-					.map(|t| t.to_shifted_wire())
-					.collect()
-			},
+			WireExpr::NaryXor(terms, count) => terms
+				.iter()
+				.take(count as usize)
+				.filter_map(|t| t.as_ref())
+				.map(|t| t.to_shifted_wire())
+				.collect(),
 			WireExpr::Empty => vec![],
 		}
 	}
@@ -378,12 +377,12 @@ pub fn xor4(
 
 pub fn n_ary_xor(terms: &[Wire]) -> WireExpr {
 	assert!(terms.len() <= 8, "N-ary XOR supports up to 8 terms");
-	
+
 	let mut array = [None; 8];
 	for (i, &wire) in terms.iter().enumerate() {
 		array[i] = Some(WireExprTerm::Wire(wire));
 	}
-	
+
 	WireExpr::NaryXor(array, terms.len() as u8)
 }
 

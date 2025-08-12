@@ -273,12 +273,12 @@ impl CircuitBuilder {
 		let z = self.add_internal();
 		let mut graph = self.graph_mut();
 		graph.emit_gate_generic(
-			self.current_path, 
-			Opcode::NaryBxor, 
-			words.iter().copied(), 
+			self.current_path,
+			Opcode::NaryBxor,
+			words.iter().copied(),
 			[z],
-			&[words.len()],  // Pass number of inputs as dimension
-			&[]
+			&[words.len()], // Pass number of inputs as dimension
+			&[],
 		);
 		z
 	}
