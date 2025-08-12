@@ -15,7 +15,7 @@
 //!
 //! No constraints are generated! This is a hint - a deterministic computation that happens only
 //! on the prover side. The result should be additionally constrained by checking that
-//! `remainder + modulus * divisor == dividend` using bignum circuits.
+//! `remainder + divisor * quotient == dividend` using bignum circuits.
 
 use binius_core::word::Word;
 
