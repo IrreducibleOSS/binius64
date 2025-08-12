@@ -24,6 +24,7 @@ pub mod imul;
 pub mod isub_bin_bout;
 pub mod mod_inverse_hint;
 pub mod mod_reduce_hint;
+pub mod rotl64;
 pub mod rotr32;
 pub mod shl;
 pub mod shr;
@@ -40,6 +41,7 @@ pub fn constrain(gate: Gate, graph: &GateGraph, builder: &mut ConstraintBuilder)
 		Opcode::IsubBinBout => isub_bin_bout::constrain(gate, data, builder),
 		Opcode::Shr32 => shr32::constrain(gate, data, builder),
 		Opcode::Rotr32 => rotr32::constrain(gate, data, builder),
+		Opcode::Rotl64 => rotl64::constrain(gate, data, builder),
 		Opcode::AssertEq => assert_eq::constrain(gate, data, builder),
 		Opcode::Assert0 => assert_0::constrain(gate, data, builder),
 		Opcode::AssertBand0 => assert_band_0::constrain(gate, data, builder),
@@ -69,6 +71,7 @@ pub fn evaluate(gate: Gate, graph: &GateGraph, w: &mut circuit::WitnessFiller) {
 		Opcode::IsubBinBout => isub_bin_bout::evaluate(gate, data, w),
 		Opcode::Shr32 => shr32::evaluate(gate, data, w),
 		Opcode::Rotr32 => rotr32::evaluate(gate, data, w),
+		Opcode::Rotl64 => rotl64::evaluate(gate, data, w),
 		Opcode::AssertEq => assert_eq::evaluate(gate, data, assertion_path, w),
 		Opcode::Assert0 => assert_0::evaluate(gate, data, assertion_path, w),
 		Opcode::AssertBand0 => assert_band_0::evaluate(gate, data, assertion_path, w),

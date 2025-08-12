@@ -20,6 +20,7 @@ pub enum Opcode {
 	Shl,
 	Shr32,
 	Rotr32,
+	Rotl64,
 
 	// Comparisons
 	IcmpUlt,
@@ -68,6 +69,7 @@ impl Opcode {
 			Opcode::Shl => gate::shl::shape(),
 			Opcode::Shr32 => gate::shr32::shape(),
 			Opcode::Rotr32 => gate::rotr32::shape(),
+			Opcode::Rotl64 => gate::rotl64::shape(),
 
 			// Comparisons
 			Opcode::IcmpUlt => gate::icmp_ult::shape(),
