@@ -172,10 +172,27 @@ impl Keccak {
 		is_final_block_flags
 	}
 
-	/// Constrains message padding so that is matches keccak expectations
+	/// Constrains message padding to match keccak expectations
 	///
-	/// This involves making sure that the final block of the message correctly contains
-	/// the padding byte and that the message is zeros after it.
+	/// Keccak splits a message of words into 'rate blocks', which are fixed size word arrays of size
+	/// N_WORDS_PER_BLOCK. This partitions a message into chunks of words small enough to be fed into
+	/// the permutation function during absorption. As a result, a message may not neatly into a whole
+	/// number of rate blocks. To account for this, Keccak uses a padding scheme where following the
+	/// end of a message, a padding byte 0x01 is inserted. The end of each rate block is also delimted
+	/// by a top bit 0x80.
+	///
+	/// As a result, three cases must be handled to ensure padding is correct.
+	///
+	/// 1. The final word of a message embedded within the final block partition of a message comes before
+	///    the final word of that block.
+	///
+	/// 2. The final word of a message embedded within the final block partition of a message is in the
+	///    final word of that block but the final byte of that word is not the final byte. This means
+	///    the padding byte and the top bit are in the same word but within different bytes.
+	///
+	/// 3. The final word of a message embedded within the final block partition of a message is in the
+	///    final word and the final byte of the block. Meaning that the padding byte and the top bit are
+	///    within the same byte.
 	pub fn constrain_message_padding(
 		b: &CircuitBuilder,
 		supposed_length: Wire,
@@ -262,6 +279,30 @@ impl Keccak {
 			let put_0x80 = b.band(final_blk, is_last);
 			let last_const = b.add_constant_64(0x80_00_00_00_00_00_00_00u64);
 			b.assert_eq_cond("0x80", padded_word, last_const, put_0x80);
+
+			// // ! new?
+			// // To handle the case where the last word is a single byte, we must ensure that
+			// let last_const = b.add_constant_64(0x80_00_00_00_00_00_00_00u64);
+			// let guard_last_final = b.band(final_blk, is_last);
+
+			// // (A) last word == partial word: add 0x80 on top of expected_partial
+			// let guard_last_is_partial = b.band(guard_last_final, is_partial);
+			// let expected_last_when_partial = b.bxor(expected_partial, last_const);
+			// b.assert_eq_cond(
+			//     "last_word_with_partial_plus_0x80",
+			//     padded_word,
+			//     expected_last_when_partial,
+			//     guard_last_is_partial,
+			// );
+
+			// // (B) last word not partial: exactly 0x80 in MSB byte of that word
+			// let guard_last_not_partial = b.band(guard_last_final, b.bnot(is_partial));
+			// b.assert_eq_cond(
+			//     "last_word_exact_0x80",
+			//     padded_word,
+			//     last_const,
+			//     guard_last_not_partial,
+			// );
 
 			// All words after final block must be zero
 			let after_final =
@@ -367,6 +408,7 @@ mod tests {
 
 	use super::{Keccak, N_WORDS_PER_STATE};
 	use crate::{
+		circuits::keccak::RATE_BYTES,
 		compiler::{CircuitBuilder, Wire},
 		constraint_verifier::verify_constraints,
 	};
@@ -403,12 +445,75 @@ mod tests {
 	}
 
 	#[test]
-	fn test_keccak_circuit() {
+	fn test_valid_message() {
 		let mut rng = StdRng::seed_from_u64(0);
 
-		let message = repeat_n(rng.random_range(0..=255), 1000).collect::<Vec<_>>();
+		let message = repeat_n(rng.gen_range(0..=255), 1000).collect::<Vec<_>>();
 		let max_message_len = 2048;
 
+		let expected_digest = keccak_crate(&message);
+		validate_keccak_circuit(&message, expected_digest, max_message_len);
+	}
+
+	#[test]
+	#[should_panic]
+	fn test_message_too_long() {
+		let mut rng = StdRng::seed_from_u64(0);
+
+		let message = repeat_n(rng.gen_range(0..=255), 3000).collect::<Vec<_>>();
+		let max_message_len = 2048;
+
+		let expected_digest = keccak_crate(&message);
+		validate_keccak_circuit(&message, expected_digest, max_message_len);
+	}
+
+	/// This one byte message ends well before the final word of the block. To pad this message,
+	/// only one rate block is required. The padding byte 0x01 is inserted within the first word of
+	/// the rate block, following the message byte. The final padding byte 0x80 is inserted ithe
+	/// final byte of the final word of the rate block
+	///
+	/// Final msg word within block (partial)
+	///
+	///  [b1, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+	///
+	/// Final rate block word:
+	///
+	///  [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80]
+	#[test]
+	fn test_message_ends_before_final_word() {
+		let message: Vec<u8> = vec![0xFF];
+
+		let max_message_len = 1024;
+		let expected_digest = keccak_crate(&message);
+		validate_keccak_circuit(&message, expected_digest, max_message_len);
+	}
+
+	/// This message ends within four bytes of the rate block boundary. This means that the padding byte
+	/// and the top bit are in the same word of the final block, but within different bytes in that word.
+	///
+	/// Final rate block word:
+	///
+	///  [b1, b2, b3, b4, 0x01, 0x00, 0x00, 0x80]
+	#[test]
+	fn test_message_ends_in_final_word_but_before_final_byte() {
+		let message = vec![0xFF; RATE_BYTES - 4];
+
+		let max_message_len = 1024;
+		let expected_digest = keccak_crate(&message);
+		validate_keccak_circuit(&message, expected_digest, max_message_len);
+	}
+
+	/// This message ends within one byte of the final rate block boundary. This means that the padding
+	/// byte and the top bit are in the same word of the final block, and the same byte.
+	///
+	/// Final rate block word:
+	///
+	///  [b1, b2, b3, b4, b5, b6, b7, 0x81]
+	#[test]
+	fn test_message_ends_in_final_word_and_final_byte() {
+		let message = vec![0xFF; RATE_BYTES - 1];
+
+		let max_message_len = 1024;
 		let expected_digest = keccak_crate(&message);
 		validate_keccak_circuit(&message, expected_digest, max_message_len);
 	}
