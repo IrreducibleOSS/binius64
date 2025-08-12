@@ -68,6 +68,16 @@ impl Not for Word {
 }
 
 impl Word {
+	/// Performs n-ary XOR operation over a slice of words.
+	///
+	/// Returns the XOR of all the words in the slice.
+	pub fn n_ary_xor(words: &[Word]) -> Word {
+		let mut result = Word::ZERO;
+		for word in words {
+			result = result ^ *word;
+		}
+		result
+	}
 	/// Performs 32-bit addition.
 	///
 	/// Returns (sum, carry_out) where ith carry_out bit is set to one if there is a carry out at

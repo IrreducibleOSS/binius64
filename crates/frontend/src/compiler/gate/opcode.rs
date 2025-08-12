@@ -8,6 +8,7 @@ pub enum Opcode {
 	Band,
 	Bxor,
 	Bor,
+	NaryBxor,
 
 	// Arithmetic
 	IaddCinCout,
@@ -57,6 +58,7 @@ impl Opcode {
 			Opcode::Band => gate::band::shape(),
 			Opcode::Bxor => gate::bxor::shape(),
 			Opcode::Bor => gate::bor::shape(),
+			Opcode::NaryBxor => gate::n_ary_bxor::shape(),
 
 			// Arithmetic
 			Opcode::IaddCinCout => gate::iadd_cin_cout::shape(),

@@ -269,6 +269,13 @@ impl CircuitBuilder {
 		z
 	}
 
+	pub fn n_ary_bxor(&self, words: &[Wire]) -> Wire {
+		let z = self.add_internal();
+		let mut graph = self.graph_mut();
+		graph.emit_gate(self.current_path, Opcode::NaryBxor, words.iter().copied(), [z]);
+		z
+	}
+
 	pub fn iadd_32(&self, a: Wire, b: Wire) -> Wire {
 		let z = self.add_internal();
 		let mut graph = self.graph_mut();

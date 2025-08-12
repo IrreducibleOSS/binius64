@@ -29,6 +29,7 @@ pub mod rotr32;
 pub mod shl;
 pub mod shr;
 pub mod shr32;
+pub mod n_ary_bxor;
 
 pub fn constrain(gate: Gate, graph: &GateGraph, builder: &mut ConstraintBuilder) {
 	let data = &graph.gates[gate];
@@ -36,6 +37,7 @@ pub fn constrain(gate: Gate, graph: &GateGraph, builder: &mut ConstraintBuilder)
 		Opcode::Band => band::constrain(gate, data, builder),
 		Opcode::Bxor => bxor::constrain(gate, data, builder),
 		Opcode::Bor => bor::constrain(gate, data, builder),
+		Opcode::NaryBxor => n_ary_bxor::constrain(gate, data, builder),
 		Opcode::IaddCinCout => iadd_cin_cout::constrain(gate, data, builder),
 		Opcode::Iadd32 => iadd32::constrain(gate, data, builder),
 		Opcode::IsubBinBout => isub_bin_bout::constrain(gate, data, builder),
@@ -66,6 +68,7 @@ pub fn evaluate(gate: Gate, graph: &GateGraph, w: &mut circuit::WitnessFiller) {
 		Opcode::Band => band::evaluate(gate, data, w),
 		Opcode::Bxor => bxor::evaluate(gate, data, w),
 		Opcode::Bor => bor::evaluate(gate, data, w),
+		Opcode::NaryBxor => n_ary_bxor::evaluate(gate, data, w),
 		Opcode::IaddCinCout => iadd_cin_cout::evaluate(gate, data, w),
 		Opcode::Iadd32 => iadd32::evaluate(gate, data, w),
 		Opcode::IsubBinBout => isub_bin_bout::evaluate(gate, data, w),
