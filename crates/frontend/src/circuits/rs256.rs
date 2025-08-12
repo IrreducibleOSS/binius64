@@ -7,6 +7,7 @@ use crate::{
 		sha256::Sha256,
 	},
 	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
+	util::{pack_wires_be, unpack_le_bytes},
 };
 
 /// Convert a FixedByteVec with little-endian wire packing to a BigUint.
@@ -19,21 +20,9 @@ fn fixedbytevec_le_to_biguint(builder: &mut CircuitBuilder, byte_vec: &FixedByte
 	let mut limbs = Vec::new();
 	// Process wires in reverse order (big-endian to little-endian conversion)
 	for packed_wire in byte_vec.data.clone().into_iter().rev() {
-		// Extract bytes from LE-packed wire and repack in reverse order
-		let mut bytes = Vec::with_capacity(8);
-		for i in 0..8 {
-			let shift_amount = i * 8;
-			let byte = builder.shr(packed_wire, shift_amount as u32);
-			let byte_masked = builder.band(byte, builder.add_constant_64(0xFF));
-			bytes.push(byte_masked);
-		}
-		// Repack bytes in reverse order (byte-swap)
-		let mut swapped_limb = bytes[7];
-		for i in 1..8 {
-			let shifted = builder.shl(bytes[7 - i], (i * 8) as u32);
-			swapped_limb = builder.bor(swapped_limb, shifted);
-		}
-		limbs.push(swapped_limb);
+		let bytes = unpack_le_bytes(builder, packed_wire);
+		let packed_be = pack_wires_be(builder, &bytes);
+		limbs.push(packed_be);
 	}
 	BigUint { limbs }
 }

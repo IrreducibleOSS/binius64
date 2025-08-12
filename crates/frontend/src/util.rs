@@ -37,6 +37,117 @@ pub fn pack_bytes_into_wires_le(w: &mut WitnessFiller, wires: &[Wire], bytes: &[
 	}
 }
 
+pub fn extract_be_bytes(b: &CircuitBuilder, packed: &[Wire]) -> Vec<Wire> {
+	let mask = b.add_constant_64(0xFF);
+	let mut bytes = Vec::new();
+
+	for &p in packed {
+		for i in 0..8 {
+			let shift_amount = (56 - i - 8) as u32;
+			let byte = b.band(b.shr(p, shift_amount), mask);
+			bytes.push(byte);
+		}
+	}
+	bytes
+}
+
+/// Unpacks a BE-packed wire into 8 wires each containing a single byte.
+///
+/// # Arguments
+///
+/// * `b` - Circuit builder for constructing constraints
+/// * `packed` - The packed `Wire` containing the BE-packed 64-bit value
+///
+/// # Returns
+///
+/// A vector of 8 wires, each wire contains a single byte of `packed`.
+pub fn unpack_be_bytes(b: &CircuitBuilder, packed: Wire) -> Vec<Wire> {
+	let mask = b.add_constant(Word(0xFF));
+	let mut bytes = Vec::with_capacity(8);
+	for i in 0..8 {
+		let shift_amount = (56 - i * 8) as u32;
+		let byte = b.band(b.shr(packed, shift_amount), mask);
+		bytes.push(byte);
+	}
+	bytes
+}
+
+/// Unpacks a LE-packed wire into 8 wires each containing a single byte.
+///
+/// # Arguments
+///
+/// * `b` - Circuit builder for constructing constraints
+/// * `packed` - The packed `Wire` containing the LE-packed 64-bit value
+///
+/// # Returns
+///
+/// A vector of 8 wires, each wire contains a single byte of `packed`.
+pub fn unpack_le_bytes(b: &CircuitBuilder, packed: Wire) -> Vec<Wire> {
+	let mask = b.add_constant(Word(0xFF));
+	let mut bytes = Vec::with_capacity(8);
+	for i in 0..8 {
+		let shift_amount = i * 8;
+		let byte = b.band(b.shr(packed, shift_amount), mask);
+		bytes.push(byte);
+	}
+	bytes
+}
+
+/// Packs a slice of wires into a single wire using LE-packing.
+///
+/// # Arguments
+///
+/// * `b` - Circuit builder for constructing constraints
+/// * `unpacked` - A slice of up-to 8 wires, each wire containing a single byte
+///
+/// # Returns
+///
+/// A single wire that packs wire values from `unpacked` into a single wire
+/// using little-endian packing.
+///
+/// # Panics
+///
+/// * If `unpacked` is empty
+/// * If`unpacked` has length greater than 8
+pub fn pack_wires_le(b: &CircuitBuilder, unpacked: &[Wire]) -> Wire {
+	assert!(!unpacked.is_empty(), "pack_wires_le: unpacked must be non-empty");
+	assert!(unpacked.len() <= 8, "pack_wires_le: unpacked must have at most 8 elements");
+	let mut le_wire = unpacked[0];
+	for j in 1..unpacked.len() {
+		let shifted = b.shl(unpacked[j], (j * 8) as u32);
+		le_wire = b.bor(le_wire, shifted);
+	}
+	le_wire
+}
+
+/// Packs a slice of wires into a single wire using BE-packing.
+///
+/// # Arguments
+///
+/// * `b` - Circuit builder for constructing constraints
+/// * `unpacked` - A slice of up-to 8 wires, each wire containing a single byte
+///
+/// # Returns
+///
+/// A single wire that packs wire values from `unpacked` into a single wire
+/// using big-endian packing.
+///
+/// # Panics
+///
+/// * If `unpacked` is empty
+/// * If`unpacked` has length greater than 8
+pub fn pack_wires_be(b: &CircuitBuilder, unpacked: &[Wire]) -> Wire {
+	assert!(!unpacked.is_empty(), "pack_wires_le: unpacked must be non-empty");
+	assert!(unpacked.len() <= 8, "pack_wires_le: unpacked must have at most 8 elements");
+	let last_idx = unpacked.len() - 1;
+	let mut le_wire = unpacked[last_idx];
+	for i in 1..unpacked.len() {
+		let shifted = b.shl(unpacked[last_idx - i], (i * 8) as u32);
+		le_wire = b.bor(le_wire, shifted);
+	}
+	le_wire
+}
+
 /// Returns a BigUint from u64 limbs with little-endian ordering
 pub fn num_biguint_from_u64_limbs<I>(limbs: I) -> num_bigint::BigUint
 where

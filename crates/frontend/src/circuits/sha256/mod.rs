@@ -3,7 +3,10 @@ pub mod compress;
 use binius_core::word::Word;
 pub use compress::{Compress, State};
 
-use crate::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
+use crate::{
+	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
+	util::{pack_wires_le, unpack_be_bytes},
+};
 
 /// Verifies that a message produces a specific SHA-256 digest.
 ///
@@ -390,31 +393,10 @@ impl Sha256 {
 	/// per wire)
 	pub fn digest_to_le_wires(&self, builder: &CircuitBuilder) -> [Wire; 4] {
 		let mut wires = [builder.add_constant(Word::ZERO); 4];
-
 		for i in 0..4 {
-			let be_wire = self.digest[i];
-
-			// Extract 8 bytes from the 64-bit BE value
-			let mut bytes = Vec::with_capacity(8);
-			for j in 0..8 {
-				let shift_amount = (56 - j * 8) as u32;
-				let byte = builder
-					.band(builder.shr(be_wire, shift_amount), builder.add_constant(Word(0xFF)));
-				bytes.push(byte);
-			}
-
-			// Repack bytes in little-endian order
-			// bytes[0..8] contains the 8 digest bytes in their original order
-			// We pack them in LE format: byte0 | (byte1 << 8) | ... | (byte7 << 56)
-			let mut le_wire = bytes[0];
-			for j in 1..8 {
-				let shifted = builder.shl(bytes[j], (j * 8) as u32);
-				le_wire = builder.bor(le_wire, shifted);
-			}
-
-			wires[i] = le_wire;
+			let unpacked = unpack_be_bytes(builder, self.digest[i]);
+			wires[i] = pack_wires_le(builder, &unpacked);
 		}
-
 		wires
 	}
 
