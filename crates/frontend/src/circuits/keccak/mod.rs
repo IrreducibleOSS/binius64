@@ -331,14 +331,12 @@ impl Keccak {
 		padded_bytes[padding_block_end] |= 0x80;
 
 		for block_idx in 0..self.n_blocks {
-			for word_idx in 0..N_WORDS_PER_BLOCK {
-				let byte_offset = block_idx * RATE_BYTES + word_idx * 8;
-				let word = u64::from_le_bytes(
-					padded_bytes[byte_offset..byte_offset + 8]
-						.try_into()
-						.unwrap(),
-				);
-				w[self.padded_message[block_idx][word_idx]] = Word(word);
+			for (i, chunk) in padded_bytes[block_idx * RATE_BYTES..(block_idx + 1) * RATE_BYTES]
+				.chunks(8)
+				.enumerate()
+			{
+				let word = u64::from_le_bytes(chunk.try_into().unwrap());
+				w[self.padded_message[block_idx][i]] = Word(word);
 			}
 		}
 	}
