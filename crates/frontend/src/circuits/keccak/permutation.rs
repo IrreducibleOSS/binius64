@@ -65,41 +65,41 @@ impl Permutation {
 	}
 
 	fn theta(b: &CircuitBuilder, state: &mut [Wire; 25]) {
-		let c0 = b.bxor(
-			b.bxor(
-				b.bxor(b.bxor(state[idx(0, 0)], state[idx(0, 1)]), state[idx(0, 2)]),
-				state[idx(0, 3)],
-			),
+		let c0 = b.n_ary_bxor(&[
+			state[idx(0, 0)],
+			state[idx(0, 1)],
+			state[idx(0, 2)],
+			state[idx(0, 3)],
 			state[idx(0, 4)],
-		);
-		let c1 = b.bxor(
-			b.bxor(
-				b.bxor(b.bxor(state[idx(1, 0)], state[idx(1, 1)]), state[idx(1, 2)]),
-				state[idx(1, 3)],
-			),
+		]);
+		let c1 = b.n_ary_bxor(&[
+			state[idx(1, 0)],
+			state[idx(1, 1)],
+			state[idx(1, 2)],
+			state[idx(1, 3)],
 			state[idx(1, 4)],
-		);
-		let c2 = b.bxor(
-			b.bxor(
-				b.bxor(b.bxor(state[idx(2, 0)], state[idx(2, 1)]), state[idx(2, 2)]),
-				state[idx(2, 3)],
-			),
+		]);
+		let c2 = b.n_ary_bxor(&[
+			state[idx(2, 0)],
+			state[idx(2, 1)],
+			state[idx(2, 2)],
+			state[idx(2, 3)],
 			state[idx(2, 4)],
-		);
-		let c3 = b.bxor(
-			b.bxor(
-				b.bxor(b.bxor(state[idx(3, 0)], state[idx(3, 1)]), state[idx(3, 2)]),
-				state[idx(3, 3)],
-			),
+		]);
+		let c3 = b.n_ary_bxor(&[
+			state[idx(3, 0)],
+			state[idx(3, 1)],
+			state[idx(3, 2)],
+			state[idx(3, 3)],
 			state[idx(3, 4)],
-		);
-		let c4 = b.bxor(
-			b.bxor(
-				b.bxor(b.bxor(state[idx(4, 0)], state[idx(4, 1)]), state[idx(4, 2)]),
-				state[idx(4, 3)],
-			),
+		]);
+		let c4 = b.n_ary_bxor(&[
+			state[idx(4, 0)],
+			state[idx(4, 1)],
+			state[idx(4, 2)],
+			state[idx(4, 3)],
 			state[idx(4, 4)],
-		);
+		]);
 
 		// D[x] = C[x-1] ^ rotl1(C[x+1])
 		let d0 = b.bxor(c4, b.rotl_64(c1, 1));
