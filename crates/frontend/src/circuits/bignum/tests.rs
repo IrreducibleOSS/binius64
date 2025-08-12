@@ -217,6 +217,43 @@ proptest! {
 	}
 
 	#[test]
+	fn prop_biguint_lt_eq(
+		(a_vals, b_vals) in (1usize..=5)
+			.prop_flat_map(|limbs| {
+				let a = prop::collection::vec(0u64..=2, limbs);
+				let b = prop::collection::vec(0u64..=2, limbs);
+				(a, b)
+			})
+	) {
+		let builder = CircuitBuilder::new();
+
+		assert_eq!(a_vals.len(), b_vals.len());
+		let a = BigUint::new_witness(&builder, a_vals.len());
+		let b = BigUint::new_witness(&builder, b_vals.len());
+
+		let lt_flag = biguint_lt(&builder, &a, &b);
+		let eq_flag = biguint_eq(&builder, &a, &b);
+
+		let cs = builder.build();
+		let mut w = cs.new_witness_filler();
+
+		a.populate_limbs(&mut w, &a_vals);
+		b.populate_limbs(&mut w, &b_vals);
+
+		cs.populate_wire_witness(&mut w).unwrap();
+
+		let lt_flag_wire = w[lt_flag];
+		let lt_flag_big = from_u64_limbs(&a_vals) < from_u64_limbs(&b_vals);
+		assert!(lt_flag_big && lt_flag_wire == Word::ALL_ONE || !lt_flag_big && lt_flag_wire == Word::ZERO);
+
+		let eq_flag_wire = w[eq_flag];
+		let eq_flag_big = from_u64_limbs(&a_vals) == from_u64_limbs(&b_vals);
+		assert!(eq_flag_big && eq_flag_wire == Word::ALL_ONE || !eq_flag_big && eq_flag_wire == Word::ZERO);
+
+		verify_constraints(cs.constraint_system(), &w.into_value_vec()).unwrap();
+	}
+
+	#[test]
 	fn prop_square_vs_mul_equivalence(vals in prop::collection::vec(any::<u64>(), 1..=8)) {
 		let builder = CircuitBuilder::new();
 

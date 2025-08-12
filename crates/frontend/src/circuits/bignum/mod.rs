@@ -6,6 +6,7 @@
 
 mod addsub;
 mod biguint;
+mod cmp;
 mod mul;
 mod reduce;
 
@@ -14,5 +15,6 @@ mod tests;
 
 pub use addsub::{add, sub};
 pub use biguint::{BigUint, assert_eq};
+pub use cmp::{biguint_eq, biguint_lt};
 pub use mul::{mul, square};
 pub use reduce::{ModReduce, PseudoMersenneModReduce};
