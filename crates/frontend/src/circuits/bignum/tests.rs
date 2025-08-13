@@ -1,6 +1,9 @@
+use std::iter::repeat_with;
+
 use binius_core::word::Word;
 use num_integer::Integer;
 use proptest::prelude::*;
+use rand::{SeedableRng, rngs::StdRng};
 
 use super::*;
 use crate::{
@@ -96,6 +99,70 @@ fn test_mul_single_case() {
 	}
 
 	// Verify all constraints are satisfied
+	verify_constraints(cs.constraint_system(), &w.into_value_vec()).unwrap();
+}
+
+#[test]
+fn test_prime_field() {
+	let mut rng = StdRng::seed_from_u64(0);
+
+	let builder = CircuitBuilder::new();
+
+	let subtrahend = 1u64 << 32 | 977;
+	let field = PseudoMersennePrimeField::new(&builder, 256, &[subtrahend]);
+	let modulus_big =
+		num_bigint::BigUint::from(2usize).pow(256) - num_bigint::BigUint::from(subtrahend);
+
+	let l = field.limbs_len();
+
+	let n_ops = 64;
+	let limbs = repeat_with(|| rng.random())
+		.take(n_ops * 3 * l)
+		.collect::<Vec<u64>>();
+
+	let mut result = BigUint::new_constant(&builder, &num_bigint::BigUint::from(1usize))
+		.zero_extend(&builder, l);
+	let mut result_big = num_bigint::BigUint::from(1usize);
+
+	for chunk in limbs.chunks(3 * l) {
+		let (a, rest) = chunk.split_at(l);
+		let (b, c) = rest.split_at(l);
+
+		let a_big = from_u64_limbs(a);
+		let b_big = from_u64_limbs(b);
+		let c_big = from_u64_limbs(c);
+
+		let a = BigUint::new_constant(&builder, &a_big).zero_extend(&builder, l);
+		let b = BigUint::new_constant(&builder, &b_big).zero_extend(&builder, l);
+		let c = BigUint::new_constant(&builder, &c_big).zero_extend(&builder, l);
+
+		result = field.inverse(
+			&builder,
+			&field.mul(
+				&builder,
+				&field
+					.square(&builder, &field.sub(&builder, &field.add(&builder, &result, &a), &b)),
+				&c,
+			),
+		);
+
+		result_big = (result_big + a_big) % &modulus_big;
+		result_big = (result_big + &modulus_big - b_big) % &modulus_big;
+		result_big = (&result_big * &result_big) % &modulus_big;
+		result_big = (result_big * c_big) % &modulus_big;
+		result_big = result_big.modinv(&modulus_big).unwrap();
+	}
+
+	let result_big = BigUint::new_constant(&builder, &result_big).zero_extend(&builder, l);
+
+	for (&a_limb, &b_limb) in result_big.limbs.iter().zip(&result.limbs) {
+		builder.assert_eq("circuit matches num_bigint::BigUint", a_limb, b_limb);
+	}
+
+	let cs = builder.build();
+	let mut w = cs.new_witness_filler();
+
+	cs.populate_wire_witness(&mut w).unwrap();
 	verify_constraints(cs.constraint_system(), &w.into_value_vec()).unwrap();
 }
 
