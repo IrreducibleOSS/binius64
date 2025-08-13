@@ -16,7 +16,7 @@ use crate::{ExampleCircuit, prove_verify, setup};
 /// ```rust,ignore
 /// fn main() -> Result<()> {
 ///     let _tracing_guard = tracing_profile::init_tracing()?;
-///     
+///
 ///     Cli::<MyExample>::new("my_circuit")
 ///         .about("Description of my circuit")
 ///         .run()
@@ -111,13 +111,15 @@ where
 		let cs = circuit.constraint_system().clone();
 		let (verifier, prover) = setup(cs, log_inv_rate as usize)?;
 
-		// Generate witness
-		let generate_witness_scope = tracing::info_span!("Generating witness").entered();
+		// Population of the input to the witness and then evaluating the circuit.
+		let witness_population = tracing::info_span!("Generating witness").entered();
 		let mut filler = circuit.new_witness_filler();
-		example.populate_witness(instance, &mut filler)?;
-		circuit.populate_wire_witness(&mut filler)?;
+		tracing::info_span!("Input population")
+			.in_scope(|| example.populate_witness(instance, &mut filler))?;
+		tracing::info_span!("Circuit evaluation")
+			.in_scope(|| circuit.populate_wire_witness(&mut filler))?;
 		let witness = filler.into_value_vec();
-		drop(generate_witness_scope);
+		drop(witness_population);
 
 		// Prove and verify
 		prove_verify(&verifier, &prover, witness)?;
