@@ -133,13 +133,13 @@ jobs:
       - name: Build documentation
         run: cargo doc --document-private-items --no-deps
 
-  zkl-snapshot:
-    name: zkl-snapshot
+  zklogin-snapshot:
+    name: zklogin-snapshot
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
-      - name: Check zkl circuit statistics snapshot
-        run: cargo run -p zkl --release -- check-snapshot
+      - name: Check zklogin circuit statistics snapshot
+        run: cargo run --example zklogin --release -- check-snapshot
