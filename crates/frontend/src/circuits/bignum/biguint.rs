@@ -19,10 +19,33 @@ impl BigUint {
 		BigUint { limbs }
 	}
 
-	/// Creates a new Bignum with the given number of limbs as witness wires.
+	/// Creates a new BigUint with the given number of limbs as witness wires.
 	pub fn new_witness(b: &CircuitBuilder, num_limbs: usize) -> Self {
 		let limbs = (0..num_limbs).map(|_| b.add_witness()).collect();
 		BigUint { limbs }
+	}
+
+	/// Creates a constant BigUint from num_bigint::BigUint.
+	pub fn new_constant(b: &CircuitBuilder, num_biguint: &num_bigint::BigUint) -> Self {
+		let limbs = num_biguint
+			.iter_u64_digits()
+			.map(|limb| b.add_constant_64(limb))
+			.collect();
+		BigUint { limbs }
+	}
+
+	/// Applies AND with a single value to all limbs of a given bignum.
+	pub fn mask(&self, b: &CircuitBuilder, mask: Wire) -> Self {
+		let limbs = self.limbs.iter().map(|&limb| b.band(limb, mask)).collect();
+		Self { limbs }
+	}
+
+	/// Pads to given limb length with zeros.
+	///
+	/// No-op if `new_limbs_len` is shorter then the current one.
+	pub fn zero_extend(&self, b: &CircuitBuilder, new_limbs_len: usize) -> Self {
+		let zero = b.add_constant(Word::ZERO);
+		self.pad_limbs_to(new_limbs_len, zero)
 	}
 
 	/// Pads to given limb length with a wire value.

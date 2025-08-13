@@ -8,6 +8,7 @@ mod addsub;
 mod biguint;
 mod cmp;
 mod mul;
+mod prime_field;
 mod reduce;
 
 #[cfg(test)]
@@ -17,4 +18,5 @@ pub use addsub::{add, sub};
 pub use biguint::{BigUint, assert_eq};
 pub use cmp::{biguint_eq, biguint_lt};
 pub use mul::{mul, square};
+pub use prime_field::PseudoMersennePrimeField;
 pub use reduce::{ModReduce, PseudoMersenneModReduce};
