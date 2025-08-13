@@ -41,7 +41,7 @@ Proof of universality:
 
 ### The Problem with Bit-Level Circuits
 
-Traditional ZK circuits work at the bit level:
+A standard ZK circuit over GF(2) would support the AND + XOR gate set at the bit level:
 ```
 // To add two 64-bit numbers in a bit-level circuit:
 // Need 64 full adders, each with ~5 gates
