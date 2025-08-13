@@ -5,8 +5,6 @@ This document explains why we build circuits in zero-knowledge systems and how c
 ## Why Circuits in Zero-Knowledge Proofs?
 
 Zero-knowledge proofs require expressing computations as circuits rather than in programming languages like Rust.
-
-Zero-knowledge proofs require expressing computations as circuits rather than in programming languages like Rust.
 In this tutorial, we focus on understanding circuits directly.
 
 A circuit in this context is not quite the same as a digital circuit - we'll clarify this distinction as we go.
