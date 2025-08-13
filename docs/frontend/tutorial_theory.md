@@ -1,6 +1,6 @@
-# Binius-64 Circuit Building: Theory and Foundations
+# Binius64 Circuit Building: Theory and Foundations
 
-This document explains why we build circuits in zero-knowledge systems and how circuits express computations through constraints in Binius-64.
+This document explains why we build circuits in zero-knowledge systems and how circuits express computations through constraints in Binius64.
 
 ## Why Circuits in Zero-Knowledge Proofs?
 
@@ -25,7 +25,7 @@ Why are these universal? Because you can build any other gate from them:
 
 ### The AND-XOR Universal System
 
-Binius-64 uses a different universal system: **AND** and **XOR** gates. Here's why this is also universal:
+Binius64 uses a different universal system: **AND** and **XOR** gates. Here's why this is also universal:
 
 1. **XOR acts as binary addition**: In the context of binary computation
 2. **AND provides non-linearity**: Needed for multiplication
@@ -49,9 +49,9 @@ A standard ZK circuit over GF(2) would support the AND + XOR gate set at the bit
 
 This is incredibly inefficient for common computations that work with 64-bit words, which are now standard on modern processors.
 
-### The Binius-64 Insight
+### The Binius64 Insight
 
-Instead of decomposing everything to bits, Binius-64 works directly with 64-bit words:
+Instead of decomposing everything to bits, Binius64 works directly with 64-bit words:
 
 1. **Native word operations**: One constraint instead of 64
 2. **CPU-friendly**: Maps directly to machine instructions
@@ -176,7 +176,7 @@ In a word-level circuit without shifts, you'd need separate constraints for shif
 
 ### The Solution: Shifted Value Indices
 
-Binius-64's breakthrough: **encode shifts directly in value references**.
+Binius64's breakthrough: **encode shifts directly in value references**.
 
 A shifted value index is a tuple: `(value_id, shift_op, shift_amount)`
 
@@ -195,7 +195,7 @@ t1 = v0 << 13
 t2 = v0 >> 51
 result = t1 | t2
 
-// Binius-64: single constraint
+// Binius64: single constraint
 result = (v0 sll 13) XOR (v0 srl 51)
 ```
 
@@ -205,7 +205,6 @@ result = (v0 sll 13) XOR (v0 srl 51)
 
 Before diving into the constraint system, let's clarify three key concepts that often cause confusion:
 
-#### 1. Gates (Logical Level)
 #### 1. Gates (Physical/Logical Level)
 A **gate** is a basic logical operation:
 - AND gate: outputs `a ∧ b`
@@ -246,7 +245,7 @@ carry[i] = (a[i] ∧ b[i]) ∨ (carry[i-1] ∧ (a[i] ⊕ b[i]))
 ```
 // Prover provides x, y, and z
 // Circuit just checks: does x + y = z?
-// In Binius-64: single constraint using iadd_cin_cout
+// In Binius64: single constraint using iadd_cin_cout
 ```
 
 The prover computed `z = x + y` outside the circuit. The circuit only verifies it's correct.
@@ -332,7 +331,7 @@ The carry formula says:
 
 #### The Problem: OR is Not Free
 
-In Binius-64, we only have AND constraints. XOR is free (just combining wire references), but OR is not. So how do we express the carry formula without OR?
+In Binius64, we only have AND constraints. XOR is free (just combining wire references), but OR is not. So how do we express the carry formula without OR?
 
 #### The GF(2) Field Connection
 
@@ -411,7 +410,7 @@ It's important not to confuse two different types of multiplication:
    - Elements are polynomials over GF(2)
    - Addition is XOR (no carries)
    - Multiplication followed by reduction with irreducible polynomial
-   - This is what Binius-64 uses internally for its cryptographic security
+   - This is what Binius64 uses internally for its cryptographic security
 
 2. **Integer Multiplication (what MUL constraint does)**: Used for application-level arithmetic
    - Regular integer multiplication you learned in school
@@ -423,7 +422,7 @@ The MUL constraint performs **integer multiplication**, not field multiplication
 - Elliptic curve arithmetic (coordinate calculations)
 - General bignum computations
 
-In Binius-64 circuits, you're working with 64-bit values that can be interpreted as:
+In Binius64 circuits, you're working with 64-bit values that can be interpreted as:
 - Unsigned integers (0 to 2^64-1) 
 - Bit patterns for bitwise operations
 - Binary field elements in GF(2^64)
@@ -513,7 +512,7 @@ Extract bit N from value V:
 
 In traditional circuits, you'd decompose the entire value to bits (64 constraints) to access one bit.
 
-In Binius-64:
+In Binius64:
 ```rust
 // Using CircuitBuilder API:
 let shifted = builder.shr(V, N);           // Shift right by N (free - shifted index)
@@ -532,7 +531,7 @@ SHA-256's σ₀ function: `ROTR(x,2) ⊕ ROTR(x,13) ⊕ ROTR(x,22)`
 ```
 // Bit-level: ~192 constraints (3 rotations × 64 bits)
 
-// Binius-64: Just XOR shifted values (free)
+// Binius64: Just XOR shifted values (free)
 s0 = (x srl 2) XOR (x sll 62) XOR 
      (x srl 13) XOR (x sll 51) XOR
      (x srl 22) XOR (x sll 42)
