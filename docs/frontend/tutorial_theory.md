@@ -113,7 +113,7 @@ The separation exists for zero-knowledge purposes:
 
 1. **Proving without revealing**: The prover can show they know a valid witness without revealing the witness itself
 2. **Succinct verification**: The verifier only checks equations, doesn't redo computation
-3. **Non-interactive proofs**: The constraint system is public; only the witness is private
+3. **Non-interactive proofs**: The constraint system enables creating proofs that can be verified without back-and-forth interaction
 
 ### How CircuitBuilder Bridges the Phases
 
