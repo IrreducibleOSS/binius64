@@ -557,13 +557,18 @@ impl CircuitBuilder {
 	/// Modular inverse.
 	///
 	/// Computes the modular inverse of `base` modulo `modulus`.
-	/// Returns zero if `base` and `modulus` are not coprime.
+	/// Returns a pair `(quotient, inverse)` where both numbers are Bézout coefficients when
+	/// `base` and `modulus` are coprime. Both numbers are set to zero if `gcd(base, modulus) > 1`.
 	///
 	/// This is a hint - a deterministic computation that happens only on the prover side.
 	/// The result should be additionally constrained by using bignum circuits to check that
-	/// `base * inverse = 1 (mod modulus)`.
-	pub fn mod_inverse_hint(&self, base: &[Wire], modulus: &[Wire]) -> Vec<Wire> {
-		let outputs = (0..modulus.len())
+	/// `base * inverse = 1 + quotient * modulus`.
+	pub fn mod_inverse_hint(&self, base: &[Wire], modulus: &[Wire]) -> (Vec<Wire>, Vec<Wire>) {
+		let quotient = (0..modulus.len())
+			.map(|_| self.add_internal())
+			.collect::<Vec<_>>();
+
+		let inverse = (0..modulus.len())
 			.map(|_| self.add_internal())
 			.collect::<Vec<_>>();
 
@@ -572,10 +577,11 @@ impl CircuitBuilder {
 			self.current_path,
 			Opcode::ModInverseHint,
 			base.iter().chain(modulus).copied(),
-			outputs.iter().copied(),
+			quotient.iter().chain(&inverse).copied(),
 			&[base.len(), modulus.len()],
 			&[],
 		);
-		outputs
+
+		(quotient, inverse)
 	}
 }
