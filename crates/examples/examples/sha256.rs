@@ -1,96 +1,103 @@
 use std::array;
 
 use anyhow::{Result, ensure};
-use binius_examples::{prove_verify, setup};
-use binius_frontend::{circuits::sha256::Sha256, compiler, compiler::Wire};
-use clap::Parser;
+use binius_examples::{ExampleCircuit, prove_verify, setup};
+use binius_frontend::{
+	circuits::sha256::Sha256,
+	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
+};
+use clap::{Args, Parser};
 use rand::prelude::*;
 use sha2::Digest;
 
 #[derive(Parser, Debug)]
 #[command(name = "sha256")]
 #[command(about = "SHA256 compression function example", long_about = None)]
-struct Args {
+struct Cli {
 	/// Log of the inverse rate for the proof system
 	#[arg(short = 'l', long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..))]
 	log_inv_rate: u32,
 
-	/// Maximum message length in bytes that the circuit can handle (ignored with --exact-len)
+	#[command(flatten)]
+	params: Params,
+
+	#[command(flatten)]
+	instance: Instance,
+}
+
+struct Sha256Example {
+	params: Params,
+	sha256_gadget: Sha256,
+}
+
+#[derive(Args, Debug)]
+struct Params {
+	/// Maximum message length in bytes that the circuit can handle.
 	#[arg(long, default_value_t = 2048)]
 	max_len: usize,
 
-	/// Length of message in bytes (optional if --message is provided, defaults to --max-len for
-	/// random data)
+	/// Build circuit for exact message length (makes length a compile-time constant instead of
+	/// runtime witness).
+	#[arg(long, default_value_t = false)]
+	exact_len: bool,
+}
+
+#[derive(Args, Debug)]
+#[group(multiple = false)]
+struct Instance {
+	/// Length of the randomly generated message, in bytes (defaults to --max-len).
 	#[arg(long)]
 	len: Option<usize>,
 
 	/// UTF-8 string to hash (if not provided, random bytes are generated)
 	#[arg(long)]
 	message: Option<String>,
-
-	/// Build circuit for exact message length (makes length a compile-time constant instead of
-	/// runtime witness)
-	#[arg(long, default_value_t = false)]
-	exact_len: bool,
 }
 
-#[derive(Clone, Copy)]
-enum LengthMode {
-	ExactLen,
-	MaxLen(usize),
-}
+impl ExampleCircuit for Sha256Example {
+	type Params = Params;
+	type Instance = Instance;
 
-fn prepare_message_and_length(
-	args: &Args,
-	rng: &mut impl RngCore,
-) -> Result<(Vec<u8>, LengthMode)> {
-	let length_mode = if args.exact_len {
-		LengthMode::ExactLen
-	} else {
-		LengthMode::MaxLen(args.max_len)
-	};
+	fn build(params: Params, builder: &mut CircuitBuilder) -> Result<Self> {
+		let len_wire = if params.exact_len {
+			builder.add_constant_64(params.max_len as u64)
+		} else {
+			builder.add_witness()
+		};
+		let sha256_gadget = mk_circuit(builder, params.max_len, len_wire);
 
-	let message_len = match (&args.message, args.len) {
-		(Some(msg), Some(len)) => {
-			ensure!(
-				msg.len() == len,
-				"--len ({}) must equal the byte-length of --message ({})",
-				len,
-				msg.len()
-			);
-			len
-		}
-		(Some(msg), None) => msg.len(),
-		(None, Some(len)) => len,
-		(None, None) => args.max_len,
-	};
-
-	// Validate message length doesn't exceed max_len
-	if let LengthMode::MaxLen(max_len) = length_mode {
-		ensure!(
-			message_len <= max_len,
-			"Message length ({}) exceeds maximum length ({})",
-			message_len,
-			max_len
-		);
+		Ok(Self {
+			params,
+			sha256_gadget,
+		})
 	}
 
-	let message = match args.message {
-		Some(ref message) => message.as_bytes().to_vec(),
-		None => {
-			// Generate random bytes
+	fn populate_witness(&self, instance: Instance, w: &mut WitnessFiller) -> Result<()> {
+		let message = if let Some(message) = instance.message {
+			message.as_bytes().to_vec()
+		} else {
+			let message_len = instance.len.unwrap_or(self.params.max_len);
+			let mut rng = StdRng::seed_from_u64(0);
+
 			let mut message = vec![0u8; message_len];
 			rng.fill_bytes(&mut message);
 			message
-		}
-	};
+		};
 
-	println!("Message length is {message_len} B");
+		ensure!(message.len() <= self.params.max_len, "message length exceeds --max-len");
 
-	Ok((message, length_mode))
+		let digest = sha2::Sha256::digest(&message);
+
+		// Populate the input message for the hash function.
+		self.sha256_gadget.populate_len(w, message.len());
+		self.sha256_gadget.populate_message(w, &message);
+		self.sha256_gadget.populate_digest(w, digest.into());
+
+		Ok(())
+	}
 }
 
-fn mk_circuit(b: &mut compiler::CircuitBuilder, max_n: usize, len: Wire) -> Sha256 {
+fn mk_circuit(b: &mut CircuitBuilder, max_n: usize, len: Wire) -> Sha256 {
 	let digest: [Wire; 4] = array::from_fn(|_| b.add_inout());
 	let n_blocks = (max_n + 9).div_ceil(64);
 	let n_words = n_blocks * 8;
@@ -99,27 +106,12 @@ fn mk_circuit(b: &mut compiler::CircuitBuilder, max_n: usize, len: Wire) -> Sha2
 }
 
 fn main() -> Result<()> {
-	let args = Args::parse();
+	let args = Cli::parse();
 	let _tracing_guard = tracing_profile::init_tracing()?;
 
-	let mut rng = StdRng::seed_from_u64(0);
-
-	// Prepare message and determine length mode
-	let (message, length_mode) = prepare_message_and_length(&args, &mut rng)?;
-
-	let digest = sha2::Sha256::digest(&message);
-
 	let build_scope = tracing::info_span!("Building circuit").entered();
-
-	let mut builder = compiler::CircuitBuilder::new();
-	let (max_len, len_wire) = match length_mode {
-		LengthMode::ExactLen => {
-			let len = message.len();
-			(len, builder.add_constant_64(len as u64))
-		}
-		LengthMode::MaxLen(max_len) => (max_len, builder.add_witness()),
-	};
-	let sha256_gadget = mk_circuit(&mut builder, max_len, len_wire);
+	let mut builder = CircuitBuilder::new();
+	let example = Sha256Example::build(args.params, &mut builder)?;
 	let circuit = builder.build();
 	drop(build_scope);
 
@@ -127,17 +119,12 @@ fn main() -> Result<()> {
 	let cs = circuit.constraint_system().clone();
 	let (verifier, prover) = setup(cs, log_inv_rate)?;
 
-	let witness = tracing::info_span!("Generating witness").in_scope(|| {
-		let mut w = circuit.new_witness_filler();
-
-		// Populate the input message for the hash function.
-		sha256_gadget.populate_len(&mut w, message.len());
-		sha256_gadget.populate_message(&mut w, &message);
-		sha256_gadget.populate_digest(&mut w, digest.into());
-
-		circuit.populate_wire_witness(&mut w).unwrap();
-		w.into_value_vec()
-	});
+	let generate_witness_scope = tracing::info_span!("Generating witness").entered();
+	let mut w = circuit.new_witness_filler();
+	example.populate_witness(args.instance, &mut w)?;
+	circuit.populate_wire_witness(&mut w)?;
+	let witness = w.into_value_vec();
+	drop(generate_witness_scope);
 
 	prove_verify(&verifier, &prover, witness)?;
 	Ok(())
