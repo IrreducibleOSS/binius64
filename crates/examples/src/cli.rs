@@ -30,6 +30,7 @@ use crate::{ExampleCircuit, prove_verify, setup};
 /// }
 /// ```
 pub struct Cli<E: ExampleCircuit> {
+	name: String,
 	command: Command,
 	_phantom: std::marker::PhantomData<E>,
 }
@@ -125,6 +126,7 @@ where
 		let command = E::Instance::augment_args(command);
 
 		Self {
+			name: name.to_string(),
 			command,
 			_phantom: std::marker::PhantomData,
 		}
@@ -197,15 +199,19 @@ where
 		self
 	}
 
-	/// Run the circuit with parsed ArgMatches.
-	fn run_with_matches(matches: clap::ArgMatches) -> Result<()> {
+	/// Run the circuit with parsed ArgMatches (implementation).
+	fn run_with_matches_impl(matches: clap::ArgMatches, circuit_name: &str) -> Result<()> {
 		// Check if a subcommand was used
 		match matches.subcommand() {
 			Some(("prove", sub_matches)) => Self::run_prove(sub_matches.clone()),
 			Some(("stat", sub_matches)) => Self::run_stat(sub_matches.clone()),
 			Some(("composition", sub_matches)) => Self::run_composition(sub_matches.clone()),
-			Some(("check-snapshot", sub_matches)) => Self::run_check_snapshot(sub_matches.clone()),
-			Some(("bless-snapshot", sub_matches)) => Self::run_bless_snapshot(sub_matches.clone()),
+			Some(("check-snapshot", sub_matches)) => {
+				Self::run_check_snapshot_impl(sub_matches.clone(), circuit_name)
+			}
+			Some(("bless-snapshot", sub_matches)) => {
+				Self::run_bless_snapshot_impl(sub_matches.clone(), circuit_name)
+			}
 			Some((cmd, _)) => anyhow::bail!("Unknown subcommand: {}", cmd),
 			None => {
 				// No subcommand - default to prove behavior for backward compatibility
@@ -282,14 +288,34 @@ where
 		Ok(())
 	}
 
-	fn run_check_snapshot(_matches: clap::ArgMatches) -> Result<()> {
-		// TODO: Implement snapshot checking
-		anyhow::bail!("check-snapshot subcommand not yet implemented")
+	fn run_check_snapshot_impl(matches: clap::ArgMatches, circuit_name: &str) -> Result<()> {
+		// Parse Params from matches
+		let params = E::Params::from_arg_matches(&matches)?;
+
+		// Build the circuit
+		let mut builder = CircuitBuilder::new();
+		let _example = E::build(params, &mut builder)?;
+		let circuit = builder.build();
+
+		// Check snapshot
+		crate::snapshot::check_snapshot(circuit_name, &circuit)?;
+
+		Ok(())
 	}
 
-	fn run_bless_snapshot(_matches: clap::ArgMatches) -> Result<()> {
-		// TODO: Implement snapshot blessing
-		anyhow::bail!("bless-snapshot subcommand not yet implemented")
+	fn run_bless_snapshot_impl(matches: clap::ArgMatches, circuit_name: &str) -> Result<()> {
+		// Parse Params from matches
+		let params = E::Params::from_arg_matches(&matches)?;
+
+		// Build the circuit
+		let mut builder = CircuitBuilder::new();
+		let _example = E::build(params, &mut builder)?;
+		let circuit = builder.build();
+
+		// Bless snapshot
+		crate::snapshot::bless_snapshot(circuit_name, &circuit)?;
+
+		Ok(())
 	}
 
 	/// Parse arguments and run the circuit example.
@@ -301,8 +327,9 @@ where
 	/// 4. Generate witness using the instance
 	/// 5. Create and verify proof
 	pub fn run(self) -> Result<()> {
+		let name = self.name.clone();
 		let matches = self.command.get_matches();
-		Self::run_with_matches(matches)
+		Self::run_with_matches_impl(matches, &name)
 	}
 
 	/// Parse arguments and run with custom argument strings (useful for testing).
@@ -314,7 +341,8 @@ where
 		I: IntoIterator<Item = T>,
 		T: Into<std::ffi::OsString> + Clone,
 	{
+		let name = self.name.clone();
 		let matches = self.command.try_get_matches_from(args)?;
-		Self::run_with_matches(matches)
+		Self::run_with_matches_impl(matches, &name)
 	}
 }

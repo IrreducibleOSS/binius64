@@ -1,0 +1,10 @@
+keccak circuit
+--
+Number of gates: 51120
+Number of AND constraints: 51120
+Number of MUL constraints: 0
+Length of value vec: 65536
+  Constants: 23
+  Inout: 25
+  Witness: 0
+  Internal: 51120
