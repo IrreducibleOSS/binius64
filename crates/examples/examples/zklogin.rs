@@ -213,6 +213,6 @@ fn main() -> Result<()> {
 	let _tracing_guard = tracing_profile::init_tracing()?;
 
 	Cli::<ZkLoginExample>::new("zklogin")
-		.about("ZKLogin circuit example demonstrating JWT witness population")
+		.about("Circuit verifying knowledge of a valid OpenID Connect login")
 		.run()
 }
