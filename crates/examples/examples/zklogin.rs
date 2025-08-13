@@ -1,23 +1,27 @@
 use anyhow::{Result, ensure};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD as BASE64_URL_SAFE_NO_PAD};
-use binius_examples::{prove_verify, setup};
+use binius_examples::{Cli, ExampleCircuit};
 use binius_frontend::{
 	circuits::zklogin::{Config, ZkLogin},
-	compiler::CircuitBuilder,
+	compiler::{CircuitBuilder, circuit::WitnessFiller},
 };
-use clap::Parser;
+use clap::Args;
 use jwt_simple::prelude::*;
 use rand::prelude::*;
 use sha2::{Digest, Sha256};
 
-#[derive(Parser, Debug)]
-#[command(name = "zklogin")]
-#[command(about = "ZKLogin circuit example demonstrating JWT witness population", long_about = None)]
-struct Args {
-	/// Log of the inverse rate for the proof system
-	#[arg(short = 'l', long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..))]
-	log_inv_rate: u32,
+struct ZkLoginExample {
+	zklogin: ZkLogin,
+}
 
+#[derive(Args, Debug)]
+struct Params {
+	// Currently no circuit parameters - using default config
+	// Could add max claim sizes, etc. here in the future
+}
+
+#[derive(Args, Debug)]
+struct Instance {
 	/// Subject claim value
 	#[arg(long, default_value = "1234567890")]
 	sub: String,
@@ -99,140 +103,116 @@ impl JwtGenerationResult {
 	}
 }
 
-struct ZkLoginWitnessData {
-	jwt: String,
-	zkaddr_hash: [u8; 32],
-	zkaddr_preimage: Vec<u8>,
-	vk_u: [u8; 32],
-	nonce_preimage: Vec<u8>,
-	jwt_key_pair: RS256KeyPair,
-	sub: String,
-	aud: String,
-	iss: String,
-	salt: String,
-}
+impl ExampleCircuit for ZkLoginExample {
+	type Params = Params;
+	type Instance = Instance;
 
-fn populate_zklogin_witness(
-	zklogin: &ZkLogin,
-	w: &mut binius_frontend::compiler::circuit::WitnessFiller,
-	data: &ZkLoginWitnessData,
-) -> Result<()> {
-	// Parse JWT components
-	let jwt_components = data.jwt.split(".").collect::<Vec<_>>();
-	let [header_base64, payload_base64, signature_base64] = jwt_components.as_slice() else {
-		anyhow::bail!("JWT should have format: header.payload.signature");
-	};
+	fn build(_params: Params, builder: &mut CircuitBuilder) -> Result<Self> {
+		let config = Config::default();
+		let zklogin = ZkLogin::new(builder, config);
 
-	// Decode JWT components
-	let signature_bytes = BASE64_URL_SAFE_NO_PAD.decode(signature_base64)?;
-	let modulus_bytes = data.jwt_key_pair.public_key().to_components().n;
-	let header = BASE64_URL_SAFE_NO_PAD.decode(header_base64)?;
-	let payload = BASE64_URL_SAFE_NO_PAD.decode(payload_base64)?;
+		Ok(Self { zklogin })
+	}
 
-	ensure!(
-		signature_bytes.len() == 256,
-		"RSA signature must be 256 bytes, got {}",
-		signature_bytes.len()
-	);
+	fn populate_witness(&self, instance: Instance, w: &mut WitnessFiller) -> Result<()> {
+		let mut rng = StdRng::seed_from_u64(0);
 
-	// Populate JWT components
-	zklogin.populate_base64_jwt_header(w, header_base64.as_bytes());
-	zklogin.populate_base64_jwt_payload(w, payload_base64.as_bytes());
-	zklogin.populate_base64_jwt_signature(w, signature_base64.as_bytes());
-	zklogin.populate_jwt_header(w, &header);
-	zklogin.populate_jwt_header_attributes(w);
-	zklogin.populate_jwt_payload(w, &payload);
-	zklogin.populate_jwt_signature(w, &signature_bytes);
+		// Generate JWT and related data
+		let JwtGenerationResult {
+			jwt,
+			zkaddr_hash,
+			vk_u,
+			zkaddr_preimage,
+			nonce_preimage,
+			jwt_key_pair,
+		} = JwtGenerationResult::generate(
+			&instance.sub,
+			&instance.aud,
+			&instance.iss,
+			&instance.salt,
+			&mut rng,
+		)?;
 
-	// Populate claim values
-	zklogin.populate_sub(w, data.sub.as_bytes());
-	zklogin.populate_aud(w, data.aud.as_bytes());
-	zklogin.populate_iss(w, data.iss.as_bytes());
-	zklogin.populate_salt(w, data.salt.as_bytes());
+		// Parse JWT components
+		let jwt_components = jwt.split(".").collect::<Vec<_>>();
+		let [header_base64, payload_base64, signature_base64] = jwt_components.as_slice() else {
+			anyhow::bail!("JWT should have format: header.payload.signature");
+		};
 
-	// Populate zkaddr
-	zklogin.populate_zkaddr(w, &data.zkaddr_hash);
-	zklogin.populate_zkaddr_preimage(w, &data.zkaddr_preimage);
-	zklogin.populate_vk_u(w, &data.vk_u);
-	zklogin.populate_t_max(w, b"t_max");
-	zklogin.populate_nonce_r(w, b"nonce_r");
+		// Decode JWT components
+		let signature_bytes = BASE64_URL_SAFE_NO_PAD.decode(signature_base64)?;
+		let modulus_bytes = jwt_key_pair.public_key().to_components().n;
+		let header = BASE64_URL_SAFE_NO_PAD.decode(header_base64)?;
+		let payload = BASE64_URL_SAFE_NO_PAD.decode(payload_base64)?;
 
-	// Populate nonce
-	let nonce_hash: [u8; 32] = Sha256::digest(&data.nonce_preimage).into();
-	let nonce_hash_base64 = BASE64_URL_SAFE_NO_PAD.encode(nonce_hash);
-	zklogin.populate_nonce(w, &nonce_hash);
-	zklogin.populate_nonce_preimage(w, &data.nonce_preimage);
-	zklogin.populate_base64_jwt_payload_nonce(w, nonce_hash_base64.as_bytes());
+		ensure!(
+			signature_bytes.len() == 256,
+			"RSA signature must be 256 bytes, got {}",
+			signature_bytes.len()
+		);
 
-	// Populate JWS signature verification data
-	let message_str = format!("{header_base64}.{payload_base64}");
-	let message = message_str.as_bytes();
-	let hash = Sha256::digest(message);
-	zklogin.populate_rsa_modulus(w, &modulus_bytes);
-	zklogin
-		.jwt_signature_verify
-		.populate_message_len(w, message.len());
-	zklogin.jwt_signature_verify.populate_message(w, message);
-	zklogin
-		.jwt_signature_verify
-		.sha256
-		.populate_digest(w, hash.into());
-	zklogin
-		.jwt_signature_verify
-		.populate_intermediates(w, &signature_bytes, &modulus_bytes);
+		// Populate JWT components
+		self.zklogin
+			.populate_base64_jwt_header(w, header_base64.as_bytes());
+		self.zklogin
+			.populate_base64_jwt_payload(w, payload_base64.as_bytes());
+		self.zklogin
+			.populate_base64_jwt_signature(w, signature_base64.as_bytes());
+		self.zklogin.populate_jwt_header(w, &header);
+		self.zklogin.populate_jwt_header_attributes(w);
+		self.zklogin.populate_jwt_payload(w, &payload);
+		self.zklogin.populate_jwt_signature(w, &signature_bytes);
 
-	Ok(())
+		// Populate claim values
+		self.zklogin.populate_sub(w, instance.sub.as_bytes());
+		self.zklogin.populate_aud(w, instance.aud.as_bytes());
+		self.zklogin.populate_iss(w, instance.iss.as_bytes());
+		self.zklogin.populate_salt(w, instance.salt.as_bytes());
+
+		// Populate zkaddr
+		self.zklogin.populate_zkaddr(w, &zkaddr_hash);
+		self.zklogin.populate_zkaddr_preimage(w, &zkaddr_preimage);
+		self.zklogin.populate_vk_u(w, &vk_u);
+		self.zklogin.populate_t_max(w, b"t_max");
+		self.zklogin.populate_nonce_r(w, b"nonce_r");
+
+		// Populate nonce
+		let nonce_hash: [u8; 32] = Sha256::digest(&nonce_preimage).into();
+		let nonce_hash_base64 = BASE64_URL_SAFE_NO_PAD.encode(nonce_hash);
+		self.zklogin.populate_nonce(w, &nonce_hash);
+		self.zklogin.populate_nonce_preimage(w, &nonce_preimage);
+		self.zklogin
+			.populate_base64_jwt_payload_nonce(w, nonce_hash_base64.as_bytes());
+
+		// Populate JWS signature verification data
+		let message_str = format!("{header_base64}.{payload_base64}");
+		let message = message_str.as_bytes();
+		let hash = Sha256::digest(message);
+		self.zklogin.populate_rsa_modulus(w, &modulus_bytes);
+		self.zklogin
+			.jwt_signature_verify
+			.populate_message_len(w, message.len());
+		self.zklogin
+			.jwt_signature_verify
+			.populate_message(w, message);
+		self.zklogin
+			.jwt_signature_verify
+			.sha256
+			.populate_digest(w, hash.into());
+		self.zklogin.jwt_signature_verify.populate_intermediates(
+			w,
+			&signature_bytes,
+			&modulus_bytes,
+		);
+
+		Ok(())
+	}
 }
 
 fn main() -> Result<()> {
-	let args = Args::parse();
 	let _tracing_guard = tracing_profile::init_tracing()?;
 
-	let mut rng = StdRng::seed_from_u64(0);
-
-	// Generate JWT and related data
-	let JwtGenerationResult {
-		jwt,
-		zkaddr_hash,
-		vk_u,
-		zkaddr_preimage,
-		nonce_preimage,
-		jwt_key_pair,
-	} = JwtGenerationResult::generate(&args.sub, &args.aud, &args.iss, &args.salt, &mut rng)?;
-
-	// Build the circuit
-	let build_scope = tracing::info_span!("Building circuit").entered();
-	let mut builder = CircuitBuilder::new();
-	let config = Config::default();
-	let zklogin = ZkLogin::new(&mut builder, config);
-	let circuit = builder.build();
-	drop(build_scope);
-
-	// Setup and prove
-	let log_inv_rate = args.log_inv_rate as usize;
-	let cs = circuit.constraint_system().clone();
-	let (verifier, prover) = setup(cs, log_inv_rate)?;
-
-	let witness = tracing::info_span!("Generating witness").in_scope(|| {
-		let mut w = circuit.new_witness_filler();
-
-		let witness_data = ZkLoginWitnessData {
-			jwt,
-			zkaddr_hash,
-			zkaddr_preimage,
-			vk_u,
-			nonce_preimage,
-			jwt_key_pair,
-			sub: args.sub,
-			aud: args.aud,
-			iss: args.iss,
-			salt: args.salt,
-		};
-		populate_zklogin_witness(&zklogin, &mut w, &witness_data).unwrap();
-		circuit.populate_wire_witness(&mut w).unwrap();
-		w.into_value_vec()
-	});
-
-	prove_verify(&verifier, &prover, witness)?;
-	Ok(())
+	Cli::<ZkLoginExample>::new("zklogin")
+		.about("ZKLogin circuit example demonstrating JWT witness population")
+		.run()
 }

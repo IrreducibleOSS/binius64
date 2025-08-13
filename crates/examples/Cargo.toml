@@ -13,12 +13,12 @@ binius-core = { path = "../core" }
 binius-frontend = { path = "../frontend" }
 binius-verifier = { path = "../verifier" }
 binius-prover = { path = "../prover", default-features = false }
+clap.workspace = true
 tracing.workspace = true
 tracing-profile.workspace = true
 
 [dev-dependencies]
 base64.workspace = true
-clap.workspace = true
 jwt-simple.workspace = true
 rand.workspace = true
 sha2.workspace = true
