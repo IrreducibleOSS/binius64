@@ -46,7 +46,7 @@ getset = "0.1.6"
 hex-literal = "1.0.0"
 either = "1.11.0"
 itertools = "0.14.0"
-jwt-simple = { version = "0.12.12", default-features = false }
+jwt-simple = { version = "0.12.12", default-features = false, features = ["pure-rust"] }
 lazy_static = "1.5.0"
 num-bigint = "0.4.6"
 num-integer = "0.1.46"
