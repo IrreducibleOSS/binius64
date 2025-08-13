@@ -114,10 +114,8 @@ where
 	F: BinaryField + From<AESTowerField8b>,
 {
 	// Compute lambda powers
-	let bitand_lambda_powers: [F; BITAND_ARITY] =
-		array::from_fn(|i| bitand_operator_data.lambda.pow(1 + i as u64));
-	let intmul_lambda_powers: [F; INTMUL_ARITY] =
-		array::from_fn(|i| intmul_operator_data.lambda.pow(1 + i as u64));
+	let bitand_lambda_powers = bitand_operator_data.lambda_powers.clone();
+	let intmul_lambda_powers = intmul_operator_data.lambda_powers.clone();
 
 	// Compute h evaluations
 	let subspace = BinarySubspace::<AESTowerField8b>::with_dim(LOG_WORD_SIZE_BITS)?.isomorphic();

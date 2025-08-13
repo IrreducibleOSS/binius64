@@ -3,9 +3,10 @@
 use binius_core::word::Word;
 use binius_field::{
 	AESTowerField8b, BinaryField, Field, PackedField, UnderlierWithBitOps, WithUnderlier,
+	util::powers,
 };
 use binius_math::{
-	FieldBuffer, multilinear::eq::eq_ind_partial_eval, univariate::evaluate_univariate,
+	FieldBuffer, inner_product::inner_product, multilinear::eq::eq_ind_partial_eval,
 };
 use binius_transcript::{
 	ProverTranscript,
@@ -44,18 +45,24 @@ pub struct PreparedOperatorData<F: Field> {
 	pub evals: Vec<F>,
 	pub r_zhat_prime: F,
 	pub r_x_prime_tensor: FieldBuffer<F>,
-	pub lambda: F,
+	pub lambda_powers: Vec<F>,
 }
 
 impl<F: Field> PreparedOperatorData<F> {
 	/// Creates a new prepared operator data from operator data and lambda.
 	pub fn new(operator_data: OperatorData<F>, lambda: F) -> Self {
-		let r_x_prime_tensor = eq_ind_partial_eval::<F>(&operator_data.r_x_prime);
+		let OperatorData {
+			evals,
+			r_zhat_prime,
+			r_x_prime,
+		} = operator_data;
+		let r_x_prime_tensor = eq_ind_partial_eval::<F>(&r_x_prime);
+		let lambda_powers = powers(lambda).skip(1).take(evals.len()).collect();
 		Self {
-			evals: operator_data.evals,
-			r_zhat_prime: operator_data.r_zhat_prime,
+			evals,
+			r_zhat_prime,
 			r_x_prime_tensor,
-			lambda,
+			lambda_powers,
 		}
 	}
 
@@ -65,7 +72,7 @@ impl<F: Field> PreparedOperatorData<F> {
 	/// for different operators can soundly be added without further
 	/// random scaling.
 	pub fn batched_eval(&self) -> F {
-		self.lambda * evaluate_univariate(&self.evals, self.lambda)
+		inner_product(self.evals.iter().copied(), self.lambda_powers.iter().copied())
 	}
 }
 
