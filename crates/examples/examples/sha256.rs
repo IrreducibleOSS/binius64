@@ -1,29 +1,14 @@
 use std::array;
 
 use anyhow::{Result, ensure};
-use binius_examples::{ExampleCircuit, prove_verify, setup};
+use binius_examples::{Cli, ExampleCircuit};
 use binius_frontend::{
 	circuits::sha256::Sha256,
 	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
 };
-use clap::{Args, Parser};
+use clap::Args;
 use rand::prelude::*;
 use sha2::Digest;
-
-#[derive(Parser, Debug)]
-#[command(name = "sha256")]
-#[command(about = "SHA256 compression function example", long_about = None)]
-struct Cli {
-	/// Log of the inverse rate for the proof system
-	#[arg(short = 'l', long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..))]
-	log_inv_rate: u32,
-
-	#[command(flatten)]
-	params: Params,
-
-	#[command(flatten)]
-	instance: Instance,
-}
 
 struct Sha256Example {
 	params: Params,
@@ -106,26 +91,9 @@ fn mk_circuit(b: &mut CircuitBuilder, max_n: usize, len: Wire) -> Sha256 {
 }
 
 fn main() -> Result<()> {
-	let args = Cli::parse();
 	let _tracing_guard = tracing_profile::init_tracing()?;
 
-	let build_scope = tracing::info_span!("Building circuit").entered();
-	let mut builder = CircuitBuilder::new();
-	let example = Sha256Example::build(args.params, &mut builder)?;
-	let circuit = builder.build();
-	drop(build_scope);
-
-	let log_inv_rate = args.log_inv_rate as usize;
-	let cs = circuit.constraint_system().clone();
-	let (verifier, prover) = setup(cs, log_inv_rate)?;
-
-	let generate_witness_scope = tracing::info_span!("Generating witness").entered();
-	let mut w = circuit.new_witness_filler();
-	example.populate_witness(args.instance, &mut w)?;
-	circuit.populate_wire_witness(&mut w)?;
-	let witness = w.into_value_vec();
-	drop(generate_witness_scope);
-
-	prove_verify(&verifier, &prover, witness)?;
-	Ok(())
+	Cli::<Sha256Example>::new("sha256")
+		.about("SHA256 compression function example")
+		.run()
 }

@@ -1,3 +1,5 @@
+pub mod cli;
+
 use anyhow::Result;
 use binius_core::constraint_system::{ConstraintSystem, ValueVec};
 use binius_frontend::compiler::{CircuitBuilder, circuit::WitnessFiller};
@@ -8,6 +10,7 @@ use binius_verifier::{
 	hash::{StdCompression, StdDigest},
 	transcript::ProverTranscript,
 };
+pub use cli::Cli;
 
 pub type StdVerifier = Verifier<StdDigest, StdCompression>;
 pub type StdProver = Prover<OptimalPackedB128, StdCompression, StdDigest>;
