@@ -89,8 +89,17 @@ where
 		self
 	}
 
-	/// Run the circuit with the given parsed arguments.
-	fn run_with_args(params: E::Params, instance: E::Instance, log_inv_rate: u32) -> Result<()> {
+	/// Run the circuit with parsed ArgMatches.
+	fn run_with_matches(matches: clap::ArgMatches) -> Result<()> {
+		// Extract common arguments
+		let log_inv_rate = *matches
+			.get_one::<u32>("log_inv_rate")
+			.expect("has default value");
+
+		// Parse Params and Instance from matches
+		let params = E::Params::from_arg_matches(&matches)?;
+		let instance = E::Instance::from_arg_matches(&matches)?;
+
 		// Build the circuit
 		let build_scope = tracing::info_span!("Building circuit").entered();
 		let mut builder = CircuitBuilder::new();
@@ -125,20 +134,8 @@ where
 	/// 4. Generate witness using the instance
 	/// 5. Create and verify proof
 	pub fn run(self) -> Result<()> {
-		// Parse arguments
 		let matches = self.command.get_matches();
-
-		// Extract common arguments
-		let log_inv_rate = *matches
-			.get_one::<u32>("log_inv_rate")
-			.expect("has default value");
-
-		// Parse Params and Instance from matches
-		let params = E::Params::from_arg_matches(&matches)?;
-		let instance = E::Instance::from_arg_matches(&matches)?;
-
-		// Run the circuit
-		Self::run_with_args(params, instance, log_inv_rate)
+		Self::run_with_matches(matches)
 	}
 
 	/// Parse arguments and run with custom argument strings (useful for testing).
@@ -150,19 +147,7 @@ where
 		I: IntoIterator<Item = T>,
 		T: Into<std::ffi::OsString> + Clone,
 	{
-		// Parse arguments
 		let matches = self.command.try_get_matches_from(args)?;
-
-		// Extract common arguments
-		let log_inv_rate = *matches
-			.get_one::<u32>("log_inv_rate")
-			.expect("has default value");
-
-		// Parse Params and Instance from matches
-		let params = E::Params::from_arg_matches(&matches)?;
-		let instance = E::Instance::from_arg_matches(&matches)?;
-
-		// Run the circuit
-		Self::run_with_args(params, instance, log_inv_rate)
+		Self::run_with_matches(matches)
 	}
 }
