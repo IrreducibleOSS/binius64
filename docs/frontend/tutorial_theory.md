@@ -48,7 +48,7 @@ A standard ZK circuit over GF(2) would support the AND + XOR gate set at the bit
 // Total: ~320 constraints
 ```
 
-This is incredibly inefficient for modern computations that work with 64-bit words.
+This is incredibly inefficient for common computations that work with 64-bit words, which are now standard on modern processors.
 
 ### The Binius-64 Insight
 
