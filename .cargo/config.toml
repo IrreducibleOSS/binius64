@@ -3,8 +3,3 @@ rustdocflags = ["-Dwarnings", "--html-in-header", "assets/katex-header.html"]
 
 [target.wasm32-unknown-unknown]
 rustflags = ['--cfg', 'getrandom_backend="wasm_js"']
-
-[alias]
-# How much gates, constraints and committed values is in the zklogin circuit?
-zhm = "run --example zklogin -- stat"
-zc = "run --example zklogin -- composition"
