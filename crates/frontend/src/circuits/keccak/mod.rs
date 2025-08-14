@@ -24,7 +24,7 @@ pub const N_WORDS_PER_BLOCK: usize = RATE_BYTES / 8;
 pub struct Keccak {
 	pub max_len: usize,
 	pub len: Wire,
-	pub digest: [Wire; N_WORDS_PER_STATE],
+	pub digest: [Wire; 4],
 	pub message: Vec<Wire>,
 	pub expected_padded_message: Vec<[Wire; N_WORDS_PER_BLOCK]>,
 	padding: KeccakPadding,
@@ -49,7 +49,7 @@ impl Keccak {
 		b: &CircuitBuilder,
 		max_len: usize,
 		len: Wire,
-		digest: [Wire; N_WORDS_PER_STATE],
+		digest: [Wire; 4],
 		message: Vec<Wire>,
 		expected_padded_message: Vec<[Wire; N_WORDS_PER_BLOCK]>,
 	) -> Self {
@@ -132,13 +132,13 @@ impl Keccak {
 	fn constrain_claimed_digest(
 		b: &CircuitBuilder,
 		computed_states: Vec<[Wire; N_WORDS_PER_STATE]>,
-		digest: [Wire; N_WORDS_PER_STATE],
+		digest: [Wire; 4],
 		length: Wire,
 		n_blocks: usize,
 	) {
 		let zero = b.add_constant(Word::ZERO);
 
-		let mut computed_digest = [zero; N_WORDS_PER_STATE];
+		let mut computed_digest = [zero; 4];
 
 		// flags to determine if a block at a given index is the final block
 		let mut is_final_block_flags = Vec::with_capacity(n_blocks);
@@ -234,7 +234,7 @@ mod tests {
 	use rand::{Rng, SeedableRng, rngs::StdRng};
 	use sha3::{Digest, Keccak256};
 
-	use super::{Keccak, N_WORDS_PER_STATE};
+	use super::Keccak;
 	use crate::{
 		circuits::keccak::RATE_BYTES,
 		compiler::{CircuitBuilder, Wire},
@@ -252,7 +252,7 @@ mod tests {
 		let b = CircuitBuilder::new();
 
 		let len = b.add_witness();
-		let digest: [Wire; N_WORDS_PER_STATE] = std::array::from_fn(|_| b.add_inout());
+		let digest: [Wire; 4] = std::array::from_fn(|_| b.add_inout());
 
 		let n_words = max_len.div_ceil(8);
 		let message_wires = (0..n_words).map(|_| b.add_inout()).collect();
