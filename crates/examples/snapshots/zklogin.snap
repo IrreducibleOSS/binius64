@@ -1,0 +1,10 @@
+zklogin circuit
+--
+Number of gates: 822797
+Number of AND constraints: 1142785
+Number of MUL constraints: 26880
+Length of value vec: 2097152
+  Constants: 624
+  Inout: 302
+  Witness: 189925
+  Internal: 1073688
