@@ -5,6 +5,7 @@ use crate::compiler::circuit::Circuit;
 /// Various stats of a circuit that affect the prover performance.
 pub struct CircuitStat {
 	pub n_gates: usize,
+	pub n_eval_insn: usize,
 	pub n_and_constraints: usize,
 	pub n_mul_constraints: usize,
 	pub value_vec_len: usize,
@@ -19,6 +20,7 @@ impl CircuitStat {
 		let cs = circuit.constraint_system();
 		Self {
 			n_gates: circuit.n_gates(),
+			n_eval_insn: circuit.n_eval_insn(),
 			n_and_constraints: cs.n_and_constraints(),
 			n_mul_constraints: cs.n_mul_constraints(),
 			value_vec_len: cs.value_vec_layout.total_len,
@@ -33,6 +35,7 @@ impl CircuitStat {
 impl fmt::Display for CircuitStat {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		writeln!(f, "Number of gates: {}", self.n_gates)?;
+		writeln!(f, "Number of evaluation instructions: {}", self.n_eval_insn)?;
 		writeln!(f, "Number of AND constraints: {}", self.n_and_constraints)?;
 		writeln!(f, "Number of MUL constraints: {}", self.n_mul_constraints)?;
 		writeln!(f, "Length of value vec: {}", self.value_vec_len)?;

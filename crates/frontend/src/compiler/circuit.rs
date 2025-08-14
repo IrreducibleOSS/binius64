@@ -165,6 +165,11 @@ impl Circuit {
 		self.gate_graph.gates.len()
 	}
 
+	/// Returns the number of evaluation instructions in this circuit.
+	pub fn n_eval_insn(&self) -> usize {
+		self.eval_form.n_eval_insn()
+	}
+
 	/// Returns a string with a JSON dump that is useful to profile the circuit.
 	pub fn simple_json_dump(&self) -> String {
 		crate::compiler::dump::dump_composition(&self.gate_graph)
