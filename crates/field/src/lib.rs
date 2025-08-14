@@ -39,6 +39,9 @@ pub mod transpose;
 mod underlier;
 pub mod util;
 
+#[cfg(test)]
+pub mod proto;
+
 pub use aes_field::*;
 pub use arch::byte_sliced::*;
 pub use binary_field::*;
