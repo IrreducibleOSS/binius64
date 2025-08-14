@@ -227,7 +227,7 @@ fn mul_tower(a₀, a₁, b₀, b₁) -> (c₀, c₁) {
 
     // Karatsuba combination with tower-specific reduction
     c₀ = add(a₀b₀, mul_base(a₁b₁, β));  // β is field-specific
-    c₁ = add(add(a₀b₀, a₁b₁), middle);
+    c₁ = add(middle, xor(a₀b₀, a₁b₁));
 }
 ```
 
