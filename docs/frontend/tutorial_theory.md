@@ -110,8 +110,10 @@ The `CircuitBuilder` API handles multiple phases at once:
 // This single line does two things:
 let (sum, _carry_out) = builder.iadd_cin_cout(a, b, carry_in);
 
-// 1. Defines constraints (Phase 2): "sum must equal a + b + carry_in"
-// 2. Creates wire references for later witness generation (Phase 1)
+
+// 1. Defines constraints (Phase 1): "sum must equal a + b + carry_in"
+// 2. Creates wire references for later witness generation (Phase 2)
+
 ```
 
 When you later fill the witness:
