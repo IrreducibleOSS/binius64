@@ -17,6 +17,7 @@ This tutorial teaches you how to write circuits using the Binius64 builder API t
 Let's start with a basic circuit that checks if two numbers are equal:
 
 ```rust
+use binius_frontend::circuit::Circuit;
 use binius_frontend::compiler::CircuitBuilder;
 use binius_core::word::Word;
 
