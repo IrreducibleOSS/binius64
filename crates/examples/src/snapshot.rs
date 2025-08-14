@@ -1,11 +1,29 @@
-use std::{fs, path::PathBuf};
+use std::{env, fs, path::PathBuf};
 
 use anyhow::{Context, Result};
 use binius_frontend::{compiler::circuit::Circuit, stat::CircuitStat};
 
+/// Get the workspace root directory by using CARGO_MANIFEST_DIR
+fn workspace_root() -> Result<PathBuf> {
+	let manifest_dir = env::var("CARGO_MANIFEST_DIR").context(
+		"CARGO_MANIFEST_DIR environment variable not set. \
+		Please run this command via 'cargo run --example <name>' or 'cargo test'.",
+	)?;
+
+	// CARGO_MANIFEST_DIR points to crates/examples, so go up two levels to reach workspace root
+	let workspace_root = PathBuf::from(manifest_dir)
+		.parent()
+		.and_then(|p| p.parent())
+		.context("Failed to determine workspace root from CARGO_MANIFEST_DIR")?
+		.to_path_buf();
+
+	Ok(workspace_root)
+}
+
 /// Get the snapshot file path for a circuit example
-pub fn snapshot_path(circuit_name: &str) -> PathBuf {
-	PathBuf::from(format!("crates/examples/snapshots/{}.snap", circuit_name))
+pub fn snapshot_path(circuit_name: &str) -> Result<PathBuf> {
+	let root = workspace_root()?;
+	Ok(root.join(format!("crates/examples/snapshots/{}.snap", circuit_name)))
 }
 
 /// Format circuit statistics for snapshot
@@ -21,7 +39,7 @@ pub fn format_circuit_stats(circuit_name: &str, circuit: &Circuit) -> String {
 
 /// Check if circuit statistics match snapshot
 pub fn check_snapshot(circuit_name: &str, circuit: &Circuit) -> Result<()> {
-	let snapshot_path = snapshot_path(circuit_name);
+	let snapshot_path = snapshot_path(circuit_name)?;
 
 	if !snapshot_path.exists() {
 		anyhow::bail!(
@@ -48,7 +66,7 @@ pub fn check_snapshot(circuit_name: &str, circuit: &Circuit) -> Result<()> {
 
 /// Update snapshot with current circuit statistics
 pub fn bless_snapshot(circuit_name: &str, circuit: &Circuit) -> Result<()> {
-	let snapshot_path = snapshot_path(circuit_name);
+	let snapshot_path = snapshot_path(circuit_name)?;
 
 	// Create snapshots directory if it doesn't exist
 	if let Some(parent) = snapshot_path.parent() {

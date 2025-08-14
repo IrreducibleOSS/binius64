@@ -22,8 +22,6 @@ cargo run --example zklogin -- bless-snapshot
 cargo run --example sha256 -- stat --max-len 2048
 ```
 
-NOTE: Run these commands from the root directory of the project.
-
 ## CI Integration
 
 The GitHub Actions CI workflow automatically checks that circuit statistics match the snapshots on every pull request. If the statistics change, the CI will fail and you'll need to update the snapshot using the `bless-snapshot` command above.
