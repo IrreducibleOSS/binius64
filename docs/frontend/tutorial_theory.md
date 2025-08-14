@@ -94,7 +94,7 @@ Example:
 // Constraints for x² = y
 constraints = [
   x * x = x_squared,     // MUL constraint
-  x_squared ⊕ y = 0     // Equality check (AND constraint)
+  x_squared - y = 0,     // Equality constraint: x_squared must equal y
 ]
 ```
 
