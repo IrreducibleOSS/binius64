@@ -453,7 +453,7 @@ let (lo1, hi1) = builder.imul(a, b);           // a * b = (hi1:lo1)
 let (lo2, hi2) = builder.imul(quotient, p);    // quotient * p = (hi2:lo2)
 
 // Step 3: Verify the equation: a * b = quotient * p + r
-// First add quotient*p + remainder
+// First add quotient*p + r
 let (sum_lo, carry) = builder.iadd_cin_cout(lo2, r, builder.add_constant(Word::ZERO));
 let (sum_hi, _) = builder.iadd_cin_cout(hi2, builder.add_constant(Word::ZERO), carry);
 
