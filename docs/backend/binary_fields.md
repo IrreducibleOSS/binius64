@@ -252,8 +252,13 @@ fn mul_tower(a₀, a₁, b₀, b₁) -> (c₀, c₁) {
 - Complex reduction (Barrett, Montgomery, etc.)
 - Total: ~20-30 multiplication-equivalent operations
 
+
 *Binary tower field multiplication (128-bit)*:
 - Karatsuba reduces to 3 multiplications at each level
-- 7 levels deep: 3^7 = 2187 table lookups (but highly optimized)
+- Multiple levels of recursion for efficient implementation
+- Optimized with bit-level operations at the lowest level
+
+*GHASH/POLYVAL implementations*:
 - With SIMD/carryless multiply: ~10 multiplication-equivalent operations
 - XOR is much cheaper than integer addition
+
