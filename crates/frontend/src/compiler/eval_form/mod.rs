@@ -24,6 +24,8 @@ pub struct EvalForm {
 	bytecode: Vec<u8>,
 	/// Number of scratch registers needed
 	n_scratch: usize,
+	/// Number of evaluation instructions
+	n_eval_insn: usize,
 	/// Registered hint handlers
 	hint_registry: HintRegistry,
 }
@@ -67,11 +69,12 @@ impl EvalForm {
 			);
 		}
 
-		let bytecode = builder.finalize();
+		let (bytecode, n_eval_insn) = builder.finalize();
 
 		EvalForm {
 			bytecode,
 			n_scratch,
+			n_eval_insn,
 			hint_registry,
 		}
 	}
@@ -84,5 +87,10 @@ impl EvalForm {
 		interpreter.run_with_value_vec(value_vec, scratch)?;
 
 		Ok(())
+	}
+
+	/// Get the number of evaluation instructions
+	pub fn n_eval_insn(&self) -> usize {
+		self.n_eval_insn
 	}
 }
