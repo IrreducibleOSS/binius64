@@ -1,4 +1,4 @@
-use std::{fmt, time::Instant};
+use std::fmt;
 
 use binius_core::Word;
 
@@ -47,23 +47,6 @@ impl fmt::Display for CircuitStat {
 		writeln!(f, "  Internal: {}", self.n_internal)?;
 		Ok(())
 	}
-}
-
-pub fn print_stat(circuit: &Circuit) {
-	let s = CircuitStat::collect(circuit);
-	println!("{s}");
-	time_witness_population(circuit);
-}
-
-fn time_witness_population(circuit: &Circuit) {
-	let mut w = circuit.new_witness_filler();
-	w.ignore_assertions = true;
-
-	// Now measure the witness filling performance.
-	let start = Instant::now();
-	let _ = circuit.populate_wire_witness(&mut w);
-	let elapsed = start.elapsed();
-	println!("fill_witness took {} microseconds", elapsed.as_micros());
 }
 
 /// Populate the given wires from bytes using little-endian packed 64-bit words.

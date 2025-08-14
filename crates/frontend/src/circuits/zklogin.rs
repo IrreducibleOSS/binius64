@@ -524,16 +524,6 @@ fn jwt_payload_check(
 	)
 }
 
-#[test]
-fn smoke() {
-	let mut builder = CircuitBuilder::new();
-	let config = Config::default();
-	println!("ZK Login circuit\nconfig: {config:#?}\n--");
-	let _zklogin = ZkLogin::new(&mut builder, config);
-	let circuit = builder.build();
-	crate::util::print_stat(&circuit);
-}
-
 #[cfg(test)]
 mod tests {
 
