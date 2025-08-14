@@ -81,7 +81,6 @@ impl KeccakPadding {
 
 		// number of blocks needed for the maximum sized message
 		let n_blocks = b.add_constant_64((max_len_bytes + 1).div_ceil(N_RATE_BYTES) as u64);
-		let n_blocks_usize = n_blocks.as_u32() as usize;
 
 		// constrain the message length claim to be explicitly within bounds
 		let len_check = b.icmp_ult(b.add_constant_64(max_len_bytes as u64), len_bytes); // len_bytes <= max_len_bytes
@@ -151,7 +150,7 @@ impl KeccakPadding {
 		let full_block = b.icmp_eq(r_block[0], zero);
 
 		// Check if final msg word is full (n_msg_bytes % 8 == 0)
-		let n_msg_bytes_mod_8 = b.band(n_msg_bytes, b.add_constant_64(7)); 
+		let n_msg_bytes_mod_8 = b.band(n_msg_bytes, b.add_constant_64(7));
 		let is_full_word = b.icmp_eq(n_msg_bytes_mod_8, zero);
 		let is_partial_word = b.bnot(is_full_word);
 
@@ -243,12 +242,12 @@ impl KeccakPadding {
 			}
 		}
 
-        // Next, compute the last block index based on len_bytes
-        // The 0x80 byte goes in the last word of the block containing the message end
-        // or the next block if the message ends exactly at a block boundary
-        //
-        // We need to compute (len_bytes - 1) / N_RATE_BYTES when len > 0
-        // But handle len == 0 case specially
+		// Next, compute the last block index based on len_bytes
+		// The 0x80 byte goes in the last word of the block containing the message end
+		// or the next block if the message ends exactly at a block boundary
+		//
+		// We need to compute (len_bytes - 1) / N_RATE_BYTES when len > 0
+		// But handle len == 0 case specially
 
 		// Check if len_bytes is zero
 		let is_zero_len = b.icmp_eq(n_msg_bytes, zero);
@@ -342,7 +341,7 @@ impl KeccakPadding {
 
 	// Embeds a collection of bytes into words
 	fn pack_bytes_into_words(&self, bytes: &[u8]) -> Vec<u64> {
-		let n_words = bytes.len().div_ceil(N_BYTES_PER_WORD); 
+		let n_words = bytes.len().div_ceil(N_BYTES_PER_WORD);
 		let mut words = Vec::with_capacity(n_words);
 		for i in 0..n_words {
 			let start = i * 8;
@@ -428,7 +427,8 @@ mod tests {
 			.map(|_| std::array::from_fn(|_| b.add_witness()))
 			.collect();
 
-		let padding = KeccakPadding::new(&b, input_msg_wires, len_wire, max_len, expected_padded_msg);
+		let padding =
+			KeccakPadding::new(&b, input_msg_wires, len_wire, max_len, expected_padded_msg);
 		let circuit = b.build();
 
 		// populate witness
