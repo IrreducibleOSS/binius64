@@ -1,6 +1,6 @@
 // Copyright 2025 Irreducible Inc.
 
-use std::{array, ops::Range};
+use std::ops::Range;
 
 use binius_core::word::Word;
 use binius_field::{
@@ -15,7 +15,7 @@ use binius_utils::rayon::prelude::*;
 use binius_verifier::{
 	config::{LOG_WORD_SIZE_BITS, WORD_SIZE_BITS, WORD_SIZE_BYTES},
 	protocols::{
-		shift::{BITAND_ARITY, INTMUL_ARITY, SHIFT_VARIANT_COUNT},
+		shift::SHIFT_VARIANT_COUNT,
 		sumcheck::{SumcheckOutput, common::RoundCoeffs},
 	},
 };
@@ -211,8 +211,7 @@ fn build_g_triplet<
 	bitand_operator_data: &PreparedOperatorData<F>,
 	intmul_operator_data: &PreparedOperatorData<F>,
 ) -> Result<[MultilinearTriplet<P>; 2], Error> {
-	const BITAND_ACC_SIZE: usize = BITAND_ARITY * SHIFT_VARIANT_COUNT * (1 << LOG_LEN);
-	const INTMUL_ACC_SIZE: usize = INTMUL_ARITY * SHIFT_VARIANT_COUNT * (1 << LOG_LEN);
+	const ACC_SIZE: usize = SHIFT_VARIANT_COUNT * (1 << LOG_LEN);
 
 	let (bitand_multilinears, intmul_multilinears) = words
 		.par_iter()
@@ -220,26 +219,28 @@ fn build_g_triplet<
 		.fold(
 			|| {
 				(
-					vec![F::ZERO; BITAND_ACC_SIZE].into_boxed_slice(),
-					vec![F::ZERO; INTMUL_ACC_SIZE].into_boxed_slice(),
+					vec![F::ZERO; ACC_SIZE].into_boxed_slice(),
+					vec![F::ZERO; ACC_SIZE].into_boxed_slice(),
 				)
 			},
 			|(mut bitand_multilinears, mut intmul_multilinears), (word, Range { start, end })| {
 				let keys = &key_collection.keys[*start as usize..*end as usize];
 
 				for key in keys {
-					let (tensor, multilinears) = match key.operation {
-						Operation::BitwiseAnd => {
-							(&bitand_operator_data.r_x_prime_tensor, &mut bitand_multilinears)
-						}
-						Operation::IntegerMul => {
-							(&intmul_operator_data.r_x_prime_tensor, &mut intmul_multilinears)
-						}
+					let (operator_data, accumulators) = match key.operation {
+						Operation::BitwiseAnd => (bitand_operator_data, &mut bitand_multilinears),
+						Operation::IntegerMul => (intmul_operator_data, &mut intmul_multilinears),
 					};
 
-					let acc = key
-						.accumulate(&key_collection.constraint_indices, tensor.as_ref())
-						.to_underlier();
+					let tensor_acc = key.accumulate(
+						&key_collection.constraint_indices,
+						operator_data.r_x_prime_tensor.as_ref(),
+					);
+					let operand_challenge = operator_data.lambda_powers[key.operand_index as usize];
+
+					let acc = tensor_acc * operand_challenge;
+
+					let acc_underlier = acc.to_underlier();
 
 					// The following loop is an optimized version of the following
 					// for i in 0..WORD_SIZE_BITS {
@@ -251,7 +252,7 @@ fn build_g_triplet<
 					let word_bytes = word.0.to_le_bytes();
 					let masks_map = F::Underlier::BYTE_MASK_MAP;
 					for (&byte, values) in word_bytes.iter().zip(
-						multilinears[start..start + WORD_SIZE_BITS]
+						accumulators[start..start + WORD_SIZE_BITS]
 							.chunks_exact_mut(WORD_SIZE_BYTES),
 					) {
 						let masks = &masks_map[byte as usize];
@@ -261,7 +262,7 @@ fn build_g_triplet<
 							// - `bit_index` is always in bounds because we iterate over 0..8
 							unsafe {
 								*values.get_unchecked_mut(bit_index).to_underlier_ref_mut() ^=
-									*masks.get_unchecked(bit_index) & acc;
+									*masks.get_unchecked(bit_index) & acc_underlier;
 							}
 						}
 					}
@@ -273,8 +274,8 @@ fn build_g_triplet<
 		.reduce(
 			|| {
 				(
-					vec![F::ZERO; BITAND_ACC_SIZE].into_boxed_slice(),
-					vec![F::ZERO; INTMUL_ACC_SIZE].into_boxed_slice(),
+					vec![F::ZERO; ACC_SIZE].into_boxed_slice(),
+					vec![F::ZERO; ACC_SIZE].into_boxed_slice(),
 				)
 			},
 			|(mut acc_bitand, mut acc_intmul), (local_bitand, local_intmul)| {
@@ -288,16 +289,8 @@ fn build_g_triplet<
 			},
 		);
 
-	let bitand_triplet = build_multilinear_triplet_for_operator(
-		&bitand_multilinears,
-		bitand_operator_data,
-		BITAND_ARITY,
-	)?;
-	let intmul_triplet = build_multilinear_triplet_for_operator(
-		&intmul_multilinears,
-		intmul_operator_data,
-		INTMUL_ARITY,
-	)?;
+	let bitand_triplet = build_multilinear_triplet_for_operator(&bitand_multilinears)?;
+	let intmul_triplet = build_multilinear_triplet_for_operator(&intmul_multilinears)?;
 
 	Ok([bitand_triplet, intmul_triplet])
 }
@@ -310,47 +303,16 @@ fn build_g_triplet<
 #[instrument(skip_all, name = "build_multilinear_triplet_for_operator")]
 fn build_multilinear_triplet_for_operator<F: Field, P: PackedField<Scalar = F>>(
 	multilinears: &[F],
-	operator_data: &PreparedOperatorData<F>,
-	arity: usize,
 ) -> Result<MultilinearTriplet<P>, Error> {
-	let lambda_powers = operator_data
-		.lambda_powers
-		.iter()
-		.copied()
-		.map(P::broadcast)
-		.collect::<Vec<_>>();
+	let [sll_chunk, srl_chunk, sra_chunk] = multilinears
+		.chunks(1 << LOG_LEN)
+		.collect::<Vec<_>>()
+		.try_into()
+		.expect("chunk has SHIFT_VARIANT_COUNT parts of size 1 << LOG_LEN");
 
-	let [mut sll_buffers, mut srl_buffers, mut sra_buffers] =
-		array::from_fn(|_| Vec::with_capacity(arity));
+	let sll = FieldBuffer::from_values(sll_chunk)?;
+	let srl = FieldBuffer::from_values(srl_chunk)?;
+	let sra = FieldBuffer::from_values(sra_chunk)?;
 
-	for chunk in multilinears
-		.chunks(SHIFT_VARIANT_COUNT * (1 << LOG_LEN))
-		.take(arity)
-	{
-		let [sll_chunk, srl_chunk, sra_chunk] = chunk
-			.chunks(1 << LOG_LEN)
-			.collect::<Vec<_>>()
-			.try_into()
-			.expect("chunk has SHIFT_VARIANT_COUNT parts of size 1 << LOG_LEN");
-
-		sll_buffers.push(FieldBuffer::from_values(sll_chunk)?);
-		srl_buffers.push(FieldBuffer::from_values(srl_chunk)?);
-		sra_buffers.push(FieldBuffer::from_values(sra_chunk)?);
-	}
-
-	let combine = |buffers: &[FieldBuffer<P>]| {
-		izip!(lambda_powers.iter(), buffers).fold(
-			FieldBuffer::zeros(LOG_LEN),
-			|mut acc, (power, buffer)| {
-				izip!(acc.as_mut(), buffer.as_ref()).for_each(|(res, buf)| *res += *power * *buf);
-				acc
-			},
-		)
-	};
-
-	Ok(MultilinearTriplet {
-		sll: combine(&sll_buffers),
-		srl: combine(&srl_buffers),
-		sra: combine(&sra_buffers),
-	})
+	Ok(MultilinearTriplet { sll, srl, sra })
 }
