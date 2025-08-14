@@ -6,5 +6,5 @@ rustflags = ['--cfg', 'getrandom_backend="wasm_js"']
 
 [alias]
 # How much gates, constraints and committed values is in the zklogin circuit?
-zhm = "run -p zkl -- stat"
-zc = "run -p zkl -- composition"
+zhm = "run --example zklogin -- stat"
+zc = "run --example zklogin -- composition"
