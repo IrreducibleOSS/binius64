@@ -77,7 +77,7 @@ These implementations may use:
 
 ### Different Representations of the Same Field
 
-The same mathematical field GF(2^128) can have different representations: These 128b fields are **isomorphic** to `BinaryField128b` (same mathematical structure) but use different computational representations and algorithms.
+The same mathematical field GF(2^128) can have different representations: These different representations of binary fields are **isomorphic** to each other (same mathematical structure) but use different computational representations and algorithms.
 
 
 ```rust
