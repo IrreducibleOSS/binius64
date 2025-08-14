@@ -2,7 +2,6 @@
 
 use std::{array, mem::MaybeUninit};
 
-use binius_transcript::BufMut;
 use binius_utils::{
 	SerializeBytes,
 	rayon::{
@@ -62,10 +61,6 @@ pub trait MultiDigest<const N: usize>: Clone {
 	/// # Panics
 	/// Panics if data contains slices of different lengths.
 	fn digest(data: [&[u8]; N], out: &mut [MaybeUninit<Output<Self::Digest>>; N]);
-}
-
-pub trait Serializable {
-	fn serialize(self, buffer: impl BufMut);
 }
 
 pub trait ParallelDigest: Send {
