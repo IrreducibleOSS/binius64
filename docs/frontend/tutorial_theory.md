@@ -59,7 +59,7 @@ But how do we handle bit manipulation within words? This is where shifted value 
 
 ### Why Circuits Work Differently in ZK
 
-In traditional circuit design, you build gates that compute outputs from inputs. But zero-knowledge circuits have a fundamentally different structure because of their purpose: proving you know something without revealing what you know. For ZK-SNARKs such as Binius64, the problem needs to be transformed into a circuit satisifiability (SAT) problem.
+In traditional circuit design, you build gates that compute outputs from inputs. But zero-knowledge circuits have a fundamentally different structure because of their purpose: proving you know something without revealing what you know. For ZK-SNARKs such as Binius64, the problem needs to be transformed into a circuit satisfiability (SAT) problem.
 
 This leads to three distinct phases:
 
