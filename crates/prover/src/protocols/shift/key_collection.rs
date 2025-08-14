@@ -1,6 +1,6 @@
 // Copyright 2025 Irreducible Inc.
 
-use std::ops::Range;
+use std::{iter, mem, ops::Range};
 
 use binius_core::{
 	ShiftVariant,
@@ -80,27 +80,56 @@ pub struct Key {
 }
 
 impl Key {
-	/// Given a tensor of evaluations, sums the values at positions corresponding
-	/// to all constraints that use this shift variant and amount.
-	/// Requires the `constraint_indices` slice from the `KeyCollection`.
+	/// Accumulates the partial evaluations of an operation matrix for the key, partitioned by
+	/// operand index.
+	///
+	/// A [`Key`] references the operation constraints where one witness word is an operand. This
+	/// accumulates the partial evaluation of the operation matrix for this key.
+	///
+	/// ## Returns
+	/// An iterator of tuples, where the first is the operand ID in the operation and the second is
+	/// the accumulated value of the partial evaluation tensor.
+	#[inline]
+	pub fn accumulate_by_operand<'a, F: Field>(
+		&'a self,
+		constraint_indices: &'a [ConstraintIndex],
+		operator_data: &'a PreparedOperatorData<F>,
+	) -> impl Iterator<Item = (usize, F)> + 'a {
+		let Range { start, end } = self.range;
+
+		let mut iter = constraint_indices[start as usize..end as usize].iter();
+		let mut acc = F::ZERO;
+		let mut maybe_current = iter.next();
+		iter::from_fn(move || {
+			let current = maybe_current?;
+
+			acc += operator_data.r_x_prime_tensor.as_ref()[current.constraint_index as usize];
+			for next in &mut iter {
+				maybe_current = Some(next);
+				if next.operand_index != current.operand_index {
+					let ret = mem::take(&mut acc);
+					return Some((current.operand_index as usize, ret));
+				}
+				acc += operator_data.r_x_prime_tensor.as_ref()[next.constraint_index as usize];
+			}
+
+			maybe_current = None;
+			Some((current.operand_index as usize, mem::take(&mut acc)))
+		})
+	}
+
+	/// Accumulates the partial evaluation of an operation matrix for the key.
+	///
+	/// A [`Key`] references the operation constraints where one witness word is an operand. This
+	/// accumulates the partial evaluation of the operation matrix for this key.
 	#[inline]
 	pub fn accumulate<F: Field>(
 		&self,
 		constraint_indices: &[ConstraintIndex],
 		operator_data: &PreparedOperatorData<F>,
 	) -> F {
-		let Range { start, end } = self.range;
-		constraint_indices[start as usize..end as usize]
-			.iter()
-			.map(
-				|ConstraintIndex {
-				     operand_index,
-				     constraint_index,
-				 }| {
-					operator_data.r_x_prime_tensor.as_ref()[*constraint_index as usize]
-						* operator_data.lambda_powers[*operand_index as usize]
-				},
-			)
+		self.accumulate_by_operand(constraint_indices, operator_data)
+			.map(|(operand_index, acc)| acc * operator_data.lambda_powers[operand_index])
 			.sum()
 	}
 }
@@ -249,12 +278,21 @@ pub fn build_key_collection(cs: &ConstraintSystem) -> KeyCollection {
 	let mut constraint_indices = Vec::new();
 
 	for builder_key in builder_key_lists.into_iter().flatten() {
+		let BuilderKey {
+			id,
+			operation,
+			constraint_indices: mut builder_constraint_indices,
+		} = builder_key;
+
+		// Sort constraint indices by operand index so we can save work in [`Key::accumulate`].
+		builder_constraint_indices.sort_by_key(|constraint_index| constraint_index.operand_index);
+
 		let start = constraint_indices.len() as u32;
-		constraint_indices.extend(builder_key.constraint_indices);
+		constraint_indices.extend(builder_constraint_indices);
 		let end = constraint_indices.len() as u32;
 		keys.push(Key {
-			id: builder_key.id,
-			operation: builder_key.operation,
+			id,
+			operation,
 			range: start..end,
 		});
 	}
