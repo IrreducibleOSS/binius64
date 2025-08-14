@@ -250,7 +250,7 @@ carry[i] = (a[i] ∧ b[i]) ∨ (carry[i-1] ∧ (a[i] ⊕ b[i]))
 
 The prover computed `z = x + y` outside the circuit. The circuit only verifies it's correct.
 
-## Part 6: The Constraint System
+## Part 6: The Binius64 Constraint System
 
 ### AND Constraints
 
