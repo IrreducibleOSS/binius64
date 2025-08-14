@@ -1,5 +1,6 @@
 pub mod permutation;
 pub mod reference;
+pub mod padding;
 
 use binius_core::word::Word;
 use permutation::Permutation;
