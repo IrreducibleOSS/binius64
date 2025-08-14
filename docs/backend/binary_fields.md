@@ -33,11 +33,14 @@ Binius64 primarily uses three field types:
 For all binary fields, addition is implemented as XOR:
 
 ```rust
+
 impl Add for BinaryField128bGhash {
+    type Output = Self;
     fn add(self, other: Self) -> Self {
         Self(self.0 ^ other.0)  // Just XOR the u128 values
     }
 }
+
 ```
 
 **Why Addition is Simple XOR**:
@@ -81,12 +84,10 @@ The same mathematical field GF(2^128) can have different representations: These 
 
 
 ```rust
-BinaryField128b        // Tower field representation
 BinaryField128bGhash   // GHASH polynomial representation
 BinaryField128bPolyval // POLYVAL polynomial representation
 
 // Different irreducible polynomials:
-Tower:    x^128 + x^7 + x^2 + x + 1
 GHASH:    x^128 + x^7 + x^2 + x + 1
 POLYVAL:  x^128 + x^127 + x^126 + x^121 + 1
 ```
@@ -167,98 +168,4 @@ trait WithUnderlier {
 - Storage: Exactly powers of 2 (8, 16, 32, 64, 128 bits)
 - Hardware mapping: Excellent - XOR is a native CPU instruction, some CPUs have carryless multiply
 
-### Binary Tower Field Construction
-
-The original Binius framework (available at https://github.com/IrreducibleOSS/binius) uses a recursive tower field construction to build binary extension fields of increasing size. While Binius64 primarily uses B1, GHASH, and AES fields, understanding the tower construction provides valuable mathematical context.
-
-**Binius64's Fields**:
-
-Binius64 focuses on the specific fields needed for its protocol:
-- B1 for multilinear polynomials (the core witness representation)
-- 128-bit fields for challenges and cryptographic operations
-- GHASH and AES fields leverage existing hardware acceleration
-
-**Tower Construction**:
-
-### The Type Mapping
-
-```rust
-// Field Type          →  Underlier Type
-BinaryField1b         →  U1 (SmallU<1>, 1 bit in u8)
-BinaryField2b         →  U2 (SmallU<2>, 2 bits in u8)
-BinaryField4b         →  U4 (SmallU<4>, 4 bits in u8)
-BinaryField8b         →  u8
-BinaryField16b        →  u16
-BinaryField32b        →  u32
-BinaryField64b        →  u64
-BinaryField128b       →  u128
-
-// For packed/SIMD types
-PackedBinaryField8x16b → __m128i (x86) or uint8x16_t (ARM) or [u16; 8] (portable)
-PackedBinaryField4x32b → __m128i (x86) or uint8x16_t (ARM) or u128 (portable)
-// etc.
-```
-
-Binary tower fields are built recursively through degree-2 extensions:
-- Start with GF(2) = {0, 1}
-- Each extension doubles the field size
-- Build sequence: GF(2) → GF(4) → GF(8) → ... → GF(2^128)
-
-```
-BinaryField2b  = GF(2²)  = GF(2)[X]/(X² + X + 1)
-BinaryField4b  = GF(2⁴)  = BinaryField2b[Y]/(Y² + Y + α)
-BinaryField8b  = GF(2⁸)  = BinaryField4b[Z]/(Z² + Z + αY)
-...continuing recursively...
-```
-
-**Recursive Multiplication Algorithm**:
-
-The tower structure enables elegant recursive multiplication using Karatsuba's algorithm:
-
-```rust
-// Multiplication in GF(2^(2n)) built from GF(2^n)
-// Elements: a = a₀ + a₁·X, b = b₀ + b₁·X
-fn mul_tower(a₀, a₁, b₀, b₁) -> (c₀, c₁) {
-    let a₀b₀ = mul_base(a₀, b₀);
-    let a₁b₁ = mul_base(a₁, b₁);
-    let a₀a₁ = add(a₀, a₁);
-    let b₀b₁ = add(b₀, b₁);
-    let middle = mul_base(a₀a₁, b₀b₁);
-
-    // Karatsuba combination with tower-specific reduction
-    c₀ = add(a₀b₀, mul_base(a₁b₁, β));  // β is field-specific
-    c₁ = add(middle, xor(a₀b₀, a₁b₁));
-}
-```
-
-**General Tower Construction Advantages**:
-
-*Monolithic field construction*:
-- Single multiplication algorithm for the entire field
-- Often requires specialized assembly or intrinsics
-- Hard to optimize across different field sizes
-
-*Tower construction (Binius64)*:
-- Recursive decomposition enables size-specific optimizations
-- Small fields (2-4 bits): Lookup tables
-- Medium fields (8-16 bits): SIMD shuffle instructions
-- Large fields (64-128 bits): Karatsuba with hardware carryless multiply
-- Natural code reuse through recursion
-
-**Complexity Comparison**:
-
-*Prime field multiplication (256-bit)*:
-- ~16 64-bit multiplications for product
-- Complex reduction (Barrett, Montgomery, etc.)
-- Total: ~20-30 multiplication-equivalent operations
-
-
-*Binary tower field multiplication (128-bit)*:
-- Karatsuba reduces to 3 multiplications at each level
-- Multiple levels of recursion for efficient implementation
-- Optimized with bit-level operations at the lowest level
-
-*GHASH/POLYVAL implementations*:
-- With SIMD/carryless multiply: ~10 multiplication-equivalent operations
-- XOR is much cheaper than integer addition
-
+For the Binius tower construction (which is not used in Binius64), see section 2.3 of [Succinct Arguments over Towers of Binary Fields](https://eprint.iacr.org/2023/1784).
