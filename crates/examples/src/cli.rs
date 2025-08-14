@@ -1,6 +1,6 @@
 use anyhow::Result;
 use binius_frontend::compiler::CircuitBuilder;
-use clap::{Arg, Args, Command, FromArgMatches};
+use clap::{Arg, Args, Command, FromArgMatches, Subcommand};
 
 use crate::{ExampleCircuit, prove_verify, setup};
 
@@ -10,6 +10,13 @@ use crate::{ExampleCircuit, prove_verify, setup};
 /// 1. Implement the `ExampleCircuit` trait
 /// 2. Define their `Params` and `Instance` structs with `#[derive(Args)]`
 /// 3. Call `Cli::new("name").run()` in their main function
+///
+/// The CLI supports multiple subcommands:
+/// - `prove` (default): Generate and verify a proof
+/// - `stat`: Display circuit statistics
+/// - `composition`: Output circuit composition in JSON format
+/// - `check-snapshot`: Verify circuit statistics against a snapshot
+/// - `bless-snapshot`: Update the snapshot with current statistics
 ///
 /// # Example
 ///
@@ -27,6 +34,54 @@ pub struct Cli<E: ExampleCircuit> {
 	_phantom: std::marker::PhantomData<E>,
 }
 
+/// Subcommands available for circuit examples
+#[derive(Subcommand, Clone)]
+enum Commands {
+	/// Generate and verify a proof (default)
+	Prove {
+		/// Log of the inverse rate for the proof system
+		#[arg(short = 'l', long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..))]
+		log_inv_rate: u32,
+
+		#[command(flatten)]
+		params: CommandArgs,
+
+		#[command(flatten)]
+		instance: CommandArgs,
+	},
+
+	/// Display circuit statistics
+	Stat {
+		#[command(flatten)]
+		params: CommandArgs,
+	},
+
+	/// Output circuit composition in JSON format
+	Composition {
+		#[command(flatten)]
+		params: CommandArgs,
+	},
+
+	/// Verify circuit statistics against a snapshot
+	CheckSnapshot {
+		#[command(flatten)]
+		params: CommandArgs,
+	},
+
+	/// Update the snapshot with current statistics
+	BlessSnapshot {
+		#[command(flatten)]
+		params: CommandArgs,
+	},
+}
+
+/// Wrapper for dynamic command arguments
+#[derive(Args, Clone)]
+struct CommandArgs {
+	#[arg(skip)]
+	_phantom: (),
+}
+
 impl<E: ExampleCircuit> Cli<E>
 where
 	E::Params: Args,
@@ -36,10 +91,26 @@ where
 	///
 	/// The `name` parameter sets the command name (shown in help and usage).
 	pub fn new(name: &'static str) -> Self {
-		let mut command = Command::new(name);
+		let command = Command::new(name)
+			.subcommand_required(false)
+			.arg_required_else_help(false);
 
-		// Add common arguments
-		command = command.arg(
+		// Build subcommands
+		let prove_cmd = Self::build_prove_subcommand();
+		let stat_cmd = Self::build_stat_subcommand();
+		let composition_cmd = Self::build_composition_subcommand();
+		let check_snapshot_cmd = Self::build_check_snapshot_subcommand();
+		let bless_snapshot_cmd = Self::build_bless_snapshot_subcommand();
+
+		let command = command
+			.subcommand(prove_cmd)
+			.subcommand(stat_cmd)
+			.subcommand(composition_cmd)
+			.subcommand(check_snapshot_cmd)
+			.subcommand(bless_snapshot_cmd);
+
+		// Also add top-level args for default prove behavior
+		let command = command.arg(
 			Arg::new("log_inv_rate")
 				.short('l')
 				.long("log-inv-rate")
@@ -49,16 +120,53 @@ where
 				.value_parser(clap::value_parser!(u32).range(1..)),
 		);
 
-		// Augment with Params arguments
-		command = E::Params::augment_args(command);
-
-		// Augment with Instance arguments
-		command = E::Instance::augment_args(command);
+		// Augment with Params arguments at top level for default behavior
+		let command = E::Params::augment_args(command);
+		let command = E::Instance::augment_args(command);
 
 		Self {
 			command,
 			_phantom: std::marker::PhantomData,
 		}
+	}
+
+	fn build_prove_subcommand() -> Command {
+		let mut cmd = Command::new("prove")
+			.about("Generate and verify a proof")
+			.arg(
+				Arg::new("log_inv_rate")
+					.short('l')
+					.long("log-inv-rate")
+					.value_name("RATE")
+					.help("Log of the inverse rate for the proof system")
+					.default_value("1")
+					.value_parser(clap::value_parser!(u32).range(1..)),
+			);
+		cmd = E::Params::augment_args(cmd);
+		cmd = E::Instance::augment_args(cmd);
+		cmd
+	}
+
+	fn build_stat_subcommand() -> Command {
+		let cmd = Command::new("stat").about("Display circuit statistics");
+		E::Params::augment_args(cmd)
+	}
+
+	fn build_composition_subcommand() -> Command {
+		let cmd = Command::new("composition").about("Output circuit composition in JSON format");
+		E::Params::augment_args(cmd)
+	}
+
+	fn build_check_snapshot_subcommand() -> Command {
+		let cmd =
+			Command::new("check-snapshot").about("Verify circuit statistics against a snapshot");
+		E::Params::augment_args(cmd)
+	}
+
+	fn build_bless_snapshot_subcommand() -> Command {
+		let cmd =
+			Command::new("bless-snapshot").about("Update the snapshot with current statistics");
+		E::Params::augment_args(cmd)
 	}
 
 	/// Set the about/description text for the command.
@@ -91,6 +199,22 @@ where
 
 	/// Run the circuit with parsed ArgMatches.
 	fn run_with_matches(matches: clap::ArgMatches) -> Result<()> {
+		// Check if a subcommand was used
+		match matches.subcommand() {
+			Some(("prove", sub_matches)) => Self::run_prove(sub_matches.clone()),
+			Some(("stat", sub_matches)) => Self::run_stat(sub_matches.clone()),
+			Some(("composition", sub_matches)) => Self::run_composition(sub_matches.clone()),
+			Some(("check-snapshot", sub_matches)) => Self::run_check_snapshot(sub_matches.clone()),
+			Some(("bless-snapshot", sub_matches)) => Self::run_bless_snapshot(sub_matches.clone()),
+			Some((cmd, _)) => anyhow::bail!("Unknown subcommand: {}", cmd),
+			None => {
+				// No subcommand - default to prove behavior for backward compatibility
+				Self::run_prove(matches)
+			}
+		}
+	}
+
+	fn run_prove(matches: clap::ArgMatches) -> Result<()> {
 		// Extract common arguments
 		let log_inv_rate = *matches
 			.get_one::<u32>("log_inv_rate")
@@ -125,6 +249,49 @@ where
 		prove_verify(&verifier, &prover, witness)?;
 
 		Ok(())
+	}
+
+	fn run_stat(matches: clap::ArgMatches) -> Result<()> {
+		// Parse Params from matches
+		let params = E::Params::from_arg_matches(&matches)?;
+
+		// Build the circuit
+		let mut builder = CircuitBuilder::new();
+		let _example = E::build(params, &mut builder)?;
+		let circuit = builder.build();
+
+		// Print statistics
+		use binius_frontend::util::CircuitStat;
+		let stat = CircuitStat::collect(&circuit);
+		print!("{}", stat);
+
+		Ok(())
+	}
+
+	fn run_composition(matches: clap::ArgMatches) -> Result<()> {
+		// Parse Params from matches
+		let params = E::Params::from_arg_matches(&matches)?;
+
+		// Build the circuit
+		let mut builder = CircuitBuilder::new();
+		let _example = E::build(params, &mut builder)?;
+		let circuit = builder.build();
+
+		// Print composition
+		let dump = circuit.simple_json_dump();
+		println!("{}", dump);
+
+		Ok(())
+	}
+
+	fn run_check_snapshot(_matches: clap::ArgMatches) -> Result<()> {
+		// TODO: Implement snapshot checking
+		anyhow::bail!("check-snapshot subcommand not yet implemented")
+	}
+
+	fn run_bless_snapshot(_matches: clap::ArgMatches) -> Result<()> {
+		// TODO: Implement snapshot blessing
+		anyhow::bail!("bless-snapshot subcommand not yet implemented")
 	}
 
 	/// Parse arguments and run the circuit example.
