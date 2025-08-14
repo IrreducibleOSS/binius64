@@ -245,7 +245,7 @@ carry[i] = (a[i] ∧ b[i]) ∨ (carry[i-1] ∧ (a[i] ⊕ b[i]))
 ```
 // Prover provides x, y, and z
 // Circuit just checks: does x + y = z?
-// In Binius64: single constraint using iadd_cin_cout
+// In Binius64: implemented with 2 AND constraints via iadd_cin_cout
 ```
 
 The prover computed `z = x + y` outside the circuit. The circuit only verifies it's correct.
