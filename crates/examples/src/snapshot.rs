@@ -1,7 +1,7 @@
 use std::{fs, path::PathBuf};
 
 use anyhow::{Context, Result};
-use binius_frontend::{compiler::circuit::Circuit, util::CircuitStat};
+use binius_frontend::{compiler::circuit::Circuit, stat::CircuitStat};
 
 /// Get the snapshot file path for a circuit example
 pub fn snapshot_path(circuit_name: &str) -> PathBuf {

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use binius_frontend::compiler::CircuitBuilder;
+use binius_frontend::{compiler::CircuitBuilder, stat::CircuitStat};
 use clap::{Arg, Args, Command, FromArgMatches, Subcommand};
 
 use crate::{ExampleCircuit, prove_verify, setup};
@@ -267,7 +267,6 @@ where
 		let circuit = builder.build();
 
 		// Print statistics
-		use binius_frontend::util::CircuitStat;
 		let stat = CircuitStat::collect(&circuit);
 		print!("{}", stat);
 
