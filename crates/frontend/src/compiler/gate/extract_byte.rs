@@ -19,10 +19,9 @@
 use binius_core::word::Word;
 
 use crate::compiler::{
-	circuit,
 	constraint_builder::{ConstraintBuilder, empty, srl, xor2},
 	gate::opcode::OpcodeShape,
-	gate_graph::{Gate, GateData, GateParam},
+	gate_graph::{Gate, GateData, GateParam, Wire},
 };
 
 pub fn shape() -> OpcodeShape {
@@ -31,6 +30,7 @@ pub fn shape() -> OpcodeShape {
 		n_in: 1,
 		n_out: 1,
 		n_internal: 0,
+		n_scratch: 0,
 		n_imm: 1,
 	}
 }
@@ -64,7 +64,12 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 	builder.and().a(*z).b(*mask_high56).c(empty()).build();
 }
 
-pub fn evaluate(_gate: Gate, data: &GateData, w: &mut circuit::WitnessFiller) {
+pub fn emit_eval_bytecode(
+	_gate: Gate,
+	data: &GateData,
+	builder: &mut crate::compiler::eval_form::BytecodeBuilder,
+	wire_to_reg: impl Fn(Wire) -> u32,
+) {
 	let GateParam {
 		inputs,
 		outputs,
@@ -75,8 +80,7 @@ pub fn evaluate(_gate: Gate, data: &GateData, w: &mut circuit::WitnessFiller) {
 	let [z] = outputs else { unreachable!() };
 	let [j] = imm else { unreachable!() };
 
-	let word_val = w[*word];
-	// Extract byte j from the word (shift right by 8*j bits and mask to get the byte)
-	let byte_val = (word_val.as_u64() >> (8 * *j)) & 0xFF;
-	w[*z] = Word::from_u64(byte_val);
+	// Extract byte j: shift right by 8*j bits and mask to 8 bits
+	builder.emit_slr(wire_to_reg(*z), wire_to_reg(*word), (8 * *j) as u8);
+	builder.emit_mask_low(wire_to_reg(*z), wire_to_reg(*z), 8);
 }

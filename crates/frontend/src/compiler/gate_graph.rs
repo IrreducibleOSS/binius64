@@ -43,6 +43,8 @@ pub enum WireKind {
 	Witness,
 	/// An internal wire is a wire created inside a gate.
 	Internal,
+	/// A scratch wire is a temporary wire used only during evaluation.
+	Scratch,
 }
 
 #[derive(Copy, Clone)]
@@ -62,6 +64,7 @@ pub struct GateParam<'a> {
 	pub inputs: &'a [Wire],
 	pub outputs: &'a [Wire],
 	pub internal: &'a [Wire],
+	pub scratch: &'a [Wire],
 	pub imm: &'a [u32],
 }
 
@@ -79,6 +82,7 @@ pub struct GateData {
 	/// - Inputs
 	/// - Outputs
 	/// - Internal
+	/// - Scratch
 	///
 	/// The number of input and output wires is specified by the opcode's shape.
 	pub wires: Vec<Wire>,
@@ -110,11 +114,14 @@ impl GateData {
 		let end_output = start_output + shape.n_out;
 		let start_internal = end_output;
 		let end_internal = start_internal + shape.n_internal;
+		let start_scratch = end_internal;
+		let end_scratch = start_scratch + shape.n_scratch;
 		GateParam {
 			constants: &self.wires[start_const..end_const],
 			inputs: &self.wires[start_input..end_input],
 			outputs: &self.wires[start_output..end_output],
 			internal: &self.wires[start_internal..end_internal],
+			scratch: &self.wires[start_scratch..end_scratch],
 			imm: &self.immediates,
 		}
 	}
@@ -181,6 +188,13 @@ impl GateGraph {
 		})
 	}
 
+	pub fn add_scratch(&mut self) -> Wire {
+		// Scratch wires are temporary storage, not part of witness
+		self.wires.push(WireData {
+			kind: WireKind::Scratch,
+		})
+	}
+
 	pub fn add_constant(&mut self, word: Word) -> Wire {
 		if let Some(wire) = self.const_pool.get(word) {
 			return wire;
@@ -229,8 +243,9 @@ impl GateGraph {
 		immediates: &[u32],
 	) -> Gate {
 		let shape = opcode.shape(dimensions);
-		let mut wires: Vec<Wire> =
-			Vec::with_capacity(shape.const_in.len() + shape.n_in + shape.n_out + shape.n_internal);
+		let mut wires: Vec<Wire> = Vec::with_capacity(
+			shape.const_in.len() + shape.n_in + shape.n_out + shape.n_internal + shape.n_scratch,
+		);
 		for c in shape.const_in {
 			wires.push(self.add_constant(*c));
 		}
@@ -238,6 +253,9 @@ impl GateGraph {
 		wires.extend(outputs);
 		for _ in 0..shape.n_internal {
 			wires.push(self.add_internal());
+		}
+		for _ in 0..shape.n_scratch {
+			wires.push(self.add_scratch());
 		}
 		let data = GateData {
 			opcode,

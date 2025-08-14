@@ -14,10 +14,9 @@
 use binius_core::word::Word;
 
 use crate::compiler::{
-	circuit,
 	constraint_builder::{ConstraintBuilder, srl},
 	gate::opcode::OpcodeShape,
-	gate_graph::{Gate, GateData, GateParam},
+	gate_graph::{Gate, GateData, GateParam, Wire},
 };
 
 pub fn shape() -> OpcodeShape {
@@ -26,6 +25,7 @@ pub fn shape() -> OpcodeShape {
 		n_in: 1,
 		n_out: 1,
 		n_internal: 0,
+		n_scratch: 0,
 		n_imm: 1,
 	}
 }
@@ -48,7 +48,12 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 	builder.and().a(srl(*x, *n)).b(*mask32).c(*z).build();
 }
 
-pub fn evaluate(_gate: Gate, data: &GateData, w: &mut circuit::WitnessFiller) {
+pub fn emit_eval_bytecode(
+	_gate: Gate,
+	data: &GateData,
+	builder: &mut crate::compiler::eval_form::BytecodeBuilder,
+	wire_to_reg: impl Fn(Wire) -> u32,
+) {
 	let GateParam {
 		inputs,
 		outputs,
@@ -58,7 +63,5 @@ pub fn evaluate(_gate: Gate, data: &GateData, w: &mut circuit::WitnessFiller) {
 	let [x] = inputs else { unreachable!() };
 	let [z] = outputs else { unreachable!() };
 	let [n] = imm else { unreachable!() };
-
-	let result = w[*x].shr_32(*n);
-	w[*z] = result;
+	builder.emit_shr32(wire_to_reg(*z), wire_to_reg(*x), *n as u8);
 }

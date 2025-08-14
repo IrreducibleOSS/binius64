@@ -29,10 +29,9 @@
 use binius_core::word::Word;
 
 use crate::compiler::{
-	circuit,
 	constraint_builder::{ConstraintBuilder, sll, srl, xor3, xor4},
 	gate::opcode::OpcodeShape,
-	gate_graph::{Gate, GateData, GateParam},
+	gate_graph::{Gate, GateData, GateParam, Wire},
 };
 
 pub fn shape() -> OpcodeShape {
@@ -41,6 +40,7 @@ pub fn shape() -> OpcodeShape {
 		n_in: 3,
 		n_out: 2,
 		n_internal: 1,
+		n_scratch: 0,
 		n_imm: 0,
 	}
 }
@@ -80,18 +80,22 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 		.build();
 }
 
-pub fn evaluate(_gate: Gate, data: &GateData, w: &mut circuit::WitnessFiller) {
+pub fn emit_eval_bytecode(
+	_gate: Gate,
+	data: &GateData,
+	builder: &mut crate::compiler::eval_form::BytecodeBuilder,
+	wire_to_reg: impl Fn(Wire) -> u32,
+) {
 	let GateParam {
 		inputs, outputs, ..
 	} = data.gate_param();
 	let [a, b, cin] = inputs else { unreachable!() };
 	let [sum, cout] = outputs else { unreachable!() };
-
-	let a_val = w[*a];
-	let b_val = w[*b];
-	let carry_bit = w[*cin] >> 63;
-	let (sum_val, carry_out) = a_val.iadd_cin_cout(b_val, carry_bit);
-
-	w[*sum] = sum_val;
-	w[*cout] = carry_out;
+	builder.emit_iadd_cin_cout(
+		wire_to_reg(*sum),
+		wire_to_reg(*cout),
+		wire_to_reg(*a),
+		wire_to_reg(*b),
+		wire_to_reg(*cin),
+	);
 }

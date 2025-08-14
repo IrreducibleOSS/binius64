@@ -13,10 +13,9 @@
 //! - `x ∧ y = x ⊕ y ⊕ z`
 
 use crate::compiler::{
-	circuit,
 	constraint_builder::{ConstraintBuilder, xor3},
 	gate::opcode::OpcodeShape,
-	gate_graph::{Gate, GateData, GateParam},
+	gate_graph::{Gate, GateData, GateParam, Wire},
 };
 
 pub fn shape() -> OpcodeShape {
@@ -25,6 +24,7 @@ pub fn shape() -> OpcodeShape {
 		n_in: 2,
 		n_out: 1,
 		n_internal: 0,
+		n_scratch: 0,
 		n_imm: 0,
 	}
 }
@@ -42,12 +42,17 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 	builder.and().a(*x).b(*y).c(xor3(*x, *y, *z)).build();
 }
 
-pub fn evaluate(_gate: Gate, data: &GateData, w: &mut circuit::WitnessFiller) {
+pub fn emit_eval_bytecode(
+	_gate: Gate,
+	data: &GateData,
+	builder: &mut crate::compiler::eval_form::BytecodeBuilder,
+	wire_to_reg: impl Fn(Wire) -> u32,
+) {
 	let GateParam {
 		inputs, outputs, ..
 	} = data.gate_param();
 	let [x, y] = inputs else { unreachable!() };
 	let [z] = outputs else { unreachable!() };
 
-	w[*z] = w[*x] | w[*y];
+	builder.emit_bor(wire_to_reg(*z), wire_to_reg(*x), wire_to_reg(*y));
 }

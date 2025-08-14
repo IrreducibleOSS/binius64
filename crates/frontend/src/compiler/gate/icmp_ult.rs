@@ -23,18 +23,18 @@
 use binius_core::word::Word;
 
 use crate::compiler::{
-	circuit,
 	constraint_builder::{ConstraintBuilder, empty, sar, sll, xor2, xor3},
 	gate::opcode::OpcodeShape,
-	gate_graph::{Gate, GateData, GateParam},
+	gate_graph::{Gate, GateData, GateParam, Wire},
 };
 
 pub fn shape() -> OpcodeShape {
 	OpcodeShape {
-		const_in: &[Word::ALL_ONE],
+		const_in: &[Word::ALL_ONE, Word::ZERO], // Need all_1 and zero constants
 		n_in: 2,
 		n_out: 1,
 		n_internal: 1,
+		n_scratch: 2, // Need 2 scratch registers for intermediate computations
 		n_imm: 0,
 	}
 }
@@ -47,7 +47,9 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 		constants,
 		..
 	} = data.gate_param();
-	let [all_1] = constants else { unreachable!() };
+	let [all_1, _zero] = constants else {
+		unreachable!()
+	};
 	let [x, y] = inputs else { unreachable!() };
 	let [out_mask] = outputs else { unreachable!() };
 	let [bout] = internal else { unreachable!() };
@@ -71,32 +73,42 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 		.build();
 }
 
-pub fn evaluate(_gate: Gate, data: &GateData, w: &mut circuit::WitnessFiller) {
+pub fn emit_eval_bytecode(
+	_gate: Gate,
+	data: &GateData,
+	builder: &mut crate::compiler::eval_form::BytecodeBuilder,
+	wire_to_reg: impl Fn(Wire) -> u32,
+) {
 	let GateParam {
 		constants,
 		inputs,
 		outputs,
 		internal,
+		scratch,
 		..
 	} = data.gate_param();
-	let [all_1] = constants else { unreachable!() };
+	let [all_1, zero] = constants else {
+		unreachable!()
+	};
 	let [x, y] = inputs else { unreachable!() };
 	let [out_mask] = outputs else { unreachable!() };
 	let [bout] = internal else { unreachable!() };
+	let [scratch_nx, scratch_sum_unused] = scratch else {
+		unreachable!()
+	};
 
-	let x_val = w[*x];
-	let y_val = w[*y];
-	let all_1_val = w[*all_1];
+	// Compute ¬x (x XOR all_1)
+	builder.emit_bxor(wire_to_reg(*scratch_nx), wire_to_reg(*x), wire_to_reg(*all_1));
 
-	// Compute ¬x for the comparison
-	let nx = all_1_val ^ x_val;
-	// Compute carry bits from ¬x + y using standard carry propagation
-	let (_, bout_val) = nx.iadd_cin_cout(y_val, Word::ZERO);
-	w[*bout] = bout_val;
+	// Compute carry bits from ¬x + y
+	builder.emit_iadd_cin_cout(
+		wire_to_reg(*scratch_sum_unused), // sum (unused)
+		wire_to_reg(*bout),               // cout
+		wire_to_reg(*scratch_nx),         // ¬x
+		wire_to_reg(*y),                  // y
+		wire_to_reg(*zero),               // cin = 0
+	);
 
-	// Broadcast the MSB of bout to all bits to create the comparison mask
-	let Word(bout_val_raw) = bout_val;
-	let bout_msb_broadcast = (bout_val_raw as i64 >> 63) as u64;
-	let out_mask_val = Word(bout_msb_broadcast);
-	w[*out_mask] = out_mask_val;
+	// Broadcast MSB: out_mask = bout >> 63 (arithmetic)
+	builder.emit_sar(wire_to_reg(*out_mask), wire_to_reg(*bout), 63);
 }

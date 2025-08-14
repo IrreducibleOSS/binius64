@@ -23,7 +23,9 @@ use gate::Opcode;
 pub mod circuit;
 pub mod constraint_builder;
 mod dump;
+pub mod eval_form;
 mod gate_graph;
+pub mod hints;
 mod pathspec;
 #[cfg(test)]
 mod tests;
@@ -89,14 +91,17 @@ impl CircuitBuilder {
 		// 2. inout
 		// 3. witness
 		// 4. internal
+		// Note: Scratch wires are NOT in ValueVec, they're handled separately
 		//
 		// So we create a mapping between a `Wire` to the final `ValueIndex`.
 		let mut wire_mapping = SecondaryMap::new();
+		let mut scratch_mapping = SecondaryMap::new();
 		let total_wires = graph.wires.len();
 		let mut w_const: Vec<(Wire, Word)> = Vec::with_capacity(total_wires);
 		let mut w_inout: Vec<Wire> = Vec::with_capacity(total_wires);
 		let mut w_witness: Vec<Wire> = Vec::with_capacity(total_wires);
 		let mut w_internal: Vec<Wire> = Vec::with_capacity(total_wires);
+		let mut w_scratch: Vec<Wire> = Vec::with_capacity(total_wires);
 		for (wire, wire_data) in graph.wires.iter() {
 			match wire_data.kind {
 				WireKind::Constant(ref value) => {
@@ -105,6 +110,7 @@ impl CircuitBuilder {
 				WireKind::Inout => w_inout.push(wire),
 				WireKind::Witness => w_witness.push(wire),
 				WireKind::Internal => w_internal.push(wire),
+				WireKind::Scratch => w_scratch.push(wire),
 			}
 		}
 
@@ -112,6 +118,7 @@ impl CircuitBuilder {
 		let n_inout = w_inout.len();
 		let n_witness = w_witness.len();
 		let n_internal = w_internal.len();
+		let n_scratch = w_scratch.len();
 
 		// Sort the wires pointing to the constant section of the input value vector ascending
 		// to their values.
@@ -143,6 +150,12 @@ impl CircuitBuilder {
 			wire_mapping[wire] = ValueIndex(cur_index);
 			cur_index += 1;
 		}
+
+		// Map scratch wires to scratch indices (with high bit set)
+		for (scratch_index, wire) in (0_u32..).zip(w_scratch.into_iter()) {
+			scratch_mapping[wire] = scratch_index | 0x8000_0000;
+		}
+
 		let total_len = (cur_index as usize).next_power_of_two();
 		let value_vec_layout = ValueVecLayout {
 			n_const,
@@ -162,7 +175,11 @@ impl CircuitBuilder {
 		let cs =
 			ConstraintSystem::new(constants, value_vec_layout, and_constraints, mul_constraints);
 
-		Circuit::new(graph, cs, wire_mapping)
+		// Build evaluation form
+		let eval_form =
+			eval_form::EvalForm::build(&graph, &wire_mapping, &scratch_mapping, n_scratch);
+
+		Circuit::new(graph, cs, wire_mapping, eval_form)
 	}
 
 	pub fn subcircuit(&self, name: impl Into<String>) -> CircuitBuilder {
