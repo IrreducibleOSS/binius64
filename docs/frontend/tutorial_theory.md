@@ -25,8 +25,7 @@ Why are these universal? Because you can build any other gate from them:
 
 ### The AND-XOR Universal System
 
-Binius64 uses a different universal system: **AND** and **XOR** gates. 
-3. Together they can express any Boolean function
+Binius64 uses a different universal system: **AND** and **XOR** gates.
 
 Proof of universality:
 - NOT: `A ⊕ 1 = ¬A` (XOR with all-1)
@@ -35,7 +34,7 @@ Proof of universality:
 
 ## Part 2: From Bits to 64-bit Words
 
-### The Problem with Bit-Level Circuits
+### Efficiency of Bit-Level Circuits
 
 A standard ZK circuit over GF(2) would support the AND + XOR gate set at the bit level:
 ```
@@ -44,7 +43,7 @@ A standard ZK circuit over GF(2) would support the AND + XOR gate set at the bit
 // Total: ~320 constraints
 ```
 
-This is incredibly inefficient for common computations that work with 64-bit words, which are now standard on modern processors.
+This is inefficient for common computations that work with 64-bit words, which are now standard on modern processors.
 
 ### The Binius64 Insight
 
@@ -52,7 +51,7 @@ Instead of decomposing everything to bits, Binius64 works directly with 64-bit w
 
 1. **Native word operations**: One constraint instead of 64
 2. **CPU-friendly**: Maps directly to machine instructions
-3. **64x efficiency gain**: For word-level operations
+3. **64x efficiency gain**: For some of the operations
 
 But how do we handle bit manipulation within words? This is where shifted value indices come in.
 
@@ -60,27 +59,11 @@ But how do we handle bit manipulation within words? This is where shifted value 
 
 ### Why Circuits Work Differently in ZK
 
-In traditional circuit design, you build gates that compute outputs from inputs. But zero-knowledge circuits have a fundamentally different structure because of their purpose: proving you know something without revealing what you know.
+In traditional circuit design, you build gates that compute outputs from inputs. But zero-knowledge circuits have a fundamentally different structure because of their purpose: proving you know something without revealing what you know. For ZK-SNARKs such as Binius64, the problem needs to be transformed into a circuit satisifiability (SAT) problem.
 
 This leads to three distinct phases:
 
-#### Phase 1: Witness Generation (The Prover's Work)
-The **witness** is the complete assignment of values to all wires in the circuit. Think of it as:
-- A vector containing the value at every edge in the circuit graph
-- Includes public inputs, private inputs, and all intermediate values
-- The prover computes all these values using regular computation
-
-Example:
-```
-// Prover knows secret x=5, wants to prove x² = 25
-witness = [
-  x = 5,        // private input
-  y = 25,       // public output  
-  x_squared = 25 // internal wire
-]
-```
-
-#### Phase 2: Constraint Generation (The Circuit's Structure)
+#### Phase 1: Constraint Generation (The Circuit's Structure)
 The **constraint system** is a set of mathematical equations that the witness must satisfy. This defines:
 - What relationships must hold between wires
 - The "rules" that valid witnesses must follow
@@ -95,25 +78,33 @@ constraints = [
 ]
 ```
 
+#### Phase 2: Witness Generation (The Prover's Work)
+The **witness** is the complete assignment of values to all wires in the circuit. Think of it as:
+- A vector containing the value at every edge in the circuit graph
+- Includes public inputs, private inputs, and all intermediate values
+- The prover computes all these values using regular computation
+
+Example:
+```
+// Prover knows secret x=5, wants to prove x² = 25
+witness = [
+  x = 5,        // private input
+  y = 25,       // public output
+  x_squared = 25 // internal wire
+]
+```
+
 #### Phase 3: Constraint Satisfaction (The Verifier's Check)
 The **verification** checks if a given witness satisfies all constraints:
 - Take the witness vector
-- Plug values into each constraint equation  
+- Plug values into each constraint equation
 - Verify all equations evaluate to true
 
 This is just checking math equations - no computation of new values.
 
-### Why This Three-Phase Structure?
-
-The separation exists for zero-knowledge purposes:
-
-1. **Proving without revealing**: The prover can show they know a valid witness without revealing the witness itself
-2. **Succinct verification**: The verifier only checks equations, doesn't redo computation
-3. **Non-interactive proofs**: The constraint system enables creating proofs that can be verified without back-and-forth interaction
-
 ### How CircuitBuilder Bridges the Phases
 
-The `CircuitBuilder` API cleverly handles multiple phases at once:
+The `CircuitBuilder` API handles multiple phases at once:
 
 ```rust
 // This single line does two things:
@@ -134,25 +125,24 @@ The builder tracks both:
 - **Structure**: What constraints exist between wires
 - **Computation**: How to compute intermediate values during witness generation
 
-### The Complete Picture
+### Intuition for The Complete Picture
 
 ```
-1. Circuit Building Time
+1. Circuit Building
    ├── Define wire variables (x, y, intermediate)
    └── Define constraints (x * x = y)
 
-2. Proving Time  
+2. Proving
    ├── Prover supplies private inputs
    ├── CircuitBuilder computes all intermediate values
    └── Complete witness vector is generated
 
-3. Verification Time
+3. Verification
    ├── Receive constraint system (public)
    ├── Receive proof (derived from witness)
    └── Verify all constraints are satisfied
 ```
 
-This separation is why we say "circuits verify, not compute" - the actual computation happens during witness generation, while the circuit just defines what properties the computation must satisfy.
 
 ## Part 4: Shifted Value Indices - A Key Innovation
 
@@ -173,7 +163,7 @@ In a word-level circuit without shifts, you'd need separate constraints for shif
 
 ### The Solution: Shifted Value Indices
 
-Binius64's breakthrough: **encode shifts directly in value references**.
+Binius64's **encodes shifts directly in value references**.
 
 A shifted value index is a tuple: `(value_id, shift_op, shift_amount)`
 
@@ -268,7 +258,7 @@ v0 & 0xFFFFFFFF ^ v1 = 0
 
 Note: We're not computing the AND - we're verifying the result equals the AND.
 
-### MUL Constraints
+### Integer MUL Constraints
 
 Format: `A * B = (HI << 64) | LO`
 
@@ -287,13 +277,6 @@ Some operations don't need constraints because they're just different ways of re
 These are "almost free" because they require minimal verification resources compared to AND/MUL - they're primarily data manipulation operations.
 These are "free" because they don't require verification - they're just data manipulation.
 
-### Why These Two Constraint Types?
-
-1. **AND constraints verify bitwise operations**
-2. **MUL constraints verify arithmetic**
-3. **Everything else is data manipulation** (free)
-4. **Together they can verify any computation**
-
 ### Example: How iadd_cin_cout Works with Only AND Constraints
 
 You might wonder: if we only have AND and MUL constraints, how does `iadd_cin_cout` (64-bit addition with carry) work? Let's build up from first principles.
@@ -310,7 +293,7 @@ Let's add two 4-bit numbers to see the pattern:
 
 Bit by bit:
 - Bit 0: 1 + 1 = 10 (binary), so sum=0, carry=1
-- Bit 1: 0 + 1 + carry(1) = 10, so sum=0, carry=1  
+- Bit 1: 0 + 1 + carry(1) = 10, so sum=0, carry=1
 - Bit 2: 1 + 0 + carry(1) = 10, so sum=0, carry=1
 - Bit 3: 0 + 0 + carry(1) = 01, so sum=1, carry=0
 
@@ -372,7 +355,7 @@ This constraint captures the essence of carry propagation without computing it.
 // Constraint 1: Carry propagation
 (a ⊕ (cout << 1) ⊕ cin_msb) & (b ⊕ (cout << 1) ⊕ cin_msb) = cout ⊕ (cout << 1) ⊕ cin_msb
 
-// Constraint 2: Sum verification  
+// Constraint 2: Sum verification
 (a ⊕ b ⊕ (cout << 1) ⊕ cin_msb) & all-1 = sum
 ```
 
@@ -420,7 +403,7 @@ The MUL constraint performs **integer multiplication**, not field multiplication
 - General bignum computations
 
 In Binius64 circuits, you're working with 64-bit values that can be interpreted as:
-- Unsigned integers (0 to 2^64-1) 
+- Unsigned integers (0 to 2^64-1)
 - Bit patterns for bitwise operations
 - Binary field elements in GF(2^64)
 
@@ -438,7 +421,7 @@ Let's say we want to verify `(a * b) mod p = r` where a, b, p, r are all integer
 ```rust
 // Circuit setup:
 let a = builder.add_witness();        // Private input
-let b = builder.add_witness();        // Private input  
+let b = builder.add_witness();        // Private input
 let p = builder.add_inout();          // Public modulus
 let r = builder.add_inout();          // Public result
 
@@ -449,7 +432,7 @@ let quotient = builder.add_witness(); // How many times p fits in a*b
 // Step 1: Compute a * b
 let (lo1, hi1) = builder.imul(a, b);           // a * b = (hi1:lo1)
 
-// Step 2: Compute quotient * p  
+// Step 2: Compute quotient * p
 let (lo2, hi2) = builder.imul(quotient, p);    // quotient * p = (hi2:lo2)
 
 // Step 3: Verify the equation: a * b = quotient * p + r
@@ -463,7 +446,7 @@ builder.assert_eq("verify_hi", hi1, sum_hi);
 
 // What happens at proving time:
 // 1. Prover knows a, b, and computes product = a * b
-// 2. Prover computes quotient = product / p and r = product % p  
+// 2. Prover computes quotient = product / p and r = product % p
 // 3. Prover provides all values to the circuit
 // 4. Circuit verifies the mathematical relationship holds
 ```
@@ -529,8 +512,7 @@ SHA-256's σ₀ function: `ROTR(x,2) ⊕ ROTR(x,13) ⊕ ROTR(x,22)`
 // Bit-level: ~192 constraints (3 rotations × 64 bits)
 
 // Binius64: Just XOR shifted values (free)
-s0 = (x srl 2) XOR (x sll 62) XOR 
+s0 = (x srl 2) XOR (x sll 62) XOR
      (x srl 13) XOR (x sll 51) XOR
      (x srl 22) XOR (x sll 42)
 ```
-
