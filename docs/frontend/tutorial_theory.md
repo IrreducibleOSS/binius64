@@ -463,7 +463,7 @@ builder.assert_eq("verify_hi", hi1, sum_hi);
 
 // What happens at proving time:
 // 1. Prover knows a, b, and computes product = a * b
-// 2. Prover computes quotient = product / p and remainder = product % p  
+// 2. Prover computes quotient = product / p and r = product % p  
 // 3. Prover provides all values to the circuit
 // 4. Circuit verifies the mathematical relationship holds
 ```
