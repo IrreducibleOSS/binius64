@@ -195,7 +195,7 @@ BinaryField128b       →  u128
 
 // For packed/SIMD types
 PackedBinaryField8x16b → __m128i (x86) or uint8x16_t (ARM) or [u16; 8] (portable)
-PackedBinaryField4x32b → __m128i or [u32; 4]
+PackedBinaryField4x32b → __m128i (x86) or uint8x16_t (ARM) or u128 (portable)
 // etc.
 ```
 
