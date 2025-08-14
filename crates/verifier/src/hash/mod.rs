@@ -1,5 +1,7 @@
 pub mod compress;
 mod serialization;
+#[allow(dead_code)]
+mod vision;
 
 pub use compress::{CompressionFunction, PseudoCompressionFunction};
 pub use serialization::*;
