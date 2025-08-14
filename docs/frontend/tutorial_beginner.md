@@ -20,6 +20,7 @@ Let's start with a basic circuit that checks if two numbers are equal:
 use binius_frontend::circuit::Circuit;
 use binius_frontend::compiler::CircuitBuilder;
 use binius_core::word::Word;
+use binius_frontend::wire::Wire;
 
 fn build_equality_circuit() -> (Circuit, Wire, Wire, Wire) {
     // Create a new circuit builder
