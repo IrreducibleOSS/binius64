@@ -1,10 +1,10 @@
+pub mod padding;
 pub mod permutation;
 pub mod reference;
-pub mod padding;
 
 use binius_core::word::Word;
-use permutation::Permutation;
 use padding::KeccakPadding;
+use permutation::Permutation;
 
 use crate::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
 
@@ -58,9 +58,9 @@ impl Keccak {
 		// number of blocks needed for the maximum sized message
 		let n_blocks = (max_len + 1).div_ceil(RATE_BYTES);
 		assert_eq!(
-			expected_padded_message.len(), 
-			n_blocks, 
-			"expected_padded_message must have {} blocks", 
+			expected_padded_message.len(),
+			n_blocks,
+			"expected_padded_message must have {} blocks",
 			n_blocks
 		);
 
@@ -69,13 +69,8 @@ impl Keccak {
 		b.assert_0("len_check", len_check);
 
 		// Use standalone padding circuit to constrain message padding
-		let padding = KeccakPadding::new(
-			b, 
-			message.clone(), 
-			len, 
-			max_len, 
-			expected_padded_message.clone()
-		);
+		let padding =
+			KeccakPadding::new(b, message.clone(), len, max_len, expected_padded_message.clone());
 
 		// Compute digest using the expected padded message
 		let permutation_states = Self::compute_digest(b, &expected_padded_message);
@@ -101,7 +96,7 @@ impl Keccak {
 		padded_message: &[[Wire; N_WORDS_PER_BLOCK]],
 	) -> Vec<[Wire; N_WORDS_PER_STATE]> {
 		let n_blocks = padded_message.len();
-		
+
 		// zero initialized keccak state
 		let mut states: Vec<[Wire; N_WORDS_PER_STATE]> = Vec::with_capacity(n_blocks + 1);
 		let zero = b.add_constant(Word::ZERO);
