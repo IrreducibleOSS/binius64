@@ -232,14 +232,7 @@ fn build_g_triplet<
 						Operation::IntegerMul => (intmul_operator_data, &mut intmul_multilinears),
 					};
 
-					let tensor_acc = key.accumulate(
-						&key_collection.constraint_indices,
-						operator_data.r_x_prime_tensor.as_ref(),
-					);
-					let operand_challenge = operator_data.lambda_powers[key.operand_index as usize];
-
-					let acc = tensor_acc * operand_challenge;
-
+					let acc = key.accumulate(&key_collection.constraint_indices, operator_data);
 					let acc_underlier = acc.to_underlier();
 
 					// The following loop is an optimized version of the following
