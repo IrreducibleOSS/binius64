@@ -3,6 +3,10 @@ use binius_core::{consts::WORD_SIZE_BITS, word::Word};
 use super::{BigUint, PseudoMersenneModReduce, add, biguint_lt, mul, square, sub};
 use crate::{compiler::CircuitBuilder, util::num_biguint_from_u64_limbs};
 
+/// A struct that implements prime field arithmetic over pseudo-Mersenne modulus.
+///
+/// Field elements are `BigUint`s consisting of `PseudoMersennePrimeField::limbs_len` limbs.
+/// It is assumed that all field elements are correctly represented (less than modulus).
 pub struct PseudoMersennePrimeField {
 	modulus: BigUint,
 	modulus_po2: usize,
@@ -10,6 +14,9 @@ pub struct PseudoMersennePrimeField {
 }
 
 impl PseudoMersennePrimeField {
+	/// Create a new pseudo-Mersenne prime field.
+	///
+	/// See [`PseudoMersenneModReduce`] for description of the parameters.
 	pub fn new(b: &CircuitBuilder, modulus_po2: usize, modulus_subtrahend: &[u64]) -> Self {
 		let modulus_subtrahend = num_biguint_from_u64_limbs(modulus_subtrahend);
 		let po2 = num_bigint::BigUint::from(2usize).pow(modulus_po2 as u32);
@@ -25,16 +32,21 @@ impl PseudoMersennePrimeField {
 		}
 	}
 
+	/// Number of limbs in `BigUint`s representing field elements.
 	pub fn limbs_len(&self) -> usize {
 		self.modulus.limbs.len()
 	}
 
+	/// Field addition.
+	///
+	/// Equivalent formula: `(fe1 + fe2) % modulus`
 	pub fn add(&self, b: &CircuitBuilder, fe1: &BigUint, fe2: &BigUint) -> BigUint {
 		let l = self.limbs_len();
 		assert!(fe1.limbs.len() == l && fe2.limbs.len() == l);
 
 		let zero = b.add_constant(Word::ZERO);
 
+		// May need an extra limb to accommodate overflow.
 		let extra_limbs = if self.modulus_po2 + 1 > l * WORD_SIZE_BITS {
 			1
 		} else {
@@ -50,21 +62,32 @@ impl PseudoMersennePrimeField {
 		let need_reduction = b.bnot(biguint_lt(b, &unreduced_sum, &modulus));
 		let reduced = sub(b, &unreduced_sum, &modulus.mask(b, need_reduction));
 
+		// Higher limb is zero if max(fe1, fe2) < modulus (both are correctly represented)
 		let (result, _) = reduced.split_at_limbs(l);
 		result
 	}
 
+	/// Field subtraction.
+	///
+	/// Equivalent formula: `(fe1 - fe2) % modulus`
 	pub fn sub(&self, b: &CircuitBuilder, fe1: &BigUint, fe2: &BigUint) -> BigUint {
 		assert!(fe1.limbs.len() == self.limbs_len() && fe2.limbs.len() == self.limbs_len());
+		// NB: fe1 - fe2 = fe1 + modulus - fe2 <= 2*modulus - 1 (one subtraction still normalizes)
 		let fe2_add_inv = sub(b, &self.modulus, fe2);
 		self.add(b, fe1, &fe2_add_inv)
 	}
 
+	/// Field squaring.
+	///
+	/// Equivalent formula: `(fe ** 2) % modulus`
 	pub fn square(&self, b: &CircuitBuilder, fe: &BigUint) -> BigUint {
 		assert!(fe.limbs.len() == self.limbs_len());
 		self.reduce_product(b, square(b, fe))
 	}
 
+	/// Field multiplication.
+	///
+	/// Equivalent formula: `(fe1 * fe2) % modulus`
 	pub fn mul(&self, b: &CircuitBuilder, fe1: &BigUint, fe2: &BigUint) -> BigUint {
 		assert!(fe1.limbs.len() == self.limbs_len() && fe2.limbs.len() == self.limbs_len());
 		self.reduce_product(b, mul(b, fe1, fe2))
@@ -81,6 +104,7 @@ impl PseudoMersennePrimeField {
 		// TODO: replace with assert_true once available
 		b.assert_0("remainder < modulus", b.bnot(biguint_lt(b, &remainder, &self.modulus)));
 
+		// constraint: product == remainder + quotient * modulus
 		let _ = PseudoMersenneModReduce::new(
 			b,
 			product,
@@ -91,5 +115,37 @@ impl PseudoMersennePrimeField {
 		);
 
 		remainder
+	}
+
+	/// Field inverse.
+	///
+	/// Equivalent formula (for prime modulus): `(fe1 ** (modulus - 2)) % modulus`
+	pub fn inverse(&self, b: &CircuitBuilder, fe: &BigUint) -> BigUint {
+		assert!(fe.limbs.len() == self.limbs_len());
+		let (quotient, inverse) = b.mod_inverse_hint(&fe.limbs, &self.modulus.limbs);
+
+		let zero = b.add_constant(Word::ZERO);
+
+		let quotient = BigUint { limbs: quotient };
+		let inverse = BigUint { limbs: inverse }.pad_limbs_to(self.limbs_len(), zero);
+		let one = BigUint::new_constant(b, &num_bigint::BigUint::from(1usize))
+			.pad_limbs_to(self.limbs_len(), zero);
+
+		let product = mul(b, &inverse, fe);
+
+		// TODO: replace with assert_true once available
+		b.assert_0("inverse < modulus", b.bnot(biguint_lt(b, &inverse, &self.modulus)));
+
+		// constraint: base * inverse = 1 + quotient * modulus
+		let _ = PseudoMersenneModReduce::new(
+			b,
+			product,
+			self.modulus_po2,
+			self.modulus_subtrahend.clone(),
+			quotient,
+			one,
+		);
+
+		inverse
 	}
 }
