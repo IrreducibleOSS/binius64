@@ -25,10 +25,7 @@ Why are these universal? Because you can build any other gate from them:
 
 ### The AND-XOR Universal System
 
-Binius64 uses a different universal system: **AND** and **XOR** gates. Here's why this is also universal:
-
-1. **XOR acts as binary addition**: In the context of binary computation
-2. **AND provides non-linearity**: Needed for multiplication
+Binius64 uses a different universal system: **AND** and **XOR** gates. 
 3. Together they can express any Boolean function
 
 Proof of universality:
