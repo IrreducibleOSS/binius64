@@ -170,7 +170,8 @@ impl Sha256 {
 		let bitlen = builder.shl(len, 3);
 
 		let zero = builder.add_constant(Word::ZERO);
-		let (end_block_index, _carry) = builder.iadd_cin_cout(len, builder.add_constant_64(8), zero);
+		let (end_block_index, _carry) =
+			builder.iadd_cin_cout(len, builder.add_constant_64(8), zero);
 		let end_block_index = builder.shr(end_block_index, 6);
 		let delim: Wire = builder.add_constant_zx_8(0x80);
 

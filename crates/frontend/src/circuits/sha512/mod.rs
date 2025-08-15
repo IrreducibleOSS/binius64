@@ -338,12 +338,7 @@ impl Sha512 {
 					zero,
 					builder.band(is_past_message, builder.bnot(is_length_block)),
 				);
-				builder.assert_eq_cond(
-					"3d.w15_len",
-					padded_message_word,
-					bitlen,
-					is_length_block,
-				);
+				builder.assert_eq_cond("3d.w15_len", padded_message_word, bitlen, is_length_block);
 			} else {
 				builder.assert_eq_cond("3c.zero_pad", padded_message_word, zero, is_past_message);
 			}
@@ -592,7 +587,9 @@ mod tests {
 	fn test_empty_message() {
 		test_sha512_with_input(
 			b"",
-			hex!("cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e"),
+			hex!(
+				"cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e"
+			),
 		);
 	}
 
@@ -600,7 +597,9 @@ mod tests {
 	fn test_single_byte() {
 		test_sha512_with_input(
 			b"a",
-			hex!("1f40fc92da241694750979ee6cf582f2d5d7d28e18335de05abc54d0560e0f5302860c652bf08d560252aa5e74210546f369fbbbce8c12cfc7957b2652fe9a75"),
+			hex!(
+				"1f40fc92da241694750979ee6cf582f2d5d7d28e18335de05abc54d0560e0f5302860c652bf08d560252aa5e74210546f369fbbbce8c12cfc7957b2652fe9a75"
+			),
 		);
 	}
 
@@ -608,7 +607,9 @@ mod tests {
 	fn test_two_bytes() {
 		test_sha512_with_input(
 			b"ab",
-			hex!("2d408a0717ec188158278a796c689044361dc6fdde28d6f04973b80896e1823975cdbf12eb63f9e0591328ee235d80e9b5bf1aa6a44f4617ff3caf6400eb172d"),
+			hex!(
+				"2d408a0717ec188158278a796c689044361dc6fdde28d6f04973b80896e1823975cdbf12eb63f9e0591328ee235d80e9b5bf1aa6a44f4617ff3caf6400eb172d"
+			),
 		);
 	}
 
@@ -616,7 +617,9 @@ mod tests {
 	fn test_ten_bytes() {
 		test_sha512_with_input(
 			b"abcdefghij",
-			hex!("ef6b97321f34b1fea2169a7db9e1960b471aa13302a988087357c520be957ca119c3ba68e6b4982c019ec89de3865ccf6a3cda1fe11e59f98d99f1502c8b9745"),
+			hex!(
+				"ef6b97321f34b1fea2169a7db9e1960b471aa13302a988087357c520be957ca119c3ba68e6b4982c019ec89de3865ccf6a3cda1fe11e59f98d99f1502c8b9745"
+			),
 		);
 	}
 
@@ -625,7 +628,9 @@ mod tests {
 		// 111 bytes - maximum that fits in one block with padding
 		test_sha512_with_input(
 			&[b'a'; 111],
-			hex!("fa9121c7b32b9e01733d034cfc78cbf67f926c7ed83e82200ef86818196921760b4beff48404df811b953828274461673c68d04e297b0eb7b2b4d60fc6b566a2"),
+			hex!(
+				"fa9121c7b32b9e01733d034cfc78cbf67f926c7ed83e82200ef86818196921760b4beff48404df811b953828274461673c68d04e297b0eb7b2b4d60fc6b566a2"
+			),
 		);
 	}
 
@@ -634,7 +639,9 @@ mod tests {
 		// 112 bytes - critical boundary, forces two blocks
 		test_sha512_with_input(
 			&[b'a'; 112],
-			hex!("c01d080efd492776a1c43bd23dd99d0a2e626d481e16782e75d54c2503b5dc32bd05f0f1ba33e568b88fd2d970929b719ecbb152f58f130a407c8830604b70ca"),
+			hex!(
+				"c01d080efd492776a1c43bd23dd99d0a2e626d481e16782e75d54c2503b5dc32bd05f0f1ba33e568b88fd2d970929b719ecbb152f58f130a407c8830604b70ca"
+			),
 		);
 	}
 
@@ -643,7 +650,9 @@ mod tests {
 		// 127 bytes - one byte from block boundary
 		test_sha512_with_input(
 			&[b'a'; 127],
-			hex!("828613968b501dc00a97e08c73b118aa8876c26b8aac93df128502ab360f91bab50a51e088769a5c1eff4782ace147dce3642554199876374291f5d921629502"),
+			hex!(
+				"828613968b501dc00a97e08c73b118aa8876c26b8aac93df128502ab360f91bab50a51e088769a5c1eff4782ace147dce3642554199876374291f5d921629502"
+			),
 		);
 	}
 
@@ -652,7 +661,9 @@ mod tests {
 		// 128 bytes - exactly one complete block
 		test_sha512_with_input(
 			&[b'a'; 128],
-			hex!("b73d1929aa615934e61a871596b3f3b33359f42b8175602e89f7e06e5f658a243667807ed300314b95cacdd579f3e33abdfbe351909519a846d465c59582f321"),
+			hex!(
+				"b73d1929aa615934e61a871596b3f3b33359f42b8175602e89f7e06e5f658a243667807ed300314b95cacdd579f3e33abdfbe351909519a846d465c59582f321"
+			),
 		);
 	}
 
@@ -661,7 +672,9 @@ mod tests {
 		// 2200 bytes - tests two-block processing
 		test_sha512_with_input(
 			&[b'a'; 200],
-			hex!("4b11459c33f52a22ee8236782714c150a3b2c60994e9acee17fe68947a3e6789f31e7668394592da7bef827cddca88c4e6f86e4df7ed1ae6cba71f3e98faee9f"),
+			hex!(
+				"4b11459c33f52a22ee8236782714c150a3b2c60994e9acee17fe68947a3e6789f31e7668394592da7bef827cddca88c4e6f86e4df7ed1ae6cba71f3e98faee9f"
+			),
 		);
 	}
 
@@ -670,7 +683,9 @@ mod tests {
 		// 239 bytes - maximum that fits in two blocks with padding
 		test_sha512_with_input(
 			&[b'a'; 239],
-			hex!("52c853cb8d907f3d4d6b889beb027985d7c273486d75f8baf26f80d24e90c74c6c3de3e22131582380a7d14d43f2941a31385439cd6ddc469f628015e50bf286"),
+			hex!(
+				"52c853cb8d907f3d4d6b889beb027985d7c273486d75f8baf26f80d24e90c74c6c3de3e22131582380a7d14d43f2941a31385439cd6ddc469f628015e50bf286"
+			),
 		);
 	}
 
@@ -679,7 +694,9 @@ mod tests {
 		// 240 bytes - minimum that needs three blocks
 		test_sha512_with_input(
 			&[b'a'; 240],
-			hex!("4c296d90c61052a62ffb1dd196f1b7b09373b1f93e71836baebf89690546b7595684dbe9467a8e484fa0d1094272b4344a7c24f5fee8daedeb0bf549c985ab5f"),
+			hex!(
+				"4c296d90c61052a62ffb1dd196f1b7b09373b1f93e71836baebf89690546b7595684dbe9467a8e484fa0d1094272b4344a7c24f5fee8daedeb0bf549c985ab5f"
+			),
 		);
 	}
 
@@ -688,7 +705,9 @@ mod tests {
 		// 256 bytes - exactly two complete blocks
 		test_sha512_with_input(
 			&[b'a'; 256],
-			hex!("6a9169eb662f136d87374070e8828b3e615a7eca32a89446e9225b02832709be095e635c824a2bb70213ba2ea0ababac0809827843992c851903b7ac0c136699"),
+			hex!(
+				"6a9169eb662f136d87374070e8828b3e615a7eca32a89446e9225b02832709be095e635c824a2bb70213ba2ea0ababac0809827843992c851903b7ac0c136699"
+			),
 		);
 	}
 
@@ -697,7 +716,9 @@ mod tests {
 		// 512 bytes - exactly four complete blocks
 		test_sha512_with_input(
 			&[b'a'; 512],
-			hex!("0210d27bcbe05c2156627c5f136ade1338ab98e06a4591a00b0bcaa61662a5931d0b3bd41a67b5c140627923f5f6307669eb508d8db38b2a8cd41aebd783394b"),
+			hex!(
+				"0210d27bcbe05c2156627c5f136ade1338ab98e06a4591a00b0bcaa61662a5931d0b3bd41a67b5c140627923f5f6307669eb508d8db38b2a8cd41aebd783394b"
+			),
 		);
 	}
 
@@ -705,7 +726,9 @@ mod tests {
 	fn test_size_1024_bytes() {
 		test_sha512_with_input(
 			&[b'a'; 1024],
-			hex!("74b22492e3b9a86a9c93c23a69f821ebafa429302c1f4054b4bc37356a4bae056d9ccbc6f24093a25704faaa72bd21a5f337ca9ec92f32369d24e6b9fae954d8"),
+			hex!(
+				"74b22492e3b9a86a9c93c23a69f821ebafa429302c1f4054b4bc37356a4bae056d9ccbc6f24093a25704faaa72bd21a5f337ca9ec92f32369d24e6b9fae954d8"
+			),
 		);
 	}
 
@@ -714,7 +737,9 @@ mod tests {
 		// Realistic text around boundary
 		test_sha512_with_input(
 			b"The quick brown fox jumps over the lazy dog!!!!!",
-			hex!("2a8c8f82b62291fdb06439d90b799a6bf63bfa3acc3d627b06151099b54df6b9f860e22c84534033523f4a723d49ffb46ca059157d5cbda70ec878e4f692a38f"),
+			hex!(
+				"2a8c8f82b62291fdb06439d90b799a6bf63bfa3acc3d627b06151099b54df6b9f860e22c84534033523f4a723d49ffb46ca059157d5cbda70ec878e4f692a38f"
+			),
 		);
 	}
 
@@ -723,7 +748,9 @@ mod tests {
 		// Test the classic 3-byte case to make sure basic functionality still works
 		test_sha512_with_input(
 			b"abc",
-			hex!("ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f"),
+			hex!(
+				"ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f"
+			),
 		);
 	}
 
@@ -732,19 +759,27 @@ mod tests {
 		// Test various sizes in the 80–111 byte range (single block with varying padding)
 		test_sha512_with_input(
 			&[b'a'; 95],
-			hex!("89e0446c3ff5a04b6d707ef43a77e2b349791f402930dbdb74bbab73d5215e294146ba7bd2fa269aee38564ef11a9ccaf5278f9e82687126dcf20d481d470617"),
+			hex!(
+				"89e0446c3ff5a04b6d707ef43a77e2b349791f402930dbdb74bbab73d5215e294146ba7bd2fa269aee38564ef11a9ccaf5278f9e82687126dcf20d481d470617"
+			),
 		);
 		test_sha512_with_input(
 			&[b'a'; 100],
-			hex!("70ff99fd241905992cc3fff2f6e3f562c8719d689bfe0e53cbc75e53286d82d8767aed0959b8c63aadf55b5730babee75ea082e88414700d7507b988c44c47bc"),
+			hex!(
+				"70ff99fd241905992cc3fff2f6e3f562c8719d689bfe0e53cbc75e53286d82d8767aed0959b8c63aadf55b5730babee75ea082e88414700d7507b988c44c47bc"
+			),
 		);
 		test_sha512_with_input(
 			&[b'a'; 105],
-			hex!("3b6dd73c9552f2381107bf206b49c7967fdc5f5011d877d9c576bb4da6d74fbbabf46a1105242d7c645978e54c0b44adaf06d9f7aa4703e8a58829f6d87c5168"),
+			hex!(
+				"3b6dd73c9552f2381107bf206b49c7967fdc5f5011d877d9c576bb4da6d74fbbabf46a1105242d7c645978e54c0b44adaf06d9f7aa4703e8a58829f6d87c5168"
+			),
 		);
 		test_sha512_with_input(
 			&[b'a'; 110],
-			hex!("c825949632e509824543f7eaf159fb6041722fce3c1cdcbb613b3d37ff107c519417baac32f8e74fe29d7f4823bf6886956603dca5354a6ed6e4a542e06b7d28"),
+			hex!(
+				"c825949632e509824543f7eaf159fb6041722fce3c1cdcbb613b3d37ff107c519417baac32f8e74fe29d7f4823bf6886956603dca5354a6ed6e4a542e06b7d28"
+			),
 		);
 	}
 
@@ -917,7 +952,9 @@ mod tests {
 		let circuit = b.build();
 		let mut w = circuit.new_witness_filler();
 		let message = b"abc";
-		let hash = hex!("ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f");
+		let hash = hex!(
+			"ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f"
+		);
 
 		c.populate_len(&mut w, message.len());
 		c.populate_message(&mut w, message);
@@ -948,7 +985,9 @@ mod tests {
 		let mut w = circuit.new_witness_filler();
 		// Use a simple 8-byte message that fits in one wire
 		let message = b"abcdefgh";
-		let hash = hex!("a3a8c81bc97c2560010d7389bc88aac974a104e0e2381220c6e084c4dccd1d2d17d4f86db31c2a851dc80e6681d74733c55dcd03dd96f6062cdda12a291ae6ce");
+		let hash = hex!(
+			"a3a8c81bc97c2560010d7389bc88aac974a104e0e2381220c6e084c4dccd1d2d17d4f86db31c2a851dc80e6681d74733c55dcd03dd96f6062cdda12a291ae6ce"
+		);
 
 		c.populate_len(&mut w, message.len());
 		c.populate_message(&mut w, message);

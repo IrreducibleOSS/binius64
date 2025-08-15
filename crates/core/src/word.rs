@@ -147,6 +147,13 @@ impl Word {
 		Word(result)
 	}
 
+	pub fn rotr_64(self, n: u32) -> Word {
+		let Word(value) = self;
+		let n = n % 64; // Ensure n is within 0-63 range
+		let result = (value << (64 - n)) | (value >> n);
+		Word(result)
+	}
+
 	pub fn imul(self, rhs: Word) -> (Word, Word) {
 		let Word(lhs) = self;
 		let Word(rhs) = rhs;

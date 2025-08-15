@@ -168,6 +168,14 @@ impl BytecodeBuilder {
 		self.emit_u8(rotate);
 	}
 
+	pub fn emit_rotr(&mut self, dst: u32, src: u32, rotate: u8) {
+		self.n_eval_insn += 1;
+		self.emit_u8(0x44);
+		self.emit_reg(dst);
+		self.emit_reg(src);
+		self.emit_u8(rotate);
+	}
+
 	// Mask operations
 	pub fn emit_mask_low(&mut self, dst: u32, src: u32, n_bits: u8) {
 		self.n_eval_insn += 1;
