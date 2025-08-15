@@ -442,18 +442,36 @@ impl RsaIntermediates {
 
 #[cfg(test)]
 mod tests {
+	use hex_literal::hex;
 	use num_bigint::BigUint;
 	use rand::{SeedableRng, TryRngCore, rngs::StdRng};
 	use rsa::{
-		RsaPrivateKey, RsaPublicKey,
-		pkcs1v15::SigningKey,
+		BigUint as RsaBigUint, RsaPrivateKey, RsaPublicKey,
 		sha2::{Digest, Sha256},
-		signature::{SignatureEncoding, Signer},
 		traits::{PrivateKeyParts, PublicKeyParts},
 	};
 
 	use super::*;
 	use crate::{compiler::CircuitBuilder, constraint_verifier::verify_constraints};
+
+	/// Create a deterministic test RSA key
+	/// This is a 2048-bit RSA key generated with ChaCha8Rng seed 42
+	fn test_rsa_key() -> RsaPrivateKey {
+		let p = RsaBigUint::from_bytes_be(&hex!(
+			"c8b4e97508c3d0fad0062e8ee475909d5315bc9433e9b8a174a52b8f024e7d6b"
+			"ea80a56901555021b2d44f727aa287b84de8bac5ceef88d03b259f8ac91bda42"
+			"e653e27596d8090e08e9dac47dcd288e1c0e95ac74d7428cd0479c8514bc3538"
+			"7380a480873c7f519ece6f5ea4356c81bd7ec31c126c1f097b84bb33c8acd565"
+		));
+		let q = RsaBigUint::from_bytes_be(&hex!(
+			"efffcc7f550f977db26971fb6a0f036d61cccde351c394fe177cd36a0a7dde60"
+			"8cd263d8ca382031fc0f16bef5ebb2125ab1b8e837c71c006a8639c090a7ebac"
+			"530de579bca2ea7ad175c8a31d45078130e0ad15cf23139d230f30c106259c7a"
+			"55024f4e51a97b1b38b7ed4dfe05a0706bf53a067e7f0ee18dc685b53300708b"
+		));
+		let e = RsaBigUint::from(65537u32);
+		RsaPrivateKey::from_p_q(p, q, e).expect("valid key")
+	}
 
 	fn populate_circuit(
 		circuit: &Rs256Verify,
@@ -483,20 +501,18 @@ mod tests {
 		let circuit = setup_circuit(&mut builder, 2048);
 		let cs = builder.build();
 
-		// Generate a real RSA signature as it would appear in a JWT
-		let mut rng = StdRng::seed_from_u64(42);
-		let bits = 2048;
-		let private_key = RsaPrivateKey::new(&mut rng, bits).expect("failed to generate key");
+		let private_key = test_rsa_key();
 		let public_key = RsaPublicKey::from(&private_key);
-
 		let mut rng = StdRng::seed_from_u64(42);
 		let mut message = [0u8; 256];
 		rng.try_fill_bytes(&mut message).unwrap();
 
-		let signing_key = SigningKey::<Sha256>::new(private_key);
-		let signature = signing_key.sign(&message);
-		let signature_bytes = signature.to_bytes();
-		let modulus_bytes = public_key.n().to_be_bytes();
+		// Sign with PKCS1v15 padding scheme
+		let digest = Sha256::digest(message);
+		let signature_bytes = private_key
+			.sign(rsa::Pkcs1v15Sign::new::<Sha256>(), &digest)
+			.expect("failed to sign");
+		let modulus_bytes = public_key.n().to_bytes_be();
 
 		let mut w = cs.new_witness_filler();
 		populate_circuit(&circuit, &mut w, &signature_bytes, &message, &modulus_bytes);
@@ -512,9 +528,7 @@ mod tests {
 		let circuit = setup_circuit(&mut builder, max_message_len);
 		let cs = builder.build();
 
-		let mut rng = StdRng::seed_from_u64(42);
-		let bits = 2048;
-		let private_key = RsaPrivateKey::new(&mut rng, bits).expect("failed to generate key");
+		let private_key = test_rsa_key();
 		let public_key = RsaPublicKey::from(&private_key);
 
 		let message = b"Test message for RS256 verification with invalid prefix";
@@ -522,15 +536,15 @@ mod tests {
 		// Compute signature that would produce a corrupted EM
 		// signature = EM^d mod n
 		let corrupted_em = BigUint::ZERO;
-		let d_bytes = private_key.d().to_le_bytes();
-		let n_bytes = private_key.n().to_le_bytes();
+		let d_bytes = private_key.d().to_bytes_le();
+		let n_bytes = private_key.n().to_bytes_le();
 		let d = BigUint::from_bytes_le(&d_bytes);
 		let n = BigUint::from_bytes_le(&n_bytes);
 		let corrupted_signature = corrupted_em.modpow(&d, &n);
 
 		let mut signature_bytes = corrupted_signature.to_bytes_be();
 		signature_bytes.resize(256, 0u8);
-		let modulus_bytes = public_key.n().to_be_bytes();
+		let modulus_bytes = public_key.n().to_bytes_be();
 
 		let mut w = cs.new_witness_filler();
 		populate_circuit(&circuit, &mut w, &signature_bytes, message, &modulus_bytes);
@@ -546,18 +560,17 @@ mod tests {
 		let circuit = setup_circuit(&mut builder, max_message_len);
 		let cs = builder.build();
 
-		let mut rng = StdRng::seed_from_u64(42);
-		let bits = 2048;
-		let private_key = RsaPrivateKey::new(&mut rng, bits).expect("failed to generate key");
+		let private_key = test_rsa_key();
 		let public_key = RsaPublicKey::from(&private_key);
 
 		let message = b"Test message for RS256 verification with wrong message";
-		let signing_key = SigningKey::<Sha256>::new(private_key);
-		let signature_obj = signing_key.sign(message);
-		let signature_bytes = signature_obj.to_bytes();
+		let digest = Sha256::digest(message);
+		let signature_bytes = private_key
+			.sign(rsa::Pkcs1v15Sign::new::<Sha256>(), &digest)
+			.expect("failed to sign");
 
-		let signature_bytes = BigUint::from_bytes_be(signature_bytes.as_ref()).to_bytes_be();
-		let modulus_bytes = public_key.n().to_be_bytes();
+		let signature_bytes = BigUint::from_bytes_be(&signature_bytes).to_bytes_be();
+		let modulus_bytes = public_key.n().to_bytes_be();
 
 		// Use a WRONG message
 		let wrong_message = b"This is a completely different message!";
