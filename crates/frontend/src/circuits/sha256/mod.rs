@@ -516,30 +516,10 @@ impl Sha256 {
 		// So we can fit the length in the current block only if position after message + 0x80 <=
 		// 56. This means len % 64 must be <= 55 to fit everything in the same block.
 		let len = message_bytes.len() as u64;
-		let len_mod_64 = len % 64;
-
-		// Special case: if message ends exactly at block boundary (len % 64 == 0 and len > 0),
-		// the 0x80 delimiter goes in a new block, so length field must go in the block after that.
-		let at_boundary = len_mod_64 == 0 && len > 0;
-		let fits_in_block = len_mod_64 < 56 && !at_boundary;
-
-		// Calculate which block contains the last message byte.
-		// For len > 0: We use (len-1)/64 because the last byte is at position len-1
-		// For len = 0: Empty message case, the message "ends" in block 0
-		let last_msg_block_index = if len == 0 { 0 } else { (len - 1) / 64 };
-
-		// The length field goes in last_msg_block_index if it fits, otherwise in the next block
-		let end_block_index = if fits_in_block {
-			last_msg_block_index
-		} else {
-			last_msg_block_index + 1
-		};
-
+		let end_block_index = (len + 8) / 64;
 		// Length field always starts at byte offset 56 within its block (64 - 8 = 56)
 		let len_offset = (end_block_index as usize) * 64 + 56;
-		if len_offset + 8 <= padded_message_bytes.len() {
-			padded_message_bytes[len_offset..len_offset + 8].copy_from_slice(&len_bytes);
-		}
+		padded_message_bytes[len_offset..len_offset + 8].copy_from_slice(&len_bytes);
 
 		// Populate witness wires
 		//
