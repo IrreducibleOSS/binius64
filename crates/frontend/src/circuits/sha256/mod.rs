@@ -207,6 +207,17 @@ impl Sha256 {
 		// - 3b: Boundary word byte-level checks
 		// - 3c: Zero padding constraints
 		// - 3d: Length field placement
+		// Precompute byte-category flags (data/delim/zero) for j = 0..7 once,
+		// since they only depend on len_mod_8 and not on word_index.
+		let byte_flags: [[Wire; 3]; 8] = std::array::from_fn(|j| {
+			let j_const = builder.add_constant_64(j as u64);
+			[
+				builder.icmp_ult(j_const, len_mod_8),
+				builder.icmp_eq(j_const, len_mod_8),
+				builder.icmp_ult(len_mod_8, j_const),
+			]
+		});
+
 		for word_index in 0..n_words {
 			let builder = builder.subcircuit(format!("word[{word_index}]"));
 
@@ -261,11 +272,7 @@ impl Sha256 {
 			// 3. zero byte. Placed after the delimiter byte.
 			for j in 0..8 {
 				let builder = builder.subcircuit(format!("byte[{j}]"));
-				let j_const = builder.add_constant_64(j);
-
-				let data_b = builder.icmp_ult(j_const, len_mod_8);
-				let delim_b = builder.icmp_eq(j_const, len_mod_8);
-				let zero_b = builder.icmp_ult(len_mod_8, j_const);
+				let [data_b, delim_b, zero_b] = byte_flags[j as usize];
 
 				// We need to extract the byte according to big-endian.
 				//
