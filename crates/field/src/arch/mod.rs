@@ -36,7 +36,7 @@ cfg_if! {
 
 pub use arch_optimal::*;
 pub use portable::{
-	byte_sliced, packed_1, packed_2, packed_4, packed_8, packed_16, packed_32, packed_64,
-	packed_aes_8, packed_aes_16, packed_aes_32, packed_aes_64,
+	packed_1, packed_2, packed_4, packed_8, packed_16, packed_32, packed_64, packed_aes_8,
+	packed_aes_16, packed_aes_32, packed_aes_64,
 };
 pub use strategies::*;

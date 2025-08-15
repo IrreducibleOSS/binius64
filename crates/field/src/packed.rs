@@ -652,11 +652,11 @@ mod tests {
 		BinaryField1b, BinaryField2b, BinaryField4b, BinaryField8b, BinaryField16b, BinaryField32b,
 		BinaryField64b, BinaryField128b, BinaryField128bPolyval, PackedField,
 		arch::{
-			byte_sliced::*, packed_1::*, packed_2::*, packed_4::*, packed_8::*, packed_16::*,
-			packed_32::*, packed_64::*, packed_128::*, packed_256::*, packed_512::*,
-			packed_aes_8::*, packed_aes_16::*, packed_aes_32::*, packed_aes_64::*,
-			packed_aes_128::*, packed_aes_256::*, packed_aes_512::*, packed_polyval_128::*,
-			packed_polyval_256::*, packed_polyval_512::*,
+			packed_1::*, packed_2::*, packed_4::*, packed_8::*, packed_16::*, packed_32::*,
+			packed_64::*, packed_128::*, packed_256::*, packed_512::*, packed_aes_8::*,
+			packed_aes_16::*, packed_aes_32::*, packed_aes_64::*, packed_aes_128::*,
+			packed_aes_256::*, packed_aes_512::*, packed_polyval_128::*, packed_polyval_256::*,
+			packed_polyval_512::*,
 		},
 	};
 
@@ -763,55 +763,6 @@ mod tests {
 		test.run::<PackedAESBinaryField16x32b>();
 		test.run::<PackedAESBinaryField8x64b>();
 		test.run::<PackedAESBinaryField4x128b>();
-
-		// Byte-sliced AES tower
-		test.run::<ByteSlicedAES16x128b>();
-		test.run::<ByteSlicedAES16x64b>();
-		test.run::<ByteSlicedAES2x16x64b>();
-		test.run::<ByteSlicedAES16x32b>();
-		test.run::<ByteSlicedAES4x16x32b>();
-		test.run::<ByteSlicedAES16x16b>();
-		test.run::<ByteSlicedAES8x16x16b>();
-		test.run::<ByteSlicedAES16x8b>();
-		test.run::<ByteSlicedAES16x16x8b>();
-
-		test.run::<ByteSliced16x128x1b>();
-		test.run::<ByteSliced8x128x1b>();
-		test.run::<ByteSliced4x128x1b>();
-		test.run::<ByteSliced2x128x1b>();
-		test.run::<ByteSliced1x128x1b>();
-
-		test.run::<ByteSlicedAES32x128b>();
-		test.run::<ByteSlicedAES32x64b>();
-		test.run::<ByteSlicedAES2x32x64b>();
-		test.run::<ByteSlicedAES32x32b>();
-		test.run::<ByteSlicedAES4x32x32b>();
-		test.run::<ByteSlicedAES32x16b>();
-		test.run::<ByteSlicedAES8x32x16b>();
-		test.run::<ByteSlicedAES32x8b>();
-		test.run::<ByteSlicedAES16x32x8b>();
-
-		test.run::<ByteSliced16x256x1b>();
-		test.run::<ByteSliced8x256x1b>();
-		test.run::<ByteSliced4x256x1b>();
-		test.run::<ByteSliced2x256x1b>();
-		test.run::<ByteSliced1x256x1b>();
-
-		test.run::<ByteSlicedAES64x128b>();
-		test.run::<ByteSlicedAES64x64b>();
-		test.run::<ByteSlicedAES2x64x64b>();
-		test.run::<ByteSlicedAES64x32b>();
-		test.run::<ByteSlicedAES4x64x32b>();
-		test.run::<ByteSlicedAES64x16b>();
-		test.run::<ByteSlicedAES8x64x16b>();
-		test.run::<ByteSlicedAES64x8b>();
-		test.run::<ByteSlicedAES16x64x8b>();
-
-		test.run::<ByteSliced16x512x1b>();
-		test.run::<ByteSliced8x512x1b>();
-		test.run::<ByteSliced4x512x1b>();
-		test.run::<ByteSliced2x512x1b>();
-		test.run::<ByteSliced1x512x1b>();
 
 		// polyval tower
 		test.run::<BinaryField128bPolyval>();

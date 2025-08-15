@@ -4,7 +4,7 @@ use std::array;
 
 use binius_field::{
 	PackedField, Random,
-	arch::{byte_sliced::*, packed_128::*, packed_256::*, packed_512::*},
+	arch::{packed_128::*, packed_256::*, packed_512::*},
 };
 use criterion::{
 	BenchmarkGroup, Criterion, Throughput, criterion_group, criterion_main, measurement::WallTime,
@@ -67,58 +67,5 @@ fn packed_512(c: &mut Criterion) {
 	benchmark_from_fn!(PackedBinaryField4x128b, group);
 }
 
-fn byte_sliced_128(c: &mut Criterion) {
-	let mut group = c.benchmark_group("bytes_sliced_128");
-
-	benchmark_from_fn!(ByteSlicedAES16x128b, group);
-	benchmark_from_fn!(ByteSlicedAES16x64b, group);
-	benchmark_from_fn!(ByteSlicedAES2x16x64b, group);
-	benchmark_from_fn!(ByteSlicedAES16x32b, group);
-	benchmark_from_fn!(ByteSlicedAES4x16x32b, group);
-	benchmark_from_fn!(ByteSlicedAES16x16b, group);
-	benchmark_from_fn!(ByteSlicedAES8x16x16b, group);
-	benchmark_from_fn!(ByteSlicedAES16x8b, group);
-	benchmark_from_fn!(ByteSlicedAES16x16x8b, group);
-	benchmark_from_fn!(ByteSliced16x128x1b, group);
-}
-
-fn byte_sliced_256(c: &mut Criterion) {
-	let mut group = c.benchmark_group("bytes_sliced_256");
-
-	benchmark_from_fn!(ByteSlicedAES32x128b, group);
-	benchmark_from_fn!(ByteSlicedAES32x64b, group);
-	benchmark_from_fn!(ByteSlicedAES2x32x64b, group);
-	benchmark_from_fn!(ByteSlicedAES32x32b, group);
-	benchmark_from_fn!(ByteSlicedAES4x32x32b, group);
-	benchmark_from_fn!(ByteSlicedAES32x16b, group);
-	benchmark_from_fn!(ByteSlicedAES8x32x16b, group);
-	benchmark_from_fn!(ByteSlicedAES32x8b, group);
-	benchmark_from_fn!(ByteSlicedAES16x32x8b, group);
-	benchmark_from_fn!(ByteSliced16x256x1b, group);
-}
-
-fn byte_sliced_512(c: &mut Criterion) {
-	let mut group = c.benchmark_group("bytes_sliced_512");
-
-	benchmark_from_fn!(ByteSlicedAES64x128b, group);
-	benchmark_from_fn!(ByteSlicedAES64x64b, group);
-	benchmark_from_fn!(ByteSlicedAES2x64x64b, group);
-	benchmark_from_fn!(ByteSlicedAES64x32b, group);
-	benchmark_from_fn!(ByteSlicedAES4x64x32b, group);
-	benchmark_from_fn!(ByteSlicedAES64x16b, group);
-	benchmark_from_fn!(ByteSlicedAES8x64x16b, group);
-	benchmark_from_fn!(ByteSlicedAES64x8b, group);
-	benchmark_from_fn!(ByteSlicedAES16x64x8b, group);
-	benchmark_from_fn!(ByteSliced16x512x1b, group);
-}
-
-criterion_group!(
-	initialization,
-	packed_128,
-	packed_256,
-	packed_512,
-	byte_sliced_128,
-	byte_sliced_256,
-	byte_sliced_512
-);
+criterion_group!(initialization, packed_128, packed_256, packed_512);
 criterion_main!(initialization);
