@@ -61,8 +61,7 @@ rand = { version = "0.9.1", default-features = false, features = [
 ] }
 rayon = "1.10.0"
 regex = "1.10"
-# Uses RC because latest stable rsa-0.9.8 API requires RNG from rand=0.6
-rsa = { version = "0.10.0-rc.3", features = ["sha2"] }
+rsa = { version = "0.9.8", features = ["sha2"] }
 seq-macro = "0.3.5"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
