@@ -170,7 +170,8 @@ impl Sha256 {
 		let bitlen = builder.shl(len, 3);
 
 		let zero = builder.add_constant(Word::ZERO);
-		let end_block_index = builder.shr(builder.iadd_32(len, builder.add_constant_64(8)), 6);
+		let (end_block_index, _carry) = builder.iadd_cin_cout(len, builder.add_constant_64(8), zero);
+		let end_block_index = builder.shr(end_block_index, 6);
 		let delim: Wire = builder.add_constant_zx_8(0x80);
 
 		// ---- 2b. Final digest selection
@@ -545,8 +546,9 @@ impl Sha256 {
 
 		for (i, compress) in self.compress.iter().enumerate() {
 			let block_start = i * 64;
-			let block = &padded_message_bytes[block_start..block_start + 64];
-			compress.populate_m(w, block.try_into().unwrap());
+			let mut block_arr = [0u8; 64];
+			block_arr.copy_from_slice(&padded_message_bytes[block_start..block_start + 64]);
+			compress.populate_m(w, block_arr);
 		}
 	}
 }

@@ -163,32 +163,39 @@ fn round(builder: &CircuitBuilder, round: usize, state: State, w: &[Wire; 80]) -
 	State([a, b, c, d, e, f, g, h])
 }
 
-/// Ch(e,f,g) = (e AND f) XOR (NOT e AND g)
-///           = g XOR (e AND (f XOR g))
-fn ch(builder: &CircuitBuilder, e: Wire, f: Wire, g: Wire) -> Wire {
-	builder.bxor(g, builder.band(e, builder.bxor(f, g)))
+/// Ch(x,y,z) = (x AND y) XOR (NOT x AND z)
+fn ch(builder: &CircuitBuilder, x: Wire, y: Wire, z: Wire) -> Wire {
+	// Use the canonical form to be explicit: (e & f) ^ (!e & g)
+	let not_x = builder.bnot(x);
+	let xy = builder.band(x, y);
+	let not_x_z = builder.band(not_x, z);
+	builder.bxor(xy, not_x_z)
 }
 
-/// Maj(a,b,c) = (a AND b) XOR (a AND c) XOR (b AND c)
-///            = (a AND (b XOR c)) XOR (b AND c)
-fn maj(builder: &CircuitBuilder, a: Wire, b: Wire, c: Wire) -> Wire {
-	builder.bxor(builder.band(a, builder.bxor(b, c)), builder.band(b, c))
+/// Maj(x,y,z) = (x AND y) XOR (x AND z) XOR (y AND z)
+fn maj(builder: &CircuitBuilder, x: Wire, y: Wire, z: Wire) -> Wire {
+	// Expand to the full XOR of pairwise ANDs to avoid relying on derived identities
+	let xy = builder.band(x, y);
+	let xz = builder.band(x, z);
+	let yz = builder.band(y, z);
+	let t = builder.bxor(xy, xz);
+	builder.bxor(t, yz)
 }
 
-/// Σ0(a)       = XOR( XOR( ROTR(a,  2), ROTR(a, 13) ), ROTR(a, 22) )
-fn big_sigma_0(b: &CircuitBuilder, a: Wire) -> Wire {
-	let r1 = b.rotr_64(a, 28);
-	let r2 = b.rotr_64(a, 34);
-	let r3 = b.rotr_64(a, 39);
+/// Σ0(x)       = XOR( XOR( ROTR(x,  28), ROTR(x, 34) ), ROTR(x, 39) )
+fn big_sigma_0(b: &CircuitBuilder, x: Wire) -> Wire {
+	let r1 = b.rotr_64(x, 28);
+	let r2 = b.rotr_64(x, 39);
+	let r3 = b.rotr_64(x, 39);
 	let x1 = b.bxor(r1, r2);
 	b.bxor(x1, r3)
 }
 
-/// Σ1(e)       = XOR( XOR( ROTR(e,  6), ROTR(e, 11) ), ROTR(e, 25) )
-fn big_sigma_1(b: &CircuitBuilder, e: Wire) -> Wire {
-	let r1 = b.rotr_64(e, 14);
-	let r2 = b.rotr_64(e, 18);
-	let r3 = b.rotr_64(e, 41);
+/// Σ1(x)       = XOR( XOR( ROTR(x,  14), ROTR(x, 18) ), ROTR(x, 41) )
+fn big_sigma_1(b: &CircuitBuilder, x: Wire) -> Wire {
+	let r1 = b.rotr_64(x, 14);
+	let r2 = b.rotr_64(x, 18);
+	let r3 = b.rotr_64(x, 41);
 	let x1 = b.bxor(r1, r2);
 	b.bxor(x1, r3)
 }
