@@ -350,6 +350,98 @@ fn small_sigma_1_optimal(b: &CircuitBuilder, x: Wire) -> Wire {
 	result
 }
 
+/// Optimized Ch function using single AND constraint
+/// Ch(e,f,g) = g ⊕ (e ∧ (f ⊕ g))
+fn ch_optimal(b: &CircuitBuilder, e: Wire, f: Wire, g: Wire) -> Wire {
+	use crate::compiler::constraint_builder::Shift;
+	
+	let result = b.add_internal();
+	let mask32 = b.add_constant(Word::MASK_32);
+	
+	// Ch(e,f,g) = g ⊕ (e ∧ (f ⊕ g))
+	// We can express this as a single AND constraint:
+	// (e ∧ ((f ⊕ g) ∧ mask32)) ⊕ (g ∧ mask32) = result
+	// Rearranging: e ∧ (f ⊕ g) = result ⊕ g
+	
+	b.raw_and_constraint(
+		vec![e, f, g],     // inputs
+		vec![result],      // outputs
+		// Operand A: e
+		vec![(e, Shift::None)],
+		// Operand B: (f ⊕ g) masked
+		vec![(f, Shift::None), (g, Shift::None), (mask32, Shift::None)],
+		// Operand C: result ⊕ g
+		vec![(result, Shift::None), (g, Shift::None)],
+		// Witness computation
+		move |inputs| {
+			let e_val = inputs[0].0 & 0xFFFFFFFF;
+			let f_val = inputs[1].0 & 0xFFFFFFFF;
+			let g_val = inputs[2].0 & 0xFFFFFFFF;
+			// Ch(e,f,g) = g ⊕ (e ∧ (f ⊕ g))
+			let result = g_val ^ (e_val & (f_val ^ g_val));
+			vec![Word(result & 0xFFFFFFFF)]
+		},
+	);
+	
+	result
+}
+
+/// Optimized Maj function using single AND constraint
+/// Maj(a,b,c) = (a ∧ b) ⊕ (a ∧ c) ⊕ (b ∧ c)
+///            = (a ∧ (b ⊕ c)) ⊕ (b ∧ c)
+fn maj_optimal(b: &CircuitBuilder, a: Wire, b_wire: Wire, c: Wire) -> Wire {
+	use crate::compiler::constraint_builder::Shift;
+	
+	let result = b.add_internal();
+	
+	// This is trickier - Maj needs 2 AND operations fundamentally
+	// But we can combine them into one constraint using the fact that:
+	// Maj(a,b,c) = (a ∧ (b ⊕ c)) ⊕ (b ∧ c)
+	// We need to be creative here...
+	
+	// Actually, Maj has a simpler form:
+	// Maj(a,b,c) = (a ∧ b) | (b ∧ c) | (a ∧ c)
+	//            = b ∧ (a | c) | (a ∧ c)
+	//            = Most common bit (majority vote)
+	
+	// For now, we'll use 2 constraints as it's fundamentally needed
+	// TODO: Research if Maj can be done in 1 constraint
+	
+	let temp = b.add_internal();
+	
+	// First constraint: temp = a ∧ (b ⊕ c)
+	b.raw_and_constraint(
+		vec![a, b_wire, c],
+		vec![temp],
+		vec![(a, Shift::None)],
+		vec![(b_wire, Shift::None), (c, Shift::None)],
+		vec![(temp, Shift::None)],
+		move |inputs| {
+			let a_val = inputs[0].0 & 0xFFFFFFFF;
+			let b_val = inputs[1].0 & 0xFFFFFFFF;
+			let c_val = inputs[2].0 & 0xFFFFFFFF;
+			vec![Word(a_val & (b_val ^ c_val) & 0xFFFFFFFF)]
+		},
+	);
+	
+	// Second constraint: result = temp ⊕ (b ∧ c)
+	b.raw_and_constraint(
+		vec![b_wire, c, temp],
+		vec![result],
+		vec![(b_wire, Shift::None)],
+		vec![(c, Shift::None)],
+		vec![(result, Shift::None), (temp, Shift::None)],
+		move |inputs| {
+			let b_val = inputs[0].0 & 0xFFFFFFFF;
+			let c_val = inputs[1].0 & 0xFFFFFFFF;
+			let temp_val = inputs[2].0 & 0xFFFFFFFF;
+			vec![Word((temp_val ^ (b_val & c_val)) & 0xFFFFFFFF)]
+		},
+	);
+	
+	result
+}
+
 #[cfg(test)]
 mod tests {
 	use binius_core::word::Word;
@@ -357,7 +449,8 @@ mod tests {
 	use super::{
 		Compress, State, 
 		big_sigma_0, big_sigma_1, small_sigma_0, small_sigma_1,
-		big_sigma_0_optimal, big_sigma_1_optimal, small_sigma_0_optimal, small_sigma_1_optimal
+		big_sigma_0_optimal, big_sigma_1_optimal, small_sigma_0_optimal, small_sigma_1_optimal,
+		ch, ch_optimal, maj, maj_optimal
 	};
 	use crate::{
 		compiler::{self, Wire},
@@ -496,6 +589,63 @@ mod tests {
 
 	/// Test to measure constraint counts for sigma functions
 	/// This demonstrates the optimization opportunity
+	#[test]
+	fn measure_ch_maj_constraint_counts() {
+		// Test Ch function optimization
+		{
+			let builder = compiler::CircuitBuilder::new();
+			let e = builder.add_witness();
+			let f = builder.add_witness();
+			let g = builder.add_witness();
+			
+			// Original Ch
+			let _result = ch(&builder, e, f, g);
+			let circuit = builder.build();
+			let original_ch_constraints = circuit.constraint_system().and_constraints.len();
+			println!("Original Ch: {} AND constraints", original_ch_constraints);
+		}
+		
+		{
+			let builder = compiler::CircuitBuilder::new();
+			let e = builder.add_witness();
+			let f = builder.add_witness();
+			let g = builder.add_witness();
+			
+			// Optimized Ch
+			let _result = ch_optimal(&builder, e, f, g);
+			let circuit = builder.build();
+			let optimal_ch_constraints = circuit.constraint_system().and_constraints.len();
+			println!("Optimized Ch: {} AND constraints", optimal_ch_constraints);
+		}
+		
+		// Test Maj function optimization
+		{
+			let builder = compiler::CircuitBuilder::new();
+			let a = builder.add_witness();
+			let b = builder.add_witness();
+			let c = builder.add_witness();
+			
+			// Original Maj
+			let _result = maj(&builder, a, b, c);
+			let circuit = builder.build();
+			let original_maj_constraints = circuit.constraint_system().and_constraints.len();
+			println!("Original Maj: {} AND constraints", original_maj_constraints);
+		}
+		
+		{
+			let builder = compiler::CircuitBuilder::new();
+			let a = builder.add_witness();
+			let b = builder.add_witness();
+			let c = builder.add_witness();
+			
+			// Optimized Maj
+			let _result = maj_optimal(&builder, a, b, c);
+			let circuit = builder.build();
+			let optimal_maj_constraints = circuit.constraint_system().and_constraints.len();
+			println!("Optimized Maj: {} AND constraints", optimal_maj_constraints);
+		}
+	}
+	
 	#[test]
 	fn measure_sigma_constraint_counts() {
 		println!("\n=== CURRENT IMPLEMENTATION (Non-Optimized) ===\n");
