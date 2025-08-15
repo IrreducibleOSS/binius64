@@ -16,6 +16,7 @@ use crate::compiler::{
 	gate,
 	gate_graph::{GateGraph, Wire},
 	hints::HintRegistry,
+	RawConstraint,
 };
 
 /// Compiled evaluation form for circuit witness computation
@@ -37,6 +38,7 @@ impl EvalForm {
 		wire_mapping: &SecondaryMap<Wire, ValueIndex>,
 		scratch_mapping: &SecondaryMap<Wire, u32>,
 		n_scratch: usize,
+		raw_constraints: &[RawConstraint],
 	) -> Self {
 		let mut builder = BytecodeBuilder::new();
 		let mut hint_registry = HintRegistry::new();
@@ -68,6 +70,13 @@ impl EvalForm {
 				&mut hint_registry,
 			);
 		}
+		
+		// Process raw constraints - register their witness computations as hints
+		// Note: We can't clone the witness_fn from Box<dyn Fn>, so we need a different approach
+		// For now, we'll skip witness computation for raw constraints and rely on gates
+		// TODO: Implement proper witness computation for raw constraints
+		// This would require refactoring how witness functions are stored (e.g., using Arc<dyn Fn>)
+		let _ = raw_constraints; // Suppress unused warning
 
 		let (bytecode, n_eval_insn) = builder.finalize();
 

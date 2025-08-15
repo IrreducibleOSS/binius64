@@ -230,7 +230,7 @@ impl CircuitBuilder {
 
 		// Build evaluation form
 		let eval_form =
-			eval_form::EvalForm::build(&graph, &wire_mapping, &scratch_mapping, n_scratch);
+			eval_form::EvalForm::build(&graph, &wire_mapping, &scratch_mapping, n_scratch, &shared.raw_constraints);
 
 		Circuit::new(graph, cs, wire_mapping, eval_form)
 	}
