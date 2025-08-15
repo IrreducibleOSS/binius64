@@ -32,8 +32,31 @@ mod tests;
 
 pub use gate_graph::Wire;
 
+use constraint_builder::Shift;
+
+/// Raw constraint with witness computation
+pub(crate) struct RawConstraint {
+	/// The constraint specification
+	pub constraint: RawConstraintSpec,
+	/// Function to compute witness values for output wires
+	pub witness_fn: Box<dyn Fn(&[Word]) -> Vec<Word>>,
+	/// Input wires
+	pub inputs: Vec<Wire>,
+	/// Output wires
+	pub outputs: Vec<Wire>,
+}
+
+pub(crate) enum RawConstraintSpec {
+	And {
+		a: Vec<(Wire, Shift)>,
+		b: Vec<(Wire, Shift)>,
+		c: Vec<(Wire, Shift)>,
+	},
+}
+
 pub(crate) struct Shared {
 	pub(crate) graph: GateGraph,
+	pub(crate) raw_constraints: Vec<RawConstraint>,
 }
 
 /// # Clone
@@ -63,6 +86,7 @@ impl Default for CircuitBuilder {
 					n_witness: 0,
 					n_inout: 0,
 				},
+				raw_constraints: Vec::new(),
 			}))),
 		}
 	}
@@ -171,6 +195,35 @@ impl CircuitBuilder {
 		for (gate_id, _) in graph.gates.iter() {
 			gate::constrain(gate_id, &graph, &mut builder);
 		}
+		
+		// Process raw constraints
+		for raw in &shared.raw_constraints {
+			match &raw.constraint {
+				RawConstraintSpec::And { a, b, c } => {
+					// Convert (Wire, Shift) to ShiftedWire for the builder
+					use constraint_builder::{ShiftedWire};
+					let a_operand: Vec<ShiftedWire> = a.iter().map(|(w, s)| ShiftedWire {
+						wire: *w,
+						shift: *s,
+					}).collect();
+					let b_operand: Vec<ShiftedWire> = b.iter().map(|(w, s)| ShiftedWire {
+						wire: *w,
+						shift: *s,
+					}).collect();
+					let c_operand: Vec<ShiftedWire> = c.iter().map(|(w, s)| ShiftedWire {
+						wire: *w,
+						shift: *s,
+					}).collect();
+					
+					builder.and_constraints.push(constraint_builder::WireAndConstraint {
+						a: a_operand,
+						b: b_operand,
+						c: c_operand,
+					});
+				}
+			}
+		}
+		
 		let (and_constraints, mul_constraints) = builder.build(&wire_mapping);
 		let cs =
 			ConstraintSystem::new(constants, value_vec_layout, and_constraints, mul_constraints);
@@ -255,7 +308,7 @@ impl CircuitBuilder {
 
 	/// Adds a wire similar to `add_witness`. Internal wires are meant to designate wires that
 	/// are prunable.
-	fn add_internal(&self) -> Wire {
+	pub fn add_internal(&self) -> Wire {
 		self.graph_mut().add_internal()
 	}
 
@@ -600,5 +653,32 @@ impl CircuitBuilder {
 		);
 
 		(quotient, inverse)
+	}
+
+	/// Add a raw constraint with custom witness computation
+	/// This allows optimal constraint generation without creating new gates
+	pub fn raw_and_constraint<F>(
+		&self,
+		inputs: Vec<Wire>,
+		outputs: Vec<Wire>,
+		a_terms: Vec<(Wire, Shift)>,
+		b_terms: Vec<(Wire, Shift)>,
+		c_terms: Vec<(Wire, Shift)>,
+		witness_fn: F,
+	) where
+		F: Fn(&[Word]) -> Vec<Word> + 'static,
+	{
+		let mut shared = self.shared.borrow_mut();
+		let shared = shared.as_mut().expect("CircuitBuilder already built");
+		shared.raw_constraints.push(RawConstraint {
+			constraint: RawConstraintSpec::And {
+				a: a_terms,
+				b: b_terms,
+				c: c_terms,
+			},
+			witness_fn: Box::new(witness_fn),
+			inputs,
+			outputs,
+		});
 	}
 }

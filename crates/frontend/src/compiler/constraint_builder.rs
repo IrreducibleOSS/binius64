@@ -5,8 +5,8 @@ use crate::compiler::Wire;
 
 /// Builder for creating constraints using Wire references
 pub struct ConstraintBuilder {
-	and_constraints: Vec<WireAndConstraint>,
-	mul_constraints: Vec<WireMulConstraint>,
+	pub(crate) and_constraints: Vec<WireAndConstraint>,
+	pub(crate) mul_constraints: Vec<WireMulConstraint>,
 }
 
 impl ConstraintBuilder {
@@ -55,10 +55,10 @@ impl Default for ConstraintBuilder {
 }
 
 /// AND constraint using Wire references
-struct WireAndConstraint {
-	a: WireOperand,
-	b: WireOperand,
-	c: WireOperand,
+pub(crate) struct WireAndConstraint {
+	pub a: WireOperand,
+	pub b: WireOperand,
+	pub c: WireOperand,
 }
 
 impl WireAndConstraint {
@@ -119,16 +119,16 @@ impl WireMulConstraint {
 }
 
 /// Operand built from wire expressions
-type WireOperand = Vec<ShiftedWire>;
+pub(crate) type WireOperand = Vec<ShiftedWire>;
 
 #[derive(Copy, Clone)]
-struct ShiftedWire {
-	wire: Wire,
-	shift: Shift,
+pub(crate) struct ShiftedWire {
+	pub wire: Wire,
+	pub shift: Shift,
 }
 
 #[derive(Copy, Clone)]
-enum Shift {
+pub enum Shift {
 	None,
 	Sll(u32),
 	Srl(u32),

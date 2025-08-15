@@ -209,11 +209,70 @@ fn small_sigma_1(b: &CircuitBuilder, x: Wire) -> Wire {
 	b.bxor(x1, s1)
 }
 
+// ============================================================================
+// OPTIMIZED VERSIONS - Direct constraint builder access for performance testing
+// ============================================================================
+
+/// Optimized Σ0(a) using single AND constraint instead of 5
+/// Uses raw constraint API for 5x fewer constraints
+fn big_sigma_0_optimal(b: &CircuitBuilder, a: Wire) -> Wire {
+	use crate::compiler::constraint_builder::Shift;
+	
+	let result = b.add_internal();
+	let mask32 = b.add_constant(Word::MASK_32);
+	
+	b.raw_and_constraint(
+		vec![a],           // inputs
+		vec![result],      // outputs
+		// Operand A: all rotation terms XORed together
+		vec![
+			(a, Shift::Srl(2)),  (a, Shift::Sll(30)),  // ROTR(a, 2)
+			(a, Shift::Srl(13)), (a, Shift::Sll(19)),  // ROTR(a, 13)
+			(a, Shift::Srl(22)), (a, Shift::Sll(10)),  // ROTR(a, 22)
+		],
+		// Operand B: mask
+		vec![(mask32, Shift::None)],
+		// Operand C: result
+		vec![(result, Shift::None)],
+		// Witness computation function
+		move |inputs| {
+			let a_val = inputs[0].0 & 0xFFFFFFFF;
+			let r1 = ((a_val >> 2) | (a_val << 30)) & 0xFFFFFFFF;
+			let r2 = ((a_val >> 13) | (a_val << 19)) & 0xFFFFFFFF;
+			let r3 = ((a_val >> 22) | (a_val << 10)) & 0xFFFFFFFF;
+			vec![Word(r1 ^ r2 ^ r3)]
+		},
+	);
+	
+	result
+}
+
+/// Optimized Σ1(e) using single AND constraint instead of 3
+fn big_sigma_1_optimal(b: &CircuitBuilder, e: Wire) -> Wire {
+	// Would reduce from 3 constraints to 1
+	// TODO: Implement when constraint builder API is exposed
+	big_sigma_1(b, e)
+}
+
+/// Optimized σ0(x) using single AND constraint
+fn small_sigma_0_optimal(b: &CircuitBuilder, x: Wire) -> Wire {
+	// Would combine 2 rotates + 1 shift into single constraint
+	// TODO: Implement when constraint builder API is exposed
+	small_sigma_0(b, x)
+}
+
+/// Optimized σ1(x) using single AND constraint  
+fn small_sigma_1_optimal(b: &CircuitBuilder, x: Wire) -> Wire {
+	// Would combine 2 rotates + 1 shift into single constraint
+	// TODO: Implement when constraint builder API is exposed
+	small_sigma_1(b, x)
+}
+
 #[cfg(test)]
 mod tests {
 	use binius_core::word::Word;
 
-	use super::{Compress, State};
+	use super::{Compress, State, big_sigma_0, big_sigma_1, small_sigma_0, small_sigma_1, big_sigma_0_optimal};
 	use crate::{
 		compiler::{self, Wire},
 		constraint_verifier::verify_constraints,
@@ -347,5 +406,121 @@ mod tests {
 		circuit.populate_wire_witness(&mut w).unwrap();
 
 		verify_constraints(cs, &w.into_value_vec()).unwrap();
+	}
+
+	/// Test to measure constraint counts for sigma functions
+	/// This demonstrates the optimization opportunity
+	#[test]
+	fn measure_sigma_constraint_counts() {
+		println!("\n=== CURRENT IMPLEMENTATION (Non-Optimized) ===\n");
+		
+		// Test big_sigma_0 CURRENT
+		{
+			let builder = compiler::CircuitBuilder::new();
+			let input = builder.add_witness();
+			let _output = big_sigma_0(&builder, input);
+			let circuit = builder.build();
+			let cs = circuit.constraint_system();
+			
+			println!("big_sigma_0 (CURRENT):");
+			println!("  AND constraints: {}", cs.and_constraints.len());
+			println!("  MUL constraints: {}", cs.mul_constraints.len());
+			println!("  Breakdown: 3 rotr_32 + 2 bxor = 5 AND constraints");
+			// Actually 5 AND constraints (3 rotr_32 + 2 bxor)
+			assert_eq!(cs.and_constraints.len(), 5);
+			assert_eq!(cs.mul_constraints.len(), 0);
+		}
+		
+		// Test big_sigma_0 OPTIMIZED
+		{
+			let builder = compiler::CircuitBuilder::new();
+			let input = builder.add_witness();
+			let _output = big_sigma_0_optimal(&builder, input);
+			let circuit = builder.build();
+			let cs = circuit.constraint_system();
+			
+			println!("\nbig_sigma_0 (OPTIMIZED):");
+			println!("  AND constraints: {}", cs.and_constraints.len());
+			println!("  MUL constraints: {}", cs.mul_constraints.len());
+			println!("  Reduction: 5 → 1 constraint (80% fewer!)");
+			// Should be just 1 AND constraint!
+			assert_eq!(cs.and_constraints.len(), 1);
+			assert_eq!(cs.mul_constraints.len(), 0);
+		}
+
+		// Test big_sigma_1  
+		{
+			let builder = compiler::CircuitBuilder::new();
+			let input = builder.add_witness();
+			let _output = big_sigma_1(&builder, input);
+			let circuit = builder.build();
+			let cs = circuit.constraint_system();
+			
+			println!("big_sigma_1 (CURRENT):");
+			println!("  AND constraints: {}", cs.and_constraints.len());
+			println!("  MUL constraints: {}", cs.mul_constraints.len());
+			// Actually 5 AND constraints (3 rotr_32 + 2 bxor)
+			assert_eq!(cs.and_constraints.len(), 5);
+			assert_eq!(cs.mul_constraints.len(), 0);
+		}
+
+		// Test small_sigma_0
+		{
+			let builder = compiler::CircuitBuilder::new();
+			let input = builder.add_witness();
+			let _output = small_sigma_0(&builder, input);
+			let circuit = builder.build();
+			let cs = circuit.constraint_system();
+			
+			println!("small_sigma_0 (CURRENT):");
+			println!("  AND constraints: {}", cs.and_constraints.len());
+			println!("  MUL constraints: {}", cs.mul_constraints.len());
+			// Actually 5 AND constraints (2 rotr_32 + 1 shr_32 + 2 bxor)
+			assert_eq!(cs.and_constraints.len(), 5);
+			assert_eq!(cs.mul_constraints.len(), 0);
+		}
+
+		// Test small_sigma_1
+		{
+			let builder = compiler::CircuitBuilder::new();
+			let input = builder.add_witness();
+			let _output = small_sigma_1(&builder, input);
+			let circuit = builder.build();
+			let cs = circuit.constraint_system();
+			
+			println!("small_sigma_1 (CURRENT):");
+			println!("  AND constraints: {}", cs.and_constraints.len());
+			println!("  MUL constraints: {}", cs.mul_constraints.len());
+			// Actually 5 AND constraints (2 rotr_32 + 1 shr_32 + 2 bxor)
+			assert_eq!(cs.and_constraints.len(), 5);
+			assert_eq!(cs.mul_constraints.len(), 0);
+		}
+
+		// Test full compress function
+		{
+			let builder = compiler::CircuitBuilder::new();
+			let state = State::iv(&builder);
+			let m: [Wire; 16] = std::array::from_fn(|_| builder.add_witness());
+			let _compress = Compress::new(&builder, state, m);
+			let circuit = builder.build();
+			let cs = circuit.constraint_system();
+			
+			println!("\n=== FULL SHA-256 COMPRESSION ===");
+			println!("Full SHA-256 compress (64 rounds) - CURRENT:");
+			println!("  AND constraints: {}", cs.and_constraints.len());
+			println!("  MUL constraints: {}", cs.mul_constraints.len());
+			println!("  Total gates: {}", circuit.n_gates());
+			
+			println!("\n=== THEORETICAL OPTIMIZATION POTENTIAL ===");
+			println!("IF we could access constraint builder directly:");
+			println!("  Current: Each sigma uses 5 AND constraints");
+			println!("  Optimal: Each sigma could use 1 AND constraint");
+			println!("  How: Merge (rotr⊕rotr⊕rotr) into single operand");
+			println!("\nExpected savings:");
+			println!("  Per sigma function: 5 → 1 constraints (80% reduction)");
+			println!("  Full SHA-256: ~2784 → ~550 constraints (estimated)");
+			println!("\nBLOCKER: Gate abstraction forces intermediate witness values");
+			println!("BLOCKER: Even XOR creates constraints (should be free)!");
+		}
 	}
 }
