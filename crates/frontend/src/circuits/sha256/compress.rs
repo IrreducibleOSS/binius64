@@ -389,6 +389,79 @@ fn ch_optimal(b: &CircuitBuilder, e: Wire, f: Wire, g: Wire) -> Wire {
 /// Optimized Maj function using single AND constraint
 /// Maj(a,b,c) = (a ∧ b) ⊕ (a ∧ c) ⊕ (b ∧ c)
 ///            = (a ∧ (b ⊕ c)) ⊕ (b ∧ c)
+/// Optimized version of compress using all optimized functions
+/// This is for benchmarking constraint counts only - witness computation won't work
+fn compress_optimized(builder: &CircuitBuilder, state_in: &State, m: &[Wire; 16]) -> State {
+	// W[0..15] = block_words & M32
+	// W[16..63] = W[t-16] + s0 + W[t-7] + s1
+	//     where s0 = SmallSigma0(W[t-15])
+	//           s1 = SmallSigma1(W[t-2])
+	let m32 = builder.add_constant(Word::MASK_32);
+	let m_masked: [Wire; 16] = std::array::from_fn(|i| builder.band(m[i], m32));
+
+	let mut w: Vec<Wire> = Vec::with_capacity(64);
+	w.extend_from_slice(&m_masked);
+
+	// Use OPTIMIZED sigma functions for message schedule
+	for t in 16..64 {
+		let s0 = small_sigma_0_optimal(builder, w[t - 15]);
+		let s1 = small_sigma_1_optimal(builder, w[t - 2]);
+		let p = builder.iadd_32(w[t - 16], s0);
+		let q = builder.iadd_32(p, w[t - 7]);
+		w.push(builder.iadd_32(q, s1));
+	}
+
+	let w: &[Wire; 64] = (&*w).try_into().unwrap();
+	let mut state = state_in.clone();
+	for t in 0..64 {
+		state = round_optimized(builder, t, state, w);
+	}
+
+	// H' = H + Σ
+	let State([a, b, c, d, e, f, g, h]) = state;
+	let State([a_in, b_in, c_in, d_in, e_in, f_in, g_in, h_in]) = state_in;
+
+	State([
+		builder.iadd_32(a, *a_in),
+		builder.iadd_32(b, *b_in),
+		builder.iadd_32(c, *c_in),
+		builder.iadd_32(d, *d_in),
+		builder.iadd_32(e, *e_in),
+		builder.iadd_32(f, *f_in),
+		builder.iadd_32(g, *g_in),
+		builder.iadd_32(h, *h_in),
+	])
+}
+
+/// Optimized round function using all optimized components
+fn round_optimized(builder: &CircuitBuilder, round: usize, state: State, w: &[Wire; 64]) -> State {
+	let State([a, b, c, d, e, f, g, h]) = state;
+
+	// Use ALL optimized functions
+	let big_sigma_e = big_sigma_1_optimal(builder, e);
+	let ch_efg = ch_optimal(builder, e, f, g);
+	let t1a = builder.iadd_32(h, big_sigma_e);
+	let t1b = builder.iadd_32(t1a, ch_efg);
+	let rc = builder.add_constant(Word(K[round] as u64));
+	let t1c = builder.iadd_32(t1b, rc);
+	let t1 = builder.iadd_32(t1c, w[round]);
+
+	let big_sigma_a = big_sigma_0_optimal(builder, a);
+	let maj_abc = maj_optimal(builder, a, b, c);
+	let t2 = builder.iadd_32(big_sigma_a, maj_abc);
+
+	let h = g;
+	let g = f;
+	let f = e;
+	let e = builder.iadd_32(d, t1);
+	let d = c;
+	let c = b;
+	let b = a;
+	let a = builder.iadd_32(t1, t2);
+
+	State([a, b, c, d, e, f, g, h])
+}
+
 fn maj_optimal(b: &CircuitBuilder, a: Wire, b_wire: Wire, c: Wire) -> Wire {
 	use crate::compiler::constraint_builder::Shift;
 	
@@ -450,7 +523,8 @@ mod tests {
 		Compress, State, 
 		big_sigma_0, big_sigma_1, small_sigma_0, small_sigma_1,
 		big_sigma_0_optimal, big_sigma_1_optimal, small_sigma_0_optimal, small_sigma_1_optimal,
-		ch, ch_optimal, maj, maj_optimal
+		ch, ch_optimal, maj, maj_optimal,
+		compress_optimized
 	};
 	use crate::{
 		compiler::{self, Wire},
@@ -589,6 +663,44 @@ mod tests {
 
 	/// Test to measure constraint counts for sigma functions
 	/// This demonstrates the optimization opportunity
+	#[test]
+	fn measure_full_sha256_optimization_gains() {
+		println!("\n=== FULL SHA-256 CONSTRAINT ANALYSIS ===\n");
+		
+		// Build a full SHA-256 compress with CURRENT implementation
+		let current_constraints = {
+			let builder = compiler::CircuitBuilder::new();
+			let state_in: [Wire; 8] = std::array::from_fn(|_| builder.add_witness());
+			let message: [Wire; 16] = std::array::from_fn(|_| builder.add_witness());
+			
+			let compress = Compress::new(&builder, State(state_in), message);
+			let _state_out = compress.state_out;
+			let circuit = builder.build();
+			circuit.constraint_system().and_constraints.len()
+		};
+		
+		// Build a full SHA-256 compress with OPTIMIZED functions
+		let optimized_constraints = {
+			let builder = compiler::CircuitBuilder::new();
+			let state_in: [Wire; 8] = std::array::from_fn(|_| builder.add_witness());
+			let message: [Wire; 16] = std::array::from_fn(|_| builder.add_witness());
+			
+			// Use optimized compress function
+			let _state_out = compress_optimized(&builder, &State(state_in), &message);
+			let circuit = builder.build();
+			circuit.constraint_system().and_constraints.len()
+		};
+		
+		println!("Current SHA-256 compress: {} AND constraints", current_constraints);
+		println!("Optimized SHA-256 compress: {} AND constraints", optimized_constraints);
+		println!("Reduction: {} → {} constraints ({}% fewer!)", 
+			current_constraints, 
+			optimized_constraints,
+			((current_constraints - optimized_constraints) * 100) / current_constraints
+		);
+		println!("\nSavings: {} AND constraints eliminated!", current_constraints - optimized_constraints);
+	}
+	
 	#[test]
 	fn measure_ch_maj_constraint_counts() {
 		// Test Ch function optimization
