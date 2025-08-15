@@ -289,13 +289,11 @@ impl WireExpr {
 				},
 			}],
 			WireExpr::Xor2(a, b) => vec![a.to_shifted_wire(), b.to_shifted_wire()],
-			WireExpr::Xor3(a, b, c) => {
-				vec![
-					a.to_shifted_wire(),
-					b.to_shifted_wire(),
-					c.to_shifted_wire(),
-				]
-			}
+			WireExpr::Xor3(a, b, c) => vec![
+				a.to_shifted_wire(),
+				b.to_shifted_wire(),
+				c.to_shifted_wire(),
+			],
 			WireExpr::Xor4(a, b, c, d) => vec![
 				a.to_shifted_wire(),
 				b.to_shifted_wire(),
