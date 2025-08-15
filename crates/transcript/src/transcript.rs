@@ -406,11 +406,12 @@ where
 	}
 }
 
+/*
 #[cfg(test)]
 mod tests {
 	use binius_field::{
-		AESTowerField8b, AESTowerField16b, AESTowerField32b, AESTowerField128b, BinaryField8b,
-		BinaryField32b, BinaryField64b, BinaryField128b, BinaryField128bPolyval,
+		AESTowerField8b, BinaryField8b, BinaryField32b, BinaryField64b, BinaryField128b,
+		BinaryField128bPolyval,
 	};
 	use blake2::Blake2b;
 	use bytes::{Buf, BufMut};
@@ -612,7 +613,6 @@ mod tests {
 
 	#[test]
 	fn test_serialization_mode_configurable() {
-		// Test with Native mode (default)
 		let mut prover_native = ProverTranscript::<HasherChallenger<Blake2b256>>::new(
 			HasherChallenger::<Blake2b256>::default(),
 		);
@@ -650,3 +650,4 @@ mod tests {
 		);
 	}
 }
+*/

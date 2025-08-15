@@ -1150,7 +1150,6 @@ mod tests {
 		implements_transformation_factory::<PackedBinaryField2x8b, PackedBinaryField2x8b>();
 		implements_transformation_factory::<PackedAESBinaryField2x8b, PackedBinaryField2x8b>();
 		implements_transformation_factory::<PackedBinaryField1x16b, PackedBinaryField1x16b>();
-		implements_transformation_factory::<PackedAESBinaryField1x16b, PackedBinaryField1x16b>();
 
 		// 32 bit packed binary tower
 		implements_transformation_factory::<PackedBinaryField32x1b, PackedBinaryField32x1b>();
@@ -1159,9 +1158,7 @@ mod tests {
 		implements_transformation_factory::<PackedBinaryField4x8b, PackedBinaryField4x8b>();
 		implements_transformation_factory::<PackedAESBinaryField4x8b, PackedBinaryField4x8b>();
 		implements_transformation_factory::<PackedBinaryField2x16b, PackedBinaryField2x16b>();
-		implements_transformation_factory::<PackedAESBinaryField2x16b, PackedBinaryField2x16b>();
 		implements_transformation_factory::<PackedBinaryField1x32b, PackedBinaryField1x32b>();
-		implements_transformation_factory::<PackedAESBinaryField1x32b, PackedBinaryField1x32b>();
 
 		// 64 bit packed binary tower
 		implements_transformation_factory::<PackedBinaryField64x1b, PackedBinaryField64x1b>();
@@ -1170,11 +1167,8 @@ mod tests {
 		implements_transformation_factory::<PackedBinaryField8x8b, PackedBinaryField8x8b>();
 		implements_transformation_factory::<PackedAESBinaryField8x8b, PackedBinaryField8x8b>();
 		implements_transformation_factory::<PackedBinaryField4x16b, PackedBinaryField4x16b>();
-		implements_transformation_factory::<PackedAESBinaryField4x16b, PackedBinaryField4x16b>();
 		implements_transformation_factory::<PackedBinaryField2x32b, PackedBinaryField2x32b>();
-		implements_transformation_factory::<PackedAESBinaryField2x32b, PackedBinaryField2x32b>();
 		implements_transformation_factory::<PackedBinaryField1x64b, PackedBinaryField1x64b>();
-		implements_transformation_factory::<PackedAESBinaryField1x64b, PackedBinaryField1x64b>();
 
 		// 128 bit packed binary tower
 		implements_transformation_factory::<PackedBinaryField128x1b, PackedBinaryField128x1b>();
@@ -1183,13 +1177,9 @@ mod tests {
 		implements_transformation_factory::<PackedBinaryField16x8b, PackedBinaryField16x8b>();
 		implements_transformation_factory::<PackedAESBinaryField16x8b, PackedBinaryField16x8b>();
 		implements_transformation_factory::<PackedBinaryField8x16b, PackedBinaryField8x16b>();
-		implements_transformation_factory::<PackedAESBinaryField8x16b, PackedBinaryField8x16b>();
 		implements_transformation_factory::<PackedBinaryField4x32b, PackedBinaryField4x32b>();
-		implements_transformation_factory::<PackedAESBinaryField4x32b, PackedBinaryField4x32b>();
 		implements_transformation_factory::<PackedBinaryField2x64b, PackedBinaryField2x64b>();
-		implements_transformation_factory::<PackedAESBinaryField2x64b, PackedBinaryField2x64b>();
 		implements_transformation_factory::<PackedBinaryField1x128b, PackedBinaryField1x128b>();
-		implements_transformation_factory::<PackedAESBinaryField1x128b, PackedBinaryField1x128b>();
 
 		// 256 bit packed binary tower
 		implements_transformation_factory::<PackedBinaryField256x1b, PackedBinaryField256x1b>();
@@ -1198,13 +1188,9 @@ mod tests {
 		implements_transformation_factory::<PackedBinaryField32x8b, PackedBinaryField32x8b>();
 		implements_transformation_factory::<PackedAESBinaryField32x8b, PackedBinaryField32x8b>();
 		implements_transformation_factory::<PackedBinaryField16x16b, PackedBinaryField16x16b>();
-		implements_transformation_factory::<PackedAESBinaryField16x16b, PackedBinaryField16x16b>();
 		implements_transformation_factory::<PackedBinaryField8x32b, PackedBinaryField8x32b>();
-		implements_transformation_factory::<PackedAESBinaryField8x32b, PackedBinaryField8x32b>();
 		implements_transformation_factory::<PackedBinaryField4x64b, PackedBinaryField4x64b>();
-		implements_transformation_factory::<PackedAESBinaryField4x64b, PackedBinaryField4x64b>();
 		implements_transformation_factory::<PackedBinaryField2x128b, PackedBinaryField2x128b>();
-		implements_transformation_factory::<PackedAESBinaryField2x128b, PackedBinaryField2x128b>();
 
 		// 512 bit packed binary tower
 		implements_transformation_factory::<PackedBinaryField512x1b, PackedBinaryField512x1b>();
@@ -1213,13 +1199,9 @@ mod tests {
 		implements_transformation_factory::<PackedBinaryField64x8b, PackedBinaryField64x8b>();
 		implements_transformation_factory::<PackedAESBinaryField64x8b, PackedBinaryField64x8b>();
 		implements_transformation_factory::<PackedBinaryField32x16b, PackedBinaryField32x16b>();
-		implements_transformation_factory::<PackedAESBinaryField32x16b, PackedBinaryField32x16b>();
 		implements_transformation_factory::<PackedBinaryField16x32b, PackedBinaryField16x32b>();
-		implements_transformation_factory::<PackedAESBinaryField16x32b, PackedBinaryField16x32b>();
 		implements_transformation_factory::<PackedBinaryField8x64b, PackedBinaryField8x64b>();
-		implements_transformation_factory::<PackedAESBinaryField8x64b, PackedBinaryField8x64b>();
 		implements_transformation_factory::<PackedBinaryField4x128b, PackedBinaryField4x128b>();
-		implements_transformation_factory::<PackedAESBinaryField4x128b, PackedBinaryField4x128b>();
 	}
 
 	proptest! {

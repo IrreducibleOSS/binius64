@@ -26,16 +26,6 @@ define_packed_binary_fields!(
 			mul_alpha: (PairwiseTableStrategy),
 			transform: (PackedStrategy),
 		},
-		packed_field {
-			name: PackedAESBinaryField1x16b,
-			scalar: AESTowerField16b,
-			alpha_idx: _,
-			mul: (PairwiseRecursiveStrategy),
-			square: (PairwiseRecursiveStrategy),
-			invert: (PairwiseRecursiveStrategy),
-			mul_alpha: (PackedStrategy),
-			transform: (PairwiseStrategy),
-		},
 	]
 );
 

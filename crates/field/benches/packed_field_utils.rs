@@ -215,26 +215,10 @@ macro_rules! benchmark_packed_operation {
 				PackedBinaryField8x64b
 				PackedBinaryField4x128b
 
-				// 128-bit AES tower
+				// Packed AES
 				PackedAESBinaryField16x8b
-				PackedAESBinaryField8x16b
-				PackedAESBinaryField4x32b
-				PackedAESBinaryField2x64b
-				PackedAESBinaryField1x128b
-
-				// 256-bit AES tower
 				PackedAESBinaryField32x8b
-				PackedAESBinaryField16x16b
-				PackedAESBinaryField8x32b
-				PackedAESBinaryField4x64b
-				PackedAESBinaryField2x128b
-
-				// 512-bit AES tower
 				PackedAESBinaryField64x8b
-				PackedAESBinaryField32x16b
-				PackedAESBinaryField16x32b
-				PackedAESBinaryField8x64b
-				PackedAESBinaryField4x128b
 
 				// Packed polyval fields
 				PackedBinaryPolyval1x128b

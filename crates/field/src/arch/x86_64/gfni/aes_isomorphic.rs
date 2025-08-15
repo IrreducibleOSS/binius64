@@ -19,22 +19,6 @@ impl IsomorphicToAESCanonical for BinaryField8b {
 	type AESField = AESTowerField8b;
 }
 
-impl IsomorphicToAESCanonical for BinaryField16b {
-	type AESField = AESTowerField16b;
-}
-
-impl IsomorphicToAESCanonical for BinaryField32b {
-	type AESField = AESTowerField32b;
-}
-
-impl IsomorphicToAESCanonical for BinaryField64b {
-	type AESField = AESTowerField64b;
-}
-
-impl IsomorphicToAESCanonical for BinaryField128b {
-	type AESField = AESTowerField128b;
-}
-
 impl<U, Scalar> TaggedMul<AESIsomorphicStrategy> for PackedPrimitiveType<U, Scalar>
 where
 	U: UnderlierType + GfniType,

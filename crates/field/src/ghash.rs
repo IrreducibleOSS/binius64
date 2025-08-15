@@ -1053,8 +1053,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		AESTowerField128b, binary_field::tests::is_binary_field_valid_generator,
-		polyval::BinaryField128bPolyval,
+		binary_field::tests::is_binary_field_valid_generator, polyval::BinaryField128bPolyval,
 	};
 
 	#[test]
@@ -1196,14 +1195,6 @@ mod tests {
 			let converted_a = BinaryField128bPolyval::from(a_val);
 			let converted_b = BinaryField128bPolyval::from(b_val);
 			assert_eq!(BinaryField128bPolyval::from(a_val * b_val), converted_a * converted_b);
-		}
-
-		#[test]
-		fn tests_conversion_from_aes8(a in any::<u8>()) {
-			let a_val = AESTowerField8b::new(a);
-			let direct_conversion = BinaryField128bGhash::from(a_val);
-			let indirect_conversion = BinaryField128bGhash::from(BinaryField128bPolyval::from(AESTowerField128b::from(a_val)));
-			assert_eq!(direct_conversion, indirect_conversion);
 		}
 
 		#[test]

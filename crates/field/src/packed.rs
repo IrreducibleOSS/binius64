@@ -648,9 +648,9 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		AESTowerField8b, AESTowerField16b, AESTowerField32b, AESTowerField64b, AESTowerField128b,
-		BinaryField1b, BinaryField2b, BinaryField4b, BinaryField8b, BinaryField16b, BinaryField32b,
-		BinaryField64b, BinaryField128b, BinaryField128bPolyval, PackedField,
+		AESTowerField8b, BinaryField1b, BinaryField2b, BinaryField4b, BinaryField8b,
+		BinaryField16b, BinaryField32b, BinaryField64b, BinaryField128b, BinaryField128bPolyval,
+		PackedField,
 		arch::{
 			packed_1::*, packed_2::*, packed_4::*, packed_8::*, packed_16::*, packed_32::*,
 			packed_64::*, packed_128::*, packed_256::*, packed_512::*, packed_aes_8::*,
@@ -732,37 +732,15 @@ mod tests {
 
 		// AES tower
 		test.run::<AESTowerField8b>();
-		test.run::<AESTowerField16b>();
-		test.run::<AESTowerField32b>();
-		test.run::<AESTowerField64b>();
-		test.run::<AESTowerField128b>();
 
 		// packed AES tower
 		test.run::<PackedAESBinaryField1x8b>();
 		test.run::<PackedAESBinaryField2x8b>();
-		test.run::<PackedAESBinaryField1x16b>();
 		test.run::<PackedAESBinaryField4x8b>();
-		test.run::<PackedAESBinaryField2x16b>();
-		test.run::<PackedAESBinaryField1x32b>();
 		test.run::<PackedAESBinaryField8x8b>();
-		test.run::<PackedAESBinaryField4x16b>();
-		test.run::<PackedAESBinaryField2x32b>();
-		test.run::<PackedAESBinaryField1x64b>();
 		test.run::<PackedAESBinaryField16x8b>();
-		test.run::<PackedAESBinaryField8x16b>();
-		test.run::<PackedAESBinaryField4x32b>();
-		test.run::<PackedAESBinaryField2x64b>();
-		test.run::<PackedAESBinaryField1x128b>();
 		test.run::<PackedAESBinaryField32x8b>();
-		test.run::<PackedAESBinaryField16x16b>();
-		test.run::<PackedAESBinaryField8x32b>();
-		test.run::<PackedAESBinaryField4x64b>();
-		test.run::<PackedAESBinaryField2x128b>();
 		test.run::<PackedAESBinaryField64x8b>();
-		test.run::<PackedAESBinaryField32x16b>();
-		test.run::<PackedAESBinaryField16x32b>();
-		test.run::<PackedAESBinaryField8x64b>();
-		test.run::<PackedAESBinaryField4x128b>();
 
 		// polyval tower
 		test.run::<BinaryField128bPolyval>();
