@@ -8,7 +8,6 @@ use super::{
 	U1, U2, U4,
 	underlier_type::{NumCast, UnderlierType},
 };
-use crate::tower_levels::TowerLevel;
 
 /// Underlier type that supports bit arithmetic.
 pub trait UnderlierWithBitOps:
@@ -197,64 +196,6 @@ pub(crate) fn pair_unpack_lo_hi_128b_lanes<U: UnderlierWithBitOps>(
 		values[i].unpack_lo_128b_lanes(values[j], log_block_len),
 		values[i].unpack_hi_128b_lanes(values[j], log_block_len),
 	);
-}
-
-/// A helper function used as a building block for efficient SIMD types transposition
-/// implementation. This function actually may reorder the elements.
-#[allow(dead_code)]
-#[inline(always)]
-pub(crate) fn transpose_128b_blocks_low_to_high<U: UnderlierWithBitOps, TL: TowerLevel>(
-	values: &mut TL::Data<U>,
-	log_block_len: usize,
-) {
-	assert!(TL::WIDTH <= 16);
-
-	if TL::WIDTH == 1 {
-		return;
-	}
-
-	let (left, right) = TL::split_mut(values);
-	transpose_128b_blocks_low_to_high::<_, TL::Base>(left, log_block_len);
-	transpose_128b_blocks_low_to_high::<_, TL::Base>(right, log_block_len);
-
-	let log_block_len = log_block_len + TL::LOG_WIDTH + 2;
-	for i in 0..TL::WIDTH / 2 {
-		pair_unpack_lo_hi_128b_lanes(values, i, i + TL::WIDTH / 2, log_block_len);
-	}
-}
-
-/// Transposition implementation for 128-bit SIMD types.
-/// This implementations is used for NEON and SSE2.
-#[allow(dead_code)]
-#[inline(always)]
-pub(crate) fn transpose_128b_values<U: UnderlierWithBitOps, TL: TowerLevel>(
-	values: &mut TL::Data<U>,
-	log_block_len: usize,
-) {
-	assert!(U::BITS == 128);
-
-	transpose_128b_blocks_low_to_high::<U, TL>(values, log_block_len);
-
-	// Elements are transposed, but we need to reorder them
-	match TL::LOG_WIDTH {
-		0 | 1 => {}
-		2 => {
-			values.as_mut().swap(1, 2);
-		}
-		3 => {
-			values.as_mut().swap(1, 4);
-			values.as_mut().swap(3, 6);
-		}
-		4 => {
-			values.as_mut().swap(1, 8);
-			values.as_mut().swap(2, 4);
-			values.as_mut().swap(3, 12);
-			values.as_mut().swap(5, 10);
-			values.as_mut().swap(7, 14);
-			values.as_mut().swap(11, 13);
-		}
-		_ => panic!("unsupported tower level"),
-	}
 }
 
 /// Fallback implementation of `spread` method.
