@@ -57,7 +57,7 @@ pub struct BinaryField128bGhash(pub(crate) u128);
 
 impl BinaryField128bGhash {
 	#[inline]
-	pub fn new(value: u128) -> Self {
+	pub const fn new(value: u128) -> Self {
 		Self(value)
 	}
 }
