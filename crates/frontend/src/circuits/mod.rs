@@ -6,5 +6,6 @@ pub mod jwt_claims;
 pub mod keccak;
 pub mod rs256;
 pub mod sha256;
+pub mod sha512;
 pub mod slice;
 pub mod zklogin;

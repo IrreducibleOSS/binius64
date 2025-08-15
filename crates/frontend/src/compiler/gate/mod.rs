@@ -27,6 +27,7 @@ pub mod isub_bin_bout;
 pub mod mod_inverse_hint;
 pub mod rotl64;
 pub mod rotr32;
+pub mod rotr64;
 pub mod shl;
 pub mod shr;
 pub mod shr32;
@@ -43,6 +44,7 @@ pub fn constrain(gate: Gate, graph: &GateGraph, builder: &mut ConstraintBuilder)
 		Opcode::Shr32 => shr32::constrain(gate, data, builder),
 		Opcode::Rotr32 => rotr32::constrain(gate, data, builder),
 		Opcode::Rotl64 => rotl64::constrain(gate, data, builder),
+		Opcode::Rotr64 => rotr64::constrain(gate, data, builder),
 		Opcode::AssertEq => assert_eq::constrain(gate, data, builder),
 		Opcode::Assert0 => assert_0::constrain(gate, data, builder),
 		Opcode::AssertBand0 => assert_band_0::constrain(gate, data, builder),
@@ -78,6 +80,7 @@ pub fn emit_gate_bytecode(
 		Opcode::Shr32 => shr32::emit_eval_bytecode(gate, data, builder, wire_to_reg),
 		Opcode::Rotr32 => rotr32::emit_eval_bytecode(gate, data, builder, wire_to_reg),
 		Opcode::Rotl64 => rotl64::emit_eval_bytecode(gate, data, builder, wire_to_reg),
+		Opcode::Rotr64 => rotr64::emit_eval_bytecode(gate, data, builder, wire_to_reg),
 		Opcode::AssertEq => {
 			let assertion_path = graph.assertion_names[gate];
 			assert_eq::emit_eval_bytecode(gate, data, assertion_path, builder, wire_to_reg)

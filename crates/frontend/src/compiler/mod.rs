@@ -345,6 +345,14 @@ impl CircuitBuilder {
 		z
 	}
 
+	pub fn rotr_64(&self, x: Wire, n: u32) -> Wire {
+		assert!(n < 64, "rotate amount n={n} out of range");
+		let z = self.add_internal();
+		let mut graph = self.graph_mut();
+		graph.emit_gate_imm(self.current_path, Opcode::Rotr64, [x], [z], n);
+		z
+	}
+
 	pub fn shr_32(&self, x: Wire, n: u32) -> Wire {
 		assert!(n < 32, "shift amount n={n} out of range");
 		let z = self.add_internal();
