@@ -153,7 +153,8 @@ fn test_addition_overflow() {
 Binius64 excels at bitwise operations. Here's how to use them:
 
 ```rust
-fn build_bitwise_circuit() -> Circuit {
+
+fn build_bitwise_circuit() -> (Circuit, Wire, Wire, Wire, Wire, Wire, Wire, Wire, Wire) {
     let builder = CircuitBuilder::new();
     
     let a = builder.add_inout();
@@ -184,8 +185,10 @@ fn build_bitwise_circuit() -> Circuit {
     builder.assert_eq("check_or", or_result, expected_or);
     builder.assert_eq("check_xor", xor_result, expected_xor);
     
-    builder.build()
+    let circuit = builder.build();
+    (circuit, a, b, and_result, or_result, xor_result, shl_result, shr_result, rotl_result)
 }
+
 ```
 
 ## Example 5: Using Private Witnesses
