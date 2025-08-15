@@ -3,6 +3,7 @@
 use binius_field::BinaryField128bGhash as Ghash;
 
 pub const M: usize = 4;
+
 pub const BYTES_PER_GHASH: usize = 16;
 
 pub const NUM_ROUNDS: usize = 8;
@@ -146,39 +147,6 @@ pub static B_INV_COEFFS: [Ghash; 1 + 128] = [
 	Ghash::new(0xd9bc6edaf1b4a689ba169b5554228af8),
 ];
 
-pub static INITIAL_CONSTANT: [Ghash; 4] = [
-	Ghash::new(0xd0e015190f5e0795f4a1d28234ffdf87),
-	Ghash::new(0x6111731acd9a89f6b93ec3a23ec7681b),
-	Ghash::new(0x15da8de707ee3f3918a34a96728b8d29),
-	Ghash::new(0x2ea920e89fbb13a1ed2a216b1d232bfb),
-];
-
-pub static CONSTANTS_MATRIX: [Ghash; 16] = [
-	Ghash::new(0x1cac9af051191d2c8ef96344bc8cbd0f),
-	Ghash::new(0x3ceb350e8c2d2f4d4750ab0a854c3a4d),
-	Ghash::new(0x09cc78f7eafef94d8e092e899156946b),
-	Ghash::new(0x1d1ad17c8c7ee715a3d58f7eedb30dbb),
-	Ghash::new(0x06bee572113950b3dd0cdae9dff5dfc5),
-	Ghash::new(0x4799c3743a3560428b4bfa1a5cd3d295),
-	Ghash::new(0x516883bf97b07fcf4cb89ac6bf636d0b),
-	Ghash::new(0x0b681d1621d6aa1fdf1a9113b04d755b),
-	Ghash::new(0xe9ba2f01051f6b4b3ddfe74c125e99e5),
-	Ghash::new(0x1f58efc5ecf2e1b933e31cfb26b916d1),
-	Ghash::new(0x36da671249b5444cf67efc573241fe19),
-	Ghash::new(0x056cae18b867d486615a130556e5eb99),
-	Ghash::new(0x1d8645dd4b1e46b78dd9df84956bcf11),
-	Ghash::new(0x3efa34e48e3b218395efe6255339375b),
-	Ghash::new(0x79bf44bae0d2379397d0812db56c5eff),
-	Ghash::new(0x7fb3b7fce84776e39e538151daddae85),
-];
-
-pub static CONSTANTS_CONSTANT: [Ghash; 4] = [
-	Ghash::new(0x0d42981a71a7c2e493ca17e6bb10203f),
-	Ghash::new(0x9ceed672ccb7030fca17ed48e18717b9),
-	Ghash::new(0x0cec5c463024f2ba95c6ecdb4a349d15),
-	Ghash::new(0xa46023576301b995990418f3a23e3c99),
-];
-
 pub static ROUND_CONSTANTS: [[Ghash; 4]; 1 + 2 * 8] = [
 	[
 		Ghash::new(0xd0e015190f5e0795f4a1d28234ffdf87),
@@ -284,19 +252,8 @@ pub static ROUND_CONSTANTS: [[Ghash; 4]; 1 + 2 * 8] = [
 	],
 ];
 
-pub fn matrix_mul(matrix: &[Ghash; M * M], vector: &[Ghash; M]) -> [Ghash; M] {
-	std::array::from_fn(|i| {
-		// Row i: slice from i*N to (i+1)*N, dot product with vector
-		matrix[i * M..(i + 1) * M]
-			.iter()
-			.zip(vector.iter())
-			.map(|(&m_ij, &v_j)| m_ij * v_j)
-			.sum()
-	})
-}
-
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use binius_field::{Field, Random, arithmetic_traits::Square};
 	use rand::{SeedableRng, rngs::StdRng};
 
@@ -310,6 +267,50 @@ mod tests {
 		},
 		*,
 	};
+
+	pub fn matrix_mul(matrix: &[Ghash; M * M], vector: &[Ghash; M]) -> [Ghash; M] {
+		std::array::from_fn(|i| {
+			// Row i: slice from i*N to (i+1)*N, dot product with vector
+			matrix[i * M..(i + 1) * M]
+				.iter()
+				.zip(vector.iter())
+				.map(|(&m_ij, &v_j)| m_ij * v_j)
+				.sum()
+		})
+	}
+
+	pub static INITIAL_CONSTANT: [Ghash; 4] = [
+		Ghash::new(0xd0e015190f5e0795f4a1d28234ffdf87),
+		Ghash::new(0x6111731acd9a89f6b93ec3a23ec7681b),
+		Ghash::new(0x15da8de707ee3f3918a34a96728b8d29),
+		Ghash::new(0x2ea920e89fbb13a1ed2a216b1d232bfb),
+	];
+
+	pub static CONSTANTS_MATRIX: [Ghash; 16] = [
+		Ghash::new(0x1cac9af051191d2c8ef96344bc8cbd0f),
+		Ghash::new(0x3ceb350e8c2d2f4d4750ab0a854c3a4d),
+		Ghash::new(0x09cc78f7eafef94d8e092e899156946b),
+		Ghash::new(0x1d1ad17c8c7ee715a3d58f7eedb30dbb),
+		Ghash::new(0x06bee572113950b3dd0cdae9dff5dfc5),
+		Ghash::new(0x4799c3743a3560428b4bfa1a5cd3d295),
+		Ghash::new(0x516883bf97b07fcf4cb89ac6bf636d0b),
+		Ghash::new(0x0b681d1621d6aa1fdf1a9113b04d755b),
+		Ghash::new(0xe9ba2f01051f6b4b3ddfe74c125e99e5),
+		Ghash::new(0x1f58efc5ecf2e1b933e31cfb26b916d1),
+		Ghash::new(0x36da671249b5444cf67efc573241fe19),
+		Ghash::new(0x056cae18b867d486615a130556e5eb99),
+		Ghash::new(0x1d8645dd4b1e46b78dd9df84956bcf11),
+		Ghash::new(0x3efa34e48e3b218395efe6255339375b),
+		Ghash::new(0x79bf44bae0d2379397d0812db56c5eff),
+		Ghash::new(0x7fb3b7fce84776e39e538151daddae85),
+	];
+
+	pub static CONSTANTS_CONSTANT: [Ghash; 4] = [
+		Ghash::new(0x0d42981a71a7c2e493ca17e6bb10203f),
+		Ghash::new(0x9ceed672ccb7030fca17ed48e18717b9),
+		Ghash::new(0x0cec5c463024f2ba95c6ecdb4a349d15),
+		Ghash::new(0xa46023576301b995990418f3a23e3c99),
+	];
 
 	fn compute_round_constants() -> [[Ghash; M]; 1 + 2 * NUM_ROUNDS] {
 		let mut round_keys = [[Ghash::ZERO; M]; 1 + 2 * NUM_ROUNDS];

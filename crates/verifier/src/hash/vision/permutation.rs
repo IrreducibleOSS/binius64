@@ -6,7 +6,7 @@ use binius_field::{
 };
 
 use super::{
-	constants::{B_FWD_COEFFS, B_INV_COEFFS, BYTES_PER_GHASH, M, ROUND_CONSTANTS},
+	constants::{B_FWD_COEFFS, B_INV_COEFFS, BYTES_PER_GHASH, M, NUM_ROUNDS, ROUND_CONSTANTS},
 	linear_tables::{LINEAR_B_FWD_TABLE, LINEAR_B_INV_TABLE},
 };
 
@@ -47,7 +47,6 @@ pub fn linearized_transform_scalar(x: &mut Ghash, table: &'static [[Ghash; 256];
 	struct TableCallback {
 		table: &'static [[Ghash; 256]; BYTES_PER_GHASH],
 		result: Ghash,
-		byte_idx: usize,
 	}
 
 	impl ByteIteratorCallback for TableCallback {
@@ -61,7 +60,6 @@ pub fn linearized_transform_scalar(x: &mut Ghash, table: &'static [[Ghash; 256];
 	let mut callback = TableCallback {
 		table,
 		result: Ghash::ZERO,
-		byte_idx: 0,
 	};
 	iterate_bytes(std::slice::from_ref(x), &mut callback);
 	*x = callback.result;
@@ -125,7 +123,7 @@ pub fn constants_add(state: &mut [Ghash; M], constants: &[Ghash; M]) {
 	}
 }
 
-fn round(state: &mut [Ghash; 4], round_constants_idx: usize) {
+fn round(state: &mut [Ghash; M], round_constants_idx: usize) {
 	// First half
 	sbox(state, b_inv_transform);
 	mds_mul(state);
@@ -138,7 +136,7 @@ fn round(state: &mut [Ghash; 4], round_constants_idx: usize) {
 
 pub fn permutation(state: &mut [Ghash; M]) {
 	constants_add(state, &ROUND_CONSTANTS[0]);
-	for round_num in 0..8 {
+	for round_num in 0..NUM_ROUNDS {
 		round(state, 1 + 2 * round_num);
 	}
 }
@@ -150,7 +148,7 @@ mod tests {
 	use binius_field::{Random, arithmetic_traits::InvertOrZero};
 	use rand::{SeedableRng, rngs::StdRng};
 
-	use super::{super::constants::matrix_mul, *};
+	use super::{super::constants::tests::matrix_mul, *};
 
 	#[test]
 	fn test_batch_invert() {
