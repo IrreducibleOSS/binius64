@@ -247,32 +247,118 @@ fn big_sigma_0_optimal(b: &CircuitBuilder, a: Wire) -> Wire {
 	result
 }
 
-/// Optimized Σ1(e) using single AND constraint instead of 3
+/// Optimized Σ1(e) using single AND constraint instead of 5
+/// Uses raw constraint API for 5x fewer constraints
 fn big_sigma_1_optimal(b: &CircuitBuilder, e: Wire) -> Wire {
-	// Would reduce from 3 constraints to 1
-	// TODO: Implement when constraint builder API is exposed
-	big_sigma_1(b, e)
+	use crate::compiler::constraint_builder::Shift;
+	
+	let result = b.add_internal();
+	let mask32 = b.add_constant(Word::MASK_32);
+	
+	b.raw_and_constraint(
+		vec![e],           // inputs
+		vec![result],      // outputs
+		// Operand A: all rotation terms XORed together
+		// Σ1(e) = ROTR(e, 6) ⊕ ROTR(e, 11) ⊕ ROTR(e, 25)
+		vec![
+			(e, Shift::Srl(6)),  (e, Shift::Sll(26)),  // ROTR(e, 6)
+			(e, Shift::Srl(11)), (e, Shift::Sll(21)),  // ROTR(e, 11)
+			(e, Shift::Srl(25)), (e, Shift::Sll(7)),   // ROTR(e, 25)
+		],
+		// Operand B: mask
+		vec![(mask32, Shift::None)],
+		// Operand C: result
+		vec![(result, Shift::None)],
+		// Witness computation function
+		move |inputs| {
+			let e_val = inputs[0].0 & 0xFFFFFFFF;
+			let r1 = ((e_val >> 6) | (e_val << 26)) & 0xFFFFFFFF;
+			let r2 = ((e_val >> 11) | (e_val << 21)) & 0xFFFFFFFF;
+			let r3 = ((e_val >> 25) | (e_val << 7)) & 0xFFFFFFFF;
+			vec![Word(r1 ^ r2 ^ r3)]
+		},
+	);
+	
+	result
 }
 
 /// Optimized σ0(x) using single AND constraint
+/// σ0(x) = ROTR(x, 7) ⊕ ROTR(x, 18) ⊕ SHR(x, 3)
 fn small_sigma_0_optimal(b: &CircuitBuilder, x: Wire) -> Wire {
-	// Would combine 2 rotates + 1 shift into single constraint
-	// TODO: Implement when constraint builder API is exposed
-	small_sigma_0(b, x)
+	use crate::compiler::constraint_builder::Shift;
+	
+	let result = b.add_internal();
+	let mask32 = b.add_constant(Word::MASK_32);
+	
+	b.raw_and_constraint(
+		vec![x],           // inputs
+		vec![result],      // outputs
+		// Operand A: all terms XORed together
+		vec![
+			(x, Shift::Srl(7)),  (x, Shift::Sll(25)),  // ROTR(x, 7)
+			(x, Shift::Srl(18)), (x, Shift::Sll(14)),  // ROTR(x, 18)
+			(x, Shift::Srl(3)),                         // SHR(x, 3) - just shift, no rotate
+		],
+		// Operand B: mask
+		vec![(mask32, Shift::None)],
+		// Operand C: result
+		vec![(result, Shift::None)],
+		// Witness computation function
+		move |inputs| {
+			let x_val = inputs[0].0 & 0xFFFFFFFF;
+			let r1 = ((x_val >> 7) | (x_val << 25)) & 0xFFFFFFFF;
+			let r2 = ((x_val >> 18) | (x_val << 14)) & 0xFFFFFFFF;
+			let s1 = (x_val >> 3) & 0xFFFFFFFF;
+			vec![Word(r1 ^ r2 ^ s1)]
+		},
+	);
+	
+	result
 }
 
 /// Optimized σ1(x) using single AND constraint  
+/// σ1(x) = ROTR(x, 17) ⊕ ROTR(x, 19) ⊕ SHR(x, 10)
 fn small_sigma_1_optimal(b: &CircuitBuilder, x: Wire) -> Wire {
-	// Would combine 2 rotates + 1 shift into single constraint
-	// TODO: Implement when constraint builder API is exposed
-	small_sigma_1(b, x)
+	use crate::compiler::constraint_builder::Shift;
+	
+	let result = b.add_internal();
+	let mask32 = b.add_constant(Word::MASK_32);
+	
+	b.raw_and_constraint(
+		vec![x],           // inputs
+		vec![result],      // outputs
+		// Operand A: all terms XORed together
+		vec![
+			(x, Shift::Srl(17)), (x, Shift::Sll(15)),  // ROTR(x, 17)
+			(x, Shift::Srl(19)), (x, Shift::Sll(13)),  // ROTR(x, 19)
+			(x, Shift::Srl(10)),                        // SHR(x, 10) - just shift
+		],
+		// Operand B: mask
+		vec![(mask32, Shift::None)],
+		// Operand C: result
+		vec![(result, Shift::None)],
+		// Witness computation function
+		move |inputs| {
+			let x_val = inputs[0].0 & 0xFFFFFFFF;
+			let r1 = ((x_val >> 17) | (x_val << 15)) & 0xFFFFFFFF;
+			let r2 = ((x_val >> 19) | (x_val << 13)) & 0xFFFFFFFF;
+			let s1 = (x_val >> 10) & 0xFFFFFFFF;
+			vec![Word(r1 ^ r2 ^ s1)]
+		},
+	);
+	
+	result
 }
 
 #[cfg(test)]
 mod tests {
 	use binius_core::word::Word;
 
-	use super::{Compress, State, big_sigma_0, big_sigma_1, small_sigma_0, small_sigma_1, big_sigma_0_optimal};
+	use super::{
+		Compress, State, 
+		big_sigma_0, big_sigma_1, small_sigma_0, small_sigma_1,
+		big_sigma_0_optimal, big_sigma_1_optimal, small_sigma_0_optimal, small_sigma_1_optimal
+	};
 	use crate::{
 		compiler::{self, Wire},
 		constraint_verifier::verify_constraints,
@@ -448,7 +534,7 @@ mod tests {
 			assert_eq!(cs.mul_constraints.len(), 0);
 		}
 
-		// Test big_sigma_1  
+		// Test big_sigma_1 CURRENT 
 		{
 			let builder = compiler::CircuitBuilder::new();
 			let input = builder.add_witness();
@@ -463,8 +549,24 @@ mod tests {
 			assert_eq!(cs.and_constraints.len(), 5);
 			assert_eq!(cs.mul_constraints.len(), 0);
 		}
+		
+		// Test big_sigma_1 OPTIMIZED
+		{
+			let builder = compiler::CircuitBuilder::new();
+			let input = builder.add_witness();
+			let _output = big_sigma_1_optimal(&builder, input);
+			let circuit = builder.build();
+			let cs = circuit.constraint_system();
+			
+			println!("\nbig_sigma_1 (OPTIMIZED):");
+			println!("  AND constraints: {}", cs.and_constraints.len());
+			println!("  MUL constraints: {}", cs.mul_constraints.len());
+			println!("  Reduction: 5 → 1 constraint (80% fewer!)");
+			assert_eq!(cs.and_constraints.len(), 1);
+			assert_eq!(cs.mul_constraints.len(), 0);
+		}
 
-		// Test small_sigma_0
+		// Test small_sigma_0 CURRENT
 		{
 			let builder = compiler::CircuitBuilder::new();
 			let input = builder.add_witness();
@@ -479,8 +581,24 @@ mod tests {
 			assert_eq!(cs.and_constraints.len(), 5);
 			assert_eq!(cs.mul_constraints.len(), 0);
 		}
+		
+		// Test small_sigma_0 OPTIMIZED
+		{
+			let builder = compiler::CircuitBuilder::new();
+			let input = builder.add_witness();
+			let _output = small_sigma_0_optimal(&builder, input);
+			let circuit = builder.build();
+			let cs = circuit.constraint_system();
+			
+			println!("\nsmall_sigma_0 (OPTIMIZED):");
+			println!("  AND constraints: {}", cs.and_constraints.len());
+			println!("  MUL constraints: {}", cs.mul_constraints.len());
+			println!("  Reduction: 5 → 1 constraint (80% fewer!)");
+			assert_eq!(cs.and_constraints.len(), 1);
+			assert_eq!(cs.mul_constraints.len(), 0);
+		}
 
-		// Test small_sigma_1
+		// Test small_sigma_1 CURRENT
 		{
 			let builder = compiler::CircuitBuilder::new();
 			let input = builder.add_witness();
@@ -493,6 +611,22 @@ mod tests {
 			println!("  MUL constraints: {}", cs.mul_constraints.len());
 			// Actually 5 AND constraints (2 rotr_32 + 1 shr_32 + 2 bxor)
 			assert_eq!(cs.and_constraints.len(), 5);
+			assert_eq!(cs.mul_constraints.len(), 0);
+		}
+		
+		// Test small_sigma_1 OPTIMIZED
+		{
+			let builder = compiler::CircuitBuilder::new();
+			let input = builder.add_witness();
+			let _output = small_sigma_1_optimal(&builder, input);
+			let circuit = builder.build();
+			let cs = circuit.constraint_system();
+			
+			println!("\nsmall_sigma_1 (OPTIMIZED):");
+			println!("  AND constraints: {}", cs.and_constraints.len());
+			println!("  MUL constraints: {}", cs.mul_constraints.len());
+			println!("  Reduction: 5 → 1 constraint (80% fewer!)");
+			assert_eq!(cs.and_constraints.len(), 1);
 			assert_eq!(cs.mul_constraints.len(), 0);
 		}
 
