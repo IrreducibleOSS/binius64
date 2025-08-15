@@ -1,7 +1,7 @@
 // Copyright 2025 Irreducible Inc.
 
 use binius_field::{
-	BinaryField128bGhash as Ghash, Field, WithUnderlier,
+	BinaryField128bGhash as Ghash, Field,
 	byte_iteration::{ByteIteratorCallback, iterate_bytes},
 };
 
@@ -84,37 +84,22 @@ pub fn sbox(state: &mut [Ghash; M], transform: impl Fn(&mut [Ghash; M])) {
 	transform(state);
 }
 
-#[inline]
-// This could be moved to the field crate
-fn mul_x(a: Ghash) -> Ghash {
-	let val = a.to_underlier();
-	let shifted = val << 1;
-
-	// GHASH irreducible polynomial: x^128 + x^7 + x^2 + x + 1
-	// When the high bit is set, we need to XOR with the reduction polynomial 0x87
-	// All 1s if the top bit is set, all 0s otherwise
-	let mask = (val >> 127).wrapping_neg();
-	let result = shifted ^ (0x87 & mask);
-
-	Ghash::from_underlier(result)
-}
-
 pub fn mds_mul(a: &mut [Ghash; M]) {
 	// a = [a0, a1, a2, a3]
 	let sum = a[0] + a[1] + a[2] + a[3];
 	let a0 = a[0];
 
 	// 2*a0 + 3*a1 + a2 + a3
-	a[0] += sum + mul_x(a[0] + a[1]);
+	a[0] += sum + (a[0] + a[1]).mul_x();
 
 	// a0 + 2*a1 + 3*a2 + a3
-	a[1] += sum + mul_x(a[1] + a[2]);
+	a[1] += sum + (a[1] + a[2]).mul_x();
 
 	// a0 + a1 + 2*a2 + 3*a3
-	a[2] += sum + mul_x(a[2] + a[3]);
+	a[2] += sum + (a[2] + a[3]).mul_x();
 
 	// 3*a0 + a1 + a2 + 2*a3
-	a[3] += sum + mul_x(a[3] + a0);
+	a[3] += sum + (a[3] + a0).mul_x();
 }
 
 pub fn constants_add(state: &mut [Ghash; M], constants: &[Ghash; M]) {
@@ -180,7 +165,7 @@ mod tests {
 			1, 1, 2, 3, //
 			3, 1, 1, 2,
 		]
-		.map(Ghash::from_underlier);
+		.map(Ghash::new);
 		let expected = matrix_mul(&matrix, &input);
 
 		let mut actual = input;
