@@ -1,8 +1,4 @@
-# Binius64 Constraint System Deep Dive
-
-## The Core Question: "So AND operand can be a long list of XORs?"
-
-**Answer: YES!** This is the key insight that makes Binius64 so powerful for SHA/Keccak algorithms.
+# Binius64 Constraint System Deeper Dive
 
 ## Understanding Binius64 Constraints
 
