@@ -432,51 +432,6 @@ impl UnderlierWithBitOps for M128 {
 			_ => panic!("Unsupported block length"),
 		}
 	}
-
-	#[inline]
-	fn transpose_bytes_from_byte_sliced<TL: TowerLevel>(values: &mut TL::Data<Self>)
-	where
-		u8: NumCast<Self>,
-		Self: From<u8>,
-	{
-		transpose_128b_values::<Self, TL>(values, 0);
-	}
-
-	#[inline]
-	fn transpose_bytes_to_byte_sliced<TL: TowerLevel>(values: &mut TL::Data<Self>)
-	where
-		u8: NumCast<Self>,
-		Self: From<u8>,
-	{
-		if TL::LOG_WIDTH == 0 {
-			return;
-		}
-
-		match TL::LOG_WIDTH {
-			1 => {
-				let shuffle = [0, 2, 4, 6, 8, 10, 12, 14, 1, 3, 5, 7, 9, 11, 13, 15];
-				for v in values.as_mut().iter_mut() {
-					*v = v.shuffle_u8(shuffle);
-				}
-			}
-			2 => {
-				let shuffle = [0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15];
-				for v in values.as_mut().iter_mut() {
-					*v = v.shuffle_u8(shuffle);
-				}
-			}
-			3 => {
-				let shuffle = [0, 8, 1, 9, 2, 10, 3, 11, 4, 12, 5, 13, 6, 14, 7, 15];
-				for v in values.as_mut().iter_mut() {
-					*v = v.shuffle_u8(shuffle);
-				}
-			}
-			4 => {}
-			_ => unreachable!("Log width must be less than 5"),
-		}
-
-		transpose_128b_values::<_, TL>(values, 4 - TL::LOG_WIDTH);
-	}
 }
 
 impl UnderlierWithBitConstants for M128 {

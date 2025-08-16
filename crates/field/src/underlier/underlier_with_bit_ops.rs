@@ -170,63 +170,6 @@ pub trait UnderlierWithBitOps:
 	fn unpack_hi_128b_lanes(self, other: Self, log_block_len: usize) -> Self {
 		unpack_hi_128b_fallback(self, other, log_block_len)
 	}
-
-	/// Transpose bytes from byte-sliced representation to a packed "normal one".
-	///
-	/// For example for tower level 1, having the following bytes:
-	///     [a0, b0, c1, d1]
-	///     [a1, b1, c2, d2]
-	///
-	/// The result will be:
-	///     [a0, a1, b0, b1]
-	///     [c1, c2, d1, d2]
-	fn transpose_bytes_from_byte_sliced<TL: TowerLevel>(values: &mut TL::Data<Self>)
-	where
-		u8: NumCast<Self>,
-		Self: From<u8>,
-	{
-		assert!(TL::LOG_WIDTH <= 4);
-
-		let result = TL::from_fn(|row| {
-			Self::from_fn(|col| {
-				let index = row * (Self::BITS / 8) + col;
-
-				// Safety: `index` is always less than `N * byte_count`.
-				unsafe { values[index % TL::WIDTH].get_subvalue::<u8>(index / TL::WIDTH) }
-			})
-		});
-
-		*values = result;
-	}
-
-	/// Transpose bytes from `ordinal` packed representation to a byte-sliced one.
-	///
-	/// For example for tower level 1, having the following bytes:
-	///    [a0, a1, b0, b1]
-	///    [c0, c1, d0, d1]
-	///
-	/// The result will be:
-	///   [a0, b0, c0, d0]
-	///   [a1, b1, c1, d1]
-	fn transpose_bytes_to_byte_sliced<TL: TowerLevel>(values: &mut TL::Data<Self>)
-	where
-		u8: NumCast<Self>,
-		Self: From<u8>,
-	{
-		assert!(TL::LOG_WIDTH <= 4);
-
-		let bytes = Self::BITS / 8;
-		let result = TL::from_fn(|row| {
-			Self::from_fn(|col| {
-				let index = row + col * TL::WIDTH;
-
-				// Safety: `index` is always less than `N * byte_count`.
-				unsafe { values[index / bytes].get_subvalue::<u8>(index % bytes) }
-			})
-		});
-
-		*values = result;
-	}
 }
 
 /// Returns a bit mask for a single `T` element inside underlier type.
@@ -493,7 +436,6 @@ mod tests {
 		super::small_uint::{U1, U2, U4},
 		*,
 	};
-	use crate::tower_levels::{TowerLevel1, TowerLevel2};
 
 	#[test]
 	fn test_from_fn() {
@@ -598,27 +540,5 @@ mod tests {
 				assert_eq!(init_val.get_subvalue::<u8>(i), val);
 			}
 		}
-	}
-
-	#[test]
-	fn test_transpose_from_byte_sliced() {
-		let mut value = [0x01234567u32];
-		u32::transpose_bytes_from_byte_sliced::<TowerLevel1>(&mut value);
-		assert_eq!(value, [0x01234567u32]);
-
-		let mut value = [0x67452301u32, 0xefcdab89u32];
-		u32::transpose_bytes_from_byte_sliced::<TowerLevel2>(&mut value);
-		assert_eq!(value, [0xab238901u32, 0xef67cd45u32]);
-	}
-
-	#[test]
-	fn test_transpose_to_byte_sliced() {
-		let mut value = [0x01234567u32];
-		u32::transpose_bytes_to_byte_sliced::<TowerLevel1>(&mut value);
-		assert_eq!(value, [0x01234567u32]);
-
-		let mut value = [0x67452301u32, 0xefcdab89u32];
-		u32::transpose_bytes_to_byte_sliced::<TowerLevel2>(&mut value);
-		assert_eq!(value, [0xcd894501u32, 0xefab6723u32]);
 	}
 }

@@ -13,7 +13,7 @@ use rand::{
 };
 
 use super::{Divisible, NumCast, UnderlierType, UnderlierWithBitOps};
-use crate::{Random, tower_levels::TowerLevel};
+use crate::Random;
 
 /// A type that represents a pair of elements of the same underlier type.
 /// We use it as an underlier for the `ScaledPackedField` type.
@@ -261,57 +261,6 @@ where
 		assert!(U::BITS >= 128);
 
 		Self(array::from_fn(|i| self.0[i].unpack_hi_128b_lanes(other.0[i], log_block_len)))
-	}
-
-	#[inline]
-	fn transpose_bytes_from_byte_sliced<TL: TowerLevel>(values: &mut TL::Data<Self>)
-	where
-		u8: NumCast<Self>,
-		Self: From<u8>,
-	{
-		for col in 0..N {
-			let mut column = TL::from_fn(|row| values[row].0[col]);
-			U::transpose_bytes_from_byte_sliced::<TL>(&mut column);
-			for row in 0..TL::WIDTH {
-				values[row].0[col] = column[row];
-			}
-		}
-
-		let mut result = TL::default::<Self>();
-		for row in 0..TL::WIDTH {
-			for col in 0..N {
-				let index = row * N + col;
-
-				result[row].0[col] = values[index % TL::WIDTH].0[index / TL::WIDTH];
-			}
-		}
-
-		*values = result;
-	}
-
-	#[inline]
-	fn transpose_bytes_to_byte_sliced<TL: TowerLevel>(values: &mut TL::Data<Self>)
-	where
-		u8: NumCast<Self>,
-		Self: From<u8>,
-	{
-		let mut result = TL::from_fn(|row| {
-			Self(array::from_fn(|col| {
-				let index = row + col * TL::WIDTH;
-
-				values[index / N].0[index % N]
-			}))
-		});
-
-		for col in 0..N {
-			let mut column = TL::from_fn(|row| result[row].0[col]);
-			U::transpose_bytes_to_byte_sliced::<TL>(&mut column);
-			for row in 0..TL::WIDTH {
-				result[row].0[col] = column[row];
-			}
-		}
-
-		*values = result;
 	}
 }
 
