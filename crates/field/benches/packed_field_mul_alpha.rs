@@ -4,9 +4,9 @@ mod packed_field_utils;
 
 use binius_field::{
 	arch::{
-		byte_sliced::*, packed_128::*, packed_256::*, packed_512::*, packed_aes_128::*,
-		packed_aes_256::*, packed_aes_512::*, packed_ghash_128::*, packed_ghash_256::*,
-		packed_ghash_512::*, packed_polyval_128::*, packed_polyval_256::*, packed_polyval_512::*,
+		packed_128::*, packed_256::*, packed_512::*, packed_aes_128::*, packed_aes_256::*,
+		packed_aes_512::*, packed_ghash_128::*, packed_ghash_256::*, packed_ghash_512::*,
+		packed_polyval_128::*, packed_polyval_256::*, packed_polyval_512::*,
 	},
 	arithmetic_traits::MulAlpha,
 };

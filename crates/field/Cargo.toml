@@ -46,10 +46,6 @@ name = "binary_field_util"
 harness = false
 
 [[bench]]
-name = "byte_sliced"
-harness = false
-
-[[bench]]
 name = "packed_extension_mul"
 harness = false
 

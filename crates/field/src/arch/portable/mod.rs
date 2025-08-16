@@ -33,8 +33,6 @@ pub mod packed_ghash_512;
 mod nibble_invert_128b;
 pub(crate) mod univariate_mul_utils_128;
 
-pub mod byte_sliced;
-
 pub(super) mod packed_scaled;
 
 pub(super) mod hybrid_recursive_arithmetics;
