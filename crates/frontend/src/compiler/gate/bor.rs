@@ -23,7 +23,7 @@ pub fn shape() -> OpcodeShape {
 		const_in: &[],
 		n_in: 2,
 		n_out: 1,
-		n_internal: 0,
+		n_aux: 0,
 		n_scratch: 0,
 		n_imm: 0,
 	}

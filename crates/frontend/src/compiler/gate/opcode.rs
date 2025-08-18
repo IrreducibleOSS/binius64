@@ -44,12 +44,39 @@ pub enum Opcode {
 	ModInverseHint,
 }
 
+/// The shape of an opcode is a description of it's inputs and outputs. It allows treating a gate as
+/// a black box, correctly identifying its inputs or outputs.
 pub struct OpcodeShape {
+	/// The constants the gate with this opcode expects.
 	pub const_in: &'static [Word],
+	/// The number of inputs this opcode expects.
+	///
+	/// In case this opcode has a dynamic shape, it specifies the fixed number of inputs.
 	pub n_in: usize,
+	/// The number of outputs this opcode provides.
+	///
+	/// In case this opcode has a dynamic shape, it specifies the fixed number of outputs.
 	pub n_out: usize,
-	pub n_internal: usize,
+	/// The number of wires of aux wires.
+	///
+	/// Aux wires are neither inputs nor outputs, but are still being used within constraint
+	/// system.
+	///
+	/// In case this opcode has a dynamic shape, it specifies the fixed number of aux wires.
+	pub n_aux: usize,
+	/// The number of scratch wires.
+	///
+	/// Scratch wires are the wires that are neither inputs nor outputs. They also do not
+	/// get referenced in the constraint system. Those are only needed for the witness evaluation.
+	///
+	/// In case this opcode has a dynamic shape, it specifies the fixed number of scratch wires.
 	pub n_scratch: usize,
+	/// The number of immediate operands.
+	///
+	/// Those are the fixed constant parameters for the opcode. Those include the constant shift
+	/// amounts and things like that.
+	///
+	/// In case this opcode has a dynamic shape, it specifies the fixed number of immediates.
 	pub n_imm: usize,
 }
 

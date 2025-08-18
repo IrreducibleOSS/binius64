@@ -23,7 +23,7 @@ pub fn shape() -> OpcodeShape {
 		const_in: &[],
 		n_in: 2,
 		n_out: 0,
-		n_internal: 0,
+		n_aux: 0,
 		// 1 scratch for the intermediate computation of the AND.
 		n_scratch: 1,
 		n_imm: 0,
