@@ -46,6 +46,16 @@ impl BytecodeBuilder {
 		self.emit_reg(src);
 	}
 
+	pub fn emit_bxor_multi(&mut self, dst: u32, srcs: &[u32]) {
+		self.n_eval_insn += 1;
+		self.emit_u8(0x06); // Opcode for multi-way XOR
+		self.emit_reg(dst);
+		self.emit_u32(srcs.len() as u32);
+		for &src in srcs {
+			self.emit_reg(src);
+		}
+	}
+
 	pub fn emit_select(&mut self, dst: u32, a: u32, b: u32, cond: u32) {
 		self.n_eval_insn += 1;
 		self.emit_u8(0x05);

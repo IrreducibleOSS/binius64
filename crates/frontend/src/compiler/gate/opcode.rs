@@ -7,6 +7,7 @@ pub enum Opcode {
 	// Bitwise operations
 	Band,
 	Bxor,
+	BxorMulti,
 	Bor,
 
 	// Selection
@@ -60,6 +61,7 @@ impl Opcode {
 			// Bitwise operations
 			Opcode::Band => gate::band::shape(),
 			Opcode::Bxor => gate::bxor::shape(),
+			Opcode::BxorMulti => gate::bxor_multi::shape(dimensions),
 			Opcode::Bor => gate::bor::shape(),
 
 			// Selection
@@ -102,6 +104,7 @@ impl Opcode {
 		match self {
 			Opcode::BigUintDivideHint => false,
 			Opcode::ModInverseHint => false,
+			Opcode::BxorMulti => false,
 			_ => true,
 		}
 	}

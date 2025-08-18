@@ -331,6 +331,10 @@ pub fn xor4(
 	WireExpr(smallvec![a.into(), b.into(), c.into(), d.into()])
 }
 
+pub fn xor_multi(terms: impl IntoIterator<Item = WireExprTerm>) -> WireExpr {
+	WireExpr(terms.into_iter().collect())
+}
+
 // Empty operand helper
 pub fn empty() -> WireExpr {
 	WireExpr(smallvec![])
