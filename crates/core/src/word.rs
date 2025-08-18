@@ -157,6 +157,20 @@ impl Word {
 		(Word(hi), Word(lo))
 	}
 
+	pub fn smul(self, rhs: Word) -> (Word, Word) {
+		let Word(lhs) = self;
+		let Word(rhs) = rhs;
+		// Interpret as signed 64-bit integers
+		let a = lhs as i64;
+		let b = rhs as i64;
+		// Perform signed multiplication as 128-bit
+		let result = (a as i128) * (b as i128);
+		// Extract high and low 64-bit words
+		let hi = (result >> 64) as u64;
+		let lo = result as u64;
+		(Word(hi), Word(lo))
+	}
+
 	pub fn wrapping_sub(self, rhs: Word) -> Word {
 		Word(self.0.wrapping_sub(rhs.0))
 	}
