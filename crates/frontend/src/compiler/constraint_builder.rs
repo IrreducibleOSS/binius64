@@ -1,5 +1,6 @@
 use binius_core::constraint_system::{AndConstraint, MulConstraint, ShiftedValueIndex, ValueIndex};
 use cranelift_entity::SecondaryMap;
+use smallvec::{SmallVec, smallvec};
 
 use crate::compiler::Wire;
 
@@ -244,20 +245,9 @@ impl<'a> MulConstraintBuilder<'a> {
 	}
 }
 
-/// Expression for building wire operands - all variants are Copy
+/// Expression for building wire operands as an XOR accumulation of terms.
 #[derive(Clone)]
-pub enum WireExpr {
-	/// Plain wire reference
-	Wire(Wire),
-	/// Shifted wire
-	Shifted(Wire, ShiftOp),
-	/// XOR combination (limited to avoid heap allocation in Copy)
-	Xor2(WireExprTerm, WireExprTerm),
-	Xor3(WireExprTerm, WireExprTerm, WireExprTerm),
-	Xor4(WireExprTerm, WireExprTerm, WireExprTerm, WireExprTerm),
-	/// Empty operand (represents 0)
-	Empty,
-}
+pub struct WireExpr(SmallVec<[WireExprTerm; 4]>);
 
 /// Individual term in XOR expression
 #[derive(Copy, Clone)]
@@ -276,33 +266,10 @@ pub enum ShiftOp {
 impl WireExpr {
 	#[allow(clippy::wrong_self_convention)]
 	fn to_operand(self) -> WireOperand {
-		match self {
-			WireExpr::Wire(w) => vec![ShiftedWire {
-				wire: w,
-				shift: Shift::None,
-			}],
-			WireExpr::Shifted(w, op) => vec![ShiftedWire {
-				wire: w,
-				shift: match op {
-					ShiftOp::Sll(n) => Shift::Sll(n),
-					ShiftOp::Srl(n) => Shift::Srl(n),
-					ShiftOp::Sar(n) => Shift::Sar(n),
-				},
-			}],
-			WireExpr::Xor2(a, b) => vec![a.to_shifted_wire(), b.to_shifted_wire()],
-			WireExpr::Xor3(a, b, c) => vec![
-				a.to_shifted_wire(),
-				b.to_shifted_wire(),
-				c.to_shifted_wire(),
-			],
-			WireExpr::Xor4(a, b, c, d) => vec![
-				a.to_shifted_wire(),
-				b.to_shifted_wire(),
-				c.to_shifted_wire(),
-				d.to_shifted_wire(),
-			],
-			WireExpr::Empty => vec![],
-		}
+		self.0
+			.into_iter()
+			.map(|term| term.to_shifted_wire())
+			.collect()
 	}
 }
 
@@ -327,7 +294,7 @@ impl WireExprTerm {
 
 // Convenience functions
 pub fn wire(w: Wire) -> WireExpr {
-	WireExpr::Wire(w)
+	WireExpr(smallvec![w.into()])
 }
 
 pub fn sll(w: Wire, n: u32) -> WireExprTerm {
@@ -344,7 +311,7 @@ pub fn sar(w: Wire, n: u32) -> WireExprTerm {
 
 // XOR helpers for common cases
 pub fn xor2(a: impl Into<WireExprTerm>, b: impl Into<WireExprTerm>) -> WireExpr {
-	WireExpr::Xor2(a.into(), b.into())
+	WireExpr(smallvec![a.into(), b.into()])
 }
 
 pub fn xor3(
@@ -352,7 +319,7 @@ pub fn xor3(
 	b: impl Into<WireExprTerm>,
 	c: impl Into<WireExprTerm>,
 ) -> WireExpr {
-	WireExpr::Xor3(a.into(), b.into(), c.into())
+	WireExpr(smallvec![a.into(), b.into(), c.into()])
 }
 
 pub fn xor4(
@@ -361,18 +328,18 @@ pub fn xor4(
 	c: impl Into<WireExprTerm>,
 	d: impl Into<WireExprTerm>,
 ) -> WireExpr {
-	WireExpr::Xor4(a.into(), b.into(), c.into(), d.into())
+	WireExpr(smallvec![a.into(), b.into(), c.into(), d.into()])
 }
 
 // Empty operand helper
 pub fn empty() -> WireExpr {
-	WireExpr::Empty
+	WireExpr(smallvec![])
 }
 
 // Implement conversions
 impl From<Wire> for WireExpr {
 	fn from(w: Wire) -> Self {
-		WireExpr::Wire(w)
+		wire(w)
 	}
 }
 
@@ -384,9 +351,6 @@ impl From<Wire> for WireExprTerm {
 
 impl From<WireExprTerm> for WireExpr {
 	fn from(expr: WireExprTerm) -> Self {
-		match expr {
-			WireExprTerm::Wire(w) => WireExpr::Wire(w),
-			WireExprTerm::Shifted(w, op) => WireExpr::Shifted(w, op),
-		}
+		WireExpr(smallvec![expr])
 	}
 }
