@@ -133,8 +133,8 @@ jobs:
       - name: Build documentation
         run: cargo doc --document-private-items --no-deps
 
-  zklogin-snapshot:
-    name: zklogin-snapshot
+  circuits-snapshot:
+    name: circuits-snapshot
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -143,3 +143,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Check zklogin circuit statistics snapshot
         run: cargo run --example zklogin --release -- check-snapshot
+      - name: Check sha256 circuit statistics snapshot
+        run: cargo run --example sha256 --release -- check-snapshot
+      - name: Check keccak circuit statistics snapshot
+        run: cargo run --example keccak --release -- check-snapshot
