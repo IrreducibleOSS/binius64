@@ -32,11 +32,9 @@ use crate::{
 		x86_64::m128::bitshift_128b,
 	},
 	arithmetic_traits::Broadcast,
-	tower_levels::TowerLevel,
 	underlier::{
 		NumCast, SmallU, U1, U2, U4, UnderlierType, UnderlierWithBitOps, WithUnderlier,
-		get_block_values, get_spread_bytes, impl_divisible, impl_iteration,
-		pair_unpack_lo_hi_128b_lanes, spread_fallback, transpose_128b_blocks_low_to_high,
+		get_block_values, get_spread_bytes, impl_divisible, impl_iteration, spread_fallback,
 		unpack_hi_128b_fallback, unpack_lo_128b_fallback,
 	},
 };
@@ -984,15 +982,6 @@ impl UnderlierWithBitConstants for M256 {
 		other.0 = b;
 		(self, other)
 	}
-}
-
-#[inline(always)]
-fn unpack_128b_lo_hi(data: &mut (impl AsMut<[M256]> + AsRef<[M256]>), i: usize, j: usize) {
-	let new_i = unsafe { _mm256_permute2x128_si256(data.as_ref()[i].0, data.as_ref()[j].0, 0x20) };
-	let new_j = unsafe { _mm256_permute2x128_si256(data.as_ref()[i].0, data.as_ref()[j].0, 0x31) };
-
-	data.as_mut()[i] = M256(new_i);
-	data.as_mut()[j] = M256(new_j);
 }
 
 #[inline]

@@ -1,6 +1,5 @@
 // Copyright 2023-2025 Irreducible Inc.
 
-pub mod aes_isomorphic;
 pub mod gfni_arithmetics;
 
 #[cfg(target_feature = "sse2")]
