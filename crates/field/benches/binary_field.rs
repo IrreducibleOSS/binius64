@@ -4,10 +4,7 @@ use std::array;
 
 use binius_field::{
 	BinaryField8b, BinaryField16b, BinaryField32b, BinaryField64b, BinaryField128b,
-	BinaryField128bPolyval, Field,
-	aes_field::{
-		AESTowerField8b, AESTowerField16b, AESTowerField32b, AESTowerField64b, AESTowerField128b,
-	},
+	BinaryField128bPolyval, Field, aes_field::AESTowerField8b,
 };
 use criterion::{
 	BenchmarkGroup, Criterion, criterion_group, criterion_main, measurement::Measurement,
@@ -52,10 +49,6 @@ fn bench_all_fields<Op: FieldOperation>(c: &mut Criterion) {
 	run_bench!(group, BinaryField128b, Op);
 
 	run_bench!(group, AESTowerField8b, Op);
-	run_bench!(group, AESTowerField16b, Op);
-	run_bench!(group, AESTowerField32b, Op);
-	run_bench!(group, AESTowerField64b, Op);
-	run_bench!(group, AESTowerField128b, Op);
 
 	run_bench!(group, BinaryField128bPolyval, Op);
 }

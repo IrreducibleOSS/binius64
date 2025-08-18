@@ -5,8 +5,8 @@ use crate::{
 	aes_field::*,
 	arch::{
 		packed_1::*, packed_2::*, packed_4::*, packed_8::*, packed_16::*, packed_32::*,
-		packed_64::*, packed_128::*, packed_aes_8::*, packed_aes_16::*, packed_aes_32::*,
-		packed_aes_64::*, packed_aes_128::*, packed_polyval_128::PackedBinaryPolyval1x128b,
+		packed_64::*, packed_128::*, packed_aes_8::*,
+		packed_polyval_128::PackedBinaryPolyval1x128b,
 	},
 	binary_field::*,
 	polyval::BinaryField128bPolyval,
@@ -55,10 +55,6 @@ impl_as_single_packed_field!(BinaryField64b, PackedBinaryField1x64b);
 impl_as_single_packed_field!(BinaryField128b, PackedBinaryField1x128b);
 
 impl_as_single_packed_field!(AESTowerField8b, PackedAESBinaryField1x8b);
-impl_as_single_packed_field!(AESTowerField16b, PackedAESBinaryField1x16b);
-impl_as_single_packed_field!(AESTowerField32b, PackedAESBinaryField1x32b);
-impl_as_single_packed_field!(AESTowerField64b, PackedAESBinaryField1x64b);
-impl_as_single_packed_field!(AESTowerField128b, PackedAESBinaryField1x128b);
 
 impl_as_single_packed_field!(BinaryField128bPolyval, PackedBinaryPolyval1x128b);
 

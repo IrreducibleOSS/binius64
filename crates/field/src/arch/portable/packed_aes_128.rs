@@ -1,8 +1,7 @@
 // Copyright 2024-2025 Irreducible Inc.
 
 use super::{
-	packed::PackedPrimitiveType,
-	packed_arithmetic::{alphas, impl_tower_constants},
+	packed::PackedPrimitiveType, packed_arithmetic::impl_tower_constants,
 	packed_macros::impl_broadcast,
 };
 use crate::{
@@ -26,46 +25,6 @@ define_packed_binary_fields!(
 			invert: (PairwiseTableStrategy),
 			mul_alpha: (PairwiseTableStrategy),
 			transform: (PackedStrategy),
-		},
-		packed_field {
-			name: PackedAESBinaryField8x16b,
-			scalar: AESTowerField16b,
-			alpha_idx: 4,
-			mul: (PairwiseRecursiveStrategy),
-			square: (PairwiseRecursiveStrategy),
-			invert: (PairwiseRecursiveStrategy),
-			mul_alpha: (PackedStrategy),
-			transform: (PackedStrategy),
-		},
-		packed_field {
-			name: PackedAESBinaryField4x32b,
-			scalar: AESTowerField32b,
-			alpha_idx: 5,
-			mul: (PairwiseRecursiveStrategy),
-			square: (PackedStrategy),
-			invert: (PairwiseRecursiveStrategy),
-			mul_alpha: (PackedStrategy),
-			transform: (PackedStrategy),
-		},
-		packed_field {
-			name: PackedAESBinaryField2x64b,
-			scalar: AESTowerField64b,
-			alpha_idx: 6,
-			mul: (PairwiseRecursiveStrategy),
-			square: (PackedStrategy),
-			invert: (PairwiseRecursiveStrategy),
-			mul_alpha: (PairwiseRecursiveStrategy),
-			transform: (PairwiseStrategy),
-		},
-		packed_field {
-			name: PackedAESBinaryField1x128b,
-			scalar: AESTowerField128b,
-			alpha_idx: _,
-			mul: (PairwiseRecursiveStrategy),
-			square: (PairwiseRecursiveStrategy),
-			invert: (PairwiseRecursiveStrategy),
-			mul_alpha: (PairwiseRecursiveStrategy),
-			transform: (PairwiseStrategy),
 		},
 	]
 );

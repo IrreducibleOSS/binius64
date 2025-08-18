@@ -4,10 +4,9 @@ use binius_utils::random_access_sequence::RandomAccessSequence;
 use bytemuck::{Pod, zeroed_vec};
 
 use crate::{
-	AESTowerField8b, AESTowerField16b, AESTowerField32b, AESTowerField64b, AESTowerField128b,
-	BinaryField8b, BinaryField16b, BinaryField32b, BinaryField64b, BinaryField128b,
-	BinaryField128bGhash, BinaryField128bPolyval, PackedBinaryGhash1x128b, PackedBinaryGhash2x128b,
-	PackedBinaryGhash4x128b, PackedField,
+	AESTowerField8b, BinaryField8b, BinaryField16b, BinaryField32b, BinaryField64b,
+	BinaryField128b, BinaryField128bGhash, BinaryField128bPolyval, PackedBinaryGhash1x128b,
+	PackedBinaryGhash2x128b, PackedBinaryGhash4x128b, PackedField,
 	arch::{
 		packed_8::*, packed_16::*, packed_32::*, packed_64::*, packed_128::*, packed_256::*,
 		packed_512::*, packed_aes_8::*, packed_aes_16::*, packed_aes_32::*, packed_aes_64::*,
@@ -87,10 +86,6 @@ unsafe impl SequentialBytes for PackedBinaryField2x128b {}
 unsafe impl SequentialBytes for PackedBinaryField4x128b {}
 
 unsafe impl SequentialBytes for AESTowerField8b {}
-unsafe impl SequentialBytes for AESTowerField16b {}
-unsafe impl SequentialBytes for AESTowerField32b {}
-unsafe impl SequentialBytes for AESTowerField64b {}
-unsafe impl SequentialBytes for AESTowerField128b {}
 
 unsafe impl SequentialBytes for PackedAESBinaryField1x8b {}
 unsafe impl SequentialBytes for PackedAESBinaryField2x8b {}
@@ -99,27 +94,6 @@ unsafe impl SequentialBytes for PackedAESBinaryField8x8b {}
 unsafe impl SequentialBytes for PackedAESBinaryField16x8b {}
 unsafe impl SequentialBytes for PackedAESBinaryField32x8b {}
 unsafe impl SequentialBytes for PackedAESBinaryField64x8b {}
-
-unsafe impl SequentialBytes for PackedAESBinaryField1x16b {}
-unsafe impl SequentialBytes for PackedAESBinaryField2x16b {}
-unsafe impl SequentialBytes for PackedAESBinaryField4x16b {}
-unsafe impl SequentialBytes for PackedAESBinaryField8x16b {}
-unsafe impl SequentialBytes for PackedAESBinaryField16x16b {}
-unsafe impl SequentialBytes for PackedAESBinaryField32x16b {}
-
-unsafe impl SequentialBytes for PackedAESBinaryField1x32b {}
-unsafe impl SequentialBytes for PackedAESBinaryField2x32b {}
-unsafe impl SequentialBytes for PackedAESBinaryField4x32b {}
-unsafe impl SequentialBytes for PackedAESBinaryField16x32b {}
-
-unsafe impl SequentialBytes for PackedAESBinaryField1x64b {}
-unsafe impl SequentialBytes for PackedAESBinaryField2x64b {}
-unsafe impl SequentialBytes for PackedAESBinaryField4x64b {}
-unsafe impl SequentialBytes for PackedAESBinaryField8x64b {}
-
-unsafe impl SequentialBytes for PackedAESBinaryField1x128b {}
-unsafe impl SequentialBytes for PackedAESBinaryField2x128b {}
-unsafe impl SequentialBytes for PackedAESBinaryField4x128b {}
 
 unsafe impl SequentialBytes for BinaryField128bPolyval {}
 
@@ -286,10 +260,6 @@ mod tests {
 		assert!(is_sequential_bytes::<PackedBinaryField4x128b>());
 
 		assert!(is_sequential_bytes::<AESTowerField8b>());
-		assert!(is_sequential_bytes::<AESTowerField16b>());
-		assert!(is_sequential_bytes::<AESTowerField32b>());
-		assert!(is_sequential_bytes::<AESTowerField64b>());
-		assert!(is_sequential_bytes::<AESTowerField128b>());
 
 		assert!(is_sequential_bytes::<PackedAESBinaryField1x8b>());
 		assert!(is_sequential_bytes::<PackedAESBinaryField2x8b>());
@@ -298,27 +268,6 @@ mod tests {
 		assert!(is_sequential_bytes::<PackedAESBinaryField16x8b>());
 		assert!(is_sequential_bytes::<PackedAESBinaryField32x8b>());
 		assert!(is_sequential_bytes::<PackedAESBinaryField64x8b>());
-
-		assert!(is_sequential_bytes::<PackedAESBinaryField1x16b>());
-		assert!(is_sequential_bytes::<PackedAESBinaryField2x16b>());
-		assert!(is_sequential_bytes::<PackedAESBinaryField4x16b>());
-		assert!(is_sequential_bytes::<PackedAESBinaryField8x16b>());
-		assert!(is_sequential_bytes::<PackedAESBinaryField16x16b>());
-		assert!(is_sequential_bytes::<PackedAESBinaryField32x16b>());
-
-		assert!(is_sequential_bytes::<PackedAESBinaryField1x32b>());
-		assert!(is_sequential_bytes::<PackedAESBinaryField2x32b>());
-		assert!(is_sequential_bytes::<PackedAESBinaryField4x32b>());
-		assert!(is_sequential_bytes::<PackedAESBinaryField16x32b>());
-
-		assert!(is_sequential_bytes::<PackedAESBinaryField1x64b>());
-		assert!(is_sequential_bytes::<PackedAESBinaryField2x64b>());
-		assert!(is_sequential_bytes::<PackedAESBinaryField4x64b>());
-		assert!(is_sequential_bytes::<PackedAESBinaryField8x64b>());
-
-		assert!(is_sequential_bytes::<PackedAESBinaryField1x128b>());
-		assert!(is_sequential_bytes::<PackedAESBinaryField2x128b>());
-		assert!(is_sequential_bytes::<PackedAESBinaryField4x128b>());
 
 		assert!(is_sequential_bytes::<BinaryField128bPolyval>());
 

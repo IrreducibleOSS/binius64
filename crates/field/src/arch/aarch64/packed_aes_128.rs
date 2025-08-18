@@ -25,52 +25,6 @@ use crate::{
 	underlier::WithUnderlier,
 };
 
-define_packed_binary_fields!(
-	underlier: M128,
-	packed_fields: [
-		packed_field {
-			name: PackedAESBinaryField8x16b,
-			scalar: AESTowerField16b,
-			alpha_idx: 4,
-			mul: (SimdStrategy),
-			square: (None),
-			invert: (SimdStrategy),
-			mul_alpha: (SimdStrategy),
-			transform: (PackedStrategy),
-		},
-		packed_field {
-			name: PackedAESBinaryField4x32b,
-			scalar: AESTowerField32b,
-			alpha_idx: 5,
-			mul: (SimdStrategy),
-			square: (None),
-			invert: (SimdStrategy),
-			mul_alpha: (SimdStrategy),
-			transform: (PackedStrategy),
-		},
-		packed_field {
-			name: PackedAESBinaryField2x64b,
-			scalar: AESTowerField64b,
-			alpha_idx: 6,
-			mul: (PairwiseStrategy),
-			square: (PairwiseStrategy),
-			invert: (PairwiseStrategy),
-			mul_alpha: (PairwiseStrategy),
-			transform: (PackedStrategy),
-		},
-		packed_field {
-			name: PackedAESBinaryField1x128b,
-			scalar: AESTowerField128b,
-			alpha_idx: _,
-			mul: (PairwiseRecursiveStrategy),
-			square: (PairwiseRecursiveStrategy),
-			invert: (PairwiseRecursiveStrategy),
-			mul_alpha: (PairwiseRecursiveStrategy),
-			transform: (PairwiseStrategy),
-		},
-	]
-);
-
 pub type PackedAESBinaryField16x8b = PackedPrimitiveType<M128, AESTowerField8b>;
 impl_tower_constants!(AESTowerField8b, M128, {
 	M128::from_u128(0x00d300d300d300d300d300d300d300d3)
@@ -85,16 +39,6 @@ impl Mul for PackedAESBinaryField16x8b {
 	}
 }
 impl Square for PackedAESBinaryField16x8b {
-	fn square(self) -> Self {
-		self * self
-	}
-}
-impl Square for PackedAESBinaryField8x16b {
-	fn square(self) -> Self {
-		self * self
-	}
-}
-impl Square for PackedAESBinaryField4x32b {
 	fn square(self) -> Self {
 		self * self
 	}
