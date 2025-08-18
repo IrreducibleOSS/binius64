@@ -34,11 +34,9 @@ use crate::{
 		},
 	},
 	arithmetic_traits::Broadcast,
-	tower_levels::TowerLevel,
 	underlier::{
 		NumCast, SmallU, U1, U2, U4, UnderlierType, UnderlierWithBitOps, WithUnderlier,
-		get_block_values, get_spread_bytes, impl_divisible, impl_iteration,
-		pair_unpack_lo_hi_128b_lanes, spread_fallback, transpose_128b_blocks_low_to_high,
+		get_block_values, get_spread_bytes, impl_divisible, impl_iteration, spread_fallback,
 		unpack_hi_128b_fallback, unpack_lo_128b_fallback,
 	},
 };
@@ -1105,21 +1103,6 @@ unsafe fn interleave_bits(a: __m512i, b: __m512i, log_block_len: usize) -> (__m5
 		},
 		_ => panic!("unsupported block length"),
 	}
-}
-
-#[inline(always)]
-fn unpack_128b_lo_hi(
-	data: &mut (impl AsMut<[M512]> + AsRef<[M512]>),
-	i: usize,
-	j: usize,
-	idx_1: __m512i,
-	idx_2: __m512i,
-) {
-	let new_i = unsafe { _mm512_permutex2var_epi64(data.as_ref()[i].0, idx_1, data.as_ref()[j].0) };
-	let new_j = unsafe { _mm512_permutex2var_epi64(data.as_ref()[i].0, idx_2, data.as_ref()[j].0) };
-
-	data.as_mut()[i] = M512(new_i);
-	data.as_mut()[j] = M512(new_j);
 }
 
 #[inline]
