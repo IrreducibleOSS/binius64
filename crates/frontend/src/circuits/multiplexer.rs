@@ -11,10 +11,10 @@ use crate::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
 /// # Implementation Details
 /// - Uses N-1 select gates for an N-element input vector (where N is a power of 2)
 /// - Binary tree has log2(N) levels
-/// - Wire indexing follows: wire[i] output, wire[2*i+1] input A, wire[2*i+2] input B
+/// - Wire indexing follows: wire\[i\] output, wire\[2*i+1\] input A, wire\[2*i+2\] input B
 /// - Condition for select gate at position i uses appropriate bit from the selector
-/// - Input vector maps to wire[N-1..2*N-1]
-/// - Output is wire[0] (root of the tree)
+/// - Input vector maps to wire\[N-1..2*N-1\]
+/// - Output is wire\[0\] (root of the tree)
 pub struct Multiplexer {
 	pub inputs: Vec<Wire>,
 	pub sel: Wire,
@@ -293,3 +293,4 @@ mod tests {
 		verify_constraints(cs, &w.into_value_vec()).unwrap();
 	}
 }
+
