@@ -390,13 +390,3 @@ impl From<WireExprTerm> for WireExpr {
 		}
 	}
 }
-
-impl From<WireExpr> for WireExprTerm {
-	fn from(expr: WireExpr) -> Self {
-		match expr {
-			WireExpr::Wire(w) => WireExprTerm::Wire(w),
-			WireExpr::Shifted(w, op) => WireExprTerm::Shifted(w, op),
-			_ => panic!("Cannot convert XOR expression to term"),
-		}
-	}
-}
