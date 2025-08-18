@@ -28,7 +28,7 @@ pub fn shape() -> OpcodeShape {
 		n_in: 3,
 		n_out: 1,
 		n_internal: 0,
-		n_scratch: 0, // No scratch registers needed with dedicated opcode
+		n_scratch: 0,
 		n_imm: 0,
 	}
 }
@@ -63,7 +63,6 @@ pub fn emit_eval_bytecode(
 	let [a, b, cond] = inputs else { unreachable!() };
 	let [out] = outputs else { unreachable!() };
 
-	// Use dedicated MUX bytecode opcode
 	builder.emit_mux(wire_to_reg(*out), wire_to_reg(*a), wire_to_reg(*b), wire_to_reg(*cond));
 }
 
