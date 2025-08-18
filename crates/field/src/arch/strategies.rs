@@ -24,8 +24,3 @@ pub struct GfniStrategy;
 /// Specialized versions of the above to resolve conflicting implementations
 pub struct GfniSpecializedStrategy256b;
 pub struct GfniSpecializedStrategy512b;
-
-/// Strategy for packed canonical tower fields.
-/// Performs conversion to the packed isomorphic AES field, applies the operation and
-/// converts the result back to the canonical tower field.
-pub struct AESIsomorphicStrategy;
