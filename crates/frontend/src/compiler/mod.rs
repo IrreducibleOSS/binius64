@@ -288,6 +288,10 @@ impl CircuitBuilder {
 	/// Multi-way bitwise XOR operation.
 	///
 	/// Takes a variable-length slice of wires and XORs them all together.
+	///
+	/// # Cost
+	///
+	/// Potentially 1 AND constraint, though this may be optimized through gate fusion.
 	pub fn bxor_multi(&self, wires: &[Wire]) -> Wire {
 		assert!(!wires.is_empty(), "bxor_multi requires at least one input");
 
