@@ -406,191 +406,72 @@ where
 	}
 }
 
-/*
 #[cfg(test)]
 mod tests {
-	use binius_field::{
-		AESTowerField8b, BinaryField8b, BinaryField32b, BinaryField64b, BinaryField128b,
-		BinaryField128bPolyval,
-	};
-	use blake2::Blake2b;
-	use bytes::{Buf, BufMut};
-	use digest::consts::U32;
-	use rand::prelude::*;
+	use binius_field::BinaryField128bGhash as B128;
+	use sha2::Sha256;
 
 	use super::*;
-	use crate::fiat_shamir::{CanSample, Challenger, HasherChallenger};
-
-	type Blake2b256 = Blake2b<U32>;
+	use crate::fiat_shamir::{CanSample, HasherChallenger};
 
 	#[test]
 	fn test_transcript_interactions() {
-		// Use CanonicalTower mode since this test mixes AES tower fields and binary fields
-		let mut prover_transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::with_opts(
-			HasherChallenger::<Blake2b256>::default(),
-			Options {
-				..Default::default()
-			},
-		);
-		let mut writable = prover_transcript.message();
+		let mut prover_transcript = ProverTranscript::new(HasherChallenger::<Sha256>::default());
 
-		writable.write_scalar(BinaryField8b::new(0x96));
-		writable.write_scalar(BinaryField32b::new(0xDEADBEEF));
-		writable.write_scalar(BinaryField128b::new(0x55669900112233550000CCDDFFEEAABB));
-		let sampled_fanpaar1: BinaryField128b = prover_transcript.sample();
-
-		let mut writable = prover_transcript.message();
-
-		writable.write_scalar(AESTowerField8b::new(0x52));
-		writable.write_scalar(AESTowerField32b::new(0x12345678));
-		writable.write_scalar(AESTowerField128b::new(0xDDDDBBBBCCCCAAAA2222999911117777));
-
-		let sampled_aes1: AESTowerField16b = prover_transcript.sample();
-
+		// Write messages using message()
 		prover_transcript
 			.message()
-			.write_scalar(BinaryField128bPolyval::new(0xFFFF12345678DDDDEEEE87654321AAAA));
-		let sampled_polyval1: BinaryField128bPolyval = prover_transcript.sample();
+			.write_scalar(B128::new(0x11111111222222223333333344444444));
+		prover_transcript
+			.message()
+			.write_scalar(B128::new(0xAAAAAAAABBBBBBBBCCCCCCCCDDDDDDDD));
 
+		// Write decommitment (not observed)
+		prover_transcript
+			.decommitment()
+			.write_scalar(B128::new(0x5555555566666666777777778888888));
+
+		// Write observed data
+		prover_transcript
+			.observe()
+			.write_scalar(B128::new(0xFFFFFFFFEEEEEEEEDDDDDDDDCCCCCCCC));
+
+		// Sample a challenge
+		let sampled_challenge: B128 = prover_transcript.sample();
+
+		// Convert to verifier transcript
 		let mut verifier_transcript = prover_transcript.into_verifier();
-		let mut readable = verifier_transcript.message();
 
-		let fp_8: BinaryField8b = readable.read_scalar().unwrap();
-		let fp_32: BinaryField32b = readable.read_scalar().unwrap();
-		let fp_128: BinaryField128b = readable.read_scalar().unwrap();
+		// Read messages
+		let msg1: B128 = verifier_transcript.message().read_scalar().unwrap();
+		let msg2: B128 = verifier_transcript.message().read_scalar().unwrap();
+		assert_eq!(msg1, B128::new(0x11111111222222223333333344444444));
+		assert_eq!(msg2, B128::new(0xAAAAAAAABBBBBBBBCCCCCCCCDDDDDDDD));
 
-		assert_eq!(fp_8.val(), 0x96);
-		assert_eq!(fp_32.val(), 0xDEADBEEF);
-		assert_eq!(fp_128.val(), 0x55669900112233550000CCDDFFEEAABB);
+		// Read decommitment
+		let decommit: B128 = verifier_transcript.decommitment().read_scalar().unwrap();
+		assert_eq!(decommit, B128::new(0x5555555566666666777777778888888));
 
-		let sampled_fanpaar1_res: BinaryField128b = verifier_transcript.sample();
+		// Observe the same data (doesn't read from tape)
+		verifier_transcript
+			.observe()
+			.write_scalar(B128::new(0xFFFFFFFFEEEEEEEEDDDDDDDDCCCCCCCC));
 
-		assert_eq!(sampled_fanpaar1_res, sampled_fanpaar1);
+		// Sample should produce the same challenge
+		let verifier_challenge: B128 = verifier_transcript.sample();
+		assert_eq!(verifier_challenge, sampled_challenge);
 
-		let mut readable = verifier_transcript.message();
-
-		let aes_8: AESTowerField8b = readable.read_scalar().unwrap();
-		let aes_32: AESTowerField32b = readable.read_scalar().unwrap();
-		let aes_128: AESTowerField128b = readable.read_scalar().unwrap();
-
-		assert_eq!(aes_8.val(), 0x52);
-		assert_eq!(aes_32.val(), 0x12345678);
-		assert_eq!(aes_128.val(), 0xDDDDBBBBCCCCAAAA2222999911117777);
-
-		let sampled_aes_res: AESTowerField16b = verifier_transcript.sample();
-
-		assert_eq!(sampled_aes_res, sampled_aes1);
-
-		let polyval_128: BinaryField128bPolyval =
-			verifier_transcript.message().read_scalar().unwrap();
-		assert_eq!(polyval_128, BinaryField128bPolyval::new(0xFFFF12345678DDDDEEEE87654321AAAA));
-
-		let sampled_polyval_res: BinaryField128bPolyval = verifier_transcript.sample();
-		assert_eq!(sampled_polyval_res, sampled_polyval1);
-
+		// Check that transcript is empty
 		verifier_transcript.finalize().unwrap();
-	}
-
-	#[test]
-	fn test_advising() {
-		// Use CanonicalTower mode since this test mixes AES tower fields and binary fields
-		let mut prover_transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::with_opts(
-			HasherChallenger::<Blake2b256>::default(),
-			Options {
-				..Default::default()
-			},
-		);
-		let mut advice_writer = prover_transcript.decommitment();
-
-		advice_writer.write_scalar(BinaryField8b::new(0x96));
-		advice_writer.write_scalar(BinaryField32b::new(0xDEADBEEF));
-		advice_writer.write_scalar(BinaryField128b::new(0x55669900112233550000CCDDFFEEAABB));
-
-		advice_writer.write_scalar(AESTowerField8b::new(0x52));
-		advice_writer.write_scalar(AESTowerField32b::new(0x12345678));
-		advice_writer.write_scalar(AESTowerField128b::new(0xDDDDBBBBCCCCAAAA2222999911117777));
-
-		advice_writer.write_scalar(BinaryField128bPolyval::new(0xFFFF12345678DDDDEEEE87654321AAAA));
-
-		let mut verifier_transcript = prover_transcript.into_verifier();
-		let mut advice_reader = verifier_transcript.decommitment();
-
-		let fp_8: BinaryField8b = advice_reader.read_scalar().unwrap();
-		let fp_32: BinaryField32b = advice_reader.read_scalar().unwrap();
-		let fp_128: BinaryField128b = advice_reader.read_scalar().unwrap();
-
-		assert_eq!(fp_8.val(), 0x96);
-		assert_eq!(fp_32.val(), 0xDEADBEEF);
-		assert_eq!(fp_128.val(), 0x55669900112233550000CCDDFFEEAABB);
-
-		let aes_8: AESTowerField8b = advice_reader.read_scalar().unwrap();
-		let aes_32: AESTowerField32b = advice_reader.read_scalar().unwrap();
-		let aes_128: AESTowerField128b = advice_reader.read_scalar().unwrap();
-
-		assert_eq!(aes_8.val(), 0x52);
-		assert_eq!(aes_32.val(), 0x12345678);
-		assert_eq!(aes_128.val(), 0xDDDDBBBBCCCCAAAA2222999911117777);
-
-		let polyval_128: BinaryField128bPolyval = advice_reader.read_scalar().unwrap();
-		assert_eq!(polyval_128, BinaryField128bPolyval::new(0xFFFF12345678DDDDEEEE87654321AAAA));
-
-		verifier_transcript.finalize().unwrap();
-	}
-
-	#[test]
-	fn test_challenger_and_observing() {
-		let mut taped_transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::default();
-		let mut untaped_transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::default();
-		let mut challenger = HasherChallenger::<Blake2b256>::default();
-
-		let mut rng = StdRng::seed_from_u64(0);
-
-		const NUM_SAMPLING: usize = 32;
-		let mut random_bytes = [0u8; NUM_SAMPLING * 8];
-		rng.fill_bytes(&mut random_bytes);
-		let mut sampled_arrays = [[0u8; 8]; NUM_SAMPLING];
-
-		for i in 0..NUM_SAMPLING {
-			taped_transcript
-				.message()
-				.write_scalar(BinaryField64b::new(u64::from_le_bytes(
-					random_bytes[i * 8..i * 8 + 8].to_vec().try_into().unwrap(),
-				)));
-			untaped_transcript
-				.observe()
-				.write_scalar(BinaryField64b::new(u64::from_le_bytes(
-					random_bytes[i * 8..i * 8 + 8].to_vec().try_into().unwrap(),
-				)));
-			challenger
-				.observer()
-				.put_slice(&random_bytes[i * 8..i * 8 + 8]);
-
-			let sampled_out_transcript1: BinaryField64b = taped_transcript.sample();
-			let sampled_out_transcript2: BinaryField64b = untaped_transcript.sample();
-			let mut challenger_out = [0u8; 8];
-			challenger.sampler().copy_to_slice(&mut challenger_out);
-			assert_eq!(challenger_out, sampled_out_transcript1.val().to_le_bytes());
-			assert_eq!(challenger_out, sampled_out_transcript2.val().to_le_bytes());
-			sampled_arrays[i] = challenger_out;
-		}
-
-		let mut taped_transcript = taped_transcript.into_verifier();
-
-		assert!(untaped_transcript.finalize().is_empty());
-
-		for array in sampled_arrays {
-			let _: BinaryField64b = taped_transcript.message().read_scalar().unwrap();
-			let sampled_out_transcript: BinaryField64b = taped_transcript.sample();
-
-			assert_eq!(array, sampled_out_transcript.val().to_le_bytes());
-		}
-
-		taped_transcript.finalize().unwrap();
 	}
 
 	#[test]
 	fn test_transcript_debug() {
-		let mut transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::default();
+		let options = Options {
+			debug_assertions: true,
+		};
+		let mut transcript =
+			ProverTranscript::with_opts(HasherChallenger::<Sha256>::default(), options);
 
 		transcript.message().write_debug("test_transcript_debug");
 		transcript
@@ -602,7 +483,11 @@ mod tests {
 	#[test]
 	#[should_panic]
 	fn test_transcript_debug_fail() {
-		let mut transcript = ProverTranscript::<HasherChallenger<Blake2b256>>::default();
+		let options = Options {
+			debug_assertions: true,
+		};
+		let mut transcript =
+			ProverTranscript::with_opts(HasherChallenger::<Sha256>::default(), options);
 
 		transcript.message().write_debug("test_transcript_debug");
 		transcript
@@ -610,44 +495,4 @@ mod tests {
 			.message()
 			.read_debug("test_transcript_debug_should_fail");
 	}
-
-	#[test]
-	fn test_serialization_mode_configurable() {
-		let mut prover_native = ProverTranscript::<HasherChallenger<Blake2b256>>::new(
-			HasherChallenger::<Blake2b256>::default(),
-		);
-		prover_native
-			.message()
-			.write_scalar(BinaryField32b::new(0xDEADBEEF));
-		let mut verifier_native = prover_native.into_verifier();
-		assert_eq!(
-			verifier_native
-				.message()
-				.read_scalar::<BinaryField32b>()
-				.unwrap()
-				.val(),
-			0xDEADBEEF
-		);
-
-		// Test with CanonicalTower mode
-		let mut prover_canonical = ProverTranscript::<HasherChallenger<Blake2b256>>::with_opts(
-			HasherChallenger::<Blake2b256>::default(),
-			Options {
-				..Default::default()
-			},
-		);
-		prover_canonical
-			.message()
-			.write_scalar(AESTowerField32b::new(0x12345678));
-		let mut verifier_canonical = prover_canonical.into_verifier();
-		assert_eq!(
-			verifier_canonical
-				.message()
-				.read_scalar::<AESTowerField32b>()
-				.unwrap()
-				.val(),
-			0x12345678
-		);
-	}
 }
-*/

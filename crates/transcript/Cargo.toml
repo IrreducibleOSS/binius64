@@ -17,5 +17,5 @@ thiserror.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-blake2.workspace = true
 rand = { workspace = true, features = ["std_rng"] }
+sha2.workspace = true
