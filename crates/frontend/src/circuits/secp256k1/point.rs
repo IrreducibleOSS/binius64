@@ -66,4 +66,29 @@ impl Secp256k1Jacobian {
 	pub fn is_point_at_infinity(&self, b: &CircuitBuilder) -> Wire {
 		self.z.is_zero(b)
 	}
+
+	/// Conditionally masks this point based on the provided `mask` wire.
+	/// When mask is all-0, returns the point at infinity (0, 1, 0).
+	/// When mask is all-1, returns this point unchanged.
+	///
+	/// # Parameters
+	/// * `b` - The circuit builder
+	/// * `mask` - A boolean wire that should be either all-0 or all-1
+	///
+	/// # Returns
+	/// A new Secp256k1Jacobian point that is either this point or the point at infinity
+	pub fn mask(&self, b: &CircuitBuilder, mask: Wire) -> Secp256k1Jacobian {
+		let x = self.x.mask(b, mask);
+		let y = self.y.mask(b, mask);
+		let z = self.z.mask(b, mask);
+
+		// The canonical representation of the point-at-infinity is (0, 1, 0). The
+		// masked tuple would be either (x, y, z) or (0, 0, 0), in the latter case
+		// we modify the least significant limb of y to make it 1.
+		let mut y = y;
+		let y_first = y.limbs.first_mut().expect("N_LIMBS > 0");
+		*y_first = b.select(*y_first, b.add_constant(Word::ONE), b.bnot(mask));
+
+		Secp256k1Jacobian { x, y, z }
+	}
 }
