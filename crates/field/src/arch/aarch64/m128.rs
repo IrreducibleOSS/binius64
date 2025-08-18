@@ -25,10 +25,9 @@ use crate::{
 	BinaryField,
 	arch::binary_utils::{as_array_mut, as_array_ref},
 	arithmetic_traits::Broadcast,
-	tower_levels::TowerLevel,
 	underlier::{
 		NumCast, SmallU, U1, U2, U4, UnderlierType, UnderlierWithBitOps, WithUnderlier,
-		impl_divisible, impl_iteration, transpose_128b_values, unpack_lo_128b_fallback,
+		impl_divisible, impl_iteration, unpack_lo_128b_fallback,
 	},
 };
 
