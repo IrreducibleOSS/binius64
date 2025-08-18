@@ -21,6 +21,7 @@ pub enum Opcode {
 	// Shifts
 	Shr,
 	Shl,
+	Sar,
 	Shr32,
 	Rotr32,
 	Rotl64,
@@ -74,6 +75,7 @@ impl Opcode {
 			// Shifts
 			Opcode::Shr => gate::shr::shape(),
 			Opcode::Shl => gate::shl::shape(),
+			Opcode::Sar => gate::sar::shape(),
 			Opcode::Shr32 => gate::shr32::shape(),
 			Opcode::Rotr32 => gate::rotr32::shape(),
 			Opcode::Rotl64 => gate::rotl64::shape(),

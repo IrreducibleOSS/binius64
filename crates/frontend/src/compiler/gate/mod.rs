@@ -27,6 +27,7 @@ pub mod isub_bin_bout;
 pub mod mod_inverse_hint;
 pub mod rotl64;
 pub mod rotr32;
+pub mod sar;
 pub mod select;
 pub mod shl;
 pub mod shr;
@@ -55,6 +56,7 @@ pub fn constrain(gate: Gate, graph: &GateGraph, builder: &mut ConstraintBuilder)
 		Opcode::ExtractByte => extract_byte::constrain(gate, data, builder),
 		Opcode::Shr => shr::constrain(gate, data, builder),
 		Opcode::Shl => shl::constrain(gate, data, builder),
+		Opcode::Sar => sar::constrain(gate, data, builder),
 		// Hints do not introduce constraints
 		Opcode::BigUintDivideHint => (),
 		Opcode::ModInverseHint => (),
@@ -103,6 +105,7 @@ pub fn emit_gate_bytecode(
 		Opcode::ExtractByte => extract_byte::emit_eval_bytecode(gate, data, builder, wire_to_reg),
 		Opcode::Shr => shr::emit_eval_bytecode(gate, data, builder, wire_to_reg),
 		Opcode::Shl => shl::emit_eval_bytecode(gate, data, builder, wire_to_reg),
+		Opcode::Sar => sar::emit_eval_bytecode(gate, data, builder, wire_to_reg),
 
 		// Hint-based gates
 		Opcode::ModInverseHint => {

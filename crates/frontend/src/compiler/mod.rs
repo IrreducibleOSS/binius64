@@ -399,6 +399,23 @@ impl CircuitBuilder {
 		z
 	}
 
+	/// Arithmetic right shift.
+	///
+	/// Shifts a 64-bit wire right by n bits, filling with the MSB from the left.
+	///
+	/// Returns a SAR n
+	///
+	/// # Cost
+	///
+	/// 1 AND constraint.
+	pub fn sar(&self, a: Wire, n: u32) -> Wire {
+		assert!(n < 64, "shift amount n={n} out of range");
+		let z = self.add_internal();
+		let mut graph = self.graph_mut();
+		graph.emit_gate_imm(self.current_path, Opcode::Sar, [a], [z], n);
+		z
+	}
+
 	/// Equality assertion.
 	///
 	/// Asserts that two 64-bit wires are equal.
