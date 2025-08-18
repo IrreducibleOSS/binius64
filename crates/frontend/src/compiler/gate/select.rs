@@ -1,4 +1,4 @@
-//! Fan-in 2 multiplexer (MUX) operation.
+//! Select operation.
 //!
 //! Returns `out = MSB(cond) ? b : a`.
 //!
@@ -40,7 +40,7 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 	let [a, b, cond] = inputs else { unreachable!() };
 	let [out] = outputs else { unreachable!() };
 
-	// Constraint: MUX selection
+	// Constraint: Select operation
 	//
 	// (cond >> 63) ∧ (b ⊕ a) = out ⊕ a
 	builder
@@ -63,7 +63,7 @@ pub fn emit_eval_bytecode(
 	let [a, b, cond] = inputs else { unreachable!() };
 	let [out] = outputs else { unreachable!() };
 
-	builder.emit_mux(wire_to_reg(*out), wire_to_reg(*a), wire_to_reg(*b), wire_to_reg(*cond));
+	builder.emit_select(wire_to_reg(*out), wire_to_reg(*a), wire_to_reg(*b), wire_to_reg(*cond));
 }
 
 #[cfg(test)]
@@ -74,15 +74,15 @@ mod tests {
 	use crate::{compiler::CircuitBuilder, constraint_verifier::verify_constraints};
 
 	#[test]
-	fn test_mux_basic() {
-		// Build a circuit with MUX gate
+	fn test_select_basic() {
+		// Build a circuit with Select gate
 		let builder = CircuitBuilder::new();
 		let a = builder.add_inout();
 		let b = builder.add_inout();
 		let cond = builder.add_inout();
-		let actual = builder.mux(a, b, cond);
+		let actual = builder.select(a, b, cond);
 		let expected = builder.add_inout();
-		builder.assert_eq("mux", actual, expected);
+		builder.assert_eq("select", actual, expected);
 		let circuit = builder.build();
 
 		// Test specific cases
@@ -129,15 +129,15 @@ mod tests {
 	}
 
 	#[test]
-	fn test_mux_random() {
-		// Build a circuit with MUX gate
+	fn test_select_random() {
+		// Build a circuit with Select gate
 		let builder = CircuitBuilder::new();
 		let a = builder.add_inout();
 		let b = builder.add_inout();
 		let cond = builder.add_inout();
-		let actual = builder.mux(a, b, cond);
+		let actual = builder.select(a, b, cond);
 		let expected = builder.add_inout();
-		builder.assert_eq("mux", actual, expected);
+		builder.assert_eq("select", actual, expected);
 		let circuit = builder.build();
 
 		// Test with random values

@@ -46,7 +46,7 @@ impl BytecodeBuilder {
 		self.emit_reg(src);
 	}
 
-	pub fn emit_mux(&mut self, dst: u32, a: u32, b: u32, cond: u32) {
+	pub fn emit_select(&mut self, dst: u32, a: u32, b: u32, cond: u32) {
 		self.n_eval_insn += 1;
 		self.emit_u8(0x05);
 		self.emit_reg(dst);

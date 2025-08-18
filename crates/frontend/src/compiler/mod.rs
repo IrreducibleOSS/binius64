@@ -550,17 +550,17 @@ impl CircuitBuilder {
 		z
 	}
 
-	/// Fan-in 2 multiplexer.
+	/// Select operation.
 	///
 	/// Returns `b` if MSB(cond) is 1, otherwise returns `a`.
 	///
 	/// # Cost
 	///
 	/// 1 AND constraint.
-	pub fn mux(&self, a: Wire, b: Wire, cond: Wire) -> Wire {
+	pub fn select(&self, a: Wire, b: Wire, cond: Wire) -> Wire {
 		let out = self.add_internal();
 		let mut graph = self.graph_mut();
-		graph.emit_gate(self.current_path, Opcode::Mux, [a, b, cond], [out]);
+		graph.emit_gate(self.current_path, Opcode::Select, [a, b, cond], [out]);
 		out
 	}
 
