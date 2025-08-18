@@ -169,47 +169,10 @@ impl Sha256 {
 		let len_mod_8 = builder.band(len, builder.add_constant_zx_8(7));
 		let bitlen = builder.shl(len, 3);
 
-		let len_mod_64 = builder.band(len, builder.add_constant_64(63));
-
 		let zero = builder.add_constant(Word::ZERO);
 		let all_ones = builder.add_constant(Word::ALL_ONE);
-
-		// Check if message ends exactly at a 64-byte block boundary.
-		// This is true when len % 64 == 0 AND len > 0 (empty message is not at boundary).
-		let is_empty = builder.icmp_eq(len, builder.add_constant_64(0));
-		let at_boundary = builder.band(
-			builder.icmp_eq(len_mod_64, builder.add_constant_64(0)),
-			builder.bxor(is_empty, all_ones),
-		);
-
-		// Length field fits in same block if we have room for 9 bytes (0x80 + 8-byte length).
-		// This means len % 64 <= 55. But if at_boundary is true, padding goes to next block.
-		let fits_in_block = builder.band(
-			builder.icmp_ult(len_mod_64, builder.add_constant_64(56)),
-			builder.bxor(at_boundary, all_ones),
-		);
-
-		// Calculate which block contains the last message byte.
-		// For empty message (len=0): block 0
-		// For len > 0: the last byte is at position len-1
-		// So we need block index = (len-1)/64
-		let (len_minus_1, _carry) = builder.iadd_cin_cout(len, all_ones, zero);
-		let last_msg_block_index_nonzero = builder.shr(len_minus_1, 6);
-		let last_msg_block_index =
-			builder.band(builder.bxor(is_empty, all_ones), last_msg_block_index_nonzero);
-		let delim = builder.add_constant_zx_8(0x80);
-
-		// If length doesn't fit in message block, it goes in next block. We need
-		// padding_overflow = 1 when !fits_in_block, 0 otherwise
-		//
-		// Since `fits_in_block` is all-1 (true) or all-0 (false), we can use:
-		// padding_overflow = !fits_in_block & 1
-		let padding_overflow =
-			builder.band(builder.bnot(fits_in_block), builder.add_constant_64(1));
-		let end_block_index = builder.iadd_32(
-			builder.band(last_msg_block_index, builder.add_constant(Word::MASK_32)),
-			padding_overflow,
-		);
+		let end_block_index = builder.shr(builder.iadd_32(len, builder.add_constant_64(8)), 6);
+		let delim: Wire = builder.add_constant_zx_8(0x80);
 
 		// ---- 2b. Final digest selection
 		//
@@ -362,7 +325,7 @@ impl Sha256 {
 			let is_last_word_pair = if idx == 14 { all_ones } else { zero };
 			let is_length_field_location = builder.band(is_length_block, is_last_word_pair);
 			let should_be_zero =
-				builder.band(is_past_message, builder.bxor(is_length_field_location, all_ones));
+				builder.band(is_past_message, builder.bnot(is_length_field_location));
 			builder.assert_eq_cond("3c.zero_pad", padded_message_word, zero, should_be_zero);
 
 			// ---- 3d. Length field placement
@@ -375,12 +338,7 @@ impl Sha256 {
 			// Otherwise, if it's a padding word (not message, not length), it must be zero.
 			if idx == 14 {
 				builder.assert_eq_cond("3d.w14_zero", w_lo32, zero, is_length_field_location);
-
 				builder.assert_eq_cond("3d.w15_len", w_hi32, bitlen, is_length_field_location);
-				let not_length_field = builder.bxor(is_length_field_location, all_ones);
-				let not_message = is_past_message;
-				let padding_word = builder.band(not_length_field, not_message);
-				builder.assert_eq_cond("3d.w15_zero", w_hi32, zero, padding_word);
 			}
 		}
 
