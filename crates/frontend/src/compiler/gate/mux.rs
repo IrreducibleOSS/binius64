@@ -28,7 +28,7 @@ pub fn shape() -> OpcodeShape {
 		n_in: 3,
 		n_out: 1,
 		n_internal: 0,
-		n_scratch: 2, // Need scratch registers for intermediate computations
+		n_scratch: 0,
 		n_imm: 0,
 	}
 }
@@ -58,32 +58,12 @@ pub fn emit_eval_bytecode(
 	wire_to_reg: impl Fn(Wire) -> u32,
 ) {
 	let GateParam {
-		inputs,
-		outputs,
-		scratch,
-		..
+		inputs, outputs, ..
 	} = data.gate_param();
 	let [a, b, cond] = inputs else { unreachable!() };
 	let [out] = outputs else { unreachable!() };
-	let [scratch_mask, scratch_diff] = scratch else {
-		unreachable!()
-	};
 
-	// Compute mask = cond >> 63 (arithmetic shift to broadcast MSB)
-	builder.emit_sar(wire_to_reg(*scratch_mask), wire_to_reg(*cond), 63);
-
-	// Compute diff = b ⊕ a
-	builder.emit_bxor(wire_to_reg(*scratch_diff), wire_to_reg(*b), wire_to_reg(*a));
-
-	// Compute masked_diff = mask & diff
-	builder.emit_band(
-		wire_to_reg(*scratch_diff),
-		wire_to_reg(*scratch_mask),
-		wire_to_reg(*scratch_diff),
-	);
-
-	// Compute out = a ⊕ masked_diff
-	builder.emit_bxor(wire_to_reg(*out), wire_to_reg(*a), wire_to_reg(*scratch_diff));
+	builder.emit_mux(wire_to_reg(*out), wire_to_reg(*a), wire_to_reg(*b), wire_to_reg(*cond));
 }
 
 #[cfg(test)]

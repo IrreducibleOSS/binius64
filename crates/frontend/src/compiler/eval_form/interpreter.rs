@@ -100,6 +100,7 @@ impl<'a> Interpreter<'a> {
 				0x02 => self.exec_bor(ctx),
 				0x03 => self.exec_bxor(ctx),
 				0x04 => self.exec_bnot(ctx),
+				0x05 => self.exec_mux(ctx),
 
 				// Shifts
 				0x10 => self.exec_sll(ctx),
@@ -166,6 +167,21 @@ impl<'a> Interpreter<'a> {
 		let dst = self.read_reg();
 		let src = self.read_reg();
 		let val = !self.load(ctx, src);
+		self.store(ctx, dst, val);
+	}
+
+	fn exec_mux(&mut self, ctx: &mut ExecutionContext<'_>) {
+		let dst = self.read_reg();
+		let a = self.read_reg();
+		let b = self.read_reg();
+		let cond = self.read_reg();
+		// Select b if MSB(cond) is 1, otherwise select a
+		let cond_val = self.load(ctx, cond);
+		let val = if (cond_val.0 as i64) < 0 {
+			self.load(ctx, b)
+		} else {
+			self.load(ctx, a)
+		};
 		self.store(ctx, dst, val);
 	}
 
