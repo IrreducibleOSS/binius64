@@ -9,6 +9,9 @@ pub enum Opcode {
 	Bxor,
 	Bor,
 
+	// Selection
+	Mux,
+
 	// Arithmetic
 	IaddCinCout,
 	Iadd32,
@@ -58,6 +61,9 @@ impl Opcode {
 			Opcode::Band => gate::band::shape(),
 			Opcode::Bxor => gate::bxor::shape(),
 			Opcode::Bor => gate::bor::shape(),
+
+			// Selection
+			Opcode::Mux => gate::mux::shape(),
 
 			// Arithmetic
 			Opcode::IaddCinCout => gate::iadd_cin_cout::shape(),
