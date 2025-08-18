@@ -543,6 +543,16 @@ impl CircuitBuilder {
 		(hi, lo)
 	}
 
+	/// Signed multiplication: 64-bit × 64-bit → 128-bit.
+	/// Returns (hi, lo) where result = (hi << 64) | lo
+	pub fn smul(&self, a: Wire, b: Wire) -> (Wire, Wire) {
+		let hi = self.add_internal();
+		let lo = self.add_internal();
+		let mut graph = self.graph_mut();
+		graph.emit_gate(self.current_path, Opcode::Smul, [a, b], [hi, lo]);
+		(hi, lo)
+	}
+
 	/// Conditional equality assertion.
 	///
 	/// Asserts that two 64-bit wires are equal, but only when the mask is all-1.

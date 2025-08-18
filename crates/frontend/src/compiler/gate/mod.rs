@@ -34,6 +34,7 @@ pub mod select;
 pub mod shl;
 pub mod shr;
 pub mod shr32;
+pub mod smul;
 
 pub fn constrain(gate: Gate, graph: &GateGraph, builder: &mut ConstraintBuilder) {
 	let data = &graph.gates[gate];
@@ -53,6 +54,7 @@ pub fn constrain(gate: Gate, graph: &GateGraph, builder: &mut ConstraintBuilder)
 		Opcode::Assert0 => assert_0::constrain(gate, data, builder),
 		Opcode::AssertBand0 => assert_band_0::constrain(gate, data, builder),
 		Opcode::Imul => imul::constrain(gate, data, builder),
+		Opcode::Smul => smul::constrain(gate, data, builder),
 		Opcode::AssertEqCond => assert_eq_cond::constrain(gate, data, builder),
 		Opcode::IcmpUlt => icmp_ult::constrain(gate, data, builder),
 		Opcode::IcmpEq => icmp_eq::constrain(gate, data, builder),
@@ -105,6 +107,7 @@ pub fn emit_gate_bytecode(
 			assert_eq_cond::emit_eval_bytecode(gate, data, assertion_path, builder, wire_to_reg)
 		}
 		Opcode::Imul => imul::emit_eval_bytecode(gate, data, builder, wire_to_reg),
+		Opcode::Smul => smul::emit_eval_bytecode(gate, data, builder, wire_to_reg),
 		Opcode::IcmpUlt => icmp_ult::emit_eval_bytecode(gate, data, builder, wire_to_reg),
 		Opcode::IcmpEq => icmp_eq::emit_eval_bytecode(gate, data, builder, wire_to_reg),
 		Opcode::ExtractByte => extract_byte::emit_eval_bytecode(gate, data, builder, wire_to_reg),
