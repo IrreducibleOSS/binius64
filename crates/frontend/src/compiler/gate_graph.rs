@@ -113,7 +113,7 @@ impl GateData {
 		let start_output = end_input;
 		let end_output = start_output + shape.n_out;
 		let start_internal = end_output;
-		let end_internal = start_internal + shape.n_internal;
+		let end_internal = start_internal + shape.n_aux;
 		let start_scratch = end_internal;
 		let end_scratch = start_scratch + shape.n_scratch;
 		GateParam {
@@ -137,7 +137,7 @@ impl GateData {
 		let gate_param = self.gate_param();
 		assert_eq!(gate_param.inputs.len(), shape.n_in);
 		assert_eq!(gate_param.outputs.len(), shape.n_out);
-		assert_eq!(gate_param.internal.len(), shape.n_internal);
+		assert_eq!(gate_param.internal.len(), shape.n_aux);
 		assert_eq!(self.immediates.len(), shape.n_imm);
 	}
 }
@@ -244,14 +244,15 @@ impl GateGraph {
 	) -> Gate {
 		let shape = opcode.shape(dimensions);
 		let mut wires: Vec<Wire> = Vec::with_capacity(
-			shape.const_in.len() + shape.n_in + shape.n_out + shape.n_internal + shape.n_scratch,
+			shape.const_in.len() + shape.n_in + shape.n_out + shape.n_aux + shape.n_scratch,
 		);
 		for c in shape.const_in {
 			wires.push(self.add_constant(*c));
 		}
 		wires.extend(inputs);
 		wires.extend(outputs);
-		for _ in 0..shape.n_internal {
+		for _ in 0..shape.n_aux {
+			// We create internal wires as auxiliary.
 			wires.push(self.add_internal());
 		}
 		for _ in 0..shape.n_scratch {

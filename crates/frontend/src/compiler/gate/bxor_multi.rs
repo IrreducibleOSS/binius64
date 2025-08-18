@@ -23,7 +23,7 @@ pub fn shape(dimensions: &[usize]) -> OpcodeShape {
 		const_in: &[Word::ALL_ONE],
 		n_in: *n_inputs,
 		n_out: 1,
-		n_internal: 0,
+		n_aux: 0,
 		n_scratch: 0,
 		n_imm: 0,
 	}

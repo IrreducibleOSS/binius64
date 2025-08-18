@@ -30,7 +30,7 @@ pub fn shape(dimensions: &[usize]) -> OpcodeShape {
 		const_in: &[],
 		n_in: *dividend_limbs_len + *divisor_limbs_len,
 		n_out: *dividend_limbs_len + *divisor_limbs_len,
-		n_internal: 0,
+		n_aux: 0,
 		n_scratch: 0,
 		n_imm: 0,
 	}

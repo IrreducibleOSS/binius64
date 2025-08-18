@@ -31,7 +31,7 @@ pub fn shape() -> OpcodeShape {
 		const_in: &[Word::MASK_32],
 		n_in: 1,
 		n_out: 1,
-		n_internal: 0,
+		n_aux: 0,
 		n_scratch: 0,
 		n_imm: 1,
 	}

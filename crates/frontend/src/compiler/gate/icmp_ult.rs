@@ -33,7 +33,7 @@ pub fn shape() -> OpcodeShape {
 		const_in: &[Word::ALL_ONE, Word::ZERO], // Need all_1 and zero constants
 		n_in: 2,
 		n_out: 1,
-		n_internal: 1,
+		n_aux: 1,
 		n_scratch: 2, // Need 2 scratch registers for intermediate computations
 		n_imm: 0,
 	}
