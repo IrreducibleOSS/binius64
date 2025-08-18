@@ -17,6 +17,7 @@ pub mod band;
 pub mod biguint_divide_hint;
 pub mod bor;
 pub mod bxor;
+pub mod bxor_multi;
 pub mod extract_byte;
 pub mod iadd32;
 pub mod iadd_cin_cout;
@@ -37,6 +38,7 @@ pub fn constrain(gate: Gate, graph: &GateGraph, builder: &mut ConstraintBuilder)
 	match data.opcode {
 		Opcode::Band => band::constrain(gate, data, builder),
 		Opcode::Bxor => bxor::constrain(gate, data, builder),
+		Opcode::BxorMulti => bxor_multi::constrain(gate, data, builder),
 		Opcode::Bor => bor::constrain(gate, data, builder),
 		Opcode::Select => select::constrain(gate, data, builder),
 		Opcode::IaddCinCout => iadd_cin_cout::constrain(gate, data, builder),
@@ -73,6 +75,7 @@ pub fn emit_gate_bytecode(
 	match data.opcode {
 		Opcode::Band => band::emit_eval_bytecode(gate, data, builder, wire_to_reg),
 		Opcode::Bxor => bxor::emit_eval_bytecode(gate, data, builder, wire_to_reg),
+		Opcode::BxorMulti => bxor_multi::emit_eval_bytecode(gate, data, builder, wire_to_reg),
 		Opcode::Bor => bor::emit_eval_bytecode(gate, data, builder, wire_to_reg),
 		Opcode::Select => select::emit_eval_bytecode(gate, data, builder, wire_to_reg),
 		Opcode::IaddCinCout => iadd_cin_cout::emit_eval_bytecode(gate, data, builder, wire_to_reg),

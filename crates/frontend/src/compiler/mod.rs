@@ -285,6 +285,33 @@ impl CircuitBuilder {
 		z
 	}
 
+	/// Multi-way bitwise XOR operation.
+	///
+	/// Takes a variable-length slice of wires and XORs them all together.
+	pub fn bxor_multi(&self, wires: &[Wire]) -> Wire {
+		assert!(!wires.is_empty(), "bxor_multi requires at least one input");
+
+		if wires.len() == 1 {
+			return wires[0];
+		}
+
+		if wires.len() == 2 {
+			return self.bxor(wires[0], wires[1]);
+		}
+
+		let z = self.add_internal();
+		let mut graph = self.graph_mut();
+		graph.emit_gate_generic(
+			self.current_path,
+			Opcode::BxorMulti,
+			wires.iter().copied(),
+			[z],
+			&[wires.len()],
+			&[],
+		);
+		z
+	}
+
 	/// Bitwise Not
 	pub fn bnot(&self, a: Wire) -> Wire {
 		let all_one = self.add_constant(Word::ALL_ONE);

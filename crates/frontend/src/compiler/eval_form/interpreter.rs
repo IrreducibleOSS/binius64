@@ -101,6 +101,7 @@ impl<'a> Interpreter<'a> {
 				0x03 => self.exec_bxor(ctx),
 				0x04 => self.exec_bnot(ctx),
 				0x05 => self.exec_select(ctx),
+				0x06 => self.exec_bxor_multi(ctx),
 
 				// Shifts
 				0x10 => self.exec_sll(ctx),
@@ -183,6 +184,17 @@ impl<'a> Interpreter<'a> {
 		} else {
 			self.load(ctx, a)
 		};
+		self.store(ctx, dst, val);
+	}
+
+	fn exec_bxor_multi(&mut self, ctx: &mut ExecutionContext<'_>) {
+		let dst = self.read_reg();
+		let n = self.read_u32() as usize;
+		let mut val = Word::ZERO;
+		for _ in 0..n {
+			let src = self.read_reg();
+			val = val ^ self.load(ctx, src);
+		}
 		self.store(ctx, dst, val);
 	}
 
