@@ -44,7 +44,7 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 	let [z] = outputs else { unreachable!() };
 	let [n] = imm else { unreachable!() };
 
-	// Constraint: Logical right shift
+	// Constraint: Arithmetic right shift
 	// (x SAR n) ∧ all-1 = z
 	builder.and().a(sar(*x, *n)).b(*all_1).c(*z).build();
 }
