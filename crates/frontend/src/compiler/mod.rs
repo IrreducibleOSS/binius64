@@ -24,6 +24,7 @@ pub mod circuit;
 pub mod constraint_builder;
 mod dump;
 pub mod eval_form;
+mod gate_fusion;
 mod gate_graph;
 pub mod hints;
 mod pathspec;
@@ -171,7 +172,18 @@ impl CircuitBuilder {
 		for (gate_id, _) in graph.gates.iter() {
 			gate::constrain(gate_id, &graph, &mut builder);
 		}
-		let (and_constraints, mul_constraints) = builder.build(&wire_mapping);
+		let (mut and_constraints, mut mul_constraints) = builder.build(&wire_mapping);
+
+		// Perform fusion if the corresponding feature flag is turned on.
+		if std::env::var("MONBIJOU_FUSION").is_ok() {
+			let fusion =
+				gate_fusion::Fusion::new(&mut and_constraints, &mut mul_constraints, &constants);
+			if let Some(mut fusion) = fusion {
+				let stats = fusion.run();
+				eprintln!("{}", stats);
+			}
+		}
+
 		let cs =
 			ConstraintSystem::new(constants, value_vec_layout, and_constraints, mul_constraints);
 
