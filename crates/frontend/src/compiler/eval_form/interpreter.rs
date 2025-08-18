@@ -113,6 +113,7 @@ impl<'a> Interpreter<'a> {
 				0x22 => self.exec_isub_bout(ctx),
 				0x23 => self.exec_isub_bin_bout(ctx),
 				0x30 => self.exec_imul(ctx),
+				0x31 => self.exec_smul(ctx),
 
 				// 32-bit operations
 				0x40 => self.exec_iadd_cout32(ctx),
@@ -269,6 +270,16 @@ impl<'a> Interpreter<'a> {
 		let src1 = self.read_reg();
 		let src2 = self.read_reg();
 		let (hi, lo) = self.load(ctx, src1).imul(self.load(ctx, src2));
+		self.store(ctx, dst_hi, hi);
+		self.store(ctx, dst_lo, lo);
+	}
+
+	fn exec_smul(&mut self, ctx: &mut ExecutionContext<'_>) {
+		let dst_hi = self.read_reg();
+		let dst_lo = self.read_reg();
+		let src1 = self.read_reg();
+		let src2 = self.read_reg();
+		let (hi, lo) = self.load(ctx, src1).smul(self.load(ctx, src2));
 		self.store(ctx, dst_hi, hi);
 		self.store(ctx, dst_lo, lo);
 	}

@@ -143,6 +143,15 @@ impl BytecodeBuilder {
 		self.emit_reg(src2);
 	}
 
+	pub fn emit_smul(&mut self, dst_hi: u32, dst_lo: u32, src1: u32, src2: u32) {
+		self.n_eval_insn += 1;
+		self.emit_u8(0x31);
+		self.emit_reg(dst_hi);
+		self.emit_reg(dst_lo);
+		self.emit_reg(src1);
+		self.emit_reg(src2);
+	}
+
 	// 32-bit operations
 	pub fn emit_iadd_cout32(&mut self, dst_sum: u32, dst_cout: u32, src1: u32, src2: u32) {
 		self.n_eval_insn += 1;
