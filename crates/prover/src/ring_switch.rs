@@ -3,7 +3,8 @@
 use std::{iter, ops::Deref};
 
 use binius_field::{
-	BinaryField, ExtensionField, Field, PackedField, UnderlierWithBitOps, WithUnderlier,
+	BinaryField, ExtensionField, Field, PackedExtension, PackedField, UnderlierWithBitOps,
+	WithUnderlier,
 	byte_iteration::{
 		ByteIteratorCallback, can_iterate_bytes, create_partial_sums_lookup_tables, iterate_bytes,
 	},
@@ -11,8 +12,8 @@ use binius_field::{
 use binius_math::{
 	FieldBuffer, inner_product::inner_product_subfield, multilinear::eq::eq_ind_partial_eval,
 };
-use binius_utils::rayon::prelude::*;
-use binius_verifier::config::B1;
+use binius_utils::{checked_arithmetics::checked_log_2, rayon::prelude::*};
+use binius_verifier::config::{B1, B128};
 use itertools::izip;
 
 /// Compute the multilinear extension of the ring switching equality indicator.
@@ -190,6 +191,134 @@ where
 		)
 }
 
+/// Optimized version of [`fold_1b_rows`] specifically for B128 fields.
+///
+/// This function computes the linear combination of the rows of a B1 matrix by B128 extension
+/// field coefficient vectors. It implements the same computation as [`fold_1b_rows`] but uses
+/// the Method of Four Russians optimization to achieve better performance for B128 fields.
+///
+/// The optimization works by:
+/// 1. Processing 4 elements at a time (2^2 chunks) for better cache locality
+/// 2. Precomputing a lookup table of 16 partial sums for 4-bit chunks
+/// 3. Using the lookup table to compute dot products via table lookups instead of multiplications
+/// 4. Leveraging [`square_transpose_const_size`] with const generics for loop unrolling
+///
+/// ## Arguments
+///
+/// * `mat` - the [`B1`] matrix packed into B128 elements, with 128 columns
+/// * `vec` - the row coefficients as B128 elements
+///
+/// ## Returns
+///
+/// A buffer containing the linear combination result
+///
+/// ## Preconditions
+///
+/// * `mat` and `vec` must have the same log length
+pub fn fold_1b_rows_for_b128<Data>(
+	mat: &FieldBuffer<B128, Data>,
+	vec: &FieldBuffer<B128>,
+) -> FieldBuffer<B128>
+where
+	Data: Deref<Target = [B128]>,
+{
+	let log_scalar_bit_width = <B128 as ExtensionField<B1>>::LOG_DEGREE;
+	assert_eq!(mat.log_len(), vec.log_len()); // precondition
+
+	(vec.as_ref().par_chunks(1 << 2), mat.as_ref().par_chunks(1 << 2))
+		.into_par_iter()
+		.fold(
+			|| FieldBuffer::zeros(log_scalar_bit_width),
+			|mut acc, (vec_packed_i, mat_packed_i)| {
+				let mut expanded = [B128::ZERO; 1 << 4];
+				for (i, vec_i) in vec_packed_i.iter().enumerate() {
+					let span = &mut expanded[..1 << (i + 1)];
+					let (lo_half, hi_half) = span.split_at_mut(1 << i);
+					for (lo_half_i, hi_half_i) in iter::zip(lo_half, hi_half) {
+						*hi_half_i = *lo_half_i + vec_i;
+					}
+				}
+
+				let mut mat_elems: [_; 4] = <B128 as PackedExtension<B1>>::cast_bases(mat_packed_i)
+					.try_into()
+					.unwrap();
+				square_transpose_const_size::<_, 2, 4>(&mut mat_elems);
+
+				{
+					let acc = acc.as_mut();
+					for (j, mat_elem) in mat_elems.iter().enumerate() {
+						let elem_bytes = B128::cast_ext_ref(mat_elem).val().to_le_bytes();
+						for (i, &byte) in elem_bytes.iter().enumerate() {
+							acc[(i << 3) | j] += expanded[byte as usize & 0x0F];
+							acc[(i << 3) | (1 << 2) | j] += expanded[byte as usize >> 4];
+						}
+					}
+				}
+
+				acc
+			},
+		)
+		.reduce(
+			|| FieldBuffer::zeros(log_scalar_bit_width),
+			|mut lhs, rhs| {
+				for (lhs_i, &rhs_i) in izip!(lhs.as_mut(), rhs.as_ref()) {
+					*lhs_i += rhs_i;
+				}
+				lhs
+			},
+		)
+}
+
+/// Transpose square blocks of elements within packed field elements in place.
+///
+/// This is similar to [`binius_field::transpose::square_transpose`] but uses const generic
+/// parameters for the array size and block dimension. The const generics enable the compiler
+/// to unroll loops and optimize the transpose operation more aggressively.
+///
+/// ## Type Parameters
+///
+/// * `P` - The packed field type
+/// * `LOG_N` - Base-2 logarithm of the dimension of the square blocks to transpose
+/// * `S` - Size of the array (must be a power of 2)
+///
+/// ## Arguments
+///
+/// * `elems` - Array of packed field elements to transpose in place
+///
+/// ## Preconditions
+///
+/// * `S` must be a power of two
+/// * `LOG_N` must be less than or equal to `P::LOG_WIDTH`
+/// * `LOG_N` must be less than or equal to `log2(S)`
+fn square_transpose_const_size<P: PackedField, const LOG_N: usize, const S: usize>(
+	elems: &mut [P; S],
+) {
+	assert!(S.is_power_of_two());
+	let log_size = checked_log_2(S);
+
+	assert!(LOG_N <= P::LOG_WIDTH);
+	assert!(LOG_N <= log_size);
+
+	let log_w = log_size - LOG_N;
+
+	// See Hacker's Delight, Section 7-3.
+	// https://dl.acm.org/doi/10.5555/2462741
+	for i in 0..LOG_N {
+		for j in 0..1 << (LOG_N - i - 1) {
+			for k in 0..1 << (log_w + i) {
+				let idx0 = (j << (log_w + i + 1)) | k;
+				let idx1 = idx0 | (1 << (log_w + i));
+
+				let v0 = elems[idx0];
+				let v1 = elems[idx1];
+				let (v0, v1) = v0.interleave(v1, i);
+				elems[idx0] = v0;
+				elems[idx1] = v1;
+			}
+		}
+	}
+}
+
 #[cfg(test)]
 mod test {
 	use binius_field::{
@@ -315,5 +444,33 @@ mod test {
 		// Compare all three results
 		assert_eq!(reference_result, method2_result, "Method 2 does not match reference");
 		assert_eq!(reference_result, method3_result, "Method 3 does not match reference");
+	}
+
+	#[test]
+	fn test_fold_1b_rows_for_b128_consistency() {
+		let mut rng = StdRng::seed_from_u64(0);
+
+		// Parameters - test with various sizes
+		for n in [4, 6, 8, 10] {
+			// Generate a random B128 matrix with 2^n elements
+			let mat = random_field_buffer::<B128>(&mut rng, n);
+
+			// Generate a random B128 vector with 2^n elements
+			let vec = random_field_buffer::<B128>(&mut rng, n);
+
+			// Call the generic fold_1b_rows function
+			let result_generic = fold_1b_rows(&mat, &vec);
+
+			// Call the specialized fold_1b_rows_for_b128 function
+			let result_specialized = fold_1b_rows_for_b128(&mat, &vec);
+
+			// Both results should be identical
+			assert_eq!(
+				result_generic.as_ref(),
+				result_specialized.as_ref(),
+				"fold_1b_rows_for_b128 does not match fold_1b_rows for n = {}",
+				n
+			);
+		}
 	}
 }
