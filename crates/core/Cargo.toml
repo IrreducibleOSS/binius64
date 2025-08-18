@@ -12,3 +12,6 @@ binius-field = { path = "../field" }
 binius-utils = { path = "../utils" }
 bytemuck = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
