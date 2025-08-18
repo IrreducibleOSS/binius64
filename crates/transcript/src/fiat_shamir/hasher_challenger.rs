@@ -201,25 +201,22 @@ where
 
 #[cfg(test)]
 mod tests {
-	use blake2::Blake2b;
-	use digest::consts::U32;
 	use rand::prelude::*;
+	use sha2::Sha256;
 
 	use super::*;
 
-	type Blake2b256 = Blake2b<U32>;
-
 	#[test]
 	fn test_starting_sampler() {
-		let empty_string_digest = Blake2b256::digest([]);
+		let empty_string_digest = Sha256::digest([]);
 
 		let mut hasher = {
-			let mut hasher = Blake2b256::default();
+			let mut hasher = Sha256::default();
 			Digest::update(&mut hasher, empty_string_digest);
 			hasher
 		};
 
-		let mut challenger = HasherChallenger::<Blake2b256>::default();
+		let mut challenger = HasherChallenger::<Sha256>::default();
 
 		// first sampling
 		let mut out = [0u8; 8];
@@ -250,15 +247,15 @@ mod tests {
 
 	#[test]
 	fn test_starting_observer() {
-		let empty_string_digest = Blake2b256::digest([]);
+		let empty_string_digest = Sha256::digest([]);
 
 		let mut hasher = {
-			let mut hasher = Blake2b256::default();
+			let mut hasher = Sha256::default();
 			Digest::update(&mut hasher, empty_string_digest);
 			hasher
 		};
 
-		let mut challenger = HasherChallenger::<Blake2b256>::default();
+		let mut challenger = HasherChallenger::<Sha256>::default();
 
 		let mut rng = StdRng::seed_from_u64(0);
 
