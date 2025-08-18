@@ -10,7 +10,7 @@ pub enum Opcode {
 	Bor,
 
 	// Selection
-	Mux,
+	Select,
 
 	// Arithmetic
 	IaddCinCout,
@@ -63,7 +63,7 @@ impl Opcode {
 			Opcode::Bor => gate::bor::shape(),
 
 			// Selection
-			Opcode::Mux => gate::mux::shape(),
+			Opcode::Select => gate::select::shape(),
 
 			// Arithmetic
 			Opcode::IaddCinCout => gate::iadd_cin_cout::shape(),

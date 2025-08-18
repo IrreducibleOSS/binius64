@@ -100,7 +100,7 @@ impl<'a> Interpreter<'a> {
 				0x02 => self.exec_bor(ctx),
 				0x03 => self.exec_bxor(ctx),
 				0x04 => self.exec_bnot(ctx),
-				0x05 => self.exec_mux(ctx),
+				0x05 => self.exec_select(ctx),
 
 				// Shifts
 				0x10 => self.exec_sll(ctx),
@@ -170,7 +170,7 @@ impl<'a> Interpreter<'a> {
 		self.store(ctx, dst, val);
 	}
 
-	fn exec_mux(&mut self, ctx: &mut ExecutionContext<'_>) {
+	fn exec_select(&mut self, ctx: &mut ExecutionContext<'_>) {
 		let dst = self.read_reg();
 		let a = self.read_reg();
 		let b = self.read_reg();
