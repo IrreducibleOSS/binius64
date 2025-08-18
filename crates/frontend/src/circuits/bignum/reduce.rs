@@ -2,10 +2,10 @@ use binius_core::{consts::WORD_SIZE_BITS, word::Word};
 
 use super::{
 	addsub::{add, sub},
-	biguint::{BigUint, assert_eq},
+	biguint::{BigUint, assert_eq, assert_eq_cond},
 	mul::mul,
 };
-use crate::compiler::CircuitBuilder;
+use crate::compiler::{CircuitBuilder, Wire};
 
 /// Modular reduction verification for BigUint.
 ///
@@ -74,10 +74,8 @@ impl ModReduce {
 /// This algorithm is more efficient than `ModReduce` when `modulus_subtrahend` is a short
 /// compared to `modulus_po2`. This is the case for many practically interesting prime field.
 pub struct PseudoMersenneModReduce {
-	pub a: BigUint,
-	pub modulus_subtrahend: BigUint,
-	pub quotient: BigUint,
-	pub remainder: BigUint,
+	lhs: BigUint,
+	rhs: BigUint,
 }
 
 impl PseudoMersenneModReduce {
@@ -93,14 +91,22 @@ impl PseudoMersenneModReduce {
 	/// * `remainder` - The remainder
 	///
 	/// # Constraints
-	/// The circuit enforces that `a = quotient * (2^modulus_po2 - modulus_subtrahend) + remainder`
+	/// The circuit enforces that `a = quotient * (2^modulus_po2 - modulus_subtrahend) + remainder`.
+	/// Remainder range check (`0 <= remainder < 2^modulus_po2 - modulus_subtrahend`) is _not_
+	/// enforced.
+	///
+	/// Note: This adds arithmetic constraints for computing intermediate values
+	/// (multiplication, addition, subtraction), but does NOT add the final equality
+	/// constraint. You must call `.constrain()` or `.constrain_cond()` to enforce
+	/// that the equation actually holds.
+	#[must_use]
 	pub fn new(
 		builder: &CircuitBuilder,
-		a: BigUint,
+		a: &BigUint,
 		modulus_po2: usize,
-		modulus_subtrahend: BigUint,
-		quotient: BigUint,
-		remainder: BigUint,
+		modulus_subtrahend: &BigUint,
+		quotient: &BigUint,
+		remainder: &BigUint,
 	) -> Self {
 		// a = quotient * (2^modulus_po2 - modulus_subtrahend) + remainder
 		// hi * 2^modulus_po2 + lo = quotient * (2^modulus_po2 - modulus_subtrahend) + remainder
@@ -118,12 +124,12 @@ impl PseudoMersenneModReduce {
 
 		let (a_lo, a_hi) = a.pad_limbs_to(n_lo_limbs, zero).split_at_limbs(n_lo_limbs);
 
-		let rhs_hi = sub(builder, &quotient, &a_hi.pad_limbs_to(quotient.limbs.len(), zero));
+		let rhs_hi = sub(builder, quotient, &a_hi.pad_limbs_to(quotient.limbs.len(), zero));
 		let rhs = remainder
 			.pad_limbs_to(n_lo_limbs, zero)
 			.concat_limbs(&rhs_hi);
 
-		let quotient_modulus_subtrahend = mul(builder, &quotient, &modulus_subtrahend);
+		let quotient_modulus_subtrahend = mul(builder, quotient, modulus_subtrahend);
 		let lhs_rhs_len = [
 			rhs.limbs.len(),
 			quotient_modulus_subtrahend.limbs.len() + 1,
@@ -139,12 +145,18 @@ impl PseudoMersenneModReduce {
 			&quotient_modulus_subtrahend.pad_limbs_to(lhs_rhs_len, zero),
 		);
 
-		assert_eq(builder, "modreduce_pseudo_mersenne", &lhs, &rhs.pad_limbs_to(lhs_rhs_len, zero));
-		Self {
-			a,
-			modulus_subtrahend,
-			quotient,
-			remainder,
-		}
+		let rhs = rhs.pad_limbs_to(lhs_rhs_len, zero);
+
+		Self { lhs, rhs }
+	}
+
+	/// Apply the reduction constraint unconditionally.
+	pub fn constrain(self, builder: &CircuitBuilder) {
+		assert_eq(builder, "modreduce_pseudo_mersenne", &self.lhs, &self.rhs);
+	}
+
+	/// Apply the reduction constraint conditionally based on the value of boolean `mask` wire.
+	pub fn constrain_cond(self, builder: &CircuitBuilder, mask: Wire) {
+		assert_eq_cond(builder, "modreduce_pseudo_mersenne", &self.lhs, &self.rhs, mask)
 	}
 }

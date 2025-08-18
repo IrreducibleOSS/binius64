@@ -40,6 +40,18 @@ impl BigUint {
 		Self { limbs }
 	}
 
+	/// Checks whether BigUint is zero and returns the check result as a boolean wire.
+	pub fn is_zero(&self, b: &CircuitBuilder) -> Wire {
+		// TODO: it's more efficient to add all-1 BigUint and check carry out (jimpo)
+		//       do this once BigUint addition returning a Wire carry out exists
+		let zero = b.add_constant(Word::ZERO);
+		let all_one = b.add_constant(Word::ALL_ONE);
+		self.limbs
+			.iter()
+			.map(|&limb| b.icmp_eq(limb, zero))
+			.fold(all_one, |lhs, rhs| b.band(lhs, rhs))
+	}
+
 	/// Pads to given limb length with zeros.
 	///
 	/// No-op if `new_limbs_len` is shorter then the current one.
@@ -106,4 +118,56 @@ pub fn assert_eq(builder: &CircuitBuilder, name: impl Into<String>, a: &BigUint,
 	for (i, (&a_l, &b_l)) in a.limbs.iter().zip(b.limbs.iter()).enumerate() {
 		builder.assert_eq(format!("{base_name}[{i}]"), a_l, b_l);
 	}
+}
+
+/// Conditionally asserts that that two `BigUint`s are equal.
+///
+/// # Arguments
+/// * `builder` - Circuit builder for constraint generation
+/// * `a` - First operand `BigUint`
+/// * `b` - Second operand `BigUint` (must have same number of limbs as `a`)
+/// * `mask` - a must equal b if mask is all-1, constraint is ignored if mask is all-0
+///
+/// # Panics
+/// Panics if `a` and `b` have different number of limbs.
+pub fn assert_eq_cond(
+	builder: &CircuitBuilder,
+	name: impl Into<String>,
+	a: &BigUint,
+	b: &BigUint,
+	mask: Wire,
+) {
+	assert_eq!(
+		a.limbs.len(),
+		b.limbs.len(),
+		"biguint assert_eq_cond: inputs must have the same number of limbs"
+	);
+	let base_name = name.into();
+	for (i, (&a_l, &b_l)) in a.limbs.iter().zip(b.limbs.iter()).enumerate() {
+		builder.assert_eq_cond(format!("{base_name}[{i}]"), a_l, b_l, mask);
+	}
+}
+
+/// Exclusive-ORs the limbs of two equal-length `BigUint`s.
+///
+/// # Arguments
+/// * `builder` - Circuit builder for constraint generation
+/// * `a` - First operand `BigUint`
+/// * `b` - Second operand `BigUint` (must have same number of limbs as `a`)
+///
+/// # Panics
+/// Panics if `a` and `b` have different number of limbs.
+pub fn xor(builder: &CircuitBuilder, a: &BigUint, b: &BigUint) -> BigUint {
+	assert_eq!(
+		a.limbs.len(),
+		b.limbs.len(),
+		"biguint xor: inputs must have the same number of limbs"
+	);
+	let limbs = a
+		.limbs
+		.iter()
+		.zip(b.limbs.iter())
+		.map(|(&l1, &l2)| builder.bxor(l1, l2))
+		.collect();
+	BigUint { limbs }
 }

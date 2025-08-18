@@ -108,6 +108,8 @@ fn test_prime_field() {
 
 	let builder = CircuitBuilder::new();
 
+	let inverse_exists = builder.add_constant(Word::ALL_ONE);
+
 	let subtrahend = 1u64 << 32 | 977;
 	let field = PseudoMersennePrimeField::new(&builder, 256, &[subtrahend]);
 	let modulus_big =
@@ -144,6 +146,7 @@ fn test_prime_field() {
 					.square(&builder, &field.sub(&builder, &field.add(&builder, &result, &a), &b)),
 				&c,
 			),
+			inverse_exists,
 		);
 
 		result_big = (result_big + a_big) % &modulus_big;
@@ -507,7 +510,8 @@ proptest! {
 		let quotient = BigUint::new_witness(&builder, a.limbs.len());
 		let remainder = BigUint::new_witness(&builder, modulus_po2 / 64);
 
-		let circuit = PseudoMersenneModReduce::new(&builder, a, modulus_po2, modulus_subtrahend, quotient, remainder);
+		PseudoMersenneModReduce::new(&builder, &a, modulus_po2, &modulus_subtrahend, &quotient, &remainder)
+			.constrain(&builder);
 
 		let cs = builder.build();
 		let mut w = cs.new_witness_filler();
@@ -516,16 +520,16 @@ proptest! {
 		let modulus_big = num_bigint::BigUint::from(2u64).pow(modulus_po2 as u32) - from_u64_limbs(&modulus_subtrahend_vals);
 		let (q_big, r_big) = a_big.div_rem(&modulus_big);
 
-		circuit.a.populate_limbs(&mut w, &a_vals);
-		circuit.modulus_subtrahend.populate_limbs(&mut w, &modulus_subtrahend_vals);
+		a.populate_limbs(&mut w, &a_vals);
+		modulus_subtrahend.populate_limbs(&mut w, &modulus_subtrahend_vals);
 
 		let mut q_limbs = q_big.to_u64_digits();
-		q_limbs.resize(circuit.quotient.limbs.len(), 0u64);
-		circuit.quotient.populate_limbs(&mut w, &q_limbs);
+		q_limbs.resize(quotient.limbs.len(), 0u64);
+		quotient.populate_limbs(&mut w, &q_limbs);
 
 		let mut r_limbs = r_big.to_u64_digits();
-		r_limbs.resize(circuit.remainder.limbs.len(), 0u64);
-		circuit.remainder.populate_limbs(&mut w, &r_limbs);
+		r_limbs.resize(remainder.limbs.len(), 0u64);
+		remainder.populate_limbs(&mut w, &r_limbs);
 
 		cs.populate_wire_witness(&mut w).unwrap();
 
