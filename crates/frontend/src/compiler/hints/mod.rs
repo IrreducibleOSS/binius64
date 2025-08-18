@@ -8,9 +8,11 @@
 use binius_core::Word;
 
 mod big_uint_divide;
+mod big_uint_mod_pow;
 mod mod_inverse;
 
 pub use big_uint_divide::BigUintDivideHint;
+pub use big_uint_mod_pow::BigUintModPowHint;
 pub use mod_inverse::ModInverseHint;
 
 pub type HintId = u32;

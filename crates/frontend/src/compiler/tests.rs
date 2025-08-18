@@ -221,6 +221,23 @@ fn test_biguint_divide_hint_div_by_zero() {
 }
 
 #[test]
+fn test_mod_pow_hint() {
+	let builder = CircuitBuilder::new();
+
+	let c = builder.add_constant_64(0x123456789abcdef0);
+	let modpow = builder.biguint_mod_pow_hint(&[c], &[c, c], &[c, c, c]);
+
+	let circuit = builder.build();
+	let mut w = circuit.new_witness_filler();
+	circuit.populate_wire_witness(&mut w).unwrap();
+
+	assert_eq!(modpow.len(), 3);
+	assert_eq!(w[modpow[0]], Word(0x6f151e00d2c39f30));
+	assert_eq!(w[modpow[1]], Word(0xfef75acc27ead52f));
+	assert_eq!(w[modpow[2]], Word(0x00443adf222ea27));
+}
+
+#[test]
 fn test_mod_inverse_hint() {
 	let builder = CircuitBuilder::new();
 

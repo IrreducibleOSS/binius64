@@ -2,7 +2,7 @@ use crate::compiler::{
 	constraint_builder::ConstraintBuilder,
 	eval_form::BytecodeBuilder,
 	gate_graph::{Gate, GateData, GateGraph},
-	hints::{BigUintDivideHint, HintRegistry, ModInverseHint},
+	hints::{BigUintDivideHint, BigUintModPowHint, HintRegistry, ModInverseHint},
 };
 
 pub mod opcode;
@@ -15,6 +15,7 @@ pub mod assert_eq;
 pub mod assert_eq_cond;
 pub mod band;
 pub mod biguint_divide_hint;
+pub mod biguint_mod_pow_hint;
 pub mod bor;
 pub mod bxor;
 pub mod bxor_multi;
@@ -61,6 +62,7 @@ pub fn constrain(gate: Gate, graph: &GateGraph, builder: &mut ConstraintBuilder)
 		Opcode::Sar => sar::constrain(gate, data, builder),
 		// Hints do not introduce constraints
 		Opcode::BigUintDivideHint => (),
+		Opcode::BigUintModPowHint => (),
 		Opcode::ModInverseHint => (),
 	}
 }
@@ -114,6 +116,10 @@ pub fn emit_gate_bytecode(
 		Opcode::ModInverseHint => {
 			let hint_id = hint_registry.register(Box::new(ModInverseHint::new()));
 			mod_inverse_hint::emit_eval_bytecode(gate, data, builder, wire_to_reg, hint_id)
+		}
+		Opcode::BigUintModPowHint => {
+			let hint_id = hint_registry.register(Box::new(BigUintModPowHint::new()));
+			biguint_mod_pow_hint::emit_eval_bytecode(gate, data, builder, wire_to_reg, hint_id)
 		}
 		Opcode::BigUintDivideHint => {
 			let hint_id = hint_registry.register(Box::new(BigUintDivideHint::new()));

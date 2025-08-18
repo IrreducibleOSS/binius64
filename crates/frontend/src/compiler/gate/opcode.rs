@@ -42,6 +42,7 @@ pub enum Opcode {
 
 	// Hints
 	BigUintDivideHint,
+	BigUintModPowHint,
 	ModInverseHint,
 }
 
@@ -124,6 +125,7 @@ impl Opcode {
 
 			// Hints (no constraints)
 			Opcode::BigUintDivideHint => gate::biguint_divide_hint::shape(dimensions),
+			Opcode::BigUintModPowHint => gate::biguint_mod_pow_hint::shape(dimensions),
 			Opcode::ModInverseHint => gate::mod_inverse_hint::shape(dimensions),
 		}
 	}
@@ -132,6 +134,7 @@ impl Opcode {
 		#[allow(clippy::match_like_matches_macro)]
 		match self {
 			Opcode::BigUintDivideHint => false,
+			Opcode::BigUintModPowHint => false,
 			Opcode::ModInverseHint => false,
 			Opcode::BxorMulti => false,
 			_ => true,
