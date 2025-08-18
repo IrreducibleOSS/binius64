@@ -245,7 +245,7 @@ impl<'a> MulConstraintBuilder<'a> {
 }
 
 /// Expression for building wire operands - all variants are Copy
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 pub enum WireExpr {
 	/// Plain wire reference
 	Wire(Wire),
@@ -274,6 +274,7 @@ pub enum ShiftOp {
 }
 
 impl WireExpr {
+	#[allow(clippy::wrong_self_convention)]
 	fn to_operand(self) -> WireOperand {
 		match self {
 			WireExpr::Wire(w) => vec![ShiftedWire {
@@ -329,16 +330,16 @@ pub fn wire(w: Wire) -> WireExpr {
 	WireExpr::Wire(w)
 }
 
-pub fn sll(w: Wire, n: u32) -> WireExpr {
-	WireExpr::Shifted(w, ShiftOp::Sll(n))
+pub fn sll(w: Wire, n: u32) -> WireExprTerm {
+	WireExprTerm::Shifted(w, ShiftOp::Sll(n))
 }
 
-pub fn srl(w: Wire, n: u32) -> WireExpr {
-	WireExpr::Shifted(w, ShiftOp::Srl(n))
+pub fn srl(w: Wire, n: u32) -> WireExprTerm {
+	WireExprTerm::Shifted(w, ShiftOp::Srl(n))
 }
 
-pub fn sar(w: Wire, n: u32) -> WireExpr {
-	WireExpr::Shifted(w, ShiftOp::Sar(n))
+pub fn sar(w: Wire, n: u32) -> WireExprTerm {
+	WireExprTerm::Shifted(w, ShiftOp::Sar(n))
 }
 
 // XOR helpers for common cases
@@ -378,6 +379,15 @@ impl From<Wire> for WireExpr {
 impl From<Wire> for WireExprTerm {
 	fn from(w: Wire) -> Self {
 		WireExprTerm::Wire(w)
+	}
+}
+
+impl From<WireExprTerm> for WireExpr {
+	fn from(expr: WireExprTerm) -> Self {
+		match expr {
+			WireExprTerm::Wire(w) => WireExpr::Wire(w),
+			WireExprTerm::Shifted(w, op) => WireExpr::Shifted(w, op),
+		}
 	}
 }
 
