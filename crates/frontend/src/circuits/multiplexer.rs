@@ -41,15 +41,6 @@ impl Multiplexer {
 		let n = inputs.len();
 		assert!(n > 0, "Input vector must not be empty");
 
-		// Special case: single input
-		if n == 1 {
-			return Self {
-				output: inputs[0],
-				inputs: inputs.to_vec(),
-				sel,
-			};
-		}
-
 		// Calculate number of selector bits needed
 		let num_sel_bits = log2_ceil_usize(n);
 
