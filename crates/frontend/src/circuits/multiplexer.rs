@@ -26,36 +26,33 @@ impl Multiplexer {
 	///
 	/// # Arguments
 	/// * `b` - Circuit builder
-	/// * `inputs` - Input vector of N elements (N must be a power of 2)
-	/// * `sel` - Selector value (only log2(N) LSB bits are used)
+	/// * `inputs` - Input vector of N elements (N can be any positive number)
+	/// * `sel` - Selector value (only ceil(log2(N)) LSB bits are used)
 	///
 	/// # Returns
 	/// A Multiplexer struct containing the output wire
 	///
 	/// # Panics
-	/// * If inputs.len() is not a power of 2
 	/// * If inputs.len() is 0
 	pub fn new(b: &CircuitBuilder, inputs: Vec<Wire>, sel: Wire) -> Self {
 		let n = inputs.len();
 		assert!(n > 0, "Input vector must not be empty");
-		assert!(n.is_power_of_two(), "Input vector length must be a power of 2");
 
-		// For N inputs, we need N-1 select gates
-		// Total wire count is 2*N-1 (N-1 internal nodes + N leaf nodes)
-		// We'll use Option<Wire> to track which wires have been set
-		let total_wires = 2 * n - 1;
-		let mut wire: Vec<Option<Wire>> = vec![None; total_wires];
-
-		// Map input vector to the last N elements of wire array
-		// wire[N-1..2*N-1] = inputs
-		for (i, &input) in inputs.iter().enumerate() {
-			wire[n - 1 + i] = Some(input);
+		// Special case: single input
+		if n == 1 {
+			return Self {
+				output: inputs[0],
+				inputs,
+				sel,
+			};
 		}
 
+		// Calculate number of selector bits needed
+		let num_sel_bits = (n as f64).log2().ceil() as usize;
+
 		// Extract selector bits
-		let log_n = n.trailing_zeros() as usize;
-		let mut sel_bits = Vec::with_capacity(log_n);
-		for i in 0..log_n {
+		let mut sel_bits = Vec::with_capacity(num_sel_bits);
+		for i in 0..num_sel_bits {
 			let bit = b.shr(sel, i as u32);
 			let bit_masked = b.band(bit, b.add_constant(Word(1)));
 			// Convert to MSB for select gate condition (select gate checks MSB)
@@ -63,34 +60,38 @@ impl Multiplexer {
 			sel_bits.push(cond);
 		}
 
-		// Build binary tree from bottom to top (leaves to root)
-		// We must build bottom-up so inputs are ready when we create each select gate
-		for i in (0..n - 1).rev() {
-			let a_idx = 2 * i + 1;
-			let b_idx = 2 * i + 2;
+		// Build MUX tree from bottom to top using level-by-level approach
+		// This creates an optimal tree with exactly N-1 MUX gates
+		let mut current_level = inputs.clone();
+		let mut bit_level = 0;
 
-			// Get input wires (must already be set)
-			let wire_a = wire[a_idx].expect("Input A must be set");
-			let wire_b = wire[b_idx].expect("Input B must be set");
+		// Process level by level until we have a single output
+		while current_level.len() > 1 {
+			let mut next_level = Vec::new();
 
-			// Calculate which selector bit to use
-			// The bit index is based on the level in the tree
-			let bit_index = if i == 0 {
-				// Root uses the MSB
-				log_n - 1
-			} else {
-				// Other nodes: the level determines which bit
-				let level = (i + 1).ilog2() as usize;
-				log_n - 1 - level
-			};
+			// Process pairs of wires at the current level
+			let mut i = 0;
+			while i < current_level.len() {
+				if i + 1 < current_level.len() {
+					// We have a pair - create a MUX gate
+					// Use the current bit level for selection
+					let mux_out =
+						b.select(current_level[i], current_level[i + 1], sel_bits[bit_level]);
+					next_level.push(mux_out);
+					i += 2;
+				} else {
+					// Odd wire out - carry it forward to the next level
+					next_level.push(current_level[i]);
+					i += 1;
+				}
+			}
 
-			// Create select gate - the output wire is created by select()
-			// select(a, b, cond) returns a if MSB(cond)=0, b if MSB(cond)=1
-			wire[i] = Some(b.select(wire_a, wire_b, sel_bits[bit_index]));
+			current_level = next_level;
+			bit_level += 1;
 		}
 
-		// Output is at wire[0] (root of the tree)
-		let output = wire[0].expect("Root must be set");
+		// The final wire is our output
+		let output = current_level[0];
 
 		Self {
 			inputs,
@@ -291,5 +292,189 @@ mod tests {
 		// Verify constraints
 		let cs = built.constraint_system();
 		verify_constraints(cs, &w.into_value_vec()).unwrap();
+	}
+
+	#[test]
+	fn test_multiplexer_3_inputs() {
+		// Test with 3 inputs - creates asymmetric tree with 2 MUX gates
+		let builder = CircuitBuilder::new();
+
+		// Create input wires
+		let inputs: Vec<Wire> = (0..3).map(|_| builder.add_inout()).collect();
+		let sel = builder.add_inout();
+
+		// Create multiplexer circuit
+		let circuit = Multiplexer::new(&builder, inputs.clone(), sel);
+		let expected = builder.add_inout();
+		builder.assert_eq("multiplexer_output", circuit.output, expected);
+
+		let built = builder.build();
+
+		// Test values
+		let test_values = vec![10, 20, 30];
+
+		// Test all valid selections (0-2)
+		for selector in 0..3 {
+			let mut w = built.new_witness_filler();
+
+			// Set input values
+			for (i, &val) in test_values.iter().enumerate() {
+				w[inputs[i]] = Word(val);
+			}
+			w[sel] = Word(selector);
+			w[expected] = Word(test_values[selector as usize]);
+
+			// Populate witness
+			w.circuit.populate_wire_witness(&mut w).unwrap();
+
+			// Verify constraints
+			let cs = built.constraint_system();
+			verify_constraints(cs, &w.into_value_vec()).unwrap();
+		}
+
+		// Also test with selector=3 to verify wrap-around behavior
+		// The actual behavior depends on the tree structure:
+		// Level 0: [10,20] -> mux0, 30 carried forward
+		// Level 1: mux0 result and 30 -> final output
+		// With selector=3 (binary 11), we should get 30
+		let mut w = built.new_witness_filler();
+		for (i, &val) in test_values.iter().enumerate() {
+			w[inputs[i]] = Word(val);
+		}
+		w[sel] = Word(3);
+		w[expected] = Word(30); // selector=3 with N=3 should select the third element
+		w.circuit.populate_wire_witness(&mut w).unwrap();
+		let cs = built.constraint_system();
+		verify_constraints(cs, &w.into_value_vec()).unwrap();
+	}
+
+	#[test]
+	fn test_multiplexer_5_inputs() {
+		// Test with 5 inputs - creates asymmetric tree with 4 MUX gates
+		let builder = CircuitBuilder::new();
+
+		// Create input wires
+		let inputs: Vec<Wire> = (0..5).map(|_| builder.add_inout()).collect();
+		let sel = builder.add_inout();
+
+		// Create multiplexer circuit
+		let circuit = Multiplexer::new(&builder, inputs.clone(), sel);
+		let expected = builder.add_inout();
+		builder.assert_eq("multiplexer_output", circuit.output, expected);
+
+		let built = builder.build();
+
+		// Test values
+		let test_values = vec![100, 200, 300, 400, 500];
+
+		// Test all valid selections (0-4)
+		for selector in 0..5 {
+			let mut w = built.new_witness_filler();
+
+			// Set input values
+			for (i, &val) in test_values.iter().enumerate() {
+				w[inputs[i]] = Word(val);
+			}
+			w[sel] = Word(selector);
+			w[expected] = Word(test_values[selector as usize]);
+
+			// Populate witness
+			w.circuit.populate_wire_witness(&mut w).unwrap();
+
+			// Verify constraints
+			let cs = built.constraint_system();
+			verify_constraints(cs, &w.into_value_vec()).unwrap();
+		}
+	}
+
+	#[test]
+	fn test_multiplexer_7_inputs() {
+		// Test with 7 inputs - creates asymmetric tree with 6 MUX gates
+		let builder = CircuitBuilder::new();
+
+		// Create input wires
+		let inputs: Vec<Wire> = (0..7).map(|_| builder.add_inout()).collect();
+		let sel = builder.add_inout();
+
+		// Create multiplexer circuit
+		let circuit = Multiplexer::new(&builder, inputs.clone(), sel);
+		let expected = builder.add_inout();
+		builder.assert_eq("multiplexer_output", circuit.output, expected);
+
+		let built = builder.build();
+
+		// Test values
+		let test_values: Vec<u64> = vec![11, 22, 33, 44, 55, 66, 77];
+
+		// Test all valid selections (0-6)
+		for selector in 0..7 {
+			let mut w = built.new_witness_filler();
+
+			// Set input values
+			for (i, &val) in test_values.iter().enumerate() {
+				w[inputs[i]] = Word(val);
+			}
+			w[sel] = Word(selector);
+			w[expected] = Word(test_values[selector as usize]);
+
+			// Populate witness
+			w.circuit.populate_wire_witness(&mut w).unwrap();
+
+			// Verify constraints
+			let cs = built.constraint_system();
+			verify_constraints(cs, &w.into_value_vec()).unwrap();
+		}
+
+		// Also test selector=7 to verify wrap-around behavior
+		// The tree structure for N=7:
+		// Level 0: [11,22]->[33,44]->[55,66]->77
+		// Level 1: mux0,mux1 -> mux3, mux2 result and 77 carried
+		// Level 2: mux3 and carried -> final
+		// With selector=7 (binary 111), the actual result depends on tree structure
+		let mut w = built.new_witness_filler();
+		for (i, &val) in test_values.iter().enumerate() {
+			w[inputs[i]] = Word(val);
+		}
+		w[sel] = Word(7);
+		w[expected] = Word(77); // selector=7 with tree structure should give element 6 (77)
+		w.circuit.populate_wire_witness(&mut w).unwrap();
+		let cs = built.constraint_system();
+		verify_constraints(cs, &w.into_value_vec()).unwrap();
+	}
+
+	#[test]
+	fn test_multiplexer_single_input() {
+		// Test edge case with single input
+		let builder = CircuitBuilder::new();
+
+		// Create input wire
+		let inputs: Vec<Wire> = vec![builder.add_inout()];
+		let sel = builder.add_inout();
+
+		// Create multiplexer circuit
+		let circuit = Multiplexer::new(&builder, inputs.clone(), sel);
+		let expected = builder.add_inout();
+		builder.assert_eq("multiplexer_output", circuit.output, expected);
+
+		let built = builder.build();
+
+		// Test value
+		let test_value = 42;
+
+		// Test with different selector values (all should return the same input)
+		for selector in 0..4 {
+			let mut w = built.new_witness_filler();
+
+			w[inputs[0]] = Word(test_value);
+			w[sel] = Word(selector);
+			w[expected] = Word(test_value);
+
+			// Populate witness
+			w.circuit.populate_wire_witness(&mut w).unwrap();
+
+			// Verify constraints
+			let cs = built.constraint_system();
+			verify_constraints(cs, &w.into_value_vec()).unwrap();
+		}
 	}
 }
