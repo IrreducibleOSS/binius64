@@ -73,3 +73,19 @@ pub fn all_true(b: &CircuitBuilder, booleans: impl IntoIterator<Item = Wire>) ->
 pub fn bool_to_mask(b: &CircuitBuilder, boolean: Wire) -> Wire {
 	b.sar(boolean, (WORD_SIZE_BITS - 1) as u32)
 }
+
+/// Computes the binary logarithm of $n$ rounded up to the nearest integer.
+///
+/// When $n$ is 0, this function returns 0. Otherwise, it returns $\lceil \log_2 n \rceil$.
+#[must_use]
+pub(crate) const fn log2_ceil_usize(n: usize) -> usize {
+	min_bits(n.saturating_sub(1))
+}
+
+/// Returns the number of bits needed to represent $n$.
+///
+/// When $n$ is 0, this function returns 0. Otherwise, it returns $\lfloor \log_2 n \rfloor + 1$.
+#[must_use]
+pub(crate) const fn min_bits(n: usize) -> usize {
+	(usize::BITS - n.leading_zeros()) as usize
+}

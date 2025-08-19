@@ -1,6 +1,9 @@
 use binius_core::word::Word;
 
-use crate::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
+use crate::{
+	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
+	util::log2_ceil_usize,
+};
 
 /// Multiplexer circuit that selects an element from a vector based on a selector value.
 ///
@@ -48,44 +51,32 @@ impl Multiplexer {
 		}
 
 		// Calculate number of selector bits needed
-		let num_sel_bits = (n as f64).log2().ceil() as usize;
-
-		// Extract selector bits
-		let mut sel_bits = Vec::with_capacity(num_sel_bits);
-		for i in 0..num_sel_bits {
-			// Shift bit i to MSB position for select gate condition
-			let cond = b.shl(sel, 63 - i as u32);
-			sel_bits.push(cond);
-		}
+		let num_sel_bits = log2_ceil_usize(n);
 
 		// Build MUX tree from bottom to top using level-by-level approach
 		// This creates an optimal tree with exactly N-1 MUX gates
 		let mut current_level = inputs.to_vec();
-		let mut bit_level = 0;
 
 		// Process level by level until we have a single output
-		while current_level.len() > 1 {
-			let mut next_level = Vec::new();
+		for bit_level in 0..num_sel_bits {
+			let sel_bit = b.shl(sel, 63 - bit_level as u32);
 
 			// Process pairs of wires at the current level
-			let mut i = 0;
-			while i < current_level.len() {
-				if i + 1 < current_level.len() {
-					// We have a pair - create a MUX gate
-					// Use the current bit level for selection
-					let mux_out =
-						b.select(current_level[i], current_level[i + 1], sel_bits[bit_level]);
-					next_level.push(mux_out);
-					i += 2;
-				} else {
-					// Odd wire out - carry it forward to the next level
-					next_level.push(current_level[i]);
-					i += 1;
-				}
-			}
+			let next_level = current_level
+				.chunks(2)
+				.map(|pair| {
+					if let Ok([lhs, rhs]) = TryInto::<[Wire; 2]>::try_into(pair) {
+						// We have a pair - create a MUX gate
+						// Use the current bit level for selection
+						b.select(lhs, rhs, sel_bit)
+					} else {
+						// Odd wire out - carry it forward to the next level
+						pair[0]
+					}
+				})
+				.collect();
 
 			current_level = next_level;
-			bit_level += 1;
 		}
 
 		// The final wire is our output
