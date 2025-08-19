@@ -391,7 +391,7 @@ mod tests {
 			// Create a new subcircuit builder
 			let sha512_builder = circuit.subcircuit(format!("sha512[{i}]"));
 
-			// Each SHA-256 instance gets its own IV and input (all committed)
+			// Each SHA-512 instance gets its own IV and input (all committed)
 			let state = State::iv(&sha512_builder);
 			let m: [compiler::Wire; 16] = std::array::from_fn(|_| sha512_builder.add_inout());
 			let compress = Compress::new(&sha512_builder, state, m);
