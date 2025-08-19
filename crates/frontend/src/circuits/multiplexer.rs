@@ -1,15 +1,21 @@
-use binius_core::word::Word;
-
 use crate::{
-	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
+	compiler::{CircuitBuilder, Wire},
 	util::log2_ceil_usize,
 };
 
-/// Multiplexer circuit that selects an element from a vector based on a selector value.
+/// Creates a multiplexer circuit that selects an element from a vector based on a selector value.
 ///
-/// This circuit validates that `output` contains the element at position `sel` from the input
+/// This circuit validates that the output contains the element at position `sel` from the input
 /// vector `inputs`. The selection is done using a binary tree of 2-to-1 select gates (from
 /// compiler/gate/select.rs).
+///
+/// # Arguments
+/// * `b` - Circuit builder
+/// * `inputs` - Input vector of N elements (N can be any positive number)
+/// * `sel` - Selector value (only ceil(log2(N)) LSB bits are used)
+///
+/// # Returns
+/// The output wire containing the selected element
 ///
 /// # Implementation Details
 /// - Uses N-1 select gates for an N-element input vector (where N is a power of 2)
@@ -18,94 +24,50 @@ use crate::{
 /// - Condition for select gate at position i uses appropriate bit from the selector
 /// - Input vector maps to wire\[N-1..2*N-1\]
 /// - Output is wire\[0\] (root of the tree)
-pub struct Multiplexer {
-	pub inputs: Vec<Wire>,
-	pub sel: Wire,
-	pub output: Wire,
-}
+///
+/// # Panics
+/// * If inputs.len() is 0
+pub fn multiplexer(b: &CircuitBuilder, inputs: &[Wire], sel: Wire) -> Wire {
+	let n = inputs.len();
+	assert!(n > 0, "Input vector must not be empty");
 
-impl Multiplexer {
-	/// Creates a new multiplexer circuit.
-	///
-	/// # Arguments
-	/// * `b` - Circuit builder
-	/// * `inputs` - Input vector of N elements (N can be any positive number)
-	/// * `sel` - Selector value (only ceil(log2(N)) LSB bits are used)
-	///
-	/// # Returns
-	/// A Multiplexer struct containing the output wire
-	///
-	/// # Panics
-	/// * If inputs.len() is 0
-	pub fn new(b: &CircuitBuilder, inputs: &[Wire], sel: Wire) -> Self {
-		let n = inputs.len();
-		assert!(n > 0, "Input vector must not be empty");
+	// Calculate number of selector bits needed
+	let num_sel_bits = log2_ceil_usize(n);
 
-		// Calculate number of selector bits needed
-		let num_sel_bits = log2_ceil_usize(n);
+	// Build MUX tree from bottom to top using level-by-level approach
+	// This creates an optimal tree with exactly N-1 MUX gates
+	let mut current_level = inputs.to_vec();
 
-		// Build MUX tree from bottom to top using level-by-level approach
-		// This creates an optimal tree with exactly N-1 MUX gates
-		let mut current_level = inputs.to_vec();
+	// Process level by level until we have a single output
+	for bit_level in 0..num_sel_bits {
+		let sel_bit = b.shl(sel, 63 - bit_level as u32);
 
-		// Process level by level until we have a single output
-		for bit_level in 0..num_sel_bits {
-			let sel_bit = b.shl(sel, 63 - bit_level as u32);
+		// Process pairs of wires at the current level
+		let next_level = current_level
+			.chunks(2)
+			.map(|pair| {
+				if let Ok([lhs, rhs]) = TryInto::<[Wire; 2]>::try_into(pair) {
+					// We have a pair - create a MUX gate
+					// Use the current bit level for selection
+					b.select(lhs, rhs, sel_bit)
+				} else {
+					// Odd wire out - carry it forward to the next level
+					pair[0]
+				}
+			})
+			.collect();
 
-			// Process pairs of wires at the current level
-			let next_level = current_level
-				.chunks(2)
-				.map(|pair| {
-					if let Ok([lhs, rhs]) = TryInto::<[Wire; 2]>::try_into(pair) {
-						// We have a pair - create a MUX gate
-						// Use the current bit level for selection
-						b.select(lhs, rhs, sel_bit)
-					} else {
-						// Odd wire out - carry it forward to the next level
-						pair[0]
-					}
-				})
-				.collect();
-
-			current_level = next_level;
-		}
-
-		// The final wire is our output
-		let output = current_level[0];
-
-		Self {
-			inputs: inputs.to_vec(),
-			sel,
-			output,
-		}
+		current_level = next_level;
 	}
 
-	/// Populates the input vector with values.
-	pub fn populate_inputs(&self, w: &mut WitnessFiller, values: &[u64]) {
-		assert_eq!(values.len(), self.inputs.len(), "Value count must match input vector size");
-		for (wire, &val) in self.inputs.iter().zip(values.iter()) {
-			w[*wire] = Word(val);
-		}
-	}
-
-	/// Populates the selector with a value.
-	pub fn populate_sel(&self, w: &mut WitnessFiller, selector: u64) {
-		let n = self.inputs.len();
-		let mask = n as u64 - 1; // Mask to keep only relevant bits
-		w[self.sel] = Word(selector & mask);
-	}
-
-	/// Gets the expected output value for verification.
-	pub fn expected_output(&self, values: &[u64], selector: u64) -> u64 {
-		let n = self.inputs.len();
-		let index = (selector as usize) & (n - 1); // Mask to keep only relevant bits
-		values[index]
-	}
+	// The final wire is our output
+	current_level[0]
 }
 
 #[cfg(test)]
 mod tests {
-	use rand::{RngCore, SeedableRng, rngs::StdRng};
+	use binius_core::word::Word;
+	use rand::prelude::*;
 
 	use super::*;
 	use crate::constraint_verifier::verify_constraints;
@@ -120,9 +82,9 @@ mod tests {
 		let sel = builder.add_inout();
 
 		// Create multiplexer circuit
-		let circuit = Multiplexer::new(&builder, &inputs, sel);
+		let output = multiplexer(&builder, &inputs, sel);
 		let expected = builder.add_inout();
-		builder.assert_eq("multiplexer_output", circuit.output, expected);
+		builder.assert_eq("multiplexer_output", output, expected);
 
 		let built = builder.build();
 
@@ -165,9 +127,9 @@ mod tests {
 		let sel = builder.add_inout();
 
 		// Create multiplexer circuit
-		let circuit = Multiplexer::new(&builder, &inputs, sel);
+		let output = multiplexer(&builder, &inputs, sel);
 		let expected = builder.add_inout();
-		builder.assert_eq("multiplexer_output", circuit.output, expected);
+		builder.assert_eq("multiplexer_output", output, expected);
 
 		let built = builder.build();
 
@@ -206,9 +168,9 @@ mod tests {
 			let sel = builder.add_inout();
 
 			// Create multiplexer circuit
-			let circuit = Multiplexer::new(&builder, &inputs, sel);
+			let output = multiplexer(&builder, &inputs, sel);
 			let expected = builder.add_inout();
-			builder.assert_eq("multiplexer_output", circuit.output, expected);
+			builder.assert_eq("multiplexer_output", output, expected);
 
 			let built = builder.build();
 
@@ -240,41 +202,6 @@ mod tests {
 	}
 
 	#[test]
-	fn test_multiplexer_with_populate_methods() {
-		// Test using the populate methods
-		let builder = CircuitBuilder::new();
-
-		// Create input wires
-		let inputs: Vec<Wire> = (0..4).map(|_| builder.add_inout()).collect();
-		let sel = builder.add_inout();
-
-		// Create multiplexer circuit
-		let circuit = Multiplexer::new(&builder, &inputs, sel);
-		let expected = builder.add_inout();
-		builder.assert_eq("multiplexer_output", circuit.output, expected);
-
-		let built = builder.build();
-
-		// Test case
-		let values = [100, 200, 300, 400];
-		let selector = 2;
-
-		let mut w = built.new_witness_filler();
-
-		// Use populate methods
-		circuit.populate_inputs(&mut w, &values);
-		circuit.populate_sel(&mut w, selector);
-		w[expected] = Word(circuit.expected_output(&values, selector));
-
-		// Populate witness
-		w.circuit.populate_wire_witness(&mut w).unwrap();
-
-		// Verify constraints
-		let cs = built.constraint_system();
-		verify_constraints(cs, &w.into_value_vec()).unwrap();
-	}
-
-	#[test]
 	fn test_multiplexer_3_inputs() {
 		// Test with 3 inputs - creates asymmetric tree with 2 MUX gates
 		let builder = CircuitBuilder::new();
@@ -284,9 +211,9 @@ mod tests {
 		let sel = builder.add_inout();
 
 		// Create multiplexer circuit
-		let circuit = Multiplexer::new(&builder, &inputs, sel);
+		let output = multiplexer(&builder, &inputs, sel);
 		let expected = builder.add_inout();
-		builder.assert_eq("multiplexer_output", circuit.output, expected);
+		builder.assert_eq("multiplexer_output", output, expected);
 
 		let built = builder.build();
 
@@ -338,9 +265,9 @@ mod tests {
 		let sel = builder.add_inout();
 
 		// Create multiplexer circuit
-		let circuit = Multiplexer::new(&builder, &inputs, sel);
+		let output = multiplexer(&builder, &inputs, sel);
 		let expected = builder.add_inout();
-		builder.assert_eq("multiplexer_output", circuit.output, expected);
+		builder.assert_eq("multiplexer_output", output, expected);
 
 		let built = builder.build();
 
@@ -377,9 +304,9 @@ mod tests {
 		let sel = builder.add_inout();
 
 		// Create multiplexer circuit
-		let circuit = Multiplexer::new(&builder, &inputs, sel);
+		let output = multiplexer(&builder, &inputs, sel);
 		let expected = builder.add_inout();
-		builder.assert_eq("multiplexer_output", circuit.output, expected);
+		builder.assert_eq("multiplexer_output", output, expected);
 
 		let built = builder.build();
 
@@ -432,9 +359,9 @@ mod tests {
 		let sel = builder.add_inout();
 
 		// Create multiplexer circuit
-		let circuit = Multiplexer::new(&builder, &inputs, sel);
+		let output = multiplexer(&builder, &inputs, sel);
 		let expected = builder.add_inout();
-		builder.assert_eq("multiplexer_output", circuit.output, expected);
+		builder.assert_eq("multiplexer_output", output, expected);
 
 		let built = builder.build();
 
