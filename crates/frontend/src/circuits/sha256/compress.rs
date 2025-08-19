@@ -168,9 +168,9 @@ fn ch(builder: &CircuitBuilder, x: Wire, y: Wire, z: Wire) -> Wire {
 }
 
 /// Maj(x, y, z) = (x AND y) XOR (x AND z) XOR (y AND z)
-///              = (x AND (y XOR z)) XOR (y AND z)
+///              = (x XOR z) AND (y XOR z) XOR z.
 fn maj(builder: &CircuitBuilder, x: Wire, y: Wire, z: Wire) -> Wire {
-	builder.bxor(builder.band(x, builder.bxor(y, z)), builder.band(y, z))
+	builder.bxor(builder.band(builder.bxor(x, z), builder.bxor(y, z)), z)
 }
 
 /// Σ0(a)       = XOR( XOR( ROTR(x,  2), ROTR(x, 13) ), ROTR(x, 22) )
