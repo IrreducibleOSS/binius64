@@ -20,12 +20,11 @@ use crate::{
 /// The output wire containing the selected element
 ///
 /// # Implementation Details
-/// - Uses N-1 select gates for an N-element input vector (where N is a power of 2)
-/// - Binary tree has log2(N) levels
-/// - Wire indexing follows: wire\[i\] output, wire\[2*i+1\] input A, wire\[2*i+2\] input B
-/// - Condition for select gate at position i uses appropriate bit from the selector
-/// - Input vector maps to wire\[N-1..2*N-1\]
-/// - Output is wire\[0\] (root of the tree)
+/// - Builds a binary tree of 2-to-1 select gates, level by level
+/// - Binary tree has ceil(log2(N)) levels for N inputs
+/// - For non-power-of-two inputs, unpaired wires are carried forward to the next level
+/// - Each level uses a different bit from the selector
+/// - The final output is the single wire remaining after all levels
 ///
 /// # Panics
 /// * If inputs.len() is 0
@@ -42,7 +41,7 @@ pub fn multiplexer(b: &CircuitBuilder, inputs: &[Wire], sel: Wire) -> Wire {
 
 	// Process level by level until we have a single output
 	for bit_level in 0..num_sel_bits {
-		let sel_bit = b.shl(sel, (WORD_SIZE_BITS - bit_level) as u32);
+		let sel_bit = b.shl(sel, (WORD_SIZE_BITS - 1 - bit_level) as u32);
 
 		// Process pairs of wires at the current level
 		let next_level = current_level
