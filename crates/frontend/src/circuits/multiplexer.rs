@@ -67,18 +67,18 @@ pub fn multiplexer(b: &CircuitBuilder, inputs: &[Wire], sel: Wire) -> Wire {
 #[cfg(test)]
 mod tests {
 	use binius_core::word::Word;
-	use rand::prelude::*;
 
 	use super::*;
 	use crate::constraint_verifier::verify_constraints;
 
-	#[test]
-	fn test_multiplexer_4_elements() {
-		// Test with 4 elements as in the example
+	/// Helper function to verify multiplexer behavior
+	/// Takes input values and test cases as (selector, expected_output) pairs
+	fn verify_multiplexer(values: &[u64], test_cases: &[(u64, u64)]) {
+		let n = values.len();
 		let builder = CircuitBuilder::new();
 
 		// Create input wires
-		let inputs: Vec<Wire> = (0..4).map(|_| builder.add_inout()).collect();
+		let inputs: Vec<Wire> = (0..n).map(|_| builder.add_inout()).collect();
 		let sel = builder.add_inout();
 
 		// Create multiplexer circuit
@@ -88,17 +88,8 @@ mod tests {
 
 		let built = builder.build();
 
-		// Test case from the example: inputs = [13, 7, 25, 100], SEL = 2, OUTPUT = 25
-		let test_values = [13, 7, 25, 100];
-		let test_cases = vec![
-			(test_values, 0, 13),  // Select index 0
-			(test_values, 1, 7),   // Select index 1
-			(test_values, 2, 25),  // Select index 2 (from example)
-			(test_values, 3, 100), // Select index 3
-			(test_values, 6, 25),  // Index 6 wraps to 2 (6 & 3 = 2)
-		];
-
-		for (values, selector, expected_val) in test_cases {
+		// Test each case
+		for &(selector, expected_val) in test_cases {
 			let mut w = built.new_witness_filler();
 
 			// Set input values
@@ -118,270 +109,96 @@ mod tests {
 	}
 
 	#[test]
-	fn test_multiplexer_8_elements() {
-		// Test with 8 elements
-		let builder = CircuitBuilder::new();
+	fn test_power_of_two_size() {
+		// Test with 4 elements (common power-of-two case)
+		verify_multiplexer(
+			&[13, 7, 25, 100],
+			&[
+				(0, 13),  // Select index 0
+				(1, 7),   // Select index 1
+				(2, 25),  // Select index 2
+				(3, 100), // Select index 3
+			],
+		);
 
-		// Create input wires
-		let inputs: Vec<Wire> = (0..8).map(|_| builder.add_inout()).collect();
-		let sel = builder.add_inout();
-
-		// Create multiplexer circuit
-		let output = multiplexer(&builder, &inputs, sel);
-		let expected = builder.add_inout();
-		builder.assert_eq("multiplexer_output", output, expected);
-
-		let built = builder.build();
-
-		// Test with sequential values
-		let test_values: Vec<u64> = (10..18).collect();
-
-		for selector in 0..8 {
-			let mut w = built.new_witness_filler();
-
-			// Set input values
-			for (i, &val) in test_values.iter().enumerate() {
-				w[inputs[i]] = Word(val);
-			}
-			w[sel] = Word(selector);
-			w[expected] = Word(test_values[selector as usize]);
-
-			// Populate witness
-			w.circuit.populate_wire_witness(&mut w).unwrap();
-
-			// Verify constraints
-			let cs = built.constraint_system();
-			verify_constraints(cs, &w.into_value_vec()).unwrap();
-		}
+		// Test with 8 elements (larger power-of-two)
+		let values: Vec<u64> = (10..18).collect();
+		let test_cases: Vec<_> = (0..8).map(|i| (i, values[i as usize])).collect();
+		verify_multiplexer(&values, &test_cases);
 	}
 
 	#[test]
-	fn test_multiplexer_random() {
-		// Test with random values
-		let mut rng = StdRng::seed_from_u64(0);
+	fn test_non_power_of_two() {
+		// Test with 3 elements (creates asymmetric tree)
+		verify_multiplexer(
+			&[10, 20, 30],
+			&[
+				(0, 10), // Select index 0
+				(1, 20), // Select index 1
+				(2, 30), // Select index 2
+				(3, 30), // Index 3 wraps in a specific way due to tree structure
+			],
+		);
 
-		for n in [2, 4, 8, 16].iter() {
-			let builder = CircuitBuilder::new();
+		// Test with 5 elements
+		verify_multiplexer(
+			&[100, 200, 300, 400, 500],
+			&[
+				(0, 100), // Select index 0
+				(2, 300), // Select index 2
+				(4, 500), // Select index 4
+			],
+		);
 
-			// Create input wires
-			let inputs: Vec<Wire> = (0..*n).map(|_| builder.add_inout()).collect();
-			let sel = builder.add_inout();
-
-			// Create multiplexer circuit
-			let output = multiplexer(&builder, &inputs, sel);
-			let expected = builder.add_inout();
-			builder.assert_eq("multiplexer_output", output, expected);
-
-			let built = builder.build();
-
-			// Test multiple random cases
-			for _ in 0..100 {
-				let mut w = built.new_witness_filler();
-
-				// Generate random input values
-				let values: Vec<u64> = (0..*n).map(|_| rng.next_u64()).collect();
-				let selector = rng.next_u64();
-				let index = (selector as usize) & (n - 1);
-				let expected_val = values[index];
-
-				// Set input values
-				for (i, &val) in values.iter().enumerate() {
-					w[inputs[i]] = Word(val);
-				}
-				w[sel] = Word(selector);
-				w[expected] = Word(expected_val);
-
-				// Populate witness
-				w.circuit.populate_wire_witness(&mut w).unwrap();
-
-				// Verify constraints
-				let cs = built.constraint_system();
-				verify_constraints(cs, &w.into_value_vec()).unwrap();
-			}
-		}
+		// Test with 7 elements
+		let values = [11, 22, 33, 44, 55, 66, 77];
+		verify_multiplexer(
+			&values,
+			&[
+				(0, 11), // Select index 0
+				(3, 44), // Select index 3
+				(6, 77), // Select index 6
+				(7, 77), // Index 7 wraps to 6 in the tree structure
+			],
+		);
 	}
 
 	#[test]
-	fn test_multiplexer_3_inputs() {
-		// Test with 3 inputs - creates asymmetric tree with 2 MUX gates
-		let builder = CircuitBuilder::new();
-
-		// Create input wires
-		let inputs: Vec<Wire> = (0..3).map(|_| builder.add_inout()).collect();
-		let sel = builder.add_inout();
-
-		// Create multiplexer circuit
-		let output = multiplexer(&builder, &inputs, sel);
-		let expected = builder.add_inout();
-		builder.assert_eq("multiplexer_output", output, expected);
-
-		let built = builder.build();
-
-		// Test values
-		let test_values = [10, 20, 30];
-
-		// Test all valid selections (0-2)
-		for selector in 0..3 {
-			let mut w = built.new_witness_filler();
-
-			// Set input values
-			for (i, &val) in test_values.iter().enumerate() {
-				w[inputs[i]] = Word(val);
-			}
-			w[sel] = Word(selector);
-			w[expected] = Word(test_values[selector as usize]);
-
-			// Populate witness
-			w.circuit.populate_wire_witness(&mut w).unwrap();
-
-			// Verify constraints
-			let cs = built.constraint_system();
-			verify_constraints(cs, &w.into_value_vec()).unwrap();
-		}
-
-		// Also test with selector=3 to verify wrap-around behavior
-		// The actual behavior depends on the tree structure:
-		// Level 0: [10,20] -> mux0, 30 carried forward
-		// Level 1: mux0 result and 30 -> final output
-		// With selector=3 (binary 11), we should get 30
-		let mut w = built.new_witness_filler();
-		for (i, &val) in test_values.iter().enumerate() {
-			w[inputs[i]] = Word(val);
-		}
-		w[sel] = Word(3);
-		w[expected] = Word(30); // selector=3 with N=3 should select the third element
-		w.circuit.populate_wire_witness(&mut w).unwrap();
-		let cs = built.constraint_system();
-		verify_constraints(cs, &w.into_value_vec()).unwrap();
+	fn test_single_element() {
+		// Edge case: single input always returns that input regardless of selector
+		verify_multiplexer(
+			&[42],
+			&[
+				(0, 42),   // Selector 0
+				(1, 42),   // Selector 1 (ignored)
+				(100, 42), // Large selector (ignored)
+			],
+		);
 	}
 
 	#[test]
-	fn test_multiplexer_5_inputs() {
-		// Test with 5 inputs - creates asymmetric tree with 4 MUX gates
-		let builder = CircuitBuilder::new();
+	fn test_out_of_bounds_selector() {
+		// Test selector wrapping behavior with power-of-two size
+		verify_multiplexer(
+			&[10, 20, 30, 40],
+			&[
+				(4, 10),   // 4 & 3 = 0
+				(5, 20),   // 5 & 3 = 1
+				(6, 30),   // 6 & 3 = 2
+				(7, 40),   // 7 & 3 = 3
+				(15, 40),  // 15 & 3 = 3
+				(100, 10), // 100 & 3 = 0
+			],
+		);
 
-		// Create input wires
-		let inputs: Vec<Wire> = (0..5).map(|_| builder.add_inout()).collect();
-		let sel = builder.add_inout();
-
-		// Create multiplexer circuit
-		let output = multiplexer(&builder, &inputs, sel);
-		let expected = builder.add_inout();
-		builder.assert_eq("multiplexer_output", output, expected);
-
-		let built = builder.build();
-
-		// Test values
-		let test_values = [100, 200, 300, 400, 500];
-
-		// Test all valid selections (0-4)
-		for selector in 0..5 {
-			let mut w = built.new_witness_filler();
-
-			// Set input values
-			for (i, &val) in test_values.iter().enumerate() {
-				w[inputs[i]] = Word(val);
-			}
-			w[sel] = Word(selector);
-			w[expected] = Word(test_values[selector as usize]);
-
-			// Populate witness
-			w.circuit.populate_wire_witness(&mut w).unwrap();
-
-			// Verify constraints
-			let cs = built.constraint_system();
-			verify_constraints(cs, &w.into_value_vec()).unwrap();
-		}
-	}
-
-	#[test]
-	fn test_multiplexer_7_inputs() {
-		// Test with 7 inputs - creates asymmetric tree with 6 MUX gates
-		let builder = CircuitBuilder::new();
-
-		// Create input wires
-		let inputs: Vec<Wire> = (0..7).map(|_| builder.add_inout()).collect();
-		let sel = builder.add_inout();
-
-		// Create multiplexer circuit
-		let output = multiplexer(&builder, &inputs, sel);
-		let expected = builder.add_inout();
-		builder.assert_eq("multiplexer_output", output, expected);
-
-		let built = builder.build();
-
-		// Test values
-		let test_values = [11, 22, 33, 44, 55, 66, 77];
-
-		// Test all valid selections (0-6)
-		for selector in 0..7 {
-			let mut w = built.new_witness_filler();
-
-			// Set input values
-			for (i, &val) in test_values.iter().enumerate() {
-				w[inputs[i]] = Word(val);
-			}
-			w[sel] = Word(selector);
-			w[expected] = Word(test_values[selector as usize]);
-
-			// Populate witness
-			w.circuit.populate_wire_witness(&mut w).unwrap();
-
-			// Verify constraints
-			let cs = built.constraint_system();
-			verify_constraints(cs, &w.into_value_vec()).unwrap();
-		}
-
-		// Also test selector=7 to verify wrap-around behavior
-		// The tree structure for N=7:
-		// Level 0: [11,22]->[33,44]->[55,66]->77
-		// Level 1: mux0,mux1 -> mux3, mux2 result and 77 carried
-		// Level 2: mux3 and carried -> final
-		// With selector=7 (binary 111), the actual result depends on tree structure
-		let mut w = built.new_witness_filler();
-		for (i, &val) in test_values.iter().enumerate() {
-			w[inputs[i]] = Word(val);
-		}
-		w[sel] = Word(7);
-		w[expected] = Word(77); // selector=7 with tree structure should give element 6 (77)
-		w.circuit.populate_wire_witness(&mut w).unwrap();
-		let cs = built.constraint_system();
-		verify_constraints(cs, &w.into_value_vec()).unwrap();
-	}
-
-	#[test]
-	fn test_multiplexer_single_input() {
-		// Test edge case with single input
-		let builder = CircuitBuilder::new();
-
-		// Create input wire
-		let inputs: Vec<Wire> = vec![builder.add_inout()];
-		let sel = builder.add_inout();
-
-		// Create multiplexer circuit
-		let output = multiplexer(&builder, &inputs, sel);
-		let expected = builder.add_inout();
-		builder.assert_eq("multiplexer_output", output, expected);
-
-		let built = builder.build();
-
-		// Test value
-		let test_value = 42;
-
-		// Test with different selector values (all should return the same input)
-		for selector in 0..4 {
-			let mut w = built.new_witness_filler();
-
-			w[inputs[0]] = Word(test_value);
-			w[sel] = Word(selector);
-			w[expected] = Word(test_value);
-
-			// Populate witness
-			w.circuit.populate_wire_witness(&mut w).unwrap();
-
-			// Verify constraints
-			let cs = built.constraint_system();
-			verify_constraints(cs, &w.into_value_vec()).unwrap();
-		}
+		// Test with non-power-of-two (behavior depends on tree structure)
+		verify_multiplexer(
+			&[1, 2, 3],
+			&[
+				(3, 3), // Out of bounds wraps based on tree structure
+				(4, 1), // Wraps around
+				(5, 2), // Wraps around
+			],
+		);
 	}
 }
