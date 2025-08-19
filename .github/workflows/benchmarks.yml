@@ -1,0 +1,413 @@
+name: Benchmarks
+
+on:
+  workflow_dispatch:
+  # TODO: Enable pull_request trigger for testing
+  # pull_request:
+  #   types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write  # Required for OIDC authentication to AWS
+  contents: read
+
+jobs:
+  setup:
+    name: Setup benchmark configuration
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      timestamp: ${{ steps.set-timestamp.outputs.timestamp }}
+      runs: ${{ steps.set-runs.outputs.runs }}
+    steps:
+      - name: Generate timestamp
+        id: set-timestamp
+        run: |
+          TIMESTAMP=$(date -u +%Y%m%d-%H%M%S)
+          echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+          echo "Generated timestamp: $TIMESTAMP"
+
+      - name: Set number of benchmark runs
+        id: set-runs
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "runs=1" >> $GITHUB_OUTPUT
+            echo "PR detected: Running benchmarks 1 time"
+          else
+            echo "runs=5" >> $GITHUB_OUTPUT
+            echo "Main/manual run: Running benchmarks 5 times"
+          fi
+
+      - name: Generate matrix configuration
+        id: set-matrix
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prMachines = [
+              {runner: 'c7i-16xlarge', name: 'x86-intel-64cpu-128gb'},
+              {runner: 'c8g-16xlarge', name: 'arm-graviton4-64cpu-128gb'}
+            ];
+
+            const additionalMachines = [
+              // Additional high-memory instances disabled for cost optimization
+              // {runner: 'm7i-16xlarge', name: 'x86-intel-64cpu-256gb'},
+              // {runner: 'r7i-16xlarge', name: 'x86-intel-64cpu-512gb'},
+              // {runner: 'm8g-16xlarge', name: 'arm-graviton4-64cpu-256gb'},
+              // {runner: 'r8g-16xlarge', name: 'arm-graviton4-64cpu-512gb'}
+            ];
+
+            const isPR = context.eventName === 'pull_request';
+            const selected = isPR ? prMachines : [...prMachines, ...additionalMachines];
+
+            console.log(`Event type: ${context.eventName}`);
+            console.log(`Is PR: ${isPR}`);
+            console.log(`Selected ${selected.length} machines:`);
+            selected.forEach(m => console.log(`  - ${m.name} (${m.runner})`));
+
+            core.setOutput('matrix', JSON.stringify({instance: selected}));
+
+      - name: Display configuration summary
+        run: |
+          echo "=== Benchmark Configuration ==="
+          echo "Timestamp: ${{ steps.set-timestamp.outputs.timestamp }}"
+          echo "Event: ${{ github.event_name }}"
+          echo "Branch: ${{ github.head_ref || github.ref_name }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Runs per benchmark: ${{ steps.set-runs.outputs.runs }}"
+          echo ""
+          echo "Matrix configuration:"
+          echo '${{ steps.set-matrix.outputs.matrix }}' | jq .
+
+  benchmarks:
+    name: benchmarks-${{ matrix.instance.name }}
+    needs: setup
+    runs-on: ${{ matrix.instance.runner }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          # For PRs, checkout the actual branch instead of the merge commit
+          # This ensures correct branch names in trace files and tests the PR as-is
+          ref: ${{ github.head_ref || github.ref }}
+
+      - name: Set safe directory
+        # workaround: https://github.com/actions/checkout/issues/2031
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Install deps
+        run: sudo yum -y install gcc openssl-devel curl jq z3-devel clang pkg-config
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: benchmarks-${{ matrix.instance.name }}
+          cache-on-failure: true
+
+      - name: Run platform diagnostics
+        run: cargo test -p binius-utils --features platform-diagnostics test_platform_diagnostics -- --nocapture
+        env:
+          RUSTFLAGS: "-C target-cpu=native"
+
+      - name: Setup environment variables
+        run: |
+          # Set up run ID for trace organization
+          TIMESTAMP="${{ needs.setup.outputs.timestamp }}"
+          COMMIT_SHA=$(git rev-parse --short HEAD)
+          echo "RUN_ID=${TIMESTAMP}-${COMMIT_SHA}" >> $GITHUB_ENV
+
+          # Create perfetto traces directory
+          mkdir -p perfetto_traces
+
+      - name: Run sha256 benchmarks (multi-threaded)
+        run: |
+          mkdir -p benchmark_logs
+          for run in $(seq 1 ${{ needs.setup.outputs.runs }}); do
+            echo "=== SHA256 multi-threaded run $run/${{ needs.setup.outputs.runs }} ==="
+            cargo run --release --features perfetto --example sha256 -- --max-len 65536 2>&1 | tee -a benchmark_logs/sha256_multi.log
+            # Move trace file with run number
+            mkdir -p "perfetto_traces/sha256/${RUN_ID}"
+            for f in perfetto_traces/*.perfetto-trace; do
+              [ -e "$f" ] && mv "$f" "perfetto_traces/sha256/${RUN_ID}/multi-threaded-run${run}-$(basename "$f")"
+            done
+          done
+        env:
+          RUSTFLAGS: "-C target-cpu=native"
+          RAYON_NUM_THREADS: "0"
+          PERFETTO_TRACE_DIR: "./perfetto_traces"
+          PERFETTO_PLATFORM_NAME: "${{ matrix.instance.runner }}"
+
+      - name: Run sha256 benchmarks (single-threaded)
+        run: |
+          for run in $(seq 1 ${{ needs.setup.outputs.runs }}); do
+            echo "=== SHA256 single-threaded run $run/${{ needs.setup.outputs.runs }} ==="
+            cargo run --release --features perfetto --example sha256 -- --max-len 65536 2>&1 | tee -a benchmark_logs/sha256_single.log
+            # Move trace file with run number
+            mkdir -p "perfetto_traces/sha256/${RUN_ID}"
+            for f in perfetto_traces/*.perfetto-trace; do
+              [ -e "$f" ] && mv "$f" "perfetto_traces/sha256/${RUN_ID}/single-threaded-run${run}-$(basename "$f")"
+            done
+          done
+        env:
+          RUSTFLAGS: "-C target-cpu=native"
+          RAYON_NUM_THREADS: "1"
+          PERFETTO_TRACE_DIR: "./perfetto_traces"
+          PERFETTO_PLATFORM_NAME: "${{ matrix.instance.runner }}"
+
+      - name: Run zklogin benchmarks (multi-threaded)
+        run: |
+          for run in $(seq 1 ${{ needs.setup.outputs.runs }}); do
+            echo "=== ZkLogin multi-threaded run $run/${{ needs.setup.outputs.runs }} ==="
+            cargo run --release --features perfetto --example zklogin 2>&1 | tee -a benchmark_logs/zklogin_multi.log
+            # Move trace file with run number
+            mkdir -p "perfetto_traces/zklogin/${RUN_ID}"
+            for f in perfetto_traces/*.perfetto-trace; do
+              [ -e "$f" ] && mv "$f" "perfetto_traces/zklogin/${RUN_ID}/multi-threaded-run${run}-$(basename "$f")"
+            done
+          done
+        env:
+          RUSTFLAGS: "-C target-cpu=native"
+          RAYON_NUM_THREADS: "0"
+          PERFETTO_TRACE_DIR: "./perfetto_traces"
+          PERFETTO_PLATFORM_NAME: "${{ matrix.instance.runner }}"
+
+      - name: Run zklogin benchmarks (single-threaded)
+        run: |
+          for run in $(seq 1 ${{ needs.setup.outputs.runs }}); do
+            echo "=== ZkLogin single-threaded run $run/${{ needs.setup.outputs.runs }} ==="
+            cargo run --release --features perfetto --example zklogin 2>&1 | tee -a benchmark_logs/zklogin_single.log
+            # Move trace file with run number
+            mkdir -p "perfetto_traces/zklogin/${RUN_ID}"
+            for f in perfetto_traces/*.perfetto-trace; do
+              [ -e "$f" ] && mv "$f" "perfetto_traces/zklogin/${RUN_ID}/single-threaded-run${run}-$(basename "$f")"
+            done
+          done
+        env:
+          RUSTFLAGS: "-C target-cpu=native"
+          RAYON_NUM_THREADS: "1"
+          PERFETTO_TRACE_DIR: "./perfetto_traces"
+          PERFETTO_PLATFORM_NAME: "${{ matrix.instance.runner }}"
+
+      - name: List perfetto traces
+        if: always()
+        run: |
+          echo "=== Trace directory structure ==="
+          tree perfetto_traces/ 2>/dev/null || find perfetto_traces -type d | sort
+          echo ""
+          echo "=== All trace files ==="
+          find perfetto_traces -name "*.perfetto-trace" -exec ls -lh {} \;
+          echo ""
+          echo "=== Summary ==="
+          echo "Total files: $(find perfetto_traces -name "*.perfetto-trace" | wc -l)"
+          echo "Total size: $(du -sh perfetto_traces | cut -f1)"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_UPLOAD_ROLE }}
+          aws-region: us-east-1
+
+      - name: Upload perfetto traces to S3
+        run: |
+          # Determine branch path for S3
+          BRANCH_NAME="${{ github.head_ref || github.ref_name }}"
+          if [ "$BRANCH_NAME" = "main" ]; then
+            BRANCH_PATH="main"
+          else
+            BRANCH_PATH="branch-${BRANCH_NAME//\//-}"
+          fi
+
+          # Upload all traces to S3
+          aws s3 cp "perfetto_traces/" "${{ secrets.PERFETTO_BUCKET }}/traces/monbijou/${BRANCH_PATH}/" --recursive
+
+          # Export branch path for next step
+          echo "BRANCH_PATH=${BRANCH_PATH}" >> $GITHUB_ENV
+
+      - name: Generate Perfetto UI URLs
+        run: |
+          PERFETTO_HOST="https://perfetto.irreducible.com"
+
+          echo "## 📊 Perfetto Traces for ${{ matrix.instance.name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          for example in sha256 zklogin; do
+            echo "### ${example}" >> $GITHUB_STEP_SUMMARY
+
+            for mode in multi-threaded single-threaded; do
+              # Find trace files for this mode (all runs)
+              trace_files=$(find "perfetto_traces/${example}/${RUN_ID}" \
+                           -name "${mode}-run*.perfetto-trace" -type f 2>/dev/null | sort)
+
+              if [ -n "$trace_files" ]; then
+                # Start the line with mode name
+                echo -n "- **${mode}**: " >> $GITHUB_STEP_SUMMARY
+
+                # Add all run links on the same line
+                for run in $(seq 1 ${{ needs.setup.outputs.runs }}); do
+                  trace_file=$(echo "$trace_files" | grep "run${run}-" | head -1)
+                  if [ -n "$trace_file" ]; then
+                    # Build the trace URL on perfetto host
+                    s3_key="traces/monbijou/${BRANCH_PATH}/${trace_file#perfetto_traces/}"
+                    trace_url="${PERFETTO_HOST}/${s3_key}"
+
+                    # Generate the UI URL with encoded trace URL as parameter
+                    encoded_url=$(python3 -c "import urllib.parse; print(urllib.parse.quote_plus('${trace_url}'))")
+                    perfetto_ui_url="${PERFETTO_HOST}/#!/?url=${encoded_url}"
+
+                    echo -n "[#${run}](${perfetto_ui_url}) " >> $GITHUB_STEP_SUMMARY
+                  fi
+                done
+
+                # End the line
+                echo "" >> $GITHUB_STEP_SUMMARY
+              fi
+            done
+
+            echo "" >> $GITHUB_STEP_SUMMARY
+          done
+
+      - name: Generate circuit stats
+        run: |
+          echo "## SHA256 Circuit Statistics" >> circuit_stats.md
+          echo "\`\`\`" >> circuit_stats.md
+          cargo run --release --example sha256 -- stat --max-len 65536 >> circuit_stats.md
+          echo "\`\`\`" >> circuit_stats.md
+          echo "" >> circuit_stats.md
+          echo "## ZkLogin Circuit Statistics" >> circuit_stats.md
+          echo "\`\`\`" >> circuit_stats.md
+          cargo run --release --example zklogin -- stat >> circuit_stats.md
+          echo "\`\`\`" >> circuit_stats.md
+        env:
+          RUSTFLAGS: "-C target-cpu=native"
+
+      - name: Extract benchmark metrics
+        run: |
+          # Create a JSON file with all benchmark results
+          cat > extract_metrics.py <<'EOF'
+          import json
+          import re
+          import sys
+          from pathlib import Path
+          import statistics
+
+          def parse_time(time_str):
+              """Parse time string like '1.15s' or '428.73ms' to milliseconds"""
+              match = re.match(r'([\d.]+)\s*(s|ms)', time_str)
+              if match:
+                  value = float(match.group(1))
+                  unit = match.group(2)
+                  if unit == 's':
+                      return value * 1000
+                  else:
+                      return value
+              return None
+
+          def extract_metrics_from_logs():
+              metrics = {
+                  "timestamp": "${{ needs.setup.outputs.timestamp }}",
+                  "commit": "$(git rev-parse --short HEAD)",
+                  "branch": "${{ github.head_ref || github.ref_name }}",
+                  "machine": "${{ matrix.instance.name }}",
+                  "benchmarks": {}
+              }
+
+              # Pattern to match proving and verifying times with ANSI codes
+              proving_pattern = r'Proving \[ ([\d.]+(?:s|ms))'
+              verifying_pattern = r'Verifying \[ ([\d.]+(?:s|ms))'
+
+              # Process log files
+              log_mapping = {
+                  ("sha256", "multi"): "benchmark_logs/sha256_multi.log",
+                  ("sha256", "single"): "benchmark_logs/sha256_single.log",
+                  ("zklogin", "multi"): "benchmark_logs/zklogin_multi.log",
+                  ("zklogin", "single"): "benchmark_logs/zklogin_single.log"
+              }
+
+              for (example, mode), log_file in log_mapping.items():
+                  mode_key = f"{mode}-threaded"
+                  if example not in metrics["benchmarks"]:
+                      metrics["benchmarks"][example] = {}
+                  metrics["benchmarks"][example][mode_key] = {
+                      "proving_times_ms": [],
+                      "verifying_times_ms": [],
+                      "proving_avg_ms": None,
+                      "proving_std_ms": None,
+                      "verifying_avg_ms": None,
+                      "verifying_std_ms": None
+                  }
+
+                  try:
+                      with open(log_file, 'r') as f:
+                          content = f.read()
+                          # Remove ANSI escape codes
+                          content = re.sub(r'\x1b\[[0-9;]*m', '', content)
+
+                          # Extract proving times
+                          proving_matches = re.findall(proving_pattern, content)
+                          for time_str in proving_matches:
+                              time_ms = parse_time(time_str)
+                              if time_ms:
+                                  metrics["benchmarks"][example][mode_key]["proving_times_ms"].append(time_ms)
+
+                          # Extract verifying times
+                          verifying_matches = re.findall(verifying_pattern, content)
+                          for time_str in verifying_matches:
+                              time_ms = parse_time(time_str)
+                              if time_ms:
+                                  metrics["benchmarks"][example][mode_key]["verifying_times_ms"].append(time_ms)
+
+                          # Calculate statistics
+                          proving_times = metrics["benchmarks"][example][mode_key]["proving_times_ms"]
+                          if proving_times:
+                              metrics["benchmarks"][example][mode_key]["proving_avg_ms"] = round(statistics.mean(proving_times), 2)
+                              if len(proving_times) > 1:
+                                  metrics["benchmarks"][example][mode_key]["proving_std_ms"] = round(statistics.stdev(proving_times), 2)
+
+                          verifying_times = metrics["benchmarks"][example][mode_key]["verifying_times_ms"]
+                          if verifying_times:
+                              metrics["benchmarks"][example][mode_key]["verifying_avg_ms"] = round(statistics.mean(verifying_times), 2)
+                              if len(verifying_times) > 1:
+                                  metrics["benchmarks"][example][mode_key]["verifying_std_ms"] = round(statistics.stdev(verifying_times), 2)
+
+                  except FileNotFoundError:
+                      print(f"Warning: Log file {log_file} not found", file=sys.stderr)
+
+              print(json.dumps(metrics, indent=2))
+
+          if __name__ == "__main__":
+              extract_metrics_from_logs()
+          EOF
+
+          # Run the extraction script
+          python3 extract_metrics.py > benchmark_metrics.json
+
+          # Display the metrics
+          echo "## 📊 Benchmark Performance Metrics" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
+          cat benchmark_metrics.json >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Add circuit stats to GitHub summary
+        if: always()
+        run: |
+          if [ -f circuit_stats.md ]; then
+            echo "## 📈 Circuit Statistics for ${{ matrix.instance.name }}" >> $GITHUB_STEP_SUMMARY
+            cat circuit_stats.md >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload perfetto traces as artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perfetto-traces-${{ matrix.instance.name }}
+          path: |
+            perfetto_traces/**/*.perfetto-trace
+            circuit_stats.md
+          retention-days: 30
