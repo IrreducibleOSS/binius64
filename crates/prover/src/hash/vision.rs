@@ -86,7 +86,7 @@ impl<const N: usize> MultiDigest<N> for VisionHasherMultiDigest<N> {
 
 	fn update(&mut self, mut data: [&[u8]; N]) {
 		data[1..].iter().for_each(|row| {
-			debug_assert_eq!(row.len(), data[0].len());
+			assert_eq!(row.len(), data[0].len());
 		});
 
 		if self.filled_bytes != 0 {
