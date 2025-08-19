@@ -30,60 +30,61 @@
 //!   - Any shift amount (0-63 bits) of any wire
 //!
 //! Available Constraint Primitives:
-//! - MUL(a,b,hi,lo): Verifies [a]_u ×_Z [b]_u = [hi]_u · 2^64 + [lo]_u
+//! - MUL(a,b,hi,lo): Verifies \[a\]_u ×_Z \[b\]_u = \[hi\]_u · 2^64 + \[lo\]_u
 //! - AND(A,B,C): Verifies A ∧ B = C where A,B,C are XOR-sums of shifted words
 //!
 //! Goal Constraint
 //!
 //! Given: a, b ∈ {0,1}^64 (inputs as bit patterns)
-//! Want: hi_s, lo_s ∈ {0,1}^64 such that [a]_s ×_Z [b]_s = [hi_s]_s · 2^64 + [lo_s]_u
+//! Want: hi_s, lo_s ∈ {0,1}^64 such that \[a\]_s ×_Z \[b\]_s = \[hi_s\]_s · 2^64 + \[lo_s\]_u
 //!
 //! Derivation
 //!
 //! Step 1: Relationship between signed and unsigned interpretations
 //!
 //! For any w ∈ {0,1}^64:
-//! [w]_s = [w]_u - 2^64 · w[63]
+//! \[w\]_s = \[w\]_u - 2^64 · w\[63\]
 //!
 //! Step 2: Signed multiplication in terms of unsigned
 //!
-//! [a]_s ×_Z [b]_s = ([a]_u - 2^64 · a[63]) ×_Z ([b]_u - 2^64 · b[63])
-//!                  = [a]_u ×_Z [b]_u - [a]_u · 2^64 · b[63] - [b]_u · 2^64 · a[63] + 2^128 · a[63]
-//! · b[63]
+//! \[a\]_s ×_Z \[b\]_s = (\[a\]_u - 2^64 · a\[63\]) ×_Z (\[b\]_u - 2^64 · b\[63\])
+//!                  = \[a\]_u ×_Z \[b\]_u - \[a\]_u · 2^64 · b\[63\] - \[b\]_u · 2^64 · a\[63\] +
+//! 2^128 · a\[63\] · b\[63\]
 //!
 //! Since we only care about the 128-bit result, the 2^128 term vanishes:
-//! [a]_s ×_Z [b]_s mod 2^128 = [a]_u ×_Z [b]_u - [a]_u · 2^64 · b[63] - [b]_u · 2^64 · a[63]
+//! \[a\]_s ×_Z \[b\]_s mod 2^128 = \[a\]_u ×_Z \[b\]_u - \[a\]_u · 2^64 · b\[63\] - \[b\]_u · 2^64
+//! · a\[63\]
 //!
 //! Step 3: Effect on high/low words
 //!
-//! Let [a]_u ×_Z [b]_u = hi_u · 2^64 + lo_u where hi_u, lo_u ∈ [0, 2^64-1]
+//! Let \[a\]_u ×_Z \[b\]_u = hi_u · 2^64 + lo_u where hi_u, lo_u ∈ \[0, 2^64-1\]
 //!
 //! Then:
-//! [a]_s ×_Z [b]_s = (hi_u · 2^64 + lo_u) - [a]_u · 2^64 · b[63] - [b]_u · 2^64 · a[63]
-//!                 = (hi_u - [a]_u · b[63] - [b]_u · a[63]) · 2^64 + lo_u
+//! \[a\]_s ×_Z \[b\]_s = (hi_u · 2^64 + lo_u) - \[a\]_u · 2^64 · b\[63\] - \[b\]_u · 2^64 · a\[63\]
+//!                 = (hi_u - \[a\]_u · b\[63\] - \[b\]_u · a\[63\]) · 2^64 + lo_u
 //!
 //! So: lo_s = lo_u (low word unchanged)
-//! And: [hi_s]_u = (hi_u - [a]_u · b[63] - [b]_u · a[63]) mod 2^64
+//! And: \[hi_s\]_u = (hi_u - \[a\]_u · b\[63\] - \[b\]_u · a\[63\]) mod 2^64
 //!
 //! Step 4: Rewrite for constraint verification
 //!
 //! Since we can't constrain subtraction directly, we rewrite:
-//! hi_u = ([hi_s]_u + [a]_u · b[63] + [b]_u · a[63]) mod 2^64
+//! hi_u = (\[hi_s\]_u + \[a\]_u · b\[63\] + \[b\]_u · a\[63\]) mod 2^64
 //!
 //! Let:
-//! - correction_a = a[63] ? [b]_u : 0 (implemented as (a >>_a 63) ∧ b)
-//! - correction_b = b[63] ? [a]_u : 0 (implemented as (b >>_a 63) ∧ a)
+//! - correction_a = a\[63\] ? \[b\]_u : 0 (implemented as (a >>_a 63) ∧ b)
+//! - correction_b = b\[63\] ? \[a\]_u : 0 (implemented as (b >>_a 63) ∧ a)
 //!
 //! Then we need to verify:
-//! hi_u = ([hi_s]_u +_Z correction_a +_Z correction_b) mod 2^64
+//! hi_u = (\[hi_s\]_u +_Z correction_a +_Z correction_b) mod 2^64
 //!
 //! Step 5: Constraining modular addition
 //!
 //! To verify z = (x +_Z y) mod 2^64 using AND constraints, we use carry propagation:
 //!
 //! Let carry ∈ {0,1}^64 be the carry bits where:
-//! - carry[0] = x[0] ∧ y[0]
-//! - carry[i] = (x[i] ∧ y[i]) ∨ ((x[i] ⊕ y[i]) ∧ carry[i-1])
+//! - carry\[0\] = x\[0\] ∧ y\[0\]
+//! - carry\[i\] = (x\[i\] ∧ y\[i\]) ∨ ((x\[i\] ⊕ y\[i\]) ∧ carry\[i-1\])
 //!
 //! This is equivalent to the AND constraint:
 //! (x ⊕ (carry << 1)) ∧ (y ⊕ (carry << 1)) = carry ⊕ (carry << 1)
@@ -91,47 +92,107 @@
 //! And the sum is:
 //! z = x ⊕ y ⊕ (carry << 1)
 //!
+//! ## Modular Addition Constraints
+//!
+//! To verify z = (x + y) mod 2^64 in our constraint system, we use the following approach:
+//!
+//! **Binary addition at position i**:
+//! - Inputs: x\[i\], y\[i\], carry_in\[i\]
+//! - Sum: x\[i\] + y\[i\] + carry_in\[i\] ∈ {0, 1, 2, 3}
+//! - Outputs:
+//!   - Sum bit: z\[i\] = x\[i\] ⊕ y\[i\] ⊕ carry_in\[i\]
+//!   - Carry out: carry_out\[i\] = (x\[i\] ∧ y\[i\]) ∨ ((x\[i\] ⊕ y\[i\]) ∧ carry_in\[i\])
+//!
+//! **Variables in the ZK Circuit**:
+//! - Input operands: x, y (64-bit words)
+//! - Prover supplies: carry vector (64 bits, one per position)
+//! - Circuit computes: carry << 1 (just rewiring, not a new witness)
+//!
+//! **The Two Constraints**:
+//! 1. Carry propagation: (x ⊕ (carry << 1)) ∧ (y ⊕ (carry << 1)) = carry ⊕ (carry << 1)
+//! 2. Sum equality: z = x ⊕ y ⊕ (carry << 1)
+//!
+//! These two constraints together verify that z = (x + y) mod 2^64 with the correct carry
+//! propagation.
+//!
 //! Complete Constraint System
 //!
 //! Given inputs a, b and outputs hi_s, lo_s, we constrain:
 //!
-//! 1. MUL: [a]_u ×_Z [b]_u = hi_u · 2^64 + lo_u
+//! 1. MUL: \[a\]_u ×_Z \[b\]_u = hi_u · 2^64 + lo_u
 //! 2. AND: (a >>_a 63) ∧ b = correction_a
 //! 3. AND: (b >>_a 63) ∧ a = correction_b
-//! 4. AND (carry propagation 1): (hi_s ⊕ (carry_a << 1)) ∧ (correction_a ⊕ (carry_a << 1)) =
-//!    carry_a ⊕ (carry_a << 1)
-//! 5. AND: hi_s ⊕ correction_a ⊕ (carry_a << 1) = result1
-//! 6. AND (carry propagation 2): (result1 ⊕ (carry_b << 1)) ∧ (correction_b ⊕ (carry_b << 1)) =
-//!    carry_b ⊕ (carry_b << 1)
-//! 7. AND: result1 ⊕ correction_b ⊕ (carry_b << 1) = hi_u
-//! 8. AND: lo_u = lo_s
+//! 4. Modular Addition 1: result1 = hi_s + correction_a (using carry_a_correction as the carry
+//!    vector) - See "Modular Addition Constraints" section above
+//! 5. Modular Addition 2: hi_u = result1 + correction_b (using carry_b_correction as the carry
+//!    vector) - See "Modular Addition Constraints" section above
+//! 6. AND: lo_u = lo_s
 //!
-//! Total: 7 x AND, 1 x MUL
+//! Total: 7 x AND (items 2-3, 4 contains 2 ANDs, 5 contains 2 ANDs, 6), 1 x MUL
 
 use crate::compiler::{
-	constraint_builder::ConstraintBuilder,
+	constraint_builder::{ConstraintBuilder, sll, xor2, xor3},
 	gate::opcode::OpcodeShape,
-	gate_graph::{Gate, GateData, GateParam},
+	gate_graph::{Gate, GateData, GateParam, Wire},
 };
+
+/// Constrains that sum = (x + y) mod 2^64 using the provided carry vector.
+///
+/// This generates two AND constraints that together verify modular addition:
+/// 1. Carry propagation: Verifies the carry vector is correctly computed
+/// 2. Sum equality: Verifies sum = x ⊕ y ⊕ (carry << 1)
+///
+/// The prover must supply a valid carry vector such that:
+/// - carry\[i\] represents the carry bit generated at position i
+/// - The constraints verify this carry is consistent with x + y = sum
+fn constrain_modular_addition(
+	builder: &mut ConstraintBuilder,
+	x: Wire,
+	y: Wire,
+	carry: Wire,
+	sum: Wire,
+) {
+	let carry_shifted = sll(carry, 1);
+
+	// Constraint 1: Carry propagation
+	// (x ⊕ (carry << 1)) ∧ (y ⊕ (carry << 1)) = carry ⊕ (carry << 1)
+	builder
+		.and()
+		.a(xor2(x, carry_shifted))
+		.b(xor2(y, carry_shifted))
+		.c(xor2(carry, carry_shifted))
+		.build();
+
+	// Constraint 2: Sum equality
+	// Verify sum = x ⊕ y ⊕ (carry << 1)
+	// Implemented as (x ⊕ y ⊕ (carry << 1)) ∧ sum = sum
+	builder
+		.and()
+		.a(xor3(x, y, carry_shifted))
+		.b(sum)
+		.c(sum)
+		.build();
+}
 
 pub fn shape() -> OpcodeShape {
 	OpcodeShape {
 		const_in: &[],
 		n_in: 2,
 		n_out: 2,
-		n_internal: 7, // hi_u, lo_u, correction_a, correction_b, carry_a, result1, carry_b
-		n_scratch: 1,  // Need 1 scratch register for the final sum we don't need
+		n_aux: 7,     /* hi_u, lo_u, correction_a, correction_b, carry_a_correction, result1,
+		               * carry_b_correction */
+		n_scratch: 1, // Need 1 scratch register for the final sum we don't need
 		n_imm: 0,
 	}
 }
 
 pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) {
-	use crate::compiler::constraint_builder::{sar, sll, xor2, xor3};
+	use crate::compiler::constraint_builder::sar;
 
 	let GateParam {
 		inputs,
 		outputs,
-		internal,
+		aux,
 		..
 	} = data.gate_param();
 	let [a, b] = inputs else { unreachable!() };
@@ -141,10 +202,10 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 		lo_u,
 		correction_a,
 		correction_b,
-		carry_a,
+		carry_a_correction,
 		result1,
-		carry_b,
-	] = internal
+		carry_b_correction,
+	] = aux
 	else {
 		unreachable!()
 	};
@@ -161,46 +222,13 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 	builder.and().a(sar(*b, 63)).b(*a).c(*correction_b).build();
 
 	// Step 3: Verify hi_u = hi + correction_a + correction_b
-	// These are 64-bit modular additions, so we use carry propagation to verify
-	// the arithmetic is performed correctly.
-	// Using carry propagation for first addition: hi + correction_a
-	let carry_a_sll_1 = sll(*carry_a, 1);
+	// These are 64-bit modular additions, verified using our helper function
 
-	// Carry propagation for: result1 = hi + correction_a
-	// (hi ⊕ (carry_a << 1)) ∧ (correction_a ⊕ (carry_a << 1)) = carry_a ⊕ (carry_a << 1)
-	builder
-		.and()
-		.a(xor2(*hi, carry_a_sll_1))
-		.b(xor2(*correction_a, carry_a_sll_1))
-		.c(xor2(*carry_a, carry_a_sll_1))
-		.build();
+	// First addition: result1 = hi + correction_a
+	constrain_modular_addition(builder, *hi, *correction_a, *carry_a_correction, *result1);
 
-	// Verify intermediate result: result1 = hi ⊕ correction_a ⊕ (carry_a << 1)
-	builder
-		.and()
-		.a(xor3(*hi, *correction_a, carry_a_sll_1))
-		.b(*result1)
-		.c(*result1)
-		.build();
-
-	// Now verify second addition: hi_u = result1 + correction_b
-	let carry_b_sll_1 = sll(*carry_b, 1);
-
-	// Carry propagation for: hi_u = result1 + correction_b
-	builder
-		.and()
-		.a(xor2(*result1, carry_b_sll_1))
-		.b(xor2(*correction_b, carry_b_sll_1))
-		.c(xor2(*carry_b, carry_b_sll_1))
-		.build();
-
-	// Final verification: hi_u = result1 ⊕ correction_b ⊕ (carry_b << 1)
-	builder
-		.and()
-		.a(xor3(*result1, *correction_b, carry_b_sll_1))
-		.b(*hi_u)
-		.c(*hi_u)
-		.build();
+	// Second addition: hi_u = result1 + correction_b
+	constrain_modular_addition(builder, *result1, *correction_b, *carry_b_correction, *hi_u);
 
 	// Step 4: Low word is the same for signed and unsigned
 	builder.and().a(*lo_u).b(*lo).c(*lo).build();
@@ -215,7 +243,7 @@ pub fn emit_eval_bytecode(
 	let GateParam {
 		inputs,
 		outputs,
-		internal,
+		aux,
 		scratch,
 		..
 	} = data.gate_param();
@@ -226,10 +254,10 @@ pub fn emit_eval_bytecode(
 		lo_u,
 		correction_a,
 		correction_b,
-		carry_a,
+		carry_a_correction,
 		result1,
-		carry_b,
-	] = internal
+		carry_b_correction,
+	] = aux
 	else {
 		unreachable!()
 	};
@@ -255,22 +283,22 @@ pub fn emit_eval_bytecode(
 	// Then AND with x to get correction
 	builder.emit_band(wire_to_reg(*correction_b), wire_to_reg(*correction_b), wire_to_reg(*x));
 
-	// Compute carry_a and result1 for: result1 = hi + correction_a
+	// Compute carry_a_correction and result1 for: result1 = hi + correction_a
 	// iadd_cout computes both sum and carry
 	builder.emit_iadd_cout(
 		wire_to_reg(*result1),
-		wire_to_reg(*carry_a),
+		wire_to_reg(*carry_a_correction),
 		wire_to_reg(*hi),
 		wire_to_reg(*correction_a),
 	);
 
-	// Compute carry_b for: hi_u = result1 + correction_b
+	// Compute carry_b_correction for: hi_u = result1 + correction_b
 	// We don't need the final sum (it should be hi_u which we already have)
-	// But we need carry_b for constraint verification
+	// But we need carry_b_correction for constraint verification
 	// Use the scratch register for the sum we don't need
 	builder.emit_iadd_cout(
 		wire_to_reg(*scratch_sum),
-		wire_to_reg(*carry_b),
+		wire_to_reg(*carry_b_correction),
 		wire_to_reg(*result1),
 		wire_to_reg(*correction_b),
 	);
