@@ -1,6 +1,6 @@
-use binius_core::Word;
+use binius_core::{Word, consts::WORD_SIZE_BITS};
 
-use crate::compiler::{Wire, circuit::WitnessFiller};
+use crate::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
 
 /// Populate the given wires from bytes using little-endian packed 64-bit words.
 ///
@@ -60,4 +60,16 @@ where
 		digits.push((double_digit >> 32) as u32);
 	}
 	BigUint::new(digits)
+}
+
+/// Check that all boolean wires in an iterable are simultaneously true.
+pub fn all_true(b: &CircuitBuilder, booleans: impl IntoIterator<Item = Wire>) -> Wire {
+	booleans
+		.into_iter()
+		.fold(b.add_constant(Word::ALL_ONE), |lhs, rhs| b.band(lhs, rhs))
+}
+
+/// Convert MSB-bool into an all-1/all-0 mask.
+pub fn bool_to_mask(b: &CircuitBuilder, boolean: Wire) -> Wire {
+	b.sar(boolean, (WORD_SIZE_BITS - 1) as u32)
 }

@@ -40,6 +40,11 @@ impl PseudoMersennePrimeField {
 		self.modulus.limbs.len()
 	}
 
+	/// Field modulus.
+	pub fn modulus(&self) -> &BigUint {
+		&self.modulus
+	}
+
 	/// Field addition.
 	///
 	/// Equivalent formula: `(fe1 + fe2) % modulus`
