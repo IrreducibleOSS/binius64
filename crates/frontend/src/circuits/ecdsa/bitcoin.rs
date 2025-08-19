@@ -12,8 +12,7 @@ use crate::{
 ///
 /// # Arguments
 /// * `pk` - public key, a curve point in affine representation, asserted to be a valid curve point
-/// * `z`  - hash of signed message, _should_ be less than scalar field modulus (this constraint is
-///   not checked because ECDSA implementations truncate bits to guarantee that property).
+/// * `z`  - hash of signed message as an integer
 /// * `r`  - R part of the signature, the x coordinate of the nonce point
 /// * `s`  - S part of the signature
 ///
