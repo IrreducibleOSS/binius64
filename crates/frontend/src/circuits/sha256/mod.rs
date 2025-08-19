@@ -290,77 +290,79 @@ impl Sha256 {
 			builder.assert_eq_cond("3b.3".to_string(), byte_w, zero, zero_b);
 		}
 
-		for word_index in 0..n_words {
-			let builder = builder.subcircuit(format!("word[{word_index}]"));
-
-			// From two adjacent 32-bit message schedule words get a packed 64-bit message word.
-			let blk = (word_index * 2) / 16;
-			let idx = (word_index * 2) % 16;
-			let w_lo32 = padded_message[blk][idx];
-			let w_hi32 = padded_message[blk][idx + 1];
-			let padded_message_word = builder.bxor(w_lo32, builder.shl(w_hi32, 32));
-
-			// flags that help us classify our current position.
-			//
-			//     1. w     < w_bd - pure message word
-			//     2. w    == w_bd - message word at boundary. Mix of message and padding.
-			//     3. w_bd  < w    - pure padding word.
-			//
-			let is_message_word =
-				builder.icmp_ult(builder.add_constant_64(word_index as u64 + 1), w_bd);
-			let is_past_message: Wire =
-				builder.icmp_ult(w_bd, builder.add_constant_64(word_index as u64));
-
-			// ---- 3a. Full message words
-			//
-			// Words that contain only message data (no padding) must match the input exactly.
-			// For words beyond the message array bounds, we use a zero constant.
-			let message_word = if word_index < message.len() {
-				message[word_index]
-			} else {
-				builder.add_constant_64(0)
-			};
-			builder.assert_eq_cond(
-				"3a.full_word".to_string(),
-				message_word,
-				padded_message_word,
-				is_message_word,
-			);
-
-			// ---- 3c. Zero padding constraints
-			//
-			// SHA-256 padding fills the space between the delimiter byte (0x80) and the
-			// length field with zeros. We need to ensure all padding words are zero,
-			// except for the final 64-bit word of the length block which contains the
-			// message bit length.
-			//
-			// The length field occupies the last 8 bytes (64 bits) of a block, which
-			// corresponds to 32-bit words 14 and 15 (packed as 64-bit word index 7).
-			// We identify padding words as those that are:
-			// 1. Past the message boundary (is_past_message = true)
-			// 2. NOT the length field location (last 64-bit word of the length block)
+		for block_index in 0..n_blocks {
+			let builder = builder.subcircuit(format!("word[{block_index}]"));
 			let is_length_block =
-				builder.icmp_eq(builder.add_constant_64(blk as u64), end_block_index);
+				builder.icmp_eq(builder.add_constant_64(block_index as u64), end_block_index);
 
-			// ---- 3d. Length field placement
-			//
-			// When idx == 14, we're looking at the last two 32-bit words of a block (words 14 and
-			// 15). If this block contains the length field:
-			// - Word 14 must be zero (high 32 bits of length, always 0 since we support < 2^32
-			//   bits)
-			// - Word 15 contains the message bit length
-			// Otherwise, if it's a padding word (not message, not length), it must be zero.
-			if idx == 14 {
-				builder.assert_eq_cond(
-					"3c.zero_pad",
-					padded_message_word,
-					zero,
-					builder.band(is_past_message, builder.bnot(is_length_block)),
-				);
-				builder.assert_eq_cond("3d.w14_zero", w_lo32, zero, is_length_block);
-				builder.assert_eq_cond("3d.w15_len", w_hi32, bitlen, is_length_block);
-			} else {
-				builder.assert_eq_cond("3c.zero_pad", padded_message_word, zero, is_past_message);
+			for column_index in 0..8 {
+				// From two adjacent 32-bit message schedule words get a packed 64-bit message word.
+				let w_lo32 = padded_message[block_index][column_index << 1];
+				let w_hi32 = padded_message[block_index][(column_index << 1) + 1];
+				let padded_message_word = builder.bxor(w_lo32, builder.shl(w_hi32, 32));
+
+				// flags that help us classify our current position.
+				//
+				//     1. w     < w_bd - pure message word
+				//     2. w    == w_bd - message word at boundary. Mix of message and padding.
+				//     3. w_bd  < w    - pure padding word.
+				//
+				let word_index = block_index << 3 | column_index;
+				let is_message_word =
+					builder.icmp_ult(builder.add_constant_64(word_index as u64 + 1), w_bd);
+				let is_past_message: Wire =
+					builder.icmp_ult(w_bd, builder.add_constant_64(word_index as u64));
+
+				// ---- 3a. Full message words
+				//
+				if word_index < max_len >> 3 {
+					// see comment about this condition above in sha512/mod.rs.
+					builder.assert_eq_cond(
+						"3a.full_word".to_string(),
+						message[word_index],
+						padded_message_word,
+						is_message_word,
+					);
+				}
+
+				// ---- 3c. Zero padding constraints
+				//
+				// SHA-256 padding fills the space between the delimiter byte (0x80) and the
+				// length field with zeros. We need to ensure all padding words are zero,
+				// except for the final 64-bit word of the length block which contains the
+				// message bit length.
+				//
+				// The length field occupies the last 8 bytes (64 bits) of a block, which
+				// corresponds to 32-bit words 14 and 15 (packed as 64-bit word index 7).
+				// We identify padding words as those that are:
+				// 1. Past the message boundary (is_past_message = true)
+				// 2. NOT the length field location (last 64-bit word of the length block)
+
+				// ---- 3d. Length field placement
+				//
+				// When idx == 14, we're looking at the last two 32-bit words of a block (words 14
+				// and 15). If this block contains the length field:
+				// - Word 14 must be zero (high 32 bits of length, always 0 since we support < 2^32
+				//   bits)
+				// - Word 15 contains the message bit length
+				// Otherwise, if it's a padding word (not message, not length), it must be zero.
+				if column_index == 7 {
+					builder.assert_eq_cond(
+						"3c.zero_pad",
+						padded_message_word,
+						zero,
+						builder.band(is_past_message, builder.bnot(is_length_block)),
+					);
+					builder.assert_eq_cond("3d.w14_zero", w_lo32, zero, is_length_block);
+					builder.assert_eq_cond("3d.w15_len", w_hi32, bitlen, is_length_block);
+				} else {
+					builder.assert_eq_cond(
+						"3c.zero_pad",
+						padded_message_word,
+						zero,
+						is_past_message,
+					);
+				}
 			}
 		}
 
