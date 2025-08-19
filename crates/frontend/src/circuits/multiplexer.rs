@@ -34,7 +34,7 @@ impl Multiplexer {
 	///
 	/// # Panics
 	/// * If inputs.len() is 0
-	pub fn new(b: &CircuitBuilder, inputs: Vec<Wire>, sel: Wire) -> Self {
+	pub fn new(b: &CircuitBuilder, inputs: &[Wire], sel: Wire) -> Self {
 		let n = inputs.len();
 		assert!(n > 0, "Input vector must not be empty");
 
@@ -42,7 +42,7 @@ impl Multiplexer {
 		if n == 1 {
 			return Self {
 				output: inputs[0],
-				inputs,
+				inputs: inputs.to_vec(),
 				sel,
 			};
 		}
@@ -53,16 +53,14 @@ impl Multiplexer {
 		// Extract selector bits
 		let mut sel_bits = Vec::with_capacity(num_sel_bits);
 		for i in 0..num_sel_bits {
-			let bit = b.shr(sel, i as u32);
-			let bit_masked = b.band(bit, b.add_constant(Word(1)));
-			// Convert to MSB for select gate condition (select gate checks MSB)
-			let cond = b.shl(bit_masked, 63);
+			// Shift bit i to MSB position for select gate condition
+			let cond = b.shl(sel, 63 - i as u32);
 			sel_bits.push(cond);
 		}
 
 		// Build MUX tree from bottom to top using level-by-level approach
 		// This creates an optimal tree with exactly N-1 MUX gates
-		let mut current_level = inputs.clone();
+		let mut current_level = inputs.to_vec();
 		let mut bit_level = 0;
 
 		// Process level by level until we have a single output
@@ -94,7 +92,7 @@ impl Multiplexer {
 		let output = current_level[0];
 
 		Self {
-			inputs,
+			inputs: inputs.to_vec(),
 			sel,
 			output,
 		}
@@ -140,20 +138,20 @@ mod tests {
 		let sel = builder.add_inout();
 
 		// Create multiplexer circuit
-		let circuit = Multiplexer::new(&builder, inputs.clone(), sel);
+		let circuit = Multiplexer::new(&builder, &inputs, sel);
 		let expected = builder.add_inout();
 		builder.assert_eq("multiplexer_output", circuit.output, expected);
 
 		let built = builder.build();
 
 		// Test case from the example: inputs = [13, 7, 25, 100], SEL = 2, OUTPUT = 25
-		let test_values = vec![13, 7, 25, 100];
+		let test_values = [13, 7, 25, 100];
 		let test_cases = vec![
-			(test_values.clone(), 0, 13),  // Select index 0
-			(test_values.clone(), 1, 7),   // Select index 1
-			(test_values.clone(), 2, 25),  // Select index 2 (from example)
-			(test_values.clone(), 3, 100), // Select index 3
-			(test_values.clone(), 6, 25),  // Index 6 wraps to 2 (6 & 3 = 2)
+			(test_values, 0, 13),  // Select index 0
+			(test_values, 1, 7),   // Select index 1
+			(test_values, 2, 25),  // Select index 2 (from example)
+			(test_values, 3, 100), // Select index 3
+			(test_values, 6, 25),  // Index 6 wraps to 2 (6 & 3 = 2)
 		];
 
 		for (values, selector, expected_val) in test_cases {
@@ -185,7 +183,7 @@ mod tests {
 		let sel = builder.add_inout();
 
 		// Create multiplexer circuit
-		let circuit = Multiplexer::new(&builder, inputs.clone(), sel);
+		let circuit = Multiplexer::new(&builder, &inputs, sel);
 		let expected = builder.add_inout();
 		builder.assert_eq("multiplexer_output", circuit.output, expected);
 
@@ -226,7 +224,7 @@ mod tests {
 			let sel = builder.add_inout();
 
 			// Create multiplexer circuit
-			let circuit = Multiplexer::new(&builder, inputs.clone(), sel);
+			let circuit = Multiplexer::new(&builder, &inputs, sel);
 			let expected = builder.add_inout();
 			builder.assert_eq("multiplexer_output", circuit.output, expected);
 
@@ -269,14 +267,14 @@ mod tests {
 		let sel = builder.add_inout();
 
 		// Create multiplexer circuit
-		let circuit = Multiplexer::new(&builder, inputs.clone(), sel);
+		let circuit = Multiplexer::new(&builder, &inputs, sel);
 		let expected = builder.add_inout();
 		builder.assert_eq("multiplexer_output", circuit.output, expected);
 
 		let built = builder.build();
 
 		// Test case
-		let values = vec![100, 200, 300, 400];
+		let values = [100, 200, 300, 400];
 		let selector = 2;
 
 		let mut w = built.new_witness_filler();
@@ -304,14 +302,14 @@ mod tests {
 		let sel = builder.add_inout();
 
 		// Create multiplexer circuit
-		let circuit = Multiplexer::new(&builder, inputs.clone(), sel);
+		let circuit = Multiplexer::new(&builder, &inputs, sel);
 		let expected = builder.add_inout();
 		builder.assert_eq("multiplexer_output", circuit.output, expected);
 
 		let built = builder.build();
 
 		// Test values
-		let test_values = vec![10, 20, 30];
+		let test_values = [10, 20, 30];
 
 		// Test all valid selections (0-2)
 		for selector in 0..3 {
@@ -358,14 +356,14 @@ mod tests {
 		let sel = builder.add_inout();
 
 		// Create multiplexer circuit
-		let circuit = Multiplexer::new(&builder, inputs.clone(), sel);
+		let circuit = Multiplexer::new(&builder, &inputs, sel);
 		let expected = builder.add_inout();
 		builder.assert_eq("multiplexer_output", circuit.output, expected);
 
 		let built = builder.build();
 
 		// Test values
-		let test_values = vec![100, 200, 300, 400, 500];
+		let test_values = [100, 200, 300, 400, 500];
 
 		// Test all valid selections (0-4)
 		for selector in 0..5 {
@@ -397,14 +395,14 @@ mod tests {
 		let sel = builder.add_inout();
 
 		// Create multiplexer circuit
-		let circuit = Multiplexer::new(&builder, inputs.clone(), sel);
+		let circuit = Multiplexer::new(&builder, &inputs, sel);
 		let expected = builder.add_inout();
 		builder.assert_eq("multiplexer_output", circuit.output, expected);
 
 		let built = builder.build();
 
 		// Test values
-		let test_values: Vec<u64> = vec![11, 22, 33, 44, 55, 66, 77];
+		let test_values = [11, 22, 33, 44, 55, 66, 77];
 
 		// Test all valid selections (0-6)
 		for selector in 0..7 {
@@ -452,7 +450,7 @@ mod tests {
 		let sel = builder.add_inout();
 
 		// Create multiplexer circuit
-		let circuit = Multiplexer::new(&builder, inputs.clone(), sel);
+		let circuit = Multiplexer::new(&builder, &inputs, sel);
 		let expected = builder.add_inout();
 		builder.assert_eq("multiplexer_output", circuit.output, expected);
 
