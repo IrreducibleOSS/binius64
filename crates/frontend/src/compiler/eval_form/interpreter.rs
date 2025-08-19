@@ -120,7 +120,7 @@ impl<'a> Interpreter<'a> {
 				0x40 => self.exec_iadd_cout32(ctx),
 				0x41 => self.exec_rotr32(ctx),
 				0x42 => self.exec_shr32(ctx),
-				0x43 => self.exec_rotl(ctx),
+				0x43 => self.exec_rotr(ctx),
 
 				// Masks
 				0x50 => self.exec_mask_low(ctx),
@@ -323,11 +323,11 @@ impl<'a> Interpreter<'a> {
 		self.store(ctx, dst, val);
 	}
 
-	fn exec_rotl(&mut self, ctx: &mut ExecutionContext<'_>) {
+	fn exec_rotr(&mut self, ctx: &mut ExecutionContext<'_>) {
 		let dst = self.read_reg();
 		let src = self.read_reg();
 		let rotate = self.read_u8() as u32;
-		let val = self.load(ctx, src).rotl_64(rotate);
+		let val = self.load(ctx, src).rotr(rotate);
 		self.store(ctx, dst, val);
 	}
 

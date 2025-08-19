@@ -188,7 +188,7 @@ impl BytecodeBuilder {
 		self.emit_u8(shift);
 	}
 
-	pub fn emit_rotl(&mut self, dst: u32, src: u32, rotate: u8) {
+	pub fn emit_rotr(&mut self, dst: u32, src: u32, rotate: u8) {
 		self.n_eval_insn += 1;
 		self.emit_u8(0x43);
 		self.emit_reg(dst);

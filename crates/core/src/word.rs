@@ -143,13 +143,13 @@ impl Word {
 		Word(result)
 	}
 
-	pub fn rotl_64(self, n: u32) -> Word {
+	pub fn rotr(self, n: u32) -> Word {
 		let Word(value) = self;
 		let n = n % 64; // Ensure n is within 0-63 range
 		if n == 0 {
 			return self; // Avoid full-width shift
 		}
-		let result = (value << n) | (value >> (64 - n));
+		let result = (value << (64 - n)) | (value >> n);
 		Word(result)
 	}
 
@@ -447,28 +447,28 @@ mod tests {
 		}
 
 		#[test]
-		fn prop_rotl_64(val in any::<u64>(), rotate in 0u32..128) {
+		fn prop_rotr(val in any::<u64>(), rotate in 0u32..128) {
 			let w = Word(val);
-			let result = w.rotl_64(rotate);
+			let result = w.rotr(rotate);
 
 			// Rotation is modulo 64
 			let rotate_mod = rotate % 64;
 			let expected = if rotate_mod == 0 {
 				val
 			} else {
-				(val << rotate_mod) | (val >> (64 - rotate_mod))
+				(val >> rotate_mod) | (val << (64 - rotate_mod))
 			};
 			assert_eq!(result.0, expected);
 
 			// Rotation by 0 or 64 is identity
-			assert_eq!(w.rotl_64(0), w);
-			assert_eq!(w.rotl_64(64), w);
+			assert_eq!(w.rotr(0), w);
+			assert_eq!(w.rotr(64), w);
 
 			// Double rotation
 			let r1 = rotate % 64;
 			let r2 = (64 - r1) % 64;
 			if r1 != 0 {
-				assert_eq!(w.rotl_64(r1).rotl_64(r2), w);
+				assert_eq!(w.rotr(r1).rotr(r2), w);
 			}
 		}
 

@@ -74,11 +74,11 @@ impl Permutation {
 		let c4 = b.bxor_multi(&array::from_fn::<_, 5, _>(|y| state[idx(4, y)]));
 
 		// D[x] = C[x-1] ^ rotl1(C[x+1])
-		let d0 = b.bxor(c4, b.rotl_64(c1, 1));
-		let d1 = b.bxor(c0, b.rotl_64(c2, 1));
-		let d2 = b.bxor(c1, b.rotl_64(c3, 1));
-		let d3 = b.bxor(c2, b.rotl_64(c4, 1));
-		let d4 = b.bxor(c3, b.rotl_64(c0, 1));
+		let d0 = b.bxor(c4, b.rotl(c1, 1));
+		let d1 = b.bxor(c0, b.rotl(c2, 1));
+		let d2 = b.bxor(c1, b.rotl(c3, 1));
+		let d3 = b.bxor(c2, b.rotl(c4, 1));
+		let d4 = b.bxor(c3, b.rotl(c0, 1));
 
 		// A'[x,y] = A[x,y] ^ D[x]
 		for y in 0..5 {
@@ -114,7 +114,7 @@ impl Permutation {
 				if R[idx(x, y)] == 0 {
 					continue;
 				}
-				temp[idx(y, (2 * x + 3 * y) % 5)] = b.rotl_64(state[idx(x, y)], R[idx(x, y)]);
+				temp[idx(y, (2 * x + 3 * y) % 5)] = b.rotl(state[idx(x, y)], R[idx(x, y)]);
 			}
 		}
 		*state = temp;

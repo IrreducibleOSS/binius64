@@ -372,6 +372,18 @@ impl CircuitBuilder {
 		(diff, bout)
 	}
 
+	// emulate rotl_32 using rotr_32. return right away if n == 0.
+	pub fn rotl_32(&self, x: Wire, n: u32) -> Wire {
+		assert!(n < 32, "rotate amount n={n} out of range");
+		if n == 0 {
+			return x;
+		}
+		let z = self.add_internal();
+		let mut graph = self.graph_mut();
+		graph.emit_gate_imm(self.current_path, Opcode::Rotr32, [x], [z], 32 - n);
+		z
+	}
+
 	pub fn rotr_32(&self, x: Wire, n: u32) -> Wire {
 		assert!(n < 32, "rotate amount n={n} out of range");
 		let z = self.add_internal();
@@ -380,11 +392,23 @@ impl CircuitBuilder {
 		z
 	}
 
-	pub fn rotl_64(&self, x: Wire, n: u32) -> Wire {
+	// emulate rotl using rotr. return right away if n == 0.
+	pub fn rotl(&self, x: Wire, n: u32) -> Wire {
+		assert!(n < 64, "rotate amount n={n} out of range");
+		if n == 0 {
+			return x;
+		}
+		let z = self.add_internal();
+		let mut graph = self.graph_mut();
+		graph.emit_gate_imm(self.current_path, Opcode::Rotr, [x], [z], 64 - n);
+		z
+	}
+
+	pub fn rotr(&self, x: Wire, n: u32) -> Wire {
 		assert!(n < 64, "rotate amount n={n} out of range");
 		let z = self.add_internal();
 		let mut graph = self.graph_mut();
-		graph.emit_gate_imm(self.current_path, Opcode::Rotl64, [x], [z], n);
+		graph.emit_gate_imm(self.current_path, Opcode::Rotr, [x], [z], n);
 		z
 	}
 
