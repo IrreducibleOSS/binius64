@@ -645,6 +645,29 @@ impl CircuitBuilder {
 		(quotient, remainder)
 	}
 
+	/// Modular exponentiation.
+	///
+	/// Computes `(base^exp) % modulus`.
+	/// This is a hint - a deterministic computation that happens only on the prover side.
+	/// The result should be additionally constrained using bignum circuits.
+	pub fn biguint_mod_pow_hint(&self, base: &[Wire], exp: &[Wire], modulus: &[Wire]) -> Vec<Wire> {
+		let modpow = (0..modulus.len())
+			.map(|_| self.add_internal())
+			.collect::<Vec<_>>();
+
+		let mut graph = self.graph_mut();
+		graph.emit_gate_generic(
+			self.current_path,
+			Opcode::BigUintModPowHint,
+			base.iter().chain(exp).chain(modulus).copied(),
+			modpow.iter().copied(),
+			&[base.len(), exp.len(), modulus.len()],
+			&[],
+		);
+
+		modpow
+	}
+
 	/// Modular inverse.
 	///
 	/// Computes the modular inverse of `base` modulo `modulus`.
