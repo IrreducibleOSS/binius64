@@ -4,6 +4,7 @@ pub mod carryless_word_mul;
 pub mod concat;
 pub mod ecdsa;
 pub mod fixed_byte_vec;
+pub mod ghash_mul;
 pub mod jwt_claims;
 pub mod keccak;
 pub mod rs256;
