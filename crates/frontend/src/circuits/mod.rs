@@ -5,6 +5,7 @@ pub mod ecdsa;
 pub mod fixed_byte_vec;
 pub mod jwt_claims;
 pub mod keccak;
+pub mod multiplexer;
 pub mod rs256;
 pub mod secp256k1;
 pub mod sha256;
