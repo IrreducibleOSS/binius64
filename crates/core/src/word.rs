@@ -177,6 +177,10 @@ impl Word {
 		(Word(hi), Word(lo))
 	}
 
+	pub fn wrapping_add(self, rhs: Word) -> Word {
+		Word(self.0.wrapping_add(rhs.0))
+	}
+
 	pub fn wrapping_sub(self, rhs: Word) -> Word {
 		Word(self.0.wrapping_sub(rhs.0))
 	}
