@@ -81,7 +81,7 @@ pub fn populate_carryless_mul_outputs(
 }
 
 /// Software implementation of 64x64 carryless multiplication returning 128-bit result as (lo, hi)
-fn carryless_mul_u64(a: u64, b: u64) -> (u64, u64) {
+pub fn carryless_mul_u64(a: u64, b: u64) -> (u64, u64) {
 	let mut lo = 0u64;
 	let mut hi = 0u64;
 
