@@ -45,14 +45,14 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 	let GateParam {
 		inputs,
 		outputs,
-		internal,
+		aux,
 		..
 	} = data.gate_param();
 	let [x, y, all_1] = inputs else {
 		unreachable!()
 	};
 	let [out_mask] = outputs else { unreachable!() };
-	let [cout] = internal else { unreachable!() };
+	let [cout] = aux else { unreachable!() };
 
 	let cin = sll(*cout, 1);
 
@@ -85,7 +85,7 @@ pub fn emit_eval_bytecode(
 		constants,
 		inputs,
 		outputs,
-		internal,
+		aux,
 		scratch,
 		..
 	} = data.gate_param();
@@ -94,7 +94,7 @@ pub fn emit_eval_bytecode(
 		unreachable!()
 	};
 	let [out_mask] = outputs else { unreachable!() };
-	let [cout] = internal else { unreachable!() };
+	let [cout] = aux else { unreachable!() };
 	let [scratch_diff, scratch_sum_unused, scratch_sar] = scratch else {
 		unreachable!()
 	};
