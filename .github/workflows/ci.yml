@@ -61,6 +61,8 @@ jobs:
           components: clippy
       - name: Run clippy (all-features)
         run: cargo clippy --all --all-features --tests --benches --examples -- -D warnings
+        env:
+          RUSTFLAGS: "-C target-cpu=native"
 
   rust-tests:
     name: rust-${{ matrix.test.name }}-${{ matrix.machine.name }}
