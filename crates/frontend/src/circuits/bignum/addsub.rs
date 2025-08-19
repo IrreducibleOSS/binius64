@@ -94,46 +94,23 @@ pub(super) fn compute_stack_adds(builder: &CircuitBuilder, limb_stacks: &[Vec<Wi
 		let mut limb_stack = limb_stack.clone();
 		let mut new_carries = Vec::new();
 
-		if limb_stack.is_empty() {
-			limb_stack.push(zero);
-		}
-
 		// Pad stack to handle incoming carries
 		if limb_stack.len() < carries.len() + 1 {
 			limb_stack.resize(carries.len() + 1, zero);
 		}
 
-		if limb_stack.len() == 1 {
-			let single_wire = limb_stack[0];
+		while limb_stack.len() >= 2 {
 			let carry_in = carries.pop().unwrap_or(zero);
+			let x = limb_stack.pop().expect("limb_stack.len() >= 2");
+			let y = limb_stack.pop().expect("limb_stack.len() >= 2");
 
-			let (sum, cout) = builder.iadd_cin_cout(single_wire, zero, carry_in);
-			sums.push(sum);
+			let (sum, cout) = builder.iadd_cin_cout(x, y, carry_in);
+			limb_stack.push(sum);
 			new_carries.push(cout);
-		} else {
-			// We reduce the stack by repeatedly adding pairs until only one sum remains
-			while limb_stack.len() >= 2 {
-				let carry_in = carries.pop().unwrap_or(zero);
-				let x = limb_stack.pop().expect("limb_stack.len() >= 2");
-				let y = limb_stack.pop().expect("limb_stack.len() >= 2");
-
-				if limb_stack.is_empty() {
-					// This is the final addition for this limb position
-					// The sum becomes the result for this position
-					let (sum, cout) = builder.iadd_cin_cout(x, y, carry_in);
-					sums.push(sum);
-					new_carries.push(cout);
-				} else {
-					// Still have more values to add at this position
-					// Push the intermediate sum back onto the stack
-					let (sum, cout) = builder.iadd_cin_cout(x, y, carry_in);
-					new_carries.push(cout);
-					limb_stack.push(sum);
-				}
-			}
-			assert!(limb_stack.is_empty());
 		}
 
+		sums.push(limb_stack[0]);
+		assert!(limb_stack.len() == 1);
 		assert!(carries.is_empty());
 		carries = new_carries;
 	}
