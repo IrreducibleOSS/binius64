@@ -101,7 +101,7 @@ impl Sha512 {
 
 		// ---- 1. Input validation and setup
 		//
-		// SHA-256 padding routine uses a 64-bit integer to specify the length of the message
+		// SHA-512 padding routine uses a 64-bit integer to specify the length of the message
 		// in bits. This is impractical for a circuit, so we cap the maximum bit length by 2^32,
 		// allowing us to check a single word instead of two.
 		//
