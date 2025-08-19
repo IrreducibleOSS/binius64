@@ -43,7 +43,7 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 	let GateParam {
 		inputs,
 		outputs,
-		internal,
+		aux,
 		constants,
 		..
 	} = data.gate_param();
@@ -52,7 +52,7 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 	};
 	let [x, y] = inputs else { unreachable!() };
 	let [out_mask] = outputs else { unreachable!() };
-	let [bout] = internal else { unreachable!() };
+	let [bout] = aux else { unreachable!() };
 
 	// Constraint 1: Carry propagation for comparison
 	// ((x ⊕ all-1) ⊕ (bout << 1)) ∧ (y ⊕ (bout << 1)) = bout ⊕ (bout << 1)
@@ -83,7 +83,7 @@ pub fn emit_eval_bytecode(
 		constants,
 		inputs,
 		outputs,
-		internal,
+		aux,
 		scratch,
 		..
 	} = data.gate_param();
@@ -92,7 +92,7 @@ pub fn emit_eval_bytecode(
 	};
 	let [x, y] = inputs else { unreachable!() };
 	let [out_mask] = outputs else { unreachable!() };
-	let [bout] = internal else { unreachable!() };
+	let [bout] = aux else { unreachable!() };
 	let [scratch_nx, scratch_sum_unused] = scratch else {
 		unreachable!()
 	};

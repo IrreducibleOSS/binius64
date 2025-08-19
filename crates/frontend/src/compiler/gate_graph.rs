@@ -63,7 +63,7 @@ pub struct GateParam<'a> {
 	pub constants: &'a [Wire],
 	pub inputs: &'a [Wire],
 	pub outputs: &'a [Wire],
-	pub internal: &'a [Wire],
+	pub aux: &'a [Wire],
 	pub scratch: &'a [Wire],
 	pub imm: &'a [u32],
 }
@@ -81,7 +81,7 @@ pub struct GateData {
 	/// - Constants
 	/// - Inputs
 	/// - Outputs
-	/// - Internal
+	/// - Aux
 	/// - Scratch
 	///
 	/// The number of input and output wires is specified by the opcode's shape.
@@ -112,15 +112,15 @@ impl GateData {
 		let end_input = start_input + shape.n_in;
 		let start_output = end_input;
 		let end_output = start_output + shape.n_out;
-		let start_internal = end_output;
-		let end_internal = start_internal + shape.n_aux;
-		let start_scratch = end_internal;
+		let start_aux = end_output;
+		let end_aux = start_aux + shape.n_aux;
+		let start_scratch = end_aux;
 		let end_scratch = start_scratch + shape.n_scratch;
 		GateParam {
 			constants: &self.wires[start_const..end_const],
 			inputs: &self.wires[start_input..end_input],
 			outputs: &self.wires[start_output..end_output],
-			internal: &self.wires[start_internal..end_internal],
+			aux: &self.wires[start_aux..end_aux],
 			scratch: &self.wires[start_scratch..end_scratch],
 			imm: &self.immediates,
 		}
@@ -137,7 +137,7 @@ impl GateData {
 		let gate_param = self.gate_param();
 		assert_eq!(gate_param.inputs.len(), shape.n_in);
 		assert_eq!(gate_param.outputs.len(), shape.n_out);
-		assert_eq!(gate_param.internal.len(), shape.n_aux);
+		assert_eq!(gate_param.aux.len(), shape.n_aux);
 		assert_eq!(self.immediates.len(), shape.n_imm);
 	}
 }

@@ -38,13 +38,13 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 		constants,
 		inputs,
 		outputs,
-		internal,
+		aux,
 		..
 	} = data.gate_param();
 	let [mask32] = constants else { unreachable!() };
 	let [x, y] = inputs else { unreachable!() };
 	let [z] = outputs else { unreachable!() };
-	let [cout] = internal else { unreachable!() };
+	let [cout] = aux else { unreachable!() };
 
 	let cout_sll_1 = sll(*cout, 1);
 
@@ -78,12 +78,12 @@ pub fn emit_eval_bytecode(
 	let GateParam {
 		inputs,
 		outputs,
-		internal,
+		aux,
 		..
 	} = data.gate_param();
 	let [a, b] = inputs else { unreachable!() };
 	let [sum] = outputs else { unreachable!() };
-	let [cout] = internal else { unreachable!() };
+	let [cout] = aux else { unreachable!() };
 	builder.emit_iadd_cout32(
 		wire_to_reg(*sum),
 		wire_to_reg(*cout),
