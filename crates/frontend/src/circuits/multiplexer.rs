@@ -1,3 +1,5 @@
+use binius_core::consts::WORD_SIZE_BITS;
+
 use crate::{
 	compiler::{CircuitBuilder, Wire},
 	util::log2_ceil_usize,
@@ -40,7 +42,7 @@ pub fn multiplexer(b: &CircuitBuilder, inputs: &[Wire], sel: Wire) -> Wire {
 
 	// Process level by level until we have a single output
 	for bit_level in 0..num_sel_bits {
-		let sel_bit = b.shl(sel, 63 - bit_level as u32);
+		let sel_bit = b.shl(sel, (WORD_SIZE_BITS - bit_level) as u32);
 
 		// Process pairs of wires at the current level
 		let next_level = current_level
