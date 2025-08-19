@@ -366,7 +366,7 @@ impl Sha512 {
 
 	/// Returns digest wires in little-endian packed format.
 	///
-	/// The SHA256 digest is stored as 4 wires, each containing 8 bytes of the hash
+	/// The SHA512 digest is stored as 8 wires, each containing 8 bytes of the hash
 	/// as a 64-bit big-endian value.
 	///
 	/// This method extracts the individual bytes and repacks them in little-endian format,
