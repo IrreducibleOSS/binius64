@@ -189,13 +189,15 @@ impl ZkLogin {
 		);
 
 		let zkaddr_preimage_le_wires = zkaddr_sha256.message_to_le_wires(b);
+		let zkaddr_joined_words = max_len_zkaddr_preimage / 8;
+		let zkaddr_joined_le = zkaddr_preimage_le_wires[..zkaddr_joined_words].to_vec();
 
 		// Create the concatenation that outputs to the LE wires
 		let _zkaddr_preimage_concat = Concat::new(
 			&b.subcircuit("zkaddr_preimage_concat"),
 			max_len_zkaddr_preimage,
 			zkaddr_preimage_len,
-			zkaddr_preimage_le_wires,
+			zkaddr_joined_le,
 			vec![
 				Term {
 					data: sub.data.clone(),
@@ -241,11 +243,13 @@ impl ZkLogin {
 		);
 
 		let nonce_preimage_le_wires = nonce_sha256.message_to_le_wires(b);
+		let nonce_joined_words = max_len_nonce_preimage / 8;
+		let nonce_joined_le = nonce_preimage_le_wires[..nonce_joined_words].to_vec();
 		let _nonce_preimage_concat = Concat::new(
 			&b.subcircuit("nonce_preimage_concat"),
 			max_len_nonce_preimage,
 			nonce_preimage_len,
-			nonce_preimage_le_wires.clone(),
+			nonce_joined_le,
 			vec![
 				Term {
 					data: vk_u.to_vec(),
@@ -311,11 +315,13 @@ impl ZkLogin {
 			Rs256Verify::new(b, jwt_signing_payload, jwt_signature.clone(), rsa_modulus);
 
 		let jwt_signing_payload_le_wires = jwt_signature_verify.sha256.message_to_le_wires(b);
+		let signing_joined_words = max_len_jwt_signing_payload / 8;
+		let signing_joined_le = jwt_signing_payload_le_wires[..signing_joined_words].to_vec();
 		let _jwt_signing_payload_concat = Concat::new(
 			&b.subcircuit("jwt_signing_payload_concat"),
 			max_len_jwt_signing_payload,
 			jwt_signing_payload_sha256_len,
-			jwt_signing_payload_le_wires,
+			signing_joined_le,
 			vec![
 				Term {
 					data: base64_jwt_header.data.clone(),
