@@ -9,4 +9,5 @@ pub mod rs256;
 pub mod secp256k1;
 pub mod sha256;
 pub mod slice;
+pub mod subset_sum;
 pub mod zklogin;
