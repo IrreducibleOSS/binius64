@@ -373,13 +373,15 @@ proptest! {
 	fn prop_check_assert_eq(x in any::<u64>(), y in any::<u64>()) {
 		let builder = CircuitBuilder::new();
 		let is_equal = x == y;
-		let x_wire = builder.add_constant_64(x);
-		let y_wire = builder.add_constant_64(y);
+		let x_wire = builder.add_inout();
+		let y_wire = builder.add_inout();
 		builder.assert_eq("eq", x_wire, y_wire);
 
 		let circuit = builder.build();
 		let mut w = circuit.new_witness_filler();
 
+		w[x_wire] = Word(x);
+		w[y_wire] = Word(y);
 		let result = circuit.populate_wire_witness(&mut w);
 
 		if is_equal {
