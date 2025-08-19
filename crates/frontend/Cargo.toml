@@ -20,6 +20,7 @@ smallvec.workspace = true
 
 [dev-dependencies]
 base64 = { workspace = true }
+blake2 = { workspace = true }
 jwt-simple = { workspace = true }
 rand = { workspace = true, features = ["std_rng", "thread_rng"] }
 rsa = { workspace = true, features = ["sha2"] }
