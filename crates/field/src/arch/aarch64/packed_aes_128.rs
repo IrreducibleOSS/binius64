@@ -4,7 +4,6 @@ use std::ops::Mul;
 
 use super::{
 	m128::M128,
-	packed_macros::*,
 	simd_arithmetic::{
 		packed_aes_16x8b_invert_or_zero, packed_aes_16x8b_mul_alpha, packed_aes_16x8b_multiply,
 		packed_tower_16x8b_into_aes,
@@ -13,15 +12,8 @@ use super::{
 use crate::{
 	PackedBinaryField16x8b,
 	aes_field::AESTowerField8b,
-	arch::portable::{
-		packed::PackedPrimitiveType,
-		packed_arithmetic::{alphas, impl_tower_constants},
-		packed_macros::*,
-	},
-	arithmetic_traits::{
-		InvertOrZero, MulAlpha, Square, impl_invert_with, impl_mul_alpha_with, impl_mul_with,
-		impl_square_with, impl_transformation_with_strategy,
-	},
+	arch::portable::{packed::PackedPrimitiveType, packed_arithmetic::impl_tower_constants},
+	arithmetic_traits::{InvertOrZero, MulAlpha, Square, impl_transformation_with_strategy},
 	underlier::WithUnderlier,
 };
 
