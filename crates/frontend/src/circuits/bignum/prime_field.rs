@@ -1,7 +1,10 @@
 use binius_core::{consts::WORD_SIZE_BITS, word::Word};
 
 use super::{BigUint, PseudoMersenneModReduce, add, biguint_lt, mul, square, sub};
-use crate::{compiler::CircuitBuilder, util::num_biguint_from_u64_limbs};
+use crate::{
+	compiler::{CircuitBuilder, Wire},
+	util::num_biguint_from_u64_limbs,
+};
 
 /// A struct that implements prime field arithmetic over pseudo-Mersenne modulus.
 ///
@@ -105,14 +108,15 @@ impl PseudoMersennePrimeField {
 		b.assert_0("remainder < modulus", b.bnot(biguint_lt(b, &remainder, &self.modulus)));
 
 		// constraint: product == remainder + quotient * modulus
-		let _ = PseudoMersenneModReduce::new(
+		PseudoMersenneModReduce::new(
 			b,
-			product,
+			&product,
 			self.modulus_po2,
-			self.modulus_subtrahend.clone(),
-			quotient,
-			remainder.clone(),
-		);
+			&self.modulus_subtrahend,
+			&quotient,
+			&remainder,
+		)
+		.constrain(b);
 
 		remainder
 	}
@@ -120,7 +124,10 @@ impl PseudoMersennePrimeField {
 	/// Field inverse.
 	///
 	/// Equivalent formula (for prime modulus): `(fe1 ** (modulus - 2)) % modulus`
-	pub fn inverse(&self, b: &CircuitBuilder, fe: &BigUint) -> BigUint {
+	/// The wire parameter `exists` is a boolean-wire signifying the existence of the inverse;
+	/// if `exists` is false, the modular reduction constraint is not applied. This is useful
+	/// for avoiding overconstraining in skipped parts of larger circuits.
+	pub fn inverse(&self, b: &CircuitBuilder, fe: &BigUint, exists: Wire) -> BigUint {
 		assert!(fe.limbs.len() == self.limbs_len());
 		let (quotient, inverse) = b.mod_inverse_hint(&fe.limbs, &self.modulus.limbs);
 
@@ -137,14 +144,15 @@ impl PseudoMersennePrimeField {
 		b.assert_0("inverse < modulus", b.bnot(biguint_lt(b, &inverse, &self.modulus)));
 
 		// constraint: base * inverse = 1 + quotient * modulus
-		let _ = PseudoMersenneModReduce::new(
+		PseudoMersenneModReduce::new(
 			b,
-			product,
+			&product,
 			self.modulus_po2,
-			self.modulus_subtrahend.clone(),
-			quotient,
-			one,
-		);
+			&self.modulus_subtrahend,
+			&quotient,
+			&one,
+		)
+		.constrain_cond(b, exists);
 
 		inverse
 	}
