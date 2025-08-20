@@ -34,6 +34,12 @@ impl Secp256k1Affine {
 		b.band(x_zero, y_zero)
 	}
 
+	pub fn mask(&self, b: &CircuitBuilder, mask: Wire) -> Secp256k1Affine {
+		let x = self.x.mask(b, mask);
+		let y = self.y.mask(b, mask);
+		Secp256k1Affine { x, y }
+	}
+
 	pub fn to_jacobian(self, b: &CircuitBuilder) -> Secp256k1Jacobian {
 		let pai_flag = self.is_point_at_infinity(b);
 

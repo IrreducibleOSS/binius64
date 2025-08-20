@@ -1,12 +1,13 @@
-use binius_core::word::Word;
+use binius_core::{consts::WORD_SIZE_BITS, word::Word};
 
 use super::{
-	common::{coord_b, coord_field, scalar_field},
+	common::{coord_b, coord_field, coord_zero, pow_sqrt, scalar_field},
 	point::{Secp256k1Affine, Secp256k1Jacobian},
 };
 use crate::{
 	circuits::bignum::{BigUint, PseudoMersennePrimeField, assert_eq, xor},
-	compiler::CircuitBuilder,
+	compiler::{CircuitBuilder, Wire},
+	util::bool_to_mask,
 };
 
 /// Secp256k1 - a short Weierstrass elliptic curve of the form `y^2 = x^3 + 7` over
@@ -41,6 +42,33 @@ impl Secp256k1 {
 
 		let y_pow2 = f_p.square(b, &affine.y);
 		assert_eq(b, "secp256k1_on_curve", &y_pow2, &f_p.add(b, &x_pow3, &self.b));
+	}
+
+	/// Recover the full affine point `(r, y)` by its x coordinate and y parity.
+	///
+	/// Note: we don't handle the case where r does not fit into the scalar field, thus
+	/// recid is boolean, and not a 0-3 bitmask signifying both parity and scalar field overflow.
+	pub fn recover(&self, b: &CircuitBuilder, r: &BigUint, recid_odd: Wire) -> Secp256k1Affine {
+		let f_p = self.f_p();
+
+		// y^2 = x^3 + 7, x = r
+		let y_squared = f_p.add(b, &f_p.mul(b, &f_p.square(b, r), r), &self.b);
+
+		// p = 2^256 - 2^32 - 977 = 3 (mod 4), compute the quadratic residue by raising to (p+1)/4
+		let res_1_limbs =
+			b.biguint_mod_pow_hint(&y_squared.limbs, &pow_sqrt(b).limbs, &f_p.modulus().limbs);
+		let res_1 = BigUint { limbs: res_1_limbs };
+		let res_2 = f_p.sub(b, &coord_zero(b), &res_1);
+
+		// both residues differ in parity
+		let res_1_low_limb = *res_1.limbs.first().expect("N_LIMBS > 0");
+		let odd_1 = b.shl(res_1_low_limb, (WORD_SIZE_BITS - 1) as u32);
+		let is_res_2 = bool_to_mask(b, b.bxor(odd_1, recid_odd));
+
+		let y = xor(b, &res_1.mask(b, b.bnot(is_res_2)), &res_2.mask(b, is_res_2));
+		assert_eq(b, "recover", &f_p.square(b, &y), &y_squared);
+
+		Secp256k1Affine { x: r.clone(), y }
 	}
 
 	pub fn jacobian_to_affine(

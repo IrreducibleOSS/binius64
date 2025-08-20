@@ -96,6 +96,7 @@ impl PseudoMersennePrimeField {
 	/// Field multiplication.
 	///
 	/// Equivalent formula: `(fe1 * fe2) % modulus`
+	/// Note: Both fe1 and fe2 may be greater or equal to modulus.
 	pub fn mul(&self, b: &CircuitBuilder, fe1: &BigUint, fe2: &BigUint) -> BigUint {
 		assert!(fe1.limbs.len() == self.limbs_len() && fe2.limbs.len() == self.limbs_len());
 		self.reduce_product(b, mul(b, fe1, fe2))
