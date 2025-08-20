@@ -48,7 +48,7 @@ pub fn create_sha256_cs_with_witness() -> (ConstraintSystem, ValueVec) {
 		.collect();
 
 	// Create the SHA256 circuit
-	let sha256 = Sha256::new(&builder, max_len, len, digest, message);
+	let sha256 = Sha256::new(&builder, len, digest, message);
 
 	let circuit = builder.build();
 	let mut witness_filler = circuit.new_witness_filler();

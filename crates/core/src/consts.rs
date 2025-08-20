@@ -27,3 +27,9 @@ pub const MIN_AND_CONSTRAINTS: usize = 8;
 /// Minimum number of MUL constraints (must be a power of 2).
 /// This is a protocol requirement for the constraint system.
 pub const MIN_MUL_CONSTRAINTS: usize = 1;
+
+/// The number of bits in a byte.
+pub const BYTE_BITS: usize = 8;
+
+/// log2 of [`BYTE_BITS`].
+pub const LOG_BYTE_BITS: usize = checked_log_2(BYTE_BITS);
