@@ -215,7 +215,7 @@ impl Sha512 {
 		// 4. Length field: 64-bit message length in bits (last 8 bytes of a block)
 		//
 		// Subsections:
-		// - 3b: Boundary word byte-level checks
+		// - 3a: Boundary word byte-level checks
 		// - 3a: Full message words (before the boundary)
 		// - 3c: Zero padding constraints
 		// - 3d: Length field placement
