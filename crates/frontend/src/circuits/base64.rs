@@ -1,6 +1,7 @@
 use binius_core::word::Word;
 
 use crate::{
+	circuits::multiplexer::single_wire_multiplex,
 	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
 	util::pack_bytes_into_wires_le,
 };
@@ -180,6 +181,7 @@ fn verify_base64_group(
 	len_decoded: Wire,
 	group_idx: usize,
 ) {
+	let char_lookup_table = build_base64_char_lookup_table(builder);
 	let base_byte_idx = group_idx * 3;
 
 	// Check if this group is within actual length
@@ -206,13 +208,19 @@ fn verify_base64_group(
 	let val2 = extract_6bit_value_2(builder, byte1, byte2);
 	let val3 = extract_6bit_value_3(builder, byte2);
 
+	// Convert 6-bit values to base64 encoded chars
+	let encoded_char0 = compute_expected_base64_char(builder, val0, &char_lookup_table);
+	let encoded_char1 = compute_expected_base64_char(builder, val1, &char_lookup_table);
+	let encoded_char2 = compute_expected_base64_char(builder, val2, &char_lookup_table);
+	let encoded_char3 = compute_expected_base64_char(builder, val3, &char_lookup_table);
+
 	// Verify character mappings
-	verify_base64_char(builder, val0, char0, is_active);
+	verify_base64_char(builder, encoded_char0, char0, is_active);
 
 	// has_byte1 = bytes_in_group > 0 is equivalent to 0 < bytes_in_group
 	let has_byte1 = builder.icmp_ult(builder.add_constant_64(0), bytes_in_group);
 	let check_char1 = builder.band(is_active, has_byte1);
-	verify_base64_char(builder, val1, char1, check_char1);
+	verify_base64_char(builder, encoded_char1, char1, check_char1);
 
 	// has_byte2 = bytes_in_group > 1 is equivalent to 1 < bytes_in_group
 	let has_byte2 = builder.icmp_ult(builder.add_constant_64(1), bytes_in_group);
@@ -222,11 +230,11 @@ fn verify_base64_group(
 
 	// For char2: encode if we have more than 1 byte (i.e., at least 2 bytes)
 	let should_encode_char2 = has_byte2;
-	verify_base64_char_or_zero(builder, val2, char2, is_active, should_encode_char2);
+	verify_base64_char_or_zero(builder, encoded_char2, char2, is_active, should_encode_char2);
 
 	// For char3: encode if we have more than 2 bytes (i.e., all 3 bytes)
 	let should_encode_char3 = has_byte3;
-	verify_base64_char_or_zero(builder, val3, char3, is_active, should_encode_char3);
+	verify_base64_char_or_zero(builder, encoded_char3, char3, is_active, should_encode_char3);
 }
 
 /// Extracts a byte from a word array at the given byte index.
@@ -343,19 +351,17 @@ fn extract_6bit_value_3(builder: &CircuitBuilder, byte2: Wire) -> Wire {
 /// # Arguments
 ///
 /// * `builder` - Circuit builder
-/// * `six_bit_val` - The 6-bit value to encode (0-63)
+/// * `expected_encoded_char` - The expected encoding of the character
 /// * `char_val` - The actual character value found
 /// * `is_active` - Whether this check should be enforced
 fn verify_base64_char(
 	builder: &CircuitBuilder,
-	six_bit_val: Wire,
+	expected_encoded_char: Wire,
 	char_val: Wire,
 	is_active: Wire,
 ) {
-	let expected_char = compute_expected_base64_char(builder, six_bit_val);
-
 	// Check if char_val == expected_char
-	let eq = builder.icmp_eq(char_val, expected_char);
+	let eq = builder.icmp_eq(char_val, expected_encoded_char);
 
 	// Only enforce if active: valid = !is_active | eq
 	let not_active = builder.bnot(is_active);
@@ -371,13 +377,13 @@ fn verify_base64_char(
 /// # Arguments
 ///
 /// * `builder` - Circuit builder
-/// * `six_bit_val` - The 6-bit value to encode (0-63)
+/// * `expected_encoded_char` - The expected encoding of the character
 /// * `char_val` - The actual character value found
 /// * `is_active` - Whether this group is active
 /// * `should_encode` - Whether this position should contain encoded data (vs zero padding)
 fn verify_base64_char_or_zero(
 	builder: &CircuitBuilder,
-	six_bit_val: Wire,
+	expected_encoded_char: Wire,
 	char_val: Wire,
 	is_active: Wire,
 	should_encode: Wire,
@@ -386,8 +392,7 @@ fn verify_base64_char_or_zero(
 	let is_zero_padding = builder.icmp_eq(char_val, zero);
 
 	// If should_encode, verify normal base64 char
-	let expected_char = compute_expected_base64_char(builder, six_bit_val);
-	let is_valid_char = builder.icmp_eq(char_val, expected_char);
+	let is_valid_char = builder.icmp_eq(char_val, expected_encoded_char);
 
 	// valid = (should_encode & is_valid_char) | (!should_encode & is_padding)
 	let not_should_encode = builder.bnot(should_encode);
@@ -405,7 +410,7 @@ fn verify_base64_char_or_zero(
 	builder.assert_eq("base64_zero_padding", valid, all_ones);
 }
 
-/// Computes the expected base64 character for a 6-bit value.
+/// Builds a character lookup table for base64 URL-safe encoding.
 ///
 /// # Base64 URL-Safe Mapping
 ///
@@ -414,34 +419,35 @@ fn verify_base64_char_or_zero(
 /// - 52-61: '0'-'9' (48-57)
 /// - 62: '-' (45) [URL-safe variant]
 /// - 63: '_' (95) [URL-safe variant]
+fn build_base64_char_lookup_table(builder: &CircuitBuilder) -> Vec<Wire> {
+	(0..64u64)
+		.map(|i| {
+			let char_val = match i {
+				0..=25 => b'A' + i as u8,
+				26..=51 => b'a' + (i - 26) as u8,
+				52..=61 => b'0' + (i - 52) as u8,
+				62 => b'-', // URL-safe: minus instead of plus
+				63 => b'_', // URL-safe: underscore instead of slash
+				_ => unreachable!(),
+			};
+			builder.add_constant_64(char_val as u64)
+		})
+		.collect()
+}
+
+/// Computes the expected base64 character for a 6-bit value using the provided lookup table.
 ///
-/// # Implementation Note
+/// # Arguments
 ///
-/// Since circuits don't support dynamic lookup tables, we check all 64
-/// possible values explicitly and combine results using masking.
-fn compute_expected_base64_char(builder: &CircuitBuilder, six_bit_val: Wire) -> Wire {
-	let mut result = builder.add_constant_64(0);
-
-	// For each possible value, check if six_bit_val equals it and add the corresponding char
-	for i in 0..64u64 {
-		let val_const = builder.add_constant_64(i);
-		let is_this_val = builder.icmp_eq(six_bit_val, val_const);
-
-		let char_val = match i {
-			0..=25 => b'A' + i as u8,
-			26..=51 => b'a' + (i - 26) as u8,
-			52..=61 => b'0' + (i - 52) as u8,
-			62 => b'-', // URL-safe: minus instead of plus
-			63 => b'_', // URL-safe: underscore instead of slash
-			_ => unreachable!(),
-		};
-
-		let char_const = builder.add_constant_64(char_val as u64);
-		let masked_char = builder.band(is_this_val, char_const);
-		result = builder.bor(result, masked_char);
-	}
-
-	result
+/// * `builder` - Circuit builder
+/// * `six_bit_val` - The 6-bit value to encode (0-63)
+/// * `char_lookup_table` - base64 character encoding lookup table
+fn compute_expected_base64_char(
+	builder: &CircuitBuilder,
+	six_bit_val: Wire,
+	char_lookup_table: &[Wire],
+) -> Wire {
+	single_wire_multiplex(builder, char_lookup_table, six_bit_val)
 }
 
 #[cfg(test)]
