@@ -73,7 +73,7 @@ impl Secp256k1 {
 		// both residues differ in parity
 		let res_1_low_limb = *res_1.limbs.first().expect("N_LIMBS > 0");
 		let odd_1 = b.shl(res_1_low_limb, (WORD_SIZE_BITS - 1) as u32);
-		let is_res_2 = bool_to_mask(b, b.bxor(odd_1, recid_odd));
+		let is_res_2 = b.bxor(odd_1, recid_odd);
 
 		let y = select(b, &res_1, &res_2, is_res_2);
 		assert_eq(b, "recover", &f_p.square(b, &y), &y_squared);
@@ -111,6 +111,39 @@ impl Secp256k1 {
 
 		let pai_sum = b.band(x_diff_zero, b.bnot(y_diff_zero)); // adding negation
 		let is_point_at_infinity = b.select(b.select(pai_sum, pai_1, pai_2), pai_2, pai_1);
+
+		Secp256k1Affine {
+			x,
+			y,
+			is_point_at_infinity,
+		}
+	}
+
+	/// Add two curve points, incomplete.
+	///
+	/// Requires both `p1` and `p2` to be either valid curve points or points at infinities.
+	///
+	/// Unlike [`Secp256k1::add`] this implementation does not handle doubling, asserting false in
+	/// that case.
+	pub fn add_incomplete(
+		&self,
+		b: &CircuitBuilder,
+		p1: &Secp256k1Affine,
+		p2: &Secp256k1Affine,
+	) -> Secp256k1Affine {
+		let (slope, x_diff_zero, y_diff_zero) = self.addition_slope(b, p1, p2);
+
+		let pai_1 = p1.is_point_at_infinity;
+		let pai_2 = p2.is_point_at_infinity;
+
+		let (add_x, add_y) = self.sloped_add(b, &slope, p1, p2);
+		let x = select(b, &select(b, &add_x, &p1.x, pai_2), &p2.x, pai_1);
+		let y = select(b, &select(b, &add_y, &p1.y, pai_2), &p2.y, pai_1);
+
+		let pai_sum = b.band(x_diff_zero, b.bnot(y_diff_zero)); // adding negation
+		let is_point_at_infinity = b.select(b.select(pai_sum, pai_1, pai_2), pai_2, pai_1);
+
+		b.assert_0("not_doubling", bool_to_mask(b, b.band(x_diff_zero, y_diff_zero)));
 
 		Secp256k1Affine {
 			x,

@@ -42,10 +42,11 @@ pub fn shamirs_trick(
 		// Point at infinity flag is a single wire, allowing us to save a BigUint select.
 		let is_point_at_infinity = b.band(b.bnot(g_mult_bit), b.bnot(pk_mult_bit));
 
-		// Addition implementation is complete (handles pai and doubling). When the mask
-		// is zero, pai-to-pai support is needed. While the accumulator normally does not
-		// assume the value of G or PK, such possibility cannot be ruled out.
-		acc = curve.add(
+		// Addition implementation is incomplete (it handles pai, but not doubling). When
+		// the mask is zero, pai-to-pai support is needed. The probability of accumulator
+		// assuming value G, PK, or G+PK at any point in the computation is vanishingly low.
+		// We assert false in this case, resulting in a completeness gap.
+		acc = curve.add_incomplete(
 			b,
 			&acc,
 			&Secp256k1Affine {
