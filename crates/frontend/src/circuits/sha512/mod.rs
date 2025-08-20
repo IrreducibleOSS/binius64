@@ -4,7 +4,7 @@ use binius_core::word::Word;
 pub use compress::{Compress, State};
 
 use crate::{
-	circuits::multiplexer::multi_wire_multiplex,
+	circuits::multiplexer::{multi_wire_multiplex, single_wire_multiplex},
 	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
 };
 
@@ -67,7 +67,6 @@ impl Sha512 {
 	/// # Panics
 	/// * If `max_len` is 0
 	/// * If `max_len * 8` exceeds 2^32 (see the struct doc)
-	/// * If `message.len()` != `ceil(max_len / 8)`
 	///
 	/// # Circuit Structure
 	/// The circuit performs the following validations:
@@ -134,6 +133,20 @@ impl Sha512 {
 		//
 		// Compression gadgets are daisy-chained: each takes the output state from the previous
 		// compression as input, with the first compression starting from the SHA-256 IV.
+		let mut message = message;
+		message.resize(n_words, builder.add_constant_64(0));
+		// BD note. contrary to what the documentation originally said, we are NOT requiring that
+		// message.len() == max_len.div_ceil(8), or any other number for that matter.
+		// instead, if it's shorter, we are, implicitly, silently zero-extending the message to
+		// `len` bytes. we could enforce it---that would be a reasonable choice. but we would end
+		// up needing to conditionally slot in a zero below during the "3b.full_word" check
+		// regardless (up to `n_words`), so this is a bit simpler. but more importantly, the
+		// `boundary_message_word` invocation of the multiplexer would become undefined / possibly
+		// insecure if we didn't do this. the multiplexer will behave oddly if the index
+		// (`w_bd` in our case) is greater than the length of the list passed.
+		// i haven't proven that it's _insecure_ if we did that but it'd be odd. doing this here
+		// makes the multiplexer certifiably behave the way we want it to.
+
 		let padded_message: Vec<[Wire; 16]> = (0..n_blocks)
 			.map(|_| std::array::from_fn(|_| builder.add_witness()))
 			.collect();
@@ -202,20 +215,51 @@ impl Sha512 {
 		// 4. Length field: 64-bit message length in bits (last 8 bytes of a block)
 		//
 		// Subsections:
+		// - 3a: Boundary word byte-level checks
 		// - 3a: Full message words (before the boundary)
-		// - 3b: Boundary word byte-level checks
 		// - 3c: Zero padding constraints
 		// - 3d: Length field placement
-		// Precompute byte-category flags (data/delim/zero) for j = 0..7 once,
-		// since they only depend on len_mod_8 and not on word_index.
-		let byte_flags: [[Wire; 3]; 8] = std::array::from_fn(|j| {
+
+		// ---- 3a. Boundary word byte checks
+		//
+		// This block implements the boundary word byte checks. That means they are only
+		// active for the word in which the boundary between the message and padding occurs.
+		//
+		// Therefore, every constraint is protected by `is_boundary_word` defined above.
+		//
+		// For each index of a byte `j` within a word we check whether that byte falls into
+		// one of the following categories:
+		//
+		// 1. message byte. Still part of the input.
+		// 2. delimiter byte, placed right after the input.
+		// 3. zero byte. Placed after the delimiter byte.
+
+		let joined_padded: Vec<Wire> = padded_message
+			.iter()
+			.flat_map(|block| block.iter().copied())
+			.collect();
+		let boundary_padded_word = single_wire_multiplex(builder, &joined_padded, w_bd);
+		let boundary_message_word = single_wire_multiplex(builder, &message, w_bd);
+
+		for j in 0..8 {
+			let builder = builder.subcircuit(format!("byte[{j}]"));
 			let j_const = builder.add_constant_64(j as u64);
-			[
-				builder.icmp_ult(j_const, len_mod_8),
-				builder.icmp_eq(j_const, len_mod_8),
-				builder.icmp_ult(len_mod_8, j_const),
-			]
-		});
+			let data_b = builder.icmp_ult(j_const, len_mod_8);
+			let delim_b = builder.icmp_eq(j_const, len_mod_8);
+			let zero_b = builder.icmp_ult(len_mod_8, j_const);
+
+			let byte_w = builder.extract_byte(boundary_padded_word, 7 - j);
+			let byte_m = builder.extract_byte(boundary_message_word, 7 - j);
+
+			// case 1. this is still message byte. Assert equality.
+			builder.assert_eq_cond("3b.1".to_string(), byte_w, byte_m, data_b);
+
+			// case 2. this is the first padding byte, or the delimiter.
+			builder.assert_eq_cond("3b.2".to_string(), byte_w, delim, delim_b);
+
+			// case 3. this is the byte past the delimiter, ie. zero.
+			builder.assert_eq_cond("3b.3".to_string(), byte_w, zero, zero_b);
+		}
 
 		for word_index in 0..n_words {
 			let builder = builder.subcircuit(format!("word[{word_index}]"));
@@ -232,13 +276,10 @@ impl Sha512 {
 			//
 			let is_message_word =
 				builder.icmp_ult(builder.add_constant_64(word_index as u64 + 1), w_bd);
-			let is_boundary_word =
-				builder.icmp_eq(w_bd, builder.add_constant_64(word_index as u64));
 			let is_past_message =
 				builder.icmp_ult(w_bd, builder.add_constant_64(word_index as u64));
-			// BD NOTE: the above is wasteful. using just one comparison plus one eq, we can negate.
 
-			// ---- 3a. Full message words
+			// ---- 3b. Full message words
 			//
 			// Words that contain only message data (no padding) must match the input exactly.
 			// For words beyond the message array bounds, we use a zero constant.
@@ -248,57 +289,11 @@ impl Sha512 {
 				builder.add_constant_64(0)
 			};
 			builder.assert_eq_cond(
-				"3a.full_word".to_string(),
+				"3b.full_word".to_string(),
 				message_word,
 				padded_message_word,
 				is_message_word,
 			);
-
-			// ---- 3b. Boundary word byte checks
-			//
-			// This block implements the boundary word byte checks. That means they are only
-			// active for the word in which the boundary between the message and padding occurs.
-			//
-			// Therefore, every constraint is protected by `is_boundary_word` defined above.
-			//
-			// For each index of a byte `j` within a word we check whether that byte falls into
-			// one of the following categories:
-			//
-			// 1. message byte. Still part of the input.
-			// 2. delimiter byte, placed right after the input.
-			// 3. zero byte. Placed after the delimiter byte.
-			for j in 0..8 {
-				let builder = builder.subcircuit(format!("byte[{j}]"));
-				let [data_b, delim_b, zero_b] = byte_flags[j as usize];
-
-				let byte_index = 7 - j;
-				let byte_w = builder.extract_byte(padded_message_word, byte_index as u32);
-				let byte_m = builder.extract_byte(message_word, byte_index as u32);
-
-				// case 1. this is still message byte. Assert equality.
-				builder.assert_eq_cond(
-					"3b.1".to_string(),
-					byte_w,
-					byte_m,
-					builder.band(is_boundary_word, data_b),
-				);
-
-				// case 2. this is the first padding byte, or the delimiter.
-				builder.assert_eq_cond(
-					"3b.2".to_string(),
-					byte_w,
-					delim,
-					builder.band(is_boundary_word, delim_b),
-				);
-
-				// case 3. this is the byte past the delimiter, ie. zero.
-				builder.assert_eq_cond(
-					"3b.3".to_string(),
-					byte_w,
-					zero,
-					builder.band(is_boundary_word, zero_b),
-				);
-			}
 
 			// ---- 3c. Zero padding constraints
 			//
