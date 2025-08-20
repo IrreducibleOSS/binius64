@@ -8,6 +8,7 @@ pub mod hash_based_sig;
 pub mod jwt_claims;
 pub mod keccak;
 pub mod multiplexer;
+pub mod popcount;
 pub mod rs256;
 pub mod secp256k1;
 pub mod sha256;
