@@ -1,6 +1,6 @@
 # Circuit Control Flow: From Software to Constraints
 
-This document describes techniques for translating control flow patterns from traditional programming into zero-knowledge circuits in Binius64.
+This document describes techniques for translating control flow patterns from traditional programming into zero-knowledge circuits in Binius64. The code snippets are for meant for conceptual understanding, they are simplified and are not guaranteed to compile. 
 
 ## Introduction
 
