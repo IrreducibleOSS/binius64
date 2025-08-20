@@ -315,7 +315,7 @@ Circuits require selecting from all possibilities rather than using dynamic inde
 
 #### Multiplexer Operation
 
-A **multiplexer** (mux) selects one value from multiple inputs based on a selector signal.
+The frontend library comes with a multiplexer gadget. A **multiplexer** (mux) selects one value from multiple inputs based on a selector signal. 
 For 2 inputs (2-to-1 mux):
 ```rust
 // If selector is 0, output = input0
