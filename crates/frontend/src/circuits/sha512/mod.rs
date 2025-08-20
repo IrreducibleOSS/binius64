@@ -90,9 +90,9 @@ impl Sha512 {
 		//    - Ensure actual length <= max_len
 		//
 		// 2. Message padding and compression setup
-		//    - Create padded message blocks following SHA-256 rules
+		//    - Create padded message blocks following SHA-512 rules
 		//    - Chain compression functions from IV to final state
-		//    2a. SHA-256 padding position calculation
+		//    2a. SHA-512 padding position calculation
 		//    2b. Final digest selection
 		//
 		// 3. Message padding constraints (per-word validation)
@@ -124,15 +124,13 @@ impl Sha512 {
 
 		// ---- 2. Message padding and compression setup
 		//
-		// Create padded message blocks and compression gadgets. The padded message is packed
-		// differently from the input message words:
-		//     16 × 32-bit schedule words = 8 × 64-bit message words
+		// Create padded message blocks and compression gadgets.
 		//
-		// The padded message follows SHA-256 padding requirements and is passed directly to
+		// The padded message follows SHA-512 padding requirements and is passed directly to
 		// the compression function.
 		//
 		// Compression gadgets are daisy-chained: each takes the output state from the previous
-		// compression as input, with the first compression starting from the SHA-256 IV.
+		// compression as input, with the first compression starting from the SHA-512 IV.
 		let mut message = message;
 		message.resize(n_words, builder.add_constant_64(0));
 		// BD note. contrary to what the documentation originally said, we are NOT requiring that
@@ -147,9 +145,7 @@ impl Sha512 {
 		// i haven't proven that it's _insecure_ if we did that but it'd be odd. doing this here
 		// makes the multiplexer certifiably behave the way we want it to.
 
-		let padded_message: Vec<[Wire; 16]> = (0..n_blocks)
-			.map(|_| std::array::from_fn(|_| builder.add_witness()))
-			.collect();
+		let padded_message: Vec<Wire> = (0..n_words).map(|_| builder.add_witness()).collect();
 
 		let mut compress = Vec::with_capacity(n_blocks);
 		let mut states = Vec::with_capacity(n_blocks + 1);
@@ -158,7 +154,9 @@ impl Sha512 {
 			let c = Compress::new(
 				&builder.subcircuit(format!("compress[{block_no}]")),
 				states[block_no].clone(),
-				padded_message[block_no],
+				padded_message[block_no << 4..(block_no + 1) << 4]
+					.try_into()
+					.unwrap(),
 			);
 			states.push(c.state_out.clone());
 			compress.push(c);
@@ -234,14 +232,8 @@ impl Sha512 {
 		// 2. delimiter byte, placed right after the input.
 		// 3. zero byte. Placed after the delimiter byte.
 
-		let joined_padded: Vec<Wire> = padded_message
-			.iter()
-			.flat_map(|block| block.iter().copied())
-			.collect();
-		let boundary_padded_word = single_wire_multiplex(builder, &joined_padded, w_bd);
+		let boundary_padded_word = single_wire_multiplex(builder, &padded_message, w_bd);
 		let boundary_message_word = single_wire_multiplex(builder, &message, w_bd);
-		// i tried combining the above into a single multiplexer, but it had 0 effect on the gate
-		// count.
 
 		for j in 0..8 {
 			let builder = builder.subcircuit(format!("byte[{j}]"));
@@ -255,10 +247,8 @@ impl Sha512 {
 
 			// case 1. this is still message byte. Assert equality.
 			builder.assert_eq_cond("3b.1".to_string(), byte_w, byte_m, data_b);
-
 			// case 2. this is the first padding byte, or the delimiter.
 			builder.assert_eq_cond("3b.2".to_string(), byte_w, delim, delim_b);
-
 			// case 3. this is the byte past the delimiter, ie. zero.
 			builder.assert_eq_cond("3b.3".to_string(), byte_w, zero, zero_b);
 		}
@@ -269,7 +259,9 @@ impl Sha512 {
 				builder.icmp_eq(builder.add_constant_64(block_index as u64), end_block_index);
 
 			for column_index in 0..16 {
-				let padded_message_word = padded_message[block_index][column_index];
+				let word_index = block_index << 4 | column_index;
+
+				let padded_message_word = padded_message[word_index];
 
 				// flags that help us classify our current position.
 				//
@@ -277,7 +269,6 @@ impl Sha512 {
 				//     2. w    == w_bd - message word at boundary. Mix of message and padding.
 				//     3. w_bd  < w    - pure padding word.
 				//
-				let word_index = block_index << 4 | column_index;
 				let is_message_word =
 					builder.icmp_ult(builder.add_constant_64(word_index as u64 + 1), w_bd);
 				let is_past_message =
@@ -362,7 +353,7 @@ impl Sha512 {
 		w[self.len] = Word(len as u64);
 	}
 
-	/// Populates the digest wires with the expected SHA-256 hash.
+	/// Populates the digest wires with the expected SHA-512 hash.
 	pub fn populate_digest(&self, w: &mut WitnessFiller<'_>, digest: [u8; 64]) {
 		for (i, bytes) in digest.chunks(8).enumerate() {
 			let word = u64::from_be_bytes(bytes.try_into().unwrap());
@@ -450,7 +441,7 @@ impl Sha512 {
 	///
 	/// This method handles the complete message preparation including:
 	/// 1. Packing the message bytes into 64-bit words
-	/// 2. Applying SHA-256 padding (0x80 delimiter + zeros + length)
+	/// 2. Applying SHA-512 padding (0x80 delimiter + zeros + length)
 	/// 3. Populating the compression gadgets with properly formatted blocks
 	///
 	/// # Panics
@@ -466,12 +457,12 @@ impl Sha512 {
 		let n_blocks = self.compress.len();
 		let mut padded_message_bytes = vec![0u8; n_blocks * 128];
 
-		// Apply SHA-256 padding
+		// Apply SHA-512 padding
 		//
-		// Create padded message following SHA-256 rules:
+		// Create padded message following SHA-512 rules:
 		// 1. Copy original message
 		// 2. Add 0x80 delimiter byte
-		// 3. Add zero padding to fill to 56 bytes in the appropriate block
+		// 3. Add zero padding to fill to 112 bytes in the appropriate block
 		// 4. Add 64-bit length field in big-endian format
 		//
 		// The length field placement logic must match the circuit's calculation.
@@ -481,10 +472,10 @@ impl Sha512 {
 		let bitlen = (message_bytes.len() as u64) * 8;
 		let len_bytes = bitlen.to_be_bytes();
 
-		// SHA-256 requires 9 bytes of padding minimum (1 byte for 0x80 delimiter + 8 bytes for
-		// length). The length field must be placed in the last 8 bytes of a 64-byte block.
+		// SHA-512 requires 17 bytes of padding minimum (1 byte for 0x80 delimiter + 16 bytes for
+		// length). The length field must be placed in the last 16 bytes of a 128-byte block.
 		// So we can fit the length in the current block only if position after message + 0x80 <=
-		// 56. This means len % 64 must be <= 55 to fit everything in the same block.
+		// 112. This means len % 128 must be <= 111 to fit everything in the same block.
 		let len = message_bytes.len() as u64;
 		let end_block_index = (len + 16) / 128; // floor((len + 16)/128)
 		// even though there are 16 bytes devoted to the length field, we will only write 8.
@@ -908,7 +899,7 @@ mod tests {
 			let mut w = circuit.new_witness_filler();
 			c.populate_len(&mut w, 0);
 			c.populate_message(&mut w, b"");
-			// SHA256 of empty string
+			// SHA512 of empty string
 			c.populate_digest(
 				&mut w,
 				hex!("cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e"),
@@ -925,7 +916,7 @@ mod tests {
 				let mut w = circuit.new_witness_filler();
 				c.populate_len(&mut w, 3);
 				c.populate_message(&mut w, b"abc");
-				// SHA256 of "abc"
+				// SHA512 of "abc"
 				c.populate_digest(
 					&mut w,
 					hex!("ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f"),
