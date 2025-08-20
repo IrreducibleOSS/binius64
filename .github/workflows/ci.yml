@@ -136,16 +136,16 @@ jobs:
         run: cargo doc --document-private-items --no-deps
 
   circuits-snapshot:
-    name: circuits-snapshot
+    name: circuits-snapshot (${{ matrix.example }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        example: [zklogin, sha256, keccak]
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
-      - name: Check zklogin circuit statistics snapshot
-        run: cargo run --example zklogin --release -- check-snapshot
-      - name: Check sha256 circuit statistics snapshot
-        run: cargo run --example sha256 --release -- check-snapshot
-      - name: Check keccak circuit statistics snapshot
-        run: cargo run --example keccak --release -- check-snapshot
+      - name: Check ${{ matrix.example }} circuit statistics snapshot
+        run: cargo run --example ${{ matrix.example }} --release -- check-snapshot
