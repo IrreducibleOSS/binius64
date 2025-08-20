@@ -1,6 +1,7 @@
 use binius_core::word::Word;
 
 use crate::{
+	circuits::multiplexer::single_wire_multiplex,
 	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
 	util::pack_bytes_into_wires_le,
 };
@@ -417,31 +418,22 @@ fn verify_base64_char_or_zero(
 ///
 /// # Implementation Note
 ///
-/// Since circuits don't support dynamic lookup tables, we check all 64
-/// possible values explicitly and combine results using masking.
+/// Uses a lookup table and multiplexer to select the encoded character.
 fn compute_expected_base64_char(builder: &CircuitBuilder, six_bit_val: Wire) -> Wire {
-	let mut result = builder.add_constant_64(0);
-
-	// For each possible value, check if six_bit_val equals it and add the corresponding char
-	for i in 0..64u64 {
-		let val_const = builder.add_constant_64(i);
-		let is_this_val = builder.icmp_eq(six_bit_val, val_const);
-
-		let char_val = match i {
-			0..=25 => b'A' + i as u8,
-			26..=51 => b'a' + (i - 26) as u8,
-			52..=61 => b'0' + (i - 52) as u8,
-			62 => b'-', // URL-safe: minus instead of plus
-			63 => b'_', // URL-safe: underscore instead of slash
-			_ => unreachable!(),
-		};
-
-		let char_const = builder.add_constant_64(char_val as u64);
-		let masked_char = builder.band(is_this_val, char_const);
-		result = builder.bor(result, masked_char);
-	}
-
-	result
+	let lookup_table: Vec<Wire> = (0..64u64)
+		.map(|i| {
+			let char_val = match i {
+				0..=25 => b'A' + i as u8,
+				26..=51 => b'a' + (i - 26) as u8,
+				52..=61 => b'0' + (i - 52) as u8,
+				62 => b'-', // URL-safe: minus instead of plus
+				63 => b'_', // URL-safe: underscore instead of slash
+				_ => unreachable!(),
+			};
+			builder.add_constant_64(char_val as u64)
+		})
+		.collect();
+	single_wire_multiplex(builder, &lookup_table, six_bit_val)
 }
 
 #[cfg(test)]
