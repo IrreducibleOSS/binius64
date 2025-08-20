@@ -26,7 +26,12 @@ pub fn test_bitcoin_ecdsa_test_vector() {
 		BigUint::new_constant(&builder, &native)
 	});
 
-	let pk = Secp256k1Affine { x: pkx, y: pky };
+	let is_point_at_infinity = builder.add_constant(Word::ZERO);
+	let pk = Secp256k1Affine {
+		x: pkx,
+		y: pky,
+		is_point_at_infinity,
+	};
 
 	let signature_valid = bitcoin_verify(&builder, pk, &z, &r, &s);
 

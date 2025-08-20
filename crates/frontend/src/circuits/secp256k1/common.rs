@@ -16,18 +16,25 @@ const GY_BE: [u8; 32] = hex!("483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C
 // ((2^256-2^32-977) + 1)/4 => exponent for finding quadratic residues.
 const POW_SQRT: [u8; 32] = hex!("3FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFBFFFFF0C");
 
+/// Padded zero.
 pub fn coord_zero(b: &CircuitBuilder) -> BigUint {
 	BigUint::new_constant(b, &num_bigint::BigUint::ZERO).zero_extend(b, N_LIMBS)
 }
 
+/// Zero extended b = 7 constant.
 pub fn coord_b(b: &CircuitBuilder) -> BigUint {
 	BigUint::new_constant(b, &num_bigint::BigUint::from(7usize)).zero_extend(b, N_LIMBS)
 }
 
+/// Quadratic residue exponent.
+///
+/// Field modulus p = 3 (mod 4) allow raising to the power (p+1)/4 to compute one of quadratic
+/// residues. Another quadratic residue is its additive inverse.
 pub fn pow_sqrt(b: &CircuitBuilder) -> BigUint {
 	BigUint::new_constant(b, &num_bigint::BigUint::from_bytes_be(&POW_SQRT))
 }
 
+/// Coordinates of the generator basepoint.
 pub fn coords_gen(b: &CircuitBuilder) -> (BigUint, BigUint) {
 	let x = BigUint::new_constant(b, &num_bigint::BigUint::from_bytes_be(&GX_BE));
 	let y = BigUint::new_constant(b, &num_bigint::BigUint::from_bytes_be(&GY_BE));

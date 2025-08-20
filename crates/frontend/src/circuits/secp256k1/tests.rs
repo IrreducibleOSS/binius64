@@ -15,9 +15,9 @@ fn test_secp256k1_group_order() {
 
 	let curve = Secp256k1::new(&builder);
 
-	let generator = Secp256k1Affine::generator(&builder).to_jacobian(&builder);
+	let generator = Secp256k1Affine::generator(&builder);
 
-	let mut acc = Secp256k1Affine::point_at_infinity(&builder).to_jacobian(&builder);
+	let mut acc = Secp256k1Affine::point_at_infinity(&builder);
 
 	for i in (0..256).rev() {
 		acc = curve.double(&builder, &acc);
@@ -27,13 +27,11 @@ fn test_secp256k1_group_order() {
 		}
 	}
 
-	let is_pai = acc.is_point_at_infinity(&builder);
-
 	let cs = builder.build();
 	let mut w = cs.new_witness_filler();
 	assert!(cs.populate_wire_witness(&mut w).is_ok());
 
-	assert_eq!(w[is_pai], Word::ALL_ONE);
+	assert_eq!(w[acc.is_point_at_infinity], Word::ALL_ONE);
 }
 
 #[test]
@@ -42,16 +40,14 @@ fn test_secp256k1_pow2pow137() {
 
 	let curve = Secp256k1::new(&builder);
 
-	let generator = Secp256k1Affine::generator(&builder).to_jacobian(&builder);
+	let generator = Secp256k1Affine::generator(&builder);
 
-	let mut acc = Secp256k1Affine::point_at_infinity(&builder).to_jacobian(&builder);
+	let mut acc = Secp256k1Affine::point_at_infinity(&builder);
 
 	for _i in 0..137 {
 		acc = curve.double(&builder, &acc);
 		acc = curve.add(&builder, &generator, &acc);
 	}
-
-	let acc = curve.jacobian_to_affine(&builder, acc);
 
 	let cs = builder.build();
 	let mut w = cs.new_witness_filler();
@@ -76,13 +72,9 @@ fn test_secp256k1_generator_double_and_add() {
 
 	let curve = Secp256k1::new(&builder);
 
-	let generator = Secp256k1Affine::generator(&builder).to_jacobian(&builder);
+	let generator = Secp256k1Affine::generator(&builder);
 	let double = curve.double(&builder, &generator);
 	let triple = curve.add(&builder, &double, &generator);
-
-	let generator = curve.jacobian_to_affine(&builder, generator);
-	let double = curve.jacobian_to_affine(&builder, double);
-	let triple = curve.jacobian_to_affine(&builder, triple);
 
 	let cs = builder.build();
 	let mut w = cs.new_witness_filler();

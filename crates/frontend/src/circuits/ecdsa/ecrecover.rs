@@ -17,6 +17,7 @@ use crate::{
 ///   that we do not support `r` being greater or equal than the scalar field modulus, and thus only
 ///   need parity; some implementations assume 0-3 bitmask which encodes both y parity and r scalar
 ///   field overflow, but that's not needed for Ethereum.
+///
 /// # Outputs
 /// The recovered public key `pk` in affine form.
 pub fn ecrecover(
@@ -38,5 +39,5 @@ pub fn ecrecover(
 	let u1 = f_scalar.sub(b, &coord_zero(b), &f_scalar.mul(b, z, &r_inverse));
 	let u2 = f_scalar.mul(b, s, &r_inverse);
 
-	shamirs_trick(b, &curve, 256, &u1, &u2, nonce).mask(b, b.band(valid_r, valid_s))
+	shamirs_trick(b, &curve, 256, &u1, &u2, nonce).pai_unless(b, b.band(valid_r, valid_s))
 }

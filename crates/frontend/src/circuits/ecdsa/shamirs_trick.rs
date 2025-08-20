@@ -6,7 +6,6 @@ use crate::{
 		secp256k1::{Secp256k1, Secp256k1Affine},
 	},
 	compiler::CircuitBuilder,
-	util::bool_to_mask,
 };
 
 /// A common trick to save doublings when computing multiexponentiations of the form
@@ -20,10 +19,9 @@ pub fn shamirs_trick(
 	pk_mult: &BigUint,
 	pk: Secp256k1Affine,
 ) -> Secp256k1Affine {
-	let g = Secp256k1Affine::generator(b).to_jacobian(b);
-	let pk = pk.to_jacobian(b);
+	let g = Secp256k1Affine::generator(b);
 
-	let mut acc = Secp256k1Affine::point_at_infinity(b).to_jacobian(b);
+	let mut acc = Secp256k1Affine::point_at_infinity(b);
 
 	for bit_index in (0..bits).rev() {
 		let limb = bit_index / WORD_SIZE_BITS;
@@ -43,9 +41,9 @@ pub fn shamirs_trick(
 		// assume the value of G or PK, such possibility cannot be ruled out.
 
 		// TODO: optimize this to one addition per double-and-add step
-		acc = curve.add(b, &acc, &g.mask(b, bool_to_mask(b, g_mult_bit)));
-		acc = curve.add(b, &acc, &pk.mask(b, bool_to_mask(b, pk_mult_bit)));
+		acc = curve.add(b, &acc, &g.pai_unless(b, g_mult_bit));
+		acc = curve.add(b, &acc, &pk.pai_unless(b, pk_mult_bit));
 	}
 
-	curve.jacobian_to_affine(b, acc)
+	acc
 }
