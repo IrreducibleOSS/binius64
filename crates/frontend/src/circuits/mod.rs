@@ -1,5 +1,6 @@
 pub mod base64;
 pub mod bignum;
+pub mod blake2b;
 pub mod concat;
 pub mod ecdsa;
 pub mod fixed_byte_vec;
