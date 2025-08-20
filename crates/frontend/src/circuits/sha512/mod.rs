@@ -5,62 +5,61 @@ pub use compress::{Compress, State};
 
 use crate::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
 
-/// Verifies that a message produces a specific SHA-256 digest.
+/// Verifies that a message produces a specific SHA-512 digest.
 ///
-/// This circuit validates that the provided message, when hashed using SHA-256,
-/// produces exactly the expected digest. It implements the full SHA-256 algorithm
+/// This circuit validates that the provided message, when hashed using SHA-512,
+/// produces exactly the expected digest. It implements the full SHA-512 algorithm
 /// including proper padding and compression.
 ///
 /// # Wire Layout
 ///
 /// The circuit uses the following wire organization:
-/// - Message words: 8 bytes per wire, packed as two XORed 32-bit big-endian words
-/// - Digest: 4 wires of 64 bits each, representing the 256-bit hash in big-endian order
+/// - Message words: 16 bytes per wire
+/// - Digest: 8 wires of 64 bits each, representing the 512-bit hash in big-endian order
 ///
 /// # Limitations
 ///
-/// The message bitlength must be less than 2^32 bits (2^29 bytes) due to SHA-256's
+/// The message bitlength must be less than 2^32 bits (2^29 bytes) due to SHA-512's
 /// length encoding using a 64-bit integer where we only support the lower 32 bits.
-pub struct Sha256 {
+pub struct Sha512 {
 	/// The maximum length of the input message in bytes this circuit is configured to process.
 	pub max_len: usize,
 	/// The actual length of the input message in bytes.
 	///
 	/// Must be less than or equal to `max_len`.
 	pub len: Wire,
-	/// The expected SHA-256 digest packed as 4x64-bit words in big-endian order.
+	/// The expected SHA-512 digest packed as 8x64-bit words in big-endian order.
 	///
-	/// - digest\[0\]: High 64 bits (bytes 0-7 of the hash)
-	/// - digest\[1\]: Next 64 bits (bytes 8-15 of the hash)
-	/// - digest\[2\]: Next 64 bits (bytes 16-23 of the hash)
-	/// - digest\[3\]: Low 64 bits (bytes 24-31 of the hash)
-	pub digest: [Wire; 4],
+	/// - digest\[0\]: Highest 64 bits (bytes 0-7 of the hash)
+	/// - .....
+	/// - digest\[7\]: Lowest 64 bits (bytes 56-63 of the hash)
+	pub digest: [Wire; 8],
 	/// The input message packed as 64-bit words.
 	///
-	/// Each wire contains 8 bytes of the message packed as two XORed 32-bit big-endian words.
+	/// Each wire contains 8 bytes of the message.
 	/// The number of wires is `ceil(max_len / 8)`.
 	pub message: Vec<Wire>,
 
-	/// Compression gadgets for each 512-bit block.
+	/// Compression gadgets for each 1024-bit block.
 	///
-	/// Each compression gadget processes one 512-bit (64-byte) block of the padded message.
+	/// Each compression gadget processes one 1024-bit (128-byte) block of the padded message.
 	/// The gadgets are chained together, with each taking the output state from the previous
-	/// compression as input. The first compression starts from the SHA-256 initialization vector.
+	/// compression as input. The first compression starts from the SHA-512 initialization vector.
 	///
-	/// The number of compression gadgets is `ceil((max_len + 9) / 64)`, accounting for
-	/// the minimum 9 bytes of padding (1 byte for 0x80 delimiter + 8 bytes for length).
+	/// The number of compression gadgets is `ceil((max_len + 17) / 128)`, accounting for
+	/// the minimum 17 bytes of padding (1 byte for 0x80 delimiter + 16 bytes for length).
 	compress: Vec<Compress>,
 }
 
-impl Sha256 {
-	/// Creates a new SHA-256 verifier circuit.
+impl Sha512 {
+	/// Creates a new SHA-512 verifier circuit.
 	///
 	/// # Arguments
 	/// * `builder` - Circuit builder for constructing constraints
 	/// * `max_len` - Maximum message length in bytes this circuit can handle
 	/// * `len` - Wire containing the actual message length in bytes
-	/// * `digest` - Expected SHA-256 digest as 4 wires of 64 bits each
-	/// * `message` - Input message as packed 64-bit words (8 bytes per wire)
+	/// * `digest` - Expected SHA-512 digest as 8 wires of 64 bits each
+	/// * `message` - Input message as packed 64-bit words (16 bytes per wire)
 	///
 	/// # Panics
 	/// * If `max_len` is 0
@@ -70,19 +69,19 @@ impl Sha256 {
 	/// # Circuit Structure
 	/// The circuit performs the following validations:
 	/// 1. Ensures the actual length is within bounds (len <= max_len)
-	/// 2. Pads the message according to SHA-256 specifications
+	/// 2. Pads the message according to SHA-512 specifications
 	/// 3. Computes the hash through chained compression functions
 	/// 4. Verifies the computed digest matches the expected digest
 	pub fn new(
 		builder: &CircuitBuilder,
-		max_len: usize,
+		max_len: usize, // why not `u64`? -- BD
 		len: Wire,
-		digest: [Wire; 4],
+		digest: [Wire; 8],
 		message: Vec<Wire>,
 	) -> Self {
 		// ---- Circuit construction overview
 		//
-		// This function builds a SHA-256 circuit with the following structure:
+		// This function builds a SHA-512 circuit with the following structure:
 		//
 		// 1. Input validation and setup
 		//    - Validate maximum length constraints
@@ -102,20 +101,20 @@ impl Sha256 {
 
 		// ---- 1. Input validation and setup
 		//
-		// SHA-256 padding routine uses a 64-bit integer to specify the length of the message
+		// SHA-512 padding routine uses a 64-bit integer to specify the length of the message
 		// in bits. This is impractical for a circuit, so we cap the maximum bit length by 2^32,
 		// allowing us to check a single word instead of two.
 		//
 		// We calculate the number of compression blocks needed, including the last padding block
-		// for the maximum sized message. Each block is 64 bytes, and we need 9 extra bytes for
-		// padding (1 byte for 0x80 delimiter + 8 bytes for length field).
+		// for the maximum sized message. Each block is 128 bytes, and we need 17 extra bytes for
+		// padding (1 byte for 0x80 delimiter + 16 bytes for length field).
 		//
 		// We also verify that the actual input length len is within bounds.
 		assert!(max_len > 0, "max_len must be positive");
-		assert!(max_len * 8 <= u32::MAX as usize, "max_len * 8 must fit in 32 bits");
+		assert!(max_len * 8 <= u64::MAX as usize, "max_len * 8 must fit in 64 bits");
 
-		let n_blocks = (max_len + 9).div_ceil(64);
-		let n_words = n_blocks * 8;
+		let n_blocks = (max_len + 17).div_ceil(128);
+		let n_words = n_blocks * 16;
 
 		// Assert that len <= max_len by checking that !(max_len < len)
 		let len_exceeds_max = builder.icmp_ult(builder.add_constant_64(max_len as u64), len);
@@ -149,41 +148,45 @@ impl Sha256 {
 			compress.push(c);
 		}
 
-		// ---- 2a. SHA-256 padding position calculation
+		// ---- 2a. SHA-512 padding position calculation
 		//
-		// Calculate where padding elements go. SHA-256 padding has three parts:
+		// Calculate where padding elements go. SHA-512 padding has three parts:
 		// 1. The 0x80 delimiter byte immediately after the message
 		// 2. Zero bytes to fill up to the length field
-		// 3. 64-bit length field in the last 8 bytes of a block
+		// 3. 128-bit length field in the last 16 bytes of a block
 		//
 		// The length field fits in the same block as the message if there's room for at least
-		// 9 bytes of padding (1 delimiter + 8 length). This happens when len % 64 <= 55.
-		// Special case: if len % 64 = 0 and len > 0, the message fills the block exactly, so
+		// 17 bytes of padding (1 delimiter + 16 length). This happens when len % 128 <= 111.
+		// Special case: if len % 128 = 0, the message fills the block exactly, so
 		// padding goes in the next block.
 		//
 		// We calculate:
 		// - w_bd: word boundary (which word contains the last message byte)
 		// - msg_block: which block contains the last message byte
 		// - end_block_index: which block contains the length field
+
+		// bd. i claim that it should be enough to figure out:
+		let zero = builder.add_constant(Word::ZERO);
 		let w_bd = builder.shr(len, 3);
 		let len_mod_8 = builder.band(len, builder.add_constant_zx_8(7));
 		let bitlen = builder.shl(len, 3);
+		// For SHA-512, the length field is 128 bits. We only support messages < 2^32 bits,
+		// so the high 64 bits are zero. We keep `bitlen` as the low 64-bit portion.
 
-		let zero = builder.add_constant(Word::ZERO);
-		let end_block_index = builder.shr(builder.iadd_32(len, builder.add_constant_64(8)), 6);
+		// end_block_index = floor((len + 16) / 128) using 64-bit add
+		let end_block_index = builder.shr(builder.iadd_32(len, builder.add_constant_64(16)), 7);
 		let delim: Wire = builder.add_constant_zx_8(0x80);
-
 		// ---- 2b. Final digest selection
 		//
 		// Select the correct final digest from all compression outputs. The final digest is
 		// the state after processing the end_block (the block containing the length field).
 		// We use masking and OR operations to conditionally select the right digest.
-		let mut final_digest = [zero; 4];
+		let mut final_digest = [zero; 8];
 		for block_no in 0..n_blocks {
 			let is_selected =
 				builder.icmp_eq(builder.add_constant_64(block_no as u64), end_block_index);
-			let block_digest = states[block_no + 1].pack_4x64b(builder);
-			for i in 0..4 {
+			let block_digest = states[block_no + 1].0;
+			for i in 0..8 {
 				let masked = builder.band(is_selected, block_digest[i]);
 				final_digest[i] = builder.bor(final_digest[i], masked);
 			}
@@ -193,7 +196,7 @@ impl Sha256 {
 
 		// ---- 3. Message padding constraints
 		//
-		// This section validates that the padded message follows SHA-256 padding rules.
+		// This section validates that the padded message follows SHA-512 padding rules.
 		// For each 64-bit word in the padded message, we check:
 		//
 		// 1. Message words: Must match the input message exactly
@@ -220,12 +223,9 @@ impl Sha256 {
 		for word_index in 0..n_words {
 			let builder = builder.subcircuit(format!("word[{word_index}]"));
 
-			// From two adjacent 32-bit message schedule words get a packed 64-bit message word.
-			let blk = (word_index * 2) / 16;
-			let idx = (word_index * 2) % 16;
-			let w_lo32 = padded_message[blk][idx];
-			let w_hi32 = padded_message[blk][idx + 1];
-			let padded_message_word = builder.bxor(w_lo32, builder.shl(w_hi32, 32));
+			let blk = word_index / 16;
+			let idx = word_index % 16;
+			let padded_message_word = padded_message[blk][idx];
 
 			// flags that help us classify our current position.
 			//
@@ -239,6 +239,7 @@ impl Sha256 {
 				builder.icmp_eq(w_bd, builder.add_constant_64(word_index as u64));
 			let is_past_message =
 				builder.icmp_ult(w_bd, builder.add_constant_64(word_index as u64));
+			// BD NOTE: the above is wasteful. using just one comparison plus one eq, we can negate.
 
 			// ---- 3a. Full message words
 			//
@@ -273,19 +274,7 @@ impl Sha256 {
 				let builder = builder.subcircuit(format!("byte[{j}]"));
 				let [data_b, delim_b, zero_b] = byte_flags[j as usize];
 
-				// We need to extract the byte according to big-endian.
-				//
-				// | j | Extract from | Byte index (in 64-bit word) |
-				// |---|--------------|-----------------------------|
-				// | 0 | low 32 bits  | 3 (MSB of lo)               |
-				// | 1 | low 32 bits  | 2                           |
-				// | 2 | low 32 bits  | 1                           |
-				// | 3 | low 32 bits  | 0 (LSB of lo)               |
-				// | 4 | high 32 bits | 7 (MSB of hi)               |
-				// | 5 | high 32 bits | 6                           |
-				// | 6 | high 32 bits | 5                           |
-				// | 7 | high 32 bits | 4 (LSB of hi)               |
-				let byte_index = if j < 4 { 3 - j } else { 11 - j };
+				let byte_index = 7 - j;
 				let byte_w = builder.extract_byte(padded_message_word, byte_index as u32);
 				let byte_m = builder.extract_byte(message_word, byte_index as u32);
 
@@ -316,36 +305,34 @@ impl Sha256 {
 
 			// ---- 3c. Zero padding constraints
 			//
-			// SHA-256 padding fills the space between the delimiter byte (0x80) and the
+			// SHA-512 padding fills the space between the delimiter byte (0x80) and the
 			// length field with zeros. We need to ensure all padding words are zero,
-			// except for the final 64-bit word of the length block which contains the
+			// except for the final two 64-bit words of the length block which contains the
 			// message bit length.
 			//
-			// The length field occupies the last 8 bytes (64 bits) of a block, which
-			// corresponds to 32-bit words 14 and 15 (packed as 64-bit word index 7).
+			// The length field occupies the last 16 bytes (128 bits) of a block, which
+			// corresponds to 64-bit words 14 and 15.
 			// We identify padding words as those that are:
 			// 1. Past the message boundary (is_past_message = true)
-			// 2. NOT the length field location (last 64-bit word of the length block)
+			// 2. NOT the length field location (last two 64-bit words of the length block)
+			// actually, I am going to treat the 14th word as a padding word---assume it's 0. -- BD
 			let is_length_block =
 				builder.icmp_eq(builder.add_constant_64(blk as u64), end_block_index);
 
 			// ---- 3d. Length field placement
 			//
-			// When idx == 14, we're looking at the last two 32-bit words of a block (words 14 and
-			// 15). If this block contains the length field:
-			// - Word 14 must be zero (high 32 bits of length, always 0 since we support < 2^32
-			//   bits)
+			// When idx == 15, we're looking at the last 64-bit word of a block
+			// If this block contains the length field:
 			// - Word 15 contains the message bit length
 			// Otherwise, if it's a padding word (not message, not length), it must be zero.
-			if idx == 14 {
+			if idx == 15 {
 				builder.assert_eq_cond(
 					"3c.zero_pad",
 					padded_message_word,
 					zero,
 					builder.band(is_past_message, builder.bnot(is_length_block)),
 				);
-				builder.assert_eq_cond("3d.w14_zero", w_lo32, zero, is_length_block);
-				builder.assert_eq_cond("3d.w15_len", w_hi32, bitlen, is_length_block);
+				builder.assert_eq_cond("3d.w15_len", padded_message_word, bitlen, is_length_block);
 			} else {
 				builder.assert_eq_cond("3c.zero_pad", padded_message_word, zero, is_past_message);
 			}
@@ -370,7 +357,7 @@ impl Sha256 {
 	}
 
 	/// Populates the digest wires with the expected SHA-256 hash.
-	pub fn populate_digest(&self, w: &mut WitnessFiller<'_>, digest: [u8; 32]) {
+	pub fn populate_digest(&self, w: &mut WitnessFiller<'_>, digest: [u8; 64]) {
 		for (i, bytes) in digest.chunks(8).enumerate() {
 			let word = u64::from_be_bytes(bytes.try_into().unwrap());
 			w[self.digest[i]] = Word(word);
@@ -379,19 +366,19 @@ impl Sha256 {
 
 	/// Returns digest wires in little-endian packed format.
 	///
-	/// The SHA256 digest is stored as 4 wires, each containing 8 bytes of the hash
+	/// The SHA512 digest is stored as 8 wires, each containing 8 bytes of the hash
 	/// as a 64-bit big-endian value.
 	///
 	/// This method extracts the individual bytes and repacks them in little-endian format,
 	/// which is useful for interfacing with other circuits that expect LE format.
 	///
 	/// # Returns
-	/// An array of 4 wires containing the 32-byte digest repacked in little-endian format (8 bytes
+	/// An array of 8 wires containing the 64-byte digest repacked in little-endian format (8 bytes
 	/// per wire)
-	pub fn digest_to_le_wires(&self, builder: &CircuitBuilder) -> [Wire; 4] {
-		let mut wires = [builder.add_constant(Word::ZERO); 4];
+	pub fn digest_to_le_wires(&self, builder: &CircuitBuilder) -> [Wire; 8] {
+		let mut wires = [builder.add_constant(Word::ZERO); 8];
 
-		for i in 0..4 {
+		for i in 0..8 {
 			let be_wire = self.digest[i];
 
 			// Extract 8 bytes from the 64-bit BE value
@@ -420,9 +407,6 @@ impl Sha256 {
 
 	/// Returns message wires in little-endian packed format.
 	///
-	/// The SHA256 message is stored with each wire containing 8 bytes packed as two XORed 32-bit
-	/// big-endian words: `lo_word ^ (hi_word << 32)`.
-	///
 	/// This method extracts the individual bytes and repacks them in little-endian format,
 	/// which is useful for interfacing with other circuits that expect LE format (e.g., zklogin).
 	///
@@ -431,33 +415,13 @@ impl Sha256 {
 	pub fn message_to_le_wires(&self, builder: &CircuitBuilder) -> Vec<Wire> {
 		let mut wires = Vec::with_capacity(self.message.len());
 
-		for &sha256_wire in &self.message {
-			// Extract the two 32-bit words from SHA256 format
-			// SHA256 format: lo_word ^ (hi_word << 32)
-			let hi_word = builder.shr(sha256_wire, 32);
-			let hi_word_masked = builder.band(hi_word, builder.add_constant(Word(0xFFFFFFFF)));
-			let lo_word = builder.band(sha256_wire, builder.add_constant(Word(0xFFFFFFFF)));
-
-			// Extract bytes from the two 32-bit BE words
-			// lo_word contains message bytes[i*8..i*8+4] in big-endian
-			// hi_word contains message bytes[i*8+4..i*8+8] in big-endian
+		for &sha512_wire in &self.message {
 			let mut bytes = Vec::with_capacity(8);
 
-			// Extract 4 bytes from lo_word (BE format) - these are bytes 0-3
-			for j in 0..4 {
-				let shift_amount = (24 - j * 8) as u32;
+			for j in 0..8 {
+				let shift_amount = (56 - j * 8) as u32;
 				let byte = builder
-					.band(builder.shr(lo_word, shift_amount), builder.add_constant(Word(0xFF)));
-				bytes.push(byte);
-			}
-
-			// Extract 4 bytes from hi_word (BE format) - these are bytes 4-7
-			for j in 0..4 {
-				let shift_amount = (24 - j * 8) as u32;
-				let byte = builder.band(
-					builder.shr(hi_word_masked, shift_amount),
-					builder.add_constant(Word(0xFF)),
-				);
+					.band(builder.shr(sha512_wire, shift_amount), builder.add_constant(Word(0xFF)));
 				bytes.push(byte);
 			}
 
@@ -494,7 +458,7 @@ impl Sha256 {
 		);
 
 		let n_blocks = self.compress.len();
-		let mut padded_message_bytes = vec![0u8; n_blocks * 64];
+		let mut padded_message_bytes = vec![0u8; n_blocks * 128];
 
 		// Apply SHA-256 padding
 		//
@@ -516,37 +480,31 @@ impl Sha256 {
 		// So we can fit the length in the current block only if position after message + 0x80 <=
 		// 56. This means len % 64 must be <= 55 to fit everything in the same block.
 		let len = message_bytes.len() as u64;
-		let end_block_index = (len + 8) / 64;
-		// Length field always starts at byte offset 56 within its block (64 - 8 = 56)
-		let len_offset = (end_block_index as usize) * 64 + 56;
+		let end_block_index = (len + 16) / 128; // floor((len + 16)/128)
+		// even though there are 16 bytes devoted to the length field, we will only write 8.
+		let len_offset = (end_block_index as usize) * 128 + 120;
 		padded_message_bytes[len_offset..len_offset + 8].copy_from_slice(&len_bytes);
 
 		// Populate witness wires
 		//
 		// Pack the padded message into the witness format expected by the circuit:
-		// 1. Message wires: 8 bytes per wire, packed as two 32-bit big-endian words XORed together
-		// 2. Compression inputs: 64-byte blocks passed to each compression gadget
+		// 1. Message wires: 8 bytes per wire
+		// 2. Compression inputs: 128-byte blocks passed to each compression gadget
 		for (i, wire) in self.message.iter().enumerate() {
 			let byte_start = i * 8;
 
-			let mut lo_word = 0u32;
-			for j in 0..4 {
-				lo_word |= (padded_message_bytes[byte_start + j] as u32) << (24 - j * 8);
+			let mut word = 0u64;
+			for j in 0..8 {
+				word |= (padded_message_bytes[byte_start + j] as u64) << (56 - j * 8);
 			}
-
-			let mut hi_word = 0u32;
-			for j in 4..8 {
-				hi_word |= (padded_message_bytes[byte_start + j] as u32) << (24 - (j - 4) * 8);
-			}
-
-			let word = (lo_word as u64) ^ ((hi_word as u64) << 32);
 			w[*wire] = Word(word);
 		}
 
 		for (i, compress) in self.compress.iter().enumerate() {
-			let block_start = i * 64;
-			let block = &padded_message_bytes[block_start..block_start + 64];
-			compress.populate_m(w, block.try_into().unwrap());
+			let block_start = i * 128;
+			let mut block_arr = [0u8; 128];
+			block_arr.copy_from_slice(&padded_message_bytes[block_start..block_start + 128]);
+			compress.populate_m(w, block_arr);
 		}
 	}
 }
@@ -556,23 +514,23 @@ mod tests {
 	use binius_core::Word;
 	use hex_literal::hex;
 
-	use super::Sha256;
+	use super::Sha512;
 	use crate::{
 		compiler::{self, Wire},
 		constraint_verifier::verify_constraints,
 	};
 
-	fn mk_circuit(b: &mut compiler::CircuitBuilder, max_n: usize) -> Sha256 {
+	fn mk_circuit(b: &mut compiler::CircuitBuilder, max_n: usize) -> Sha512 {
 		let len = b.add_witness();
-		let digest: [Wire; 4] = std::array::from_fn(|_| b.add_inout());
-		let n_blocks = (max_n + 9).div_ceil(64);
-		let n_words = n_blocks * 8;
+		let digest: [Wire; 8] = std::array::from_fn(|_| b.add_inout());
+		let n_blocks = (max_n + 17).div_ceil(128);
+		let n_words = n_blocks * 16;
 		let message = (0..n_words).map(|_| b.add_inout()).collect();
-		Sha256::new(b, max_n, len, digest, message)
+		Sha512::new(b, max_n, len, digest, message)
 	}
 
 	#[test]
-	fn full_sha256() {
+	fn full_sha512() {
 		let mut b = compiler::CircuitBuilder::new();
 		let c = mk_circuit(&mut b, 2048);
 		let circuit = b.build();
@@ -581,30 +539,30 @@ mod tests {
 		c.populate_message(&mut w, b"abc");
 		c.populate_digest(
 			&mut w,
-			hex!("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
+			hex!("ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f"),
 		);
 		circuit.populate_wire_witness(&mut w).unwrap();
 	}
 
 	#[test]
-	fn full_sha256_multi_block() {
+	fn full_sha512_multi_block() {
 		let mut b = compiler::CircuitBuilder::new();
 		let c = mk_circuit(&mut b, 2048);
 		let circuit = b.build();
 		let mut w = circuit.new_witness_filler();
 
-		let message = b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
+		let message = b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopqabcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
 		c.populate_len(&mut w, message.len());
 		c.populate_message(&mut w, message);
 		c.populate_digest(
 			&mut w,
-			hex!("248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"),
+			hex!("7361ec4a617b6473fb751c44d1026db9442915a5fcea1a419e615d2f3bc5069494da28b8cf2e4412a1dc97d6848f9c84a254fb884ad0720a83eaa0434aeafd8c"),
 		);
 		circuit.populate_wire_witness(&mut w).unwrap();
 	}
 
-	// Helper function to run SHA-256 test with given input and expected digest
-	fn test_sha256_with_input(message: &[u8], expected_digest: [u8; 32]) {
+	// Helper function to run SHA-512 test with given input and expected digest
+	fn test_sha512_with_input(message: &[u8], expected_digest: [u8; 64]) {
 		let mut b = compiler::CircuitBuilder::new();
 		let c = mk_circuit(&mut b, 2048);
 		let circuit = b.build();
@@ -621,161 +579,201 @@ mod tests {
 
 	#[test]
 	fn test_empty_message() {
-		test_sha256_with_input(
+		test_sha512_with_input(
 			b"",
-			hex!("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
+			hex!(
+				"cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e"
+			),
 		);
 	}
 
 	#[test]
 	fn test_single_byte() {
-		test_sha256_with_input(
+		test_sha512_with_input(
 			b"a",
-			hex!("ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"),
+			hex!(
+				"1f40fc92da241694750979ee6cf582f2d5d7d28e18335de05abc54d0560e0f5302860c652bf08d560252aa5e74210546f369fbbbce8c12cfc7957b2652fe9a75"
+			),
 		);
 	}
 
 	#[test]
 	fn test_two_bytes() {
-		test_sha256_with_input(
+		test_sha512_with_input(
 			b"ab",
-			hex!("fb8e20fc2e4c3f248c60c39bd652f3c1347298bb977b8b4d5903b85055620603"),
+			hex!(
+				"2d408a0717ec188158278a796c689044361dc6fdde28d6f04973b80896e1823975cdbf12eb63f9e0591328ee235d80e9b5bf1aa6a44f4617ff3caf6400eb172d"
+			),
 		);
 	}
 
 	#[test]
 	fn test_ten_bytes() {
-		test_sha256_with_input(
+		test_sha512_with_input(
 			b"abcdefghij",
-			hex!("72399361da6a7754fec986dca5b7cbaf1c810a28ded4abaf56b2106d06cb78b0"),
+			hex!(
+				"ef6b97321f34b1fea2169a7db9e1960b471aa13302a988087357c520be957ca119c3ba68e6b4982c019ec89de3865ccf6a3cda1fe11e59f98d99f1502c8b9745"
+			),
 		);
 	}
 
 	#[test]
-	fn test_size_55_bytes() {
-		// 55 bytes - maximum that fits in one block with padding
-		test_sha256_with_input(
-			&[b'a'; 55],
-			hex!("9f4390f8d30c2dd92ec9f095b65e2b9ae9b0a925a5258e241c9f1e910f734318"),
+	fn test_size_111_bytes() {
+		// 111 bytes - maximum that fits in one block with padding
+		test_sha512_with_input(
+			&[b'a'; 111],
+			hex!(
+				"fa9121c7b32b9e01733d034cfc78cbf67f926c7ed83e82200ef86818196921760b4beff48404df811b953828274461673c68d04e297b0eb7b2b4d60fc6b566a2"
+			),
 		);
 	}
 
 	#[test]
-	fn test_size_56_bytes() {
-		// 56 bytes - critical boundary, forces two blocks
-		test_sha256_with_input(
-			&[b'a'; 56],
-			hex!("b35439a4ac6f0948b6d6f9e3c6af0f5f590ce20f1bde7090ef7970686ec6738a"),
+	fn test_size_112_bytes() {
+		// 112 bytes - critical boundary, forces two blocks
+		test_sha512_with_input(
+			&[b'a'; 112],
+			hex!(
+				"c01d080efd492776a1c43bd23dd99d0a2e626d481e16782e75d54c2503b5dc32bd05f0f1ba33e568b88fd2d970929b719ecbb152f58f130a407c8830604b70ca"
+			),
 		);
 	}
 
 	#[test]
-	fn test_size_63_bytes() {
-		// 63 bytes - one byte from block boundary
-		test_sha256_with_input(
-			&[b'a'; 63],
-			hex!("7d3e74a05d7db15bce4ad9ec0658ea98e3f06eeecf16b4c6fff2da457ddc2f34"),
-		);
-	}
-
-	#[test]
-	fn test_size_64_bytes() {
-		// 64 bytes - exactly one complete block
-		test_sha256_with_input(
-			&[b'a'; 64],
-			hex!("ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb"),
-		);
-	}
-
-	#[test]
-	fn test_size_100_bytes() {
-		// 100 bytes - tests two-block processing
-		test_sha256_with_input(
-			&[b'a'; 100],
-			hex!("2816597888e4a0d3a36b82b83316ab32680eb8f00f8cd3b904d681246d285a0e"),
-		);
-	}
-
-	#[test]
-	fn test_size_119_bytes() {
-		// 119 bytes - maximum that fits in two blocks with padding
-		test_sha256_with_input(
-			&[b'a'; 119],
-			hex!("31eba51c313a5c08226adf18d4a359cfdfd8d2e816b13f4af952f7ea6584dcfb"),
-		);
-	}
-
-	#[test]
-	fn test_size_120_bytes() {
-		// 120 bytes - minimum that needs three blocks
-		test_sha256_with_input(
-			&[b'a'; 120],
-			hex!("2f3d335432c70b580af0e8e1b3674a7c020d683aa5f73aaaedfdc55af904c21c"),
+	fn test_size_127_bytes() {
+		// 127 bytes - one byte from block boundary
+		test_sha512_with_input(
+			&[b'a'; 127],
+			hex!(
+				"828613968b501dc00a97e08c73b118aa8876c26b8aac93df128502ab360f91bab50a51e088769a5c1eff4782ace147dce3642554199876374291f5d921629502"
+			),
 		);
 	}
 
 	#[test]
 	fn test_size_128_bytes() {
-		// 128 bytes - exactly two complete blocks
-		test_sha256_with_input(
+		// 128 bytes - exactly one complete block
+		test_sha512_with_input(
 			&[b'a'; 128],
-			hex!("6836cf13bac400e9105071cd6af47084dfacad4e5e302c94bfed24e013afb73e"),
+			hex!(
+				"b73d1929aa615934e61a871596b3f3b33359f42b8175602e89f7e06e5f658a243667807ed300314b95cacdd579f3e33abdfbe351909519a846d465c59582f321"
+			),
+		);
+	}
+
+	#[test]
+	fn test_size_200_bytes() {
+		// 2200 bytes - tests two-block processing
+		test_sha512_with_input(
+			&[b'a'; 200],
+			hex!(
+				"4b11459c33f52a22ee8236782714c150a3b2c60994e9acee17fe68947a3e6789f31e7668394592da7bef827cddca88c4e6f86e4df7ed1ae6cba71f3e98faee9f"
+			),
+		);
+	}
+
+	#[test]
+	fn test_size_239_bytes() {
+		// 239 bytes - maximum that fits in two blocks with padding
+		test_sha512_with_input(
+			&[b'a'; 239],
+			hex!(
+				"52c853cb8d907f3d4d6b889beb027985d7c273486d75f8baf26f80d24e90c74c6c3de3e22131582380a7d14d43f2941a31385439cd6ddc469f628015e50bf286"
+			),
+		);
+	}
+
+	#[test]
+	fn test_size_240_bytes() {
+		// 240 bytes - minimum that needs three blocks
+		test_sha512_with_input(
+			&[b'a'; 240],
+			hex!(
+				"4c296d90c61052a62ffb1dd196f1b7b09373b1f93e71836baebf89690546b7595684dbe9467a8e484fa0d1094272b4344a7c24f5fee8daedeb0bf549c985ab5f"
+			),
 		);
 	}
 
 	#[test]
 	fn test_size_256_bytes() {
-		// 256 bytes - exactly four complete blocks
-		test_sha256_with_input(
+		// 256 bytes - exactly two complete blocks
+		test_sha512_with_input(
 			&[b'a'; 256],
-			hex!("02d7160d77e18c6447be80c2e355c7ed4388545271702c50253b0914c65ce5fe"),
+			hex!(
+				"6a9169eb662f136d87374070e8828b3e615a7eca32a89446e9225b02832709be095e635c824a2bb70213ba2ea0ababac0809827843992c851903b7ac0c136699"
+			),
 		);
 	}
 
 	#[test]
 	fn test_size_512_bytes() {
-		test_sha256_with_input(
+		// 512 bytes - exactly four complete blocks
+		test_sha512_with_input(
 			&[b'a'; 512],
-			hex!("471be6558b665e4f6dd49f1184814d1491b0315d466beea768c153cc5500c836"),
+			hex!(
+				"0210d27bcbe05c2156627c5f136ade1338ab98e06a4591a00b0bcaa61662a5931d0b3bd41a67b5c140627923f5f6307669eb508d8db38b2a8cd41aebd783394b"
+			),
+		);
+	}
+
+	#[test]
+	fn test_size_1024_bytes() {
+		test_sha512_with_input(
+			&[b'a'; 1024],
+			hex!(
+				"74b22492e3b9a86a9c93c23a69f821ebafa429302c1f4054b4bc37356a4bae056d9ccbc6f24093a25704faaa72bd21a5f337ca9ec92f32369d24e6b9fae954d8"
+			),
 		);
 	}
 
 	#[test]
 	fn test_realistic_text() {
 		// Realistic text around boundary
-		test_sha256_with_input(
+		test_sha512_with_input(
 			b"The quick brown fox jumps over the lazy dog!!!!!",
-			hex!("1042cd9153723d8e9124a60f2817843711a5c6b10170c80bdec99cd0c82e3dfe"),
+			hex!(
+				"2a8c8f82b62291fdb06439d90b799a6bf63bfa3acc3d627b06151099b54df6b9f860e22c84534033523f4a723d49ffb46ca059157d5cbda70ec878e4f692a38f"
+			),
 		);
 	}
 
 	#[test]
 	fn test_abc_again() {
 		// Test the classic 3-byte case to make sure basic functionality still works
-		test_sha256_with_input(
+		test_sha512_with_input(
 			b"abc",
-			hex!("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
+			hex!(
+				"ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f"
+			),
 		);
 	}
 
 	#[test]
 	fn test_mid_range_sizes() {
-		// Test various sizes in the 49-54 byte range (single block with varying padding)
-		test_sha256_with_input(
-			&[b'a'; 49],
-			hex!("8f9bec6a62dd28ebd36d1227745592de6658b36974a3bb98a4c582f683ea6c42"),
+		// Test various sizes in the 80–111 byte range (single block with varying padding)
+		test_sha512_with_input(
+			&[b'a'; 95],
+			hex!(
+				"89e0446c3ff5a04b6d707ef43a77e2b349791f402930dbdb74bbab73d5215e294146ba7bd2fa269aee38564ef11a9ccaf5278f9e82687126dcf20d481d470617"
+			),
 		);
-		test_sha256_with_input(
-			&[b'a'; 50],
-			hex!("160b4e433e384e05e537dc59b467f7cb2403f0214db15c5db58862a3f1156d2e"),
+		test_sha512_with_input(
+			&[b'a'; 100],
+			hex!(
+				"70ff99fd241905992cc3fff2f6e3f562c8719d689bfe0e53cbc75e53286d82d8767aed0959b8c63aadf55b5730babee75ea082e88414700d7507b988c44c47bc"
+			),
 		);
-		test_sha256_with_input(
-			&[b'a'; 53],
-			hex!("abe346a7259fc90b4c27185419628e5e6af6466b1ae9b5446cac4bfc26cf05c4"),
+		test_sha512_with_input(
+			&[b'a'; 105],
+			hex!(
+				"3b6dd73c9552f2381107bf206b49c7967fdc5f5011d877d9c576bb4da6d74fbbabf46a1105242d7c645978e54c0b44adaf06d9f7aa4703e8a58829f6d87c5168"
+			),
 		);
-		test_sha256_with_input(
-			&[b'a'; 54],
-			hex!("a3f01b6939256127582ac8ae9fb47a382a244680806a3f613a118851c1ca1d47"),
+		test_sha512_with_input(
+			&[b'a'; 110],
+			hex!(
+				"c825949632e509824543f7eaf159fb6041722fce3c1cdcbb613b3d37ff107c519417baac32f8e74fe29d7f4823bf6886956603dca5354a6ed6e4a542e06b7d28"
+			),
 		);
 	}
 
@@ -793,7 +791,7 @@ mod tests {
 		c.populate_message(&mut w, message);
 		c.populate_digest(
 			&mut w,
-			hex!("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
+			hex!("ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f"),
 		);
 
 		// This should fail when the circuit checks constraints
@@ -816,7 +814,7 @@ mod tests {
 		c.populate_message(&mut w, message);
 		c.populate_digest(
 			&mut w,
-			hex!("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
+			hex!("ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f"),
 		);
 
 		// This should fail at the length check assertion in the circuit
@@ -836,7 +834,7 @@ mod tests {
 		c.populate_len(&mut w, message.len());
 		c.populate_message(&mut w, message);
 		// Provide wrong digest (all zeros instead of correct hash)
-		c.populate_digest(&mut w, [0u8; 32]);
+		c.populate_digest(&mut w, [0u8; 64]);
 
 		// This should fail when the circuit checks constraints
 		let result = circuit.populate_wire_witness(&mut w);
@@ -857,7 +855,7 @@ mod tests {
 		// This is the digest for "def", not "abc"
 		c.populate_digest(
 			&mut w,
-			hex!("89c8a3b0a2eb7b275eb983c1c3f22cb5cb6b07b962e2d60ccd4b8d88bb7306c4"),
+			hex!("40a855bf0a93c1019d75dd5b59cd8157608811dd75c5977e07f3bc4be0cad98b22dde4db9ddb429fc2ad3cf9ca379fedf6c1dc4d4bb8829f10c2f0ee04a66663"),
 		);
 
 		// This should fail when the circuit checks constraints
@@ -867,21 +865,21 @@ mod tests {
 
 	#[test]
 	fn test_max_len_edge_cases() {
-		// Test that SHA256 circuit construction works correctly for various max_len values
+		// Test that SHA512 circuit construction works correctly for various max_len values
 		// This specifically tests the fix for indexing issues when word_index >= message.len()
 
 		let test_cases = vec![
 			// (max_len, description)
-			(55, "fits in one block with padding"),
-			(56, "exactly at boundary"),
-			(63, "one byte before block boundary"),
-			(64, "exactly one block"),
-			(119, "fits in two blocks with padding"),
-			(120, "exactly at two-block boundary"),
-			(128, "two blocks exactly"),
-			(256, "four blocks - previously caused index out of bounds"),
-			(512, "eight blocks"),
-			(1024, "sixteen blocks"),
+			(111, "fits in one block with padding"),
+			(112, "exactly at boundary"),
+			(127, "one byte before block boundary"),
+			(128, "exactly one block"),
+			(239, "fits in two blocks with padding"),
+			(240, "exactly at two-block boundary"),
+			(256, "two blocks exactly"),
+			(512, "four blocks - previously caused index out of bounds"),
+			(1024, "eight blocks"),
+			(2046, "sixteen blocks"),
 		];
 
 		for (max_len, description) in test_cases {
@@ -891,9 +889,9 @@ mod tests {
 			let circuit = b.build();
 
 			// Verify the circuit was constructed successfully
-			// The number of message wires should be n_words = n_blocks * 8
-			let n_blocks = (max_len + 9).div_ceil(64);
-			let n_words = n_blocks * 8;
+			// The number of message wires should be n_words = n_blocks * 16
+			let n_blocks = (max_len + 17).div_ceil(128);
+			let n_words = n_blocks * 16;
 			assert_eq!(
 				c.message.len(),
 				n_words,
@@ -907,7 +905,7 @@ mod tests {
 			// SHA256 of empty string
 			c.populate_digest(
 				&mut w,
-				hex!("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
+				hex!("cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e"),
 			);
 
 			let result = circuit.populate_wire_witness(&mut w);
@@ -924,7 +922,7 @@ mod tests {
 				// SHA256 of "abc"
 				c.populate_digest(
 					&mut w,
-					hex!("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
+					hex!("ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f"),
 				);
 
 				let result = circuit.populate_wire_witness(&mut w);
@@ -937,18 +935,20 @@ mod tests {
 	}
 
 	#[test]
-	fn test_sha256_to_le_wires() {
+	fn test_sha512_to_le_wires() {
 		let mut b = compiler::CircuitBuilder::new();
 		let c = mk_circuit(&mut b, 64);
 
 		// Obtain LE-packed wires for the digest wires
 		let le_wires = c.digest_to_le_wires(&b);
-		assert_eq!(le_wires.len(), 4);
+		assert_eq!(le_wires.len(), 8);
 
 		let circuit = b.build();
 		let mut w = circuit.new_witness_filler();
 		let message = b"abc";
-		let hash = hex!("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+		let hash = hex!(
+			"ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f"
+		);
 
 		c.populate_len(&mut w, message.len());
 		c.populate_message(&mut w, message);
@@ -956,8 +956,8 @@ mod tests {
 		circuit.populate_wire_witness(&mut w).unwrap();
 
 		// Extract the LE-packed bytes from the wires
-		let mut le_bytes = Vec::with_capacity(32);
-		for i in 0..4 {
+		let mut le_bytes = Vec::with_capacity(64);
+		for i in 0..8 {
 			let word = w[le_wires[i]].0;
 			for j in 0..8 {
 				le_bytes.push((word >> (j * 8)) as u8);
@@ -979,7 +979,9 @@ mod tests {
 		let mut w = circuit.new_witness_filler();
 		// Use a simple 8-byte message that fits in one wire
 		let message = b"abcdefgh";
-		let hash = hex!("9c56cc51b374c3ba189210d5b6d4bf57790d351c96c47c02190ecf1e430635ab");
+		let hash = hex!(
+			"a3a8c81bc97c2560010d7389bc88aac974a104e0e2381220c6e084c4dccd1d2d17d4f86db31c2a851dc80e6681d74733c55dcd03dd96f6062cdda12a291ae6ce"
+		);
 
 		c.populate_len(&mut w, message.len());
 		c.populate_message(&mut w, message);

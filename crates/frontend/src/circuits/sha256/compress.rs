@@ -161,32 +161,32 @@ fn round(builder: &CircuitBuilder, round: usize, state: State, w: &[Wire; 64]) -
 	State([a, b, c, d, e, f, g, h])
 }
 
-/// Ch(e,f,g) = (e AND f) XOR (NOT e AND g)
-///           = g XOR (e AND (f XOR g))
-fn ch(builder: &CircuitBuilder, e: Wire, f: Wire, g: Wire) -> Wire {
-	builder.bxor(g, builder.band(e, builder.bxor(f, g)))
+/// Ch(x, y, z) = (x AND y) XOR (NOT y AND z)
+///             = z XOR (x AND (y XOR z))
+fn ch(builder: &CircuitBuilder, x: Wire, y: Wire, z: Wire) -> Wire {
+	builder.bxor(z, builder.band(x, builder.bxor(y, z)))
 }
 
-/// Maj(a,b,c) = (a AND b) XOR (a AND c) XOR (b AND c)
-///            = (a AND (b XOR c)) XOR (b AND c)
-fn maj(builder: &CircuitBuilder, a: Wire, b: Wire, c: Wire) -> Wire {
-	builder.bxor(builder.band(a, builder.bxor(b, c)), builder.band(b, c))
+/// Maj(x, y, z) = (x AND y) XOR (x AND z) XOR (y AND z)
+///              = (x AND (y XOR z)) XOR (y AND z)
+fn maj(builder: &CircuitBuilder, x: Wire, y: Wire, z: Wire) -> Wire {
+	builder.bxor(builder.band(x, builder.bxor(y, z)), builder.band(y, z))
 }
 
-/// Σ0(a)       = XOR( XOR( ROTR(a,  2), ROTR(a, 13) ), ROTR(a, 22) )
-fn big_sigma_0(b: &CircuitBuilder, a: Wire) -> Wire {
-	let r1 = b.rotr_32(a, 2);
-	let r2 = b.rotr_32(a, 13);
-	let r3 = b.rotr_32(a, 22);
+/// Σ0(a)       = XOR( XOR( ROTR(x,  2), ROTR(x, 13) ), ROTR(x, 22) )
+fn big_sigma_0(b: &CircuitBuilder, x: Wire) -> Wire {
+	let r1 = b.rotr_32(x, 2);
+	let r2 = b.rotr_32(x, 13);
+	let r3 = b.rotr_32(x, 22);
 	let x1 = b.bxor(r1, r2);
 	b.bxor(x1, r3)
 }
 
-/// Σ1(e)       = XOR( XOR( ROTR(e,  6), ROTR(e, 11) ), ROTR(e, 25) )
-fn big_sigma_1(b: &CircuitBuilder, e: Wire) -> Wire {
-	let r1 = b.rotr_32(e, 6);
-	let r2 = b.rotr_32(e, 11);
-	let r3 = b.rotr_32(e, 25);
+/// Σ1(e)       = XOR( XOR( ROTR(x,  6), ROTR(x, 11) ), ROTR(x, 25) )
+fn big_sigma_1(b: &CircuitBuilder, x: Wire) -> Wire {
+	let r1 = b.rotr_32(x, 6);
+	let r2 = b.rotr_32(x, 11);
+	let r3 = b.rotr_32(x, 25);
 	let x1 = b.bxor(r1, r2);
 	b.bxor(x1, r3)
 }
