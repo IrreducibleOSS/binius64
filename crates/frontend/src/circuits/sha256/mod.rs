@@ -3,7 +3,10 @@ pub mod compress;
 use binius_core::word::Word;
 pub use compress::{Compress, State};
 
-use crate::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
+use crate::{
+	circuits::multiplexer::multi_wire_multiplex,
+	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
+};
 
 /// Verifies that a message produces a specific SHA-256 digest.
 ///
@@ -178,16 +181,14 @@ impl Sha256 {
 		// Select the correct final digest from all compression outputs. The final digest is
 		// the state after processing the end_block (the block containing the length field).
 		// We use masking and OR operations to conditionally select the right digest.
-		let mut final_digest = [zero; 4];
-		for block_no in 0..n_blocks {
-			let is_selected =
-				builder.icmp_eq(builder.add_constant_64(block_no as u64), end_block_index);
-			let block_digest = states[block_no + 1].pack_4x64b(builder);
-			for i in 0..4 {
-				let masked = builder.band(is_selected, block_digest[i]);
-				final_digest[i] = builder.bor(final_digest[i], masked);
-			}
-		}
+
+		let block_digests = states[1..]
+			.iter()
+			.map(|s| s.pack_4x64b(builder))
+			.collect::<Vec<_>>();
+		let inputs: Vec<&[Wire]> = block_digests.iter().map(|arr| &arr[..]).collect();
+		let final_digest_vec = multi_wire_multiplex(builder, &inputs, end_block_index);
+		let final_digest: [Wire; 4] = final_digest_vec.try_into().unwrap();
 
 		builder.assert_eq_v("2b.digest", digest, final_digest);
 

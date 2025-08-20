@@ -3,7 +3,10 @@ pub mod compress;
 use binius_core::word::Word;
 pub use compress::{Compress, State};
 
-use crate::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
+use crate::{
+	circuits::multiplexer::multi_wire_multiplex,
+	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
+};
 
 /// Verifies that a message produces a specific SHA-512 digest.
 ///
@@ -181,16 +184,10 @@ impl Sha512 {
 		// Select the correct final digest from all compression outputs. The final digest is
 		// the state after processing the end_block (the block containing the length field).
 		// We use masking and OR operations to conditionally select the right digest.
-		let mut final_digest = [zero; 8];
-		for block_no in 0..n_blocks {
-			let is_selected =
-				builder.icmp_eq(builder.add_constant_64(block_no as u64), end_block_index);
-			let block_digest = states[block_no + 1].0;
-			for i in 0..8 {
-				let masked = builder.band(is_selected, block_digest[i]);
-				final_digest[i] = builder.bor(final_digest[i], masked);
-			}
-		}
+
+		let inputs: Vec<&[Wire]> = states[1..].iter().map(|s| &s.0[..]).collect();
+		let final_digest_vec = multi_wire_multiplex(builder, &inputs, end_block_index);
+		let final_digest: [Wire; 8] = final_digest_vec.try_into().unwrap();
 
 		builder.assert_eq_v("2b.digest", digest, final_digest);
 
