@@ -190,7 +190,7 @@ impl Sha256 {
 		let end_block_index =
 			builder.shr(builder.iadd_32(len_bytes, builder.add_constant_64(8)), 6);
 		let delim: Wire = builder.add_constant_zx_8(0x80);
-
+		let m32 = builder.add_constant(Word::MASK_32);
 		// ---- 2b. Final digest selection
 		//
 		// Select the correct final digest from all compression outputs. The final digest is
@@ -239,6 +239,16 @@ impl Sha256 {
 
 		let boundary_padded_lo32 = single_wire_multiplex(builder, &padded_evens, w_bd);
 		let boundary_padded_hi32 = single_wire_multiplex(builder, &padded_odds, w_bd);
+		// note that the high (most-significant) halves of these wires could be nonzero.
+		// nothing prevents the prover from doing this. these high halves will be ignored
+		// during the compression gadget, and will eventually be masked off during that gadget.
+		// in order for THIS gadget to be correct and secure, it's only necessary that the low
+		// (least-significant) halves of ALL wires fed into the compression gadget be correct.
+		// this condition is indeed guaranteed vis-à-vis these particular wires (directly below),
+		// as well as with respect to all other wires in `padded_evens` and `padded_odds`.
+		// these happen to be the only wires in `padded_evens` and `padded_odds` which the prover
+		// CAN make the high halves of nonempty; in any case, only the lows matter, as we've said.
+
 		let boundary_message_word =
 			single_wire_multiplex(builder, &([message.as_slice(), &[zero]].concat()), w_bd);
 		// for the multiplexer above to be sound, we need `sel < inputs.len()` to be true.
@@ -305,7 +315,6 @@ impl Sha256 {
 				let word_index = block_index << 3 | column_index;
 				let w_lo32 = padded_evens[word_index];
 				let w_hi32 = padded_odds[word_index];
-				let padded_message_word = builder.bxor(w_lo32, builder.shl(w_hi32, 32));
 
 				// flags that help us classify our current position.
 				//
@@ -320,6 +329,8 @@ impl Sha256 {
 
 				// ---- 3a. Full message words
 				if word_index < message.len() {
+					// independently check both halves of message.
+
 					// it is safe to exempt the following check when word_index ≥ message.len().
 					// proof: we constrained above that len_bytes ≤ max_len_bytes.
 					// thus, w_bd ≔ len_bytes >> 3 ≤ max_len_bytes >> 3 == message.len().
@@ -327,9 +338,15 @@ impl Sha256 {
 					// equivalently, is_message_word ≔ (word_index < w_bd) would be false,
 					// so the below constraint would be perma-disabled and we can feely omit / skip.
 					builder.assert_eq_cond(
-						"3a.full_word".to_string(),
-						message[word_index],
-						padded_message_word,
+						"3a.full_word",
+						builder.band(message[word_index], m32),
+						w_lo32,
+						is_message_word,
+					);
+					builder.assert_eq_cond(
+						"3a.full_word",
+						builder.shr(message[word_index], 32),
+						w_hi32,
 						is_message_word,
 					);
 				}
@@ -355,21 +372,16 @@ impl Sha256 {
 				// - the high part of the 7th word should contain the message bit length.
 				// Otherwise, if it's a padding word (not message, not length), it must be zero.
 				if column_index == 7 {
+					builder.assert_eq_cond("3d.w_lo32_7_zero", w_lo32, zero, is_past_message);
 					builder.assert_eq_cond(
-						"3c.zero_pad",
-						padded_message_word,
-						zero,
-						builder.band(is_past_message, builder.bnot(is_length_block)),
-					);
-					builder.assert_eq_cond("3d.w7lo_zero", w_lo32, zero, is_length_block);
-					builder.assert_eq_cond("3d.w7hi_len", w_hi32, bitlen, is_length_block);
-				} else {
-					builder.assert_eq_cond(
-						"3c.zero_pad",
-						padded_message_word,
-						zero,
+						"3d.w_hi32_7_len",
+						w_hi32,
+						builder.select(zero, bitlen, is_length_block),
 						is_past_message,
 					);
+				} else {
+					builder.assert_eq_cond("3d.zero_pad", w_lo32, zero, is_past_message);
+					builder.assert_eq_cond("3d.zero_pad", w_hi32, zero, is_past_message);
 				}
 			}
 		}

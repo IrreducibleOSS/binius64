@@ -132,16 +132,16 @@ pub struct Compress {
 impl Compress {
 	pub fn new(builder: &CircuitBuilder, state_in: State, m: [Wire; 16]) -> Self {
 		// ---- message-schedule ----
-		// W[0..15] = block_words & M32
-		// for t = 16 .. 63:
+		// W[0..15] = block_words
+		// for t = 16 .. 79:
 		//     s0   = σ0(W[t-15])
 		//     s1   = σ1(W[t-2])
 		//     (p, _)  = Add(W[t-16], s0)
 		//     (q, _)  = Add(p, W[t-7])
 		//     (W[t],_) = Add(q, s1)
-		let mut w: Vec<Wire> = Vec::with_capacity(80);
+		let mut w = Vec::with_capacity(80);
 
-		// W[0..15] = block_words & M32
+		// W[0..15] = block_words
 		w.extend_from_slice(&m);
 
 		let zero = builder.add_constant(Word::ZERO);

@@ -67,21 +67,22 @@ pub struct Compress {
 
 impl Compress {
 	pub fn new(builder: &CircuitBuilder, state_in: State, m: [Wire; 16]) -> Self {
+		// it is "expected" that the wires `m` will have empty high (most-significant) halves.
+		// otoh, if schedule wires `m` with nonempty high halves are fed into this gadget,
+		// said high halves will have no effect, and will eventually be masked off.
+
 		// ---- message-schedule ----
-		// W[0..15] = block_words & M32
+		// W[0..15] = block_words
 		// for t = 16 .. 63:
 		//     s0   = σ0(W[t-15])
 		//     s1   = σ1(W[t-2])
 		//     (p, _)  = Add32(W[t-16], s0)
 		//     (q, _)  = Add32(p, W[t-7])
 		//     (W[t],_) = Add32(q, s1)
-		let m32 = builder.add_constant(Word::MASK_32);
-		let m_masked: [Wire; 16] = std::array::from_fn(|i| builder.band(m[i], m32));
 
 		let mut w: Vec<Wire> = Vec::with_capacity(64);
-
-		// W[0..15] = block_words & M32
-		w.extend_from_slice(&m_masked);
+		// W[0..15] = block_words
+		w.extend_from_slice(&m);
 
 		// W[16..63] computed from previous W values
 		for t in 16..64 {
