@@ -2,7 +2,7 @@ use binius_core::consts::WORD_SIZE_BITS;
 
 use crate::{
 	circuits::{
-		bignum::BigUint,
+		bignum::{BigUint, select},
 		secp256k1::{Secp256k1, Secp256k1Affine},
 	},
 	compiler::CircuitBuilder,
@@ -20,6 +20,7 @@ pub fn shamirs_trick(
 	pk: Secp256k1Affine,
 ) -> Secp256k1Affine {
 	let g = Secp256k1Affine::generator(b);
+	let g_pk = curve.add(b, &g, &pk);
 
 	let mut acc = Secp256k1Affine::point_at_infinity(b);
 
@@ -31,18 +32,28 @@ pub fn shamirs_trick(
 			acc = curve.double(b, &acc);
 		}
 
-		// TODO: this thing is somewhat inefficient but is dwarfed by curve ops
-		//       ideally we should come up with a bit extraction gate
 		let g_mult_bit = b.shl(g_mult.limbs[limb], (WORD_SIZE_BITS - 1 - bit) as u32);
 		let pk_mult_bit = b.shl(pk_mult.limbs[limb], (WORD_SIZE_BITS - 1 - bit) as u32);
+
+		// A 3-to-1 mux
+		let x = select(b, &g.x, &select(b, &pk.x, &g_pk.x, g_mult_bit), pk_mult_bit);
+		let y = select(b, &g.y, &select(b, &pk.y, &g_pk.y, g_mult_bit), pk_mult_bit);
+
+		// Point at infinity flag is a single wire, allowing us to save a BigUint select.
+		let is_point_at_infinity = b.band(b.bnot(g_mult_bit), b.bnot(pk_mult_bit));
 
 		// Addition implementation is complete (handles pai and doubling). When the mask
 		// is zero, pai-to-pai support is needed. While the accumulator normally does not
 		// assume the value of G or PK, such possibility cannot be ruled out.
-
-		// TODO: optimize this to one addition per double-and-add step
-		acc = curve.add(b, &acc, &g.pai_unless(b, g_mult_bit));
-		acc = curve.add(b, &acc, &pk.pai_unless(b, pk_mult_bit));
+		acc = curve.add(
+			b,
+			&acc,
+			&Secp256k1Affine {
+				x,
+				y,
+				is_point_at_infinity,
+			},
+		);
 	}
 
 	acc
