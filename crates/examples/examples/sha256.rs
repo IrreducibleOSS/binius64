@@ -1,7 +1,6 @@
 use std::array;
 
 use anyhow::{Result, ensure};
-use binius_core::consts::{LOG_BYTE_BITS, LOG_WORD_SIZE_BITS};
 use binius_examples::{Cli, ExampleCircuit};
 use binius_frontend::{
 	circuits::sha256::Sha256,
@@ -17,15 +16,14 @@ struct Sha256Example {
 
 #[derive(Args, Debug)]
 struct Params {
-	/// Maximum message length, in bytes, that the circuit can handle.
-	/// Only full-word lengths (multiples of 8 bytes) are supported.
+	/// Maximum message length in bytes that the circuit can handle.
 	#[arg(long, default_value_t = 2048)]
 	max_len_bytes: usize,
 
 	/// Build circuit for exact message length (makes length a compile-time constant instead of
 	/// runtime witness).
 	#[arg(long, default_value_t = false)]
-	exact_len: bool,
+	exact_len_bytes: bool,
 }
 
 #[derive(Args, Debug)]
@@ -33,11 +31,11 @@ struct Params {
 struct Instance {
 	/// Length of the randomly generated message, in bytes (defaults to --max-len).
 	#[arg(long)]
-	len: Option<usize>,
+	len_bytes: Option<usize>,
 
 	/// UTF-8 string to hash (if not provided, random bytes are generated)
 	#[arg(long)]
-	message: Option<String>,
+	message_string: Option<String>,
 }
 
 impl ExampleCircuit for Sha256Example {
@@ -45,21 +43,20 @@ impl ExampleCircuit for Sha256Example {
 	type Instance = Instance;
 
 	fn build(params: Params, builder: &mut CircuitBuilder) -> Result<Self> {
-		assert!(params.max_len_bytes & 0x07 == 0, "max_len_bytes must be a multiple of 8");
-		let max_len = params.max_len_bytes >> (LOG_WORD_SIZE_BITS - LOG_BYTE_BITS);
-		let len_wire = if params.exact_len {
+		let max_len = params.max_len_bytes.div_ceil(8);
+		let len_bytes = if params.exact_len_bytes {
 			builder.add_constant_64(params.max_len_bytes as u64)
 		} else {
 			builder.add_witness()
 		};
-		let sha256_gadget = mk_circuit(builder, max_len, len_wire);
+		let sha256_gadget = mk_circuit(builder, max_len, len_bytes);
 
 		Ok(Self { sha256_gadget })
 	}
 
 	fn populate_witness(&self, instance: Instance, w: &mut WitnessFiller) -> Result<()> {
-		let message_bytes = if let Some(message) = instance.message {
-			message.as_bytes().to_vec()
+		let message_bytes = if let Some(message_string) = instance.message_string {
+			message_string.as_bytes().to_vec()
 		} else {
 			let mut rng = StdRng::seed_from_u64(0);
 
@@ -81,10 +78,10 @@ impl ExampleCircuit for Sha256Example {
 	}
 }
 
-fn mk_circuit(b: &mut CircuitBuilder, message_len: usize, len: Wire) -> Sha256 {
+fn mk_circuit(b: &mut CircuitBuilder, max_len: usize, len_bytes: Wire) -> Sha256 {
 	let digest: [Wire; 4] = array::from_fn(|_| b.add_inout());
-	let message = (0..message_len).map(|_| b.add_inout()).collect();
-	Sha256::new(b, len, digest, message)
+	let message = (0..max_len).map(|_| b.add_inout()).collect();
+	Sha256::new(b, len_bytes, digest, message)
 }
 
 fn main() -> Result<()> {

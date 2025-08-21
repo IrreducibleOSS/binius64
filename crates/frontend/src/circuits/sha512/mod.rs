@@ -31,7 +31,7 @@ pub struct Sha512 {
 	/// The actual length of the input message in bytes.
 	///
 	/// Must be less than or equal to `max_len_bytes`.
-	pub len: Wire,
+	pub len_bytes: Wire,
 	/// The expected SHA-512 digest packed as 8x64-bit words in big-endian order.
 	///
 	/// - digest\[0\]: Highest 64 bits (bytes 0-7 of the hash)
@@ -60,13 +60,12 @@ impl Sha512 {
 	///
 	/// # Arguments
 	/// * `builder` - Circuit builder for constructing constraints
-	/// * `len` - Wire containing the actual message length in bytes
+	/// * `len_bytes` - Wire containing the actual message length in bytes
 	/// * `digest` - Expected SHA-512 digest as 8 wires of 64 bits each
 	/// * `message` - Input message as packed 64-bit words (16 bytes per wire)
 	///
-	/// # Panics
-	/// * If `message` is empty
-	/// * If `message.len() << LOG_WORD_SIZE_BITS` exceeds 2^64 (see the struct doc)
+	/// # Panics If the total number of bits of content contained in `message` cannot be represented
+	///   in 64 bits; i.e., if `message.len() << LOG_WORD_SIZE_BITS > u64::MAX`
 	///
 	/// # Circuit Structure
 	/// The circuit performs the following validations:
@@ -74,7 +73,12 @@ impl Sha512 {
 	/// 2. Pads the message according to SHA-512 specifications
 	/// 3. Computes the hash through chained compression functions
 	/// 4. Verifies the computed digest matches the expected digest
-	pub fn new(builder: &CircuitBuilder, len: Wire, digest: [Wire; 8], message: Vec<Wire>) -> Self {
+	pub fn new(
+		builder: &CircuitBuilder,
+		len_bytes: Wire,
+		digest: [Wire; 8],
+		message: Vec<Wire>,
+	) -> Self {
 		// ---- Circuit construction overview
 		//
 		// This function builds a SHA-512 circuit with the following structure:
@@ -106,7 +110,6 @@ impl Sha512 {
 		// padding (1 byte for 0x80 delimiter + 16 bytes for length field).
 		//
 		// We also verify that the actual input length len is within bounds.
-		assert!(!message.is_empty(), "must have at least one input wire");
 		assert!(
 			message.len() << LOG_WORD_SIZE_BITS <= u64::MAX as usize,
 			"length of message in bits must fit in 64-bit wire"
@@ -118,9 +121,9 @@ impl Sha512 {
 		// equivalent to `(message.len() * 3 + 17).div_ceil(128)`.
 		let n_words: usize = n_blocks << 4; // 16 words per block
 
-		// Assert that len <= max_len_bytes by checking that !(max_len_bytes < len)
-		let len_exceeds_max = builder.icmp_ult(builder.add_constant_64(max_len_bytes as u64), len);
-		builder.assert_0("1.len_check", len_exceeds_max);
+		// Assert that len_bytes <= max_len_bytes by checking that !(max_len_bytes < len_bytes)
+		let too_long = builder.icmp_ult(builder.add_constant_64(max_len_bytes as u64), len_bytes);
+		builder.assert_0("1.len_check", too_long);
 
 		// ---- 2. Message padding and compression setup
 		//
@@ -165,14 +168,15 @@ impl Sha512 {
 		// - w_bd: word boundary (which word contains the delimiter byte)
 		// - end_block_index (which block contains the length field)
 		let zero = builder.add_constant(Word::ZERO);
-		let w_bd = builder.shr(len, 3);
-		let len_mod_8 = builder.band(len, builder.add_constant_zx_8(7));
-		let bitlen = builder.shl(len, 3);
+		let w_bd = builder.shr(len_bytes, 3);
+		let len_mod_8 = builder.band(len_bytes, builder.add_constant_zx_8(7));
+		let bitlen = builder.shl(len_bytes, 3);
 		// For SHA-512, the length field is 128 bits. We only support messages < 2^32 bits,
 		// so the high 64 bits are zero. We keep `bitlen` as the low 64-bit portion.
 
 		// end_block_index = floor((len + 16) / 128) using 64-bit add
-		let end_block_index = builder.shr(builder.iadd_32(len, builder.add_constant_64(16)), 7);
+		let end_block_index =
+			builder.shr(builder.iadd_32(len_bytes, builder.add_constant_64(16)), 7);
 		let delim: Wire = builder.add_constant_zx_8(0x80);
 		// ---- 2b. Final digest selection
 		//
@@ -217,15 +221,16 @@ impl Sha512 {
 		// 3. zero byte. Placed after the delimiter byte.
 
 		let boundary_padded_word = single_wire_multiplex(builder, &padded_message, w_bd);
-		let boundary_message_word = single_wire_multiplex(builder, &message, w_bd);
-		// for the multiplexer above to be sound, we need `w_bd < message.len()` to be true.
-		// since we constrained `len ≤ max_len_bytes ≔ message.len() << 3`, above,
-		// we necessarily have `w_bd ≔ len >> 3 ≤ max_len_bytes >> 3 == message.len()`.
-		// thus the exceptional case is when w_bd ≔ len >> 3 == max_len_bytes >> 3 == message.len().
-		// this case can indeed happen; in this case, the multiplexer will behave strangely.
-		// but, i claim that it's sound regardless in this exceptional case! let me explain.
-		// the only way w_bd = message.len() and len ≤ max_len_bytes can both be true is if len =
-		// max_len_bytes. in this case, `len` is a multiple of 8, so `len_mod_8` will be 0.
+		let boundary_message_word =
+			single_wire_multiplex(builder, &([message.as_slice(), &[zero]].concat()), w_bd);
+		// for the multiplexer above to be sound, we need `sel < inputs.len()` to be true.
+		// since we constrained `len_bytes ≤ max_len_bytes ≔ message.len() << 3`, above,
+		// we necessarily have `w_bd ≔ len_bytes >> 3 ≤ max_len_bytes >> 3 == message.len()`.
+		// thus we have w_bd ≤ message.len() < message.concat(zero).len(), so it's strict.
+		// in the exceptional case w_bd ≔ len_bytes >> 3 == max_len_bytes >> 3 == message.len(),
+		// `boundary_message_word` will be `zero`, but that's fine, as I now explain. indeed:
+		// the only way w_bd = message.len() and len_bytes ≤ max_len_bytes can both be true is if
+		// len_bytes = max_len_bytes. in this case, len_bytes is a multiple of 8, so len_mod_8 = 0.
 		// in this case, `data_b` will thus be false for each j ∈ {0, … , 7}, ergo, "3b.1" will be
 		// dummy'd out for each j, and `boundary_message_word` will be completely ignored.
 		// thus it truly doesn't matter what the multiplexer returns; in this case,
@@ -273,11 +278,11 @@ impl Sha512 {
 				// ---- 3b. Full message words
 				if word_index < message.len() {
 					// it is safe to exempt the following check when word_index ≥ message.len().
-					// we constrained above that len ≤ max_len_bytes. thus w_bd ≔ len >> 3 ≤
-					// max_len_bytes >> 3. so if word_index ≥ message.len() held, then
-					// word_index ≥ w_bd also would; equivalently, is_message_word ≔
-					// (word_index < w_bd) would be false, so the below constraint would be
-					// perma-disabled and we can feely omit / skip.
+					// proof: we constrained above that len_bytes ≤ max_len_bytes.
+					// thus, w_bd ≔ len_bytes >> 3 ≤ max_len_bytes >> 3 == message.len().
+					// so if word_index ≥ message.len() held, then word_index ≥ w_bd also would;
+					// equivalently, is_message_word ≔ (word_index < w_bd) would be false,
+					// so the below constraint would be perma-disabled and we can feely omit / skip.
 					builder.assert_eq_cond(
 						"3b.full_word",
 						message[word_index],
@@ -330,7 +335,7 @@ impl Sha512 {
 		}
 
 		Self {
-			len,
+			len_bytes,
 			digest,
 			message,
 			compress,
@@ -345,10 +350,10 @@ impl Sha512 {
 	/// Populates the length wire with the actual message size in bytes.
 	///
 	/// # Panics
-	/// The method panics if `len` exceeds `max_len_bytes`.
-	pub fn populate_len(&self, w: &mut WitnessFiller<'_>, len: usize) {
-		assert!(len <= self.max_len_bytes());
-		w[self.len] = Word(len as u64);
+	/// The method panics if `len_bytes` exceeds `max_len_bytes`.
+	pub fn populate_len(&self, w: &mut WitnessFiller<'_>, len_bytes: usize) {
+		assert!(len_bytes <= self.max_len_bytes());
+		w[self.len_bytes] = Word(len_bytes as u64);
 	}
 
 	/// Populates the digest wires with the expected SHA-512 hash.
@@ -803,7 +808,7 @@ mod tests {
 
 		let message = b"abc";
 		// Bypass the API safety check and set the length wire directly
-		w[c.len] = Word(c.max_len_bytes() as u64 + 1);
+		w[c.len_bytes] = Word(c.max_len_bytes() as u64 + 1);
 		c.populate_message(&mut w, message);
 		c.populate_digest(
 			&mut w,
@@ -863,6 +868,7 @@ mod tests {
 
 		let test_cases = vec![
 			// (max_len, description)
+			(0, "no input"),
 			(13, "fits in one block with padding"),
 			(14, "just past boundary"),
 			(15, "one word before block boundary"),
@@ -900,22 +906,6 @@ mod tests {
 			assert!(
 				result.is_ok(),
 				"Failed for max_len={max_len} ({description}) with empty message: {result:?}"
-			);
-
-			// Test with a 3-byte message "abc" if it fits
-			let mut w = circuit.new_witness_filler();
-			c.populate_len(&mut w, 3);
-			c.populate_message(&mut w, b"abc");
-			// SHA512 of "abc"
-			c.populate_digest(
-				&mut w,
-				hex!("ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f"),
-			);
-
-			let result = circuit.populate_wire_witness(&mut w);
-			assert!(
-				result.is_ok(),
-				"Failed for max_len={max_len} ({description}) with 'abc' message: {result:?}"
 			);
 		}
 	}
