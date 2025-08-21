@@ -96,6 +96,23 @@ impl ToyBNN {
     }
 }
 
+/// Writes u64 values as decimal integers to a file.
+///
+/// # Arguments
+/// * `path` - Path to the output file
+/// * `values` - Vector of u64 values to write as decimal integers
+pub fn write_output_file<P: AsRef<Path>>(path: P, values: &[u64]) -> std::io::Result<()> {
+    let mut output = String::new();
+    
+    for &value in values {
+        // Write as decimal integer
+        output.push_str(&value.to_string());
+        output.push('\n');
+    }
+    
+    fs::write(path, output.as_bytes())
+}
+
 /// Parses a binary file containing ASCII '0' and '1' characters into binary values.
 ///
 /// # Arguments
@@ -226,6 +243,7 @@ mod tests {
         let w_values = parse_binary_file(&w_path, 1).unwrap();
         assert_eq!(w_values.len(), 1);
         let w_value = w_values[0];
+        println!("W value: {:09b} ({})", w_value, w_value);
         
         // Parse I (1024 values)
         // Note: The file is named "3x3" but based on the size (10240 bytes),
@@ -240,14 +258,45 @@ mod tests {
         
         let mut filler = circuit.new_witness_filler();
         toy_bnn.populate_w(&mut filler, w_value);
-        toy_bnn.populate_i(&mut filler, i_values);
+        toy_bnn.populate_i(&mut filler, i_values.clone());
         
         circuit.populate_wire_witness(&mut filler)
             .expect("Circuit should be satisfied with actual input files");
         
-        // All popcount outputs should be >= 55 (due to 55 leading 1s from XNOR)
-        // We can't directly check the outputs here, but the circuit satisfaction
-        // confirms the computation is valid
+        // Extract output values from the witness
+        let mut output_values = Vec::with_capacity(1024);
+        for &output_wire in toy_bnn.outputs() {
+            let value = filler[output_wire].0;
+            output_values.push(value);
+        }
+        
+        // Verify all popcount outputs are >= 55
+        for (i, &value) in output_values.iter().enumerate() {
+            assert!(value >= 55, 
+                    "Output {} should be >= 55, got {}", i, value);
+        }
+        
+        // Write output to file as decimal integers
+        let output_path = module_dir.join("output_popcount.txt");
+        write_output_file(&output_path, &output_values).unwrap();
+        println!("Output written to: {}", output_path.display());
+        
+        // Print statistics
+        let min_popcount = output_values.iter().min().unwrap();
+        let max_popcount = output_values.iter().max().unwrap();
+        let avg_popcount: f64 = output_values.iter().sum::<u64>() as f64 / output_values.len() as f64;
+        
+        println!("Popcount statistics:");
+        println!("  Min: {}", min_popcount);
+        println!("  Max: {}", max_popcount);
+        println!("  Avg: {:.2}", avg_popcount);
+        
+        // Print first few outputs as examples
+        println!("First 5 outputs:");
+        for i in 0..5.min(output_values.len()) {
+            println!("  I[{}]={:09b} XOR W={:09b} -> XNOR has {} bits set", 
+                     i, i_values[i], w_value, output_values[i]);
+        }
     }
     
     #[test]
