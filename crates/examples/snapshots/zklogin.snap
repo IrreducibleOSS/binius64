@@ -1,11 +1,11 @@
 zklogin circuit
 --
-Number of gates: 628546
-Number of evaluation instructions: 956672
-Number of AND constraints: 848223
+Number of gates: 628352
+Number of evaluation instructions: 955953
+Number of AND constraints: 847854
 Number of MUL constraints: 26880
 Length of value vec: 1048576
   Constants: 624
   Inout: 302
-  Witness: 95958
-  Internal: 880961
+  Witness: 95783
+  Internal: 880786
