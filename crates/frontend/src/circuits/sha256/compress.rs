@@ -348,4 +348,23 @@ mod tests {
 
 		verify_constraints(cs, &w.into_value_vec()).unwrap();
 	}
+
+	#[test]
+	fn this_should_print_4_not_8() {
+		use crate::circuits::sha256::Sha256;
+		use crate::compiler::CircuitBuilder;
+		use std::array;
+		let builder = CircuitBuilder::new();
+		let message = vec![
+			builder.add_witness(),
+			builder.add_witness(),
+			builder.add_witness(),
+			builder.add_witness(),
+		];
+		println!("message.len() = {}", message.len());
+		let digest: [Wire; 4] = array::from_fn(|_| builder.add_witness());
+		let sha256 = Sha256::new(&builder, 32, builder.add_constant_64(32), digest, message);
+
+		println!("message_to_le_wires().len() = {}", sha256.message_to_le_wires(&builder).len());
+	}
 }
