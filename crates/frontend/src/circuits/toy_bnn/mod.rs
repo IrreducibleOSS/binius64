@@ -1,7 +1,7 @@
 //! Toy Binary Neural Network (BNN) circuit implementation.
 //!
 //! This circuit demonstrates XNOR operations and popcount for a simple BNN-like computation.
-//! It takes a weight value W and 1024 input values I, computes XNOR between W and each I[i],
+//! It takes a weight value W and 1024 input values I, computes XNOR between W and each I\[i\],
 //! then counts the bits in each result using popcount.
 
 use std::fs;
@@ -14,7 +14,7 @@ use crate::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
 
 /// Toy BNN circuit structure.
 ///
-/// Computes XNOR between a single weight W and 1024 input values I[i],
+/// Computes XNOR between a single weight W and 1024 input values I\[i\],
 /// then applies popcount to each result.
 pub struct ToyBNN {
     /// Single weight value (9-bit value stored in u64)
