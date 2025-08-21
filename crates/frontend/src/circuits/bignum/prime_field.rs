@@ -68,7 +68,7 @@ impl PseudoMersennePrimeField {
 		let unreduced_sum = add(b, &fe1, &fe2);
 		// TODO: consider nondeterminism
 		let need_reduction = b.bnot(biguint_lt(b, &unreduced_sum, &modulus));
-		let reduced = sub(b, &unreduced_sum, &modulus.mask(b, need_reduction));
+		let reduced = sub(b, &unreduced_sum, &modulus.zero_unless(b, need_reduction));
 
 		// Higher limb is zero if max(fe1, fe2) < modulus (both are correctly represented)
 		let (result, _) = reduced.split_at_limbs(l);

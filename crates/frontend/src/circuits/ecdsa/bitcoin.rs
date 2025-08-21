@@ -31,7 +31,7 @@ pub fn verify(
 	let curve = Secp256k1::new(b);
 
 	// secp256k1 is cofactor-1 and PAI is not on it.
-	curve.assert_affine_on_curve(b, &pk);
+	curve.assert_on_curve(b, &pk);
 
 	let f_scalar = curve.f_scalar();
 
@@ -43,7 +43,7 @@ pub fn verify(
 	let u2 = f_scalar.mul(b, r, &s_inverse);
 
 	let nonce = shamirs_trick(b, &curve, 256, &u1, &u2, pk);
-	let nonce_not_pai = b.bnot(nonce.is_point_at_infinity(b));
+	let nonce_not_pai = b.bnot(nonce.is_point_at_infinity);
 	let r_diff = curve.f_p().sub(b, &nonce.x, r);
 
 	let conditions = [valid_r, valid_s, nonce_not_pai, r_diff.is_zero(b)];

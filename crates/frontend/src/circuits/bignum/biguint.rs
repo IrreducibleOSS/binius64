@@ -1,3 +1,5 @@
+use std::iter;
+
 use binius_core::word::Word;
 
 use crate::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
@@ -34,9 +36,14 @@ impl BigUint {
 		BigUint { limbs }
 	}
 
-	/// Applies AND with a single value to all limbs of a given bignum.
-	pub fn mask(&self, b: &CircuitBuilder, mask: Wire) -> Self {
-		let limbs = self.limbs.iter().map(|&limb| b.band(limb, mask)).collect();
+	/// Returns zero unless the MSB-boolean `cond` is true, then passes the value unchanged.
+	pub fn zero_unless(&self, b: &CircuitBuilder, cond: Wire) -> Self {
+		let zero = b.add_constant(Word::ZERO);
+		let limbs = self
+			.limbs
+			.iter()
+			.map(|&limb| b.select(zero, limb, cond))
+			.collect();
 		Self { limbs }
 	}
 
@@ -93,7 +100,7 @@ impl BigUint {
 	/// Panics if limb_values.len() != self.limbs.len()
 	pub fn populate_limbs(&self, w: &mut WitnessFiller, limb_values: &[u64]) {
 		assert!(limb_values.len() == self.limbs.len());
-		for (&wire, &v) in self.limbs.iter().zip(limb_values.iter()) {
+		for (&wire, &v) in iter::zip(&self.limbs, limb_values) {
 			w[wire] = Word::from_u64(v);
 		}
 	}
@@ -115,7 +122,7 @@ pub fn assert_eq(builder: &CircuitBuilder, name: impl Into<String>, a: &BigUint,
 		"biguint assert_eq: inputs must have the same number of limbs"
 	);
 	let base_name = name.into();
-	for (i, (&a_l, &b_l)) in a.limbs.iter().zip(b.limbs.iter()).enumerate() {
+	for (i, (&a_l, &b_l)) in iter::zip(&a.limbs, &b.limbs).enumerate() {
 		builder.assert_eq(format!("{base_name}[{i}]"), a_l, b_l);
 	}
 }
@@ -143,31 +150,33 @@ pub fn assert_eq_cond(
 		"biguint assert_eq_cond: inputs must have the same number of limbs"
 	);
 	let base_name = name.into();
-	for (i, (&a_l, &b_l)) in a.limbs.iter().zip(b.limbs.iter()).enumerate() {
+	for (i, (&a_l, &b_l)) in iter::zip(&a.limbs, &b.limbs).enumerate() {
 		builder.assert_eq_cond(format!("{base_name}[{i}]"), a_l, b_l, mask);
 	}
 }
 
-/// Exclusive-ORs the limbs of two equal-length `BigUint`s.
+/// Conditionally selects between two equal-sized `BigUint`s.
 ///
 /// # Arguments
 /// * `builder` - Circuit builder for constraint generation
 /// * `a` - First operand `BigUint`
 /// * `b` - Second operand `BigUint` (must have same number of limbs as `a`)
+/// * `cond` - an MSB-boolean
+///
+/// # Return value
+/// Selects `b` if `cond` is true, otherwise selects `a`.
 ///
 /// # Panics
 /// Panics if `a` and `b` have different number of limbs.
-pub fn xor(builder: &CircuitBuilder, a: &BigUint, b: &BigUint) -> BigUint {
+pub fn select(builder: &CircuitBuilder, a: &BigUint, b: &BigUint, cond: Wire) -> BigUint {
 	assert_eq!(
 		a.limbs.len(),
 		b.limbs.len(),
-		"biguint xor: inputs must have the same number of limbs"
+		"biguint select: inputs must have the same number of limbs"
 	);
-	let limbs = a
-		.limbs
-		.iter()
-		.zip(b.limbs.iter())
-		.map(|(&l1, &l2)| builder.bxor(l1, l2))
+
+	let limbs = iter::zip(&a.limbs, &b.limbs)
+		.map(|(&l1, &l2)| builder.select(l1, l2, cond))
 		.collect();
 	BigUint { limbs }
 }
