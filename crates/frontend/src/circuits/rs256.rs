@@ -114,13 +114,8 @@ impl Rs256Verify {
 
 		let sha256_builder = builder.subcircuit("sha256");
 		let expected_hash_wires: [Wire; 4] = std::array::from_fn(|_| sha256_builder.add_witness());
-		let sha256 = Sha256::new(
-			&sha256_builder,
-			message.max_len,
-			message.len,
-			expected_hash_wires,
-			message.data.clone(),
-		);
+		let sha256 =
+			Sha256::new(&sha256_builder, message.len, expected_hash_wires, message.data.clone());
 		let expected_hash = BigUint {
 			limbs: expected_hash_wires.to_vec(),
 		};

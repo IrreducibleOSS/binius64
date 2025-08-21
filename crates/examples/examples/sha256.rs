@@ -11,7 +11,6 @@ use rand::prelude::*;
 use sha2::Digest;
 
 struct Sha256Example {
-	params: Params,
 	sha256_gadget: Sha256,
 }
 
@@ -19,12 +18,12 @@ struct Sha256Example {
 struct Params {
 	/// Maximum message length in bytes that the circuit can handle.
 	#[arg(long, default_value_t = 2048)]
-	max_len: usize,
+	max_len_bytes: usize,
 
 	/// Build circuit for exact message length (makes length a compile-time constant instead of
 	/// runtime witness).
 	#[arg(long, default_value_t = false)]
-	exact_len: bool,
+	exact_len_bytes: bool,
 }
 
 #[derive(Args, Debug)]
@@ -32,11 +31,11 @@ struct Params {
 struct Instance {
 	/// Length of the randomly generated message, in bytes (defaults to --max-len).
 	#[arg(long)]
-	len: Option<usize>,
+	len_bytes: Option<usize>,
 
 	/// UTF-8 string to hash (if not provided, random bytes are generated)
 	#[arg(long)]
-	message: Option<String>,
+	message_string: Option<String>,
 }
 
 impl ExampleCircuit for Sha256Example {
@@ -44,50 +43,45 @@ impl ExampleCircuit for Sha256Example {
 	type Instance = Instance;
 
 	fn build(params: Params, builder: &mut CircuitBuilder) -> Result<Self> {
-		let len_wire = if params.exact_len {
-			builder.add_constant_64(params.max_len as u64)
+		let max_len = params.max_len_bytes.div_ceil(8);
+		let len_bytes = if params.exact_len_bytes {
+			builder.add_constant_64(params.max_len_bytes as u64)
 		} else {
 			builder.add_witness()
 		};
-		let sha256_gadget = mk_circuit(builder, params.max_len, len_wire);
+		let sha256_gadget = mk_circuit(builder, max_len, len_bytes);
 
-		Ok(Self {
-			params,
-			sha256_gadget,
-		})
+		Ok(Self { sha256_gadget })
 	}
 
 	fn populate_witness(&self, instance: Instance, w: &mut WitnessFiller) -> Result<()> {
-		let message = if let Some(message) = instance.message {
-			message.as_bytes().to_vec()
+		let message_bytes = if let Some(message_string) = instance.message_string {
+			message_string.as_bytes().to_vec()
 		} else {
-			let message_len = instance.len.unwrap_or(self.params.max_len);
 			let mut rng = StdRng::seed_from_u64(0);
 
-			let mut message = vec![0u8; message_len];
-			rng.fill_bytes(&mut message);
-			message
+			let mut message_bytes = vec![0u8; self.sha256_gadget.max_len_bytes()];
+			rng.fill_bytes(&mut message_bytes);
+			message_bytes
 		};
 
-		ensure!(message.len() <= self.params.max_len, "message length exceeds --max-len");
+		ensure!(message_bytes.len() <= self.sha256_gadget.max_len_bytes(), "message too long");
 
-		let digest = sha2::Sha256::digest(&message);
+		let digest = sha2::Sha256::digest(&message_bytes);
 
 		// Populate the input message for the hash function.
-		self.sha256_gadget.populate_len(w, message.len());
-		self.sha256_gadget.populate_message(w, &message);
+		self.sha256_gadget.populate_len(w, message_bytes.len());
+		self.sha256_gadget.populate_message(w, &message_bytes);
 		self.sha256_gadget.populate_digest(w, digest.into());
 
 		Ok(())
 	}
 }
 
-fn mk_circuit(b: &mut CircuitBuilder, max_n: usize, len: Wire) -> Sha256 {
+fn mk_circuit(b: &mut CircuitBuilder, max_len: usize, len_bytes: Wire) -> Sha256 {
 	let digest: [Wire; 4] = array::from_fn(|_| b.add_inout());
-	let n_blocks = (max_n + 9).div_ceil(64);
-	let n_words = n_blocks * 8;
-	let message = (0..n_words).map(|_| b.add_inout()).collect();
-	Sha256::new(b, max_n, len, digest, message)
+	let message = (0..max_len).map(|_| b.add_inout()).collect();
+	Sha256::new(b, len_bytes, digest, message)
 }
 
 fn main() -> Result<()> {

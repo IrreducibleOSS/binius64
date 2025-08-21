@@ -13,11 +13,11 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use sha2::{Digest, Sha256 as Sha256Hasher};
 
 pub fn create_sha256_cs_with_witness(
-	log_message_len: usize,
+	log_message_len_bytes: usize,
 	rng: &mut impl rand::Rng,
 ) -> (ConstraintSystem, ValueVec) {
 	let builder = CircuitBuilder::new();
-	let message_len: usize = 1 << log_message_len; // 2^log_message_len
+	let message_len_bytes: usize = 1 << log_message_len_bytes; // 2^log_message_len
 
 	// Create wires for the SHA256 circuit
 	let len = builder.add_witness(); // Actual message length
@@ -27,18 +27,18 @@ pub fn create_sha256_cs_with_witness(
 		builder.add_inout(),
 		builder.add_inout(),
 	];
-	let message: Vec<binius_frontend::compiler::Wire> = (0..message_len.div_ceil(8usize))
+	let message: Vec<binius_frontend::compiler::Wire> = (0..message_len_bytes.div_ceil(8usize))
 		.map(|_| builder.add_witness())
 		.collect();
 
 	// Create the SHA256 circuit
-	let sha256 = Sha256::new(&builder, message_len, len, digest, message);
+	let sha256 = Sha256::new(&builder, len, digest, message);
 
 	let circuit = builder.build();
 	let mut witness_filler = circuit.new_witness_filler();
 
 	// Generate random message bytes of specified length
-	let mut message_bytes = vec![0u8; message_len];
+	let mut message_bytes = vec![0u8; message_len_bytes];
 	rng.fill_bytes(&mut message_bytes);
 	sha256.populate_len(&mut witness_filler, message_bytes.len());
 	sha256.populate_message(&mut witness_filler, &message_bytes);
@@ -61,11 +61,11 @@ fn bench_prove_and_verify(c: &mut Criterion) {
 	let mut rng = rand::rng();
 
 	// Configurable log message lengths to benchmark (actual lengths will be 2^log_len)
-	let log_message_lengths = [8, 12, 16]; // Actual lengths: 256, 4096, 65536 bytes
+	let log_message_lengths_bytes = [8, 12, 16]; // Actual lengths: 256, 4096, 65536 bytes
 
-	for &log_message_len in &log_message_lengths {
-		let message_len = 1 << log_message_len;
-		let (mut cs, value_vec) = create_sha256_cs_with_witness(log_message_len, &mut rng);
+	for &log_message_len_bytes in &log_message_lengths_bytes {
+		let message_len_bytes = 1 << log_message_len_bytes;
+		let (mut cs, value_vec) = create_sha256_cs_with_witness(log_message_len_bytes, &mut rng);
 		cs.validate_and_prepare().unwrap();
 
 		// Sample multilinear eval points
@@ -92,8 +92,9 @@ fn bench_prove_and_verify(c: &mut Criterion) {
 
 		let inout_n_vars = strict_log_2(cs.value_vec_layout.offset_witness).unwrap();
 
-		let mut group = c
-			.benchmark_group(format!("shift_reduction_log2_{log_message_len}_bytes_{message_len}"));
+		let mut group = c.benchmark_group(format!(
+			"shift_reduction_log2_{log_message_len_bytes}_bytes_{message_len_bytes}"
+		));
 		group.sample_size(10);
 
 		group.bench_function("prove", |b| {

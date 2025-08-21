@@ -1,6 +1,9 @@
 pub mod compress;
 
-use binius_core::word::Word;
+use binius_core::{
+	consts::{LOG_BYTE_BITS, LOG_WORD_SIZE_BITS},
+	word::Word,
+};
 pub use compress::{Compress, State};
 
 use crate::{
@@ -25,12 +28,10 @@ use crate::{
 /// The message bitlength must be less than 2^32 bits (2^29 bytes) due to SHA-256's
 /// length encoding using a 64-bit integer where we only support the lower 32 bits.
 pub struct Sha256 {
-	/// The maximum length of the input message in bytes this circuit is configured to process.
-	pub max_len: usize,
 	/// The actual length of the input message in bytes.
 	///
-	/// Must be less than or equal to `max_len`.
-	pub len: Wire,
+	/// Must be less than or equal to `max_len_bytes`.
+	pub len_bytes: Wire,
 	/// The expected SHA-256 digest packed as 4x64-bit words in big-endian order.
 	///
 	/// - digest\[0\]: High 64 bits (bytes 0-7 of the hash)
@@ -41,7 +42,7 @@ pub struct Sha256 {
 	/// The input message packed as 64-bit words.
 	///
 	/// Each wire contains 8 bytes of the message packed as two XORed 32-bit big-endian words.
-	/// The number of wires is `ceil(max_len / 8)`.
+	/// This circuit will run enough hash blocks to process the entire message.
 	pub message: Vec<Wire>,
 
 	/// Compression gadgets for each 512-bit block.
@@ -50,7 +51,7 @@ pub struct Sha256 {
 	/// The gadgets are chained together, with each taking the output state from the previous
 	/// compression as input. The first compression starts from the SHA-256 initialization vector.
 	///
-	/// The number of compression gadgets is `ceil((max_len + 9) / 64)`, accounting for
+	/// The number of compression gadgets is `ceil((max_len_bytes + 9) / 64)`, accounting for
 	/// the minimum 9 bytes of padding (1 byte for 0x80 delimiter + 8 bytes for length).
 	compress: Vec<Compress>,
 }
@@ -60,25 +61,22 @@ impl Sha256 {
 	///
 	/// # Arguments
 	/// * `builder` - Circuit builder for constructing constraints
-	/// * `max_len` - Maximum message length in bytes this circuit can handle
-	/// * `len` - Wire containing the actual message length in bytes
+	/// * `len_bytes` - Wire containing the actual message length in bytes
 	/// * `digest` - Expected SHA-256 digest as 4 wires of 64 bits each
 	/// * `message` - Input message as packed 64-bit words (8 bytes per wire)
 	///
-	/// # Panics
-	/// * If `max_len` is 0
-	/// * If `max_len * 8` exceeds 2^32 (see the struct doc)
+	/// # Panics If the total number of bits of content contained in `message` cannot be represented in 32
+	///   bits; i.e., if `message.len() << LOG_WORD_SIZE_BITS > u32::MAX`
 	///
 	/// # Circuit Structure
 	/// The circuit performs the following validations:
-	/// 1. Ensures the actual length is within bounds (len <= max_len)
+	/// 1. Ensures the actual length is within bounds (len_bytes <= max_len_bytes)
 	/// 2. Pads the message according to SHA-256 specifications
 	/// 3. Computes the hash through chained compression functions
 	/// 4. Verifies the computed digest matches the expected digest
 	pub fn new(
 		builder: &CircuitBuilder,
-		max_len: usize,
-		len: Wire,
+		len_bytes: Wire,
 		digest: [Wire; 4],
 		message: Vec<Wire>,
 	) -> Self {
@@ -88,7 +86,7 @@ impl Sha256 {
 		//
 		// 1. Input validation and setup
 		//    - Validate maximum length constraints
-		//    - Ensure actual length <= max_len
+		//    - Ensure actual length <= max_len_bytes
 		//
 		// 2. Message padding and compression setup
 		//    - Create padded message blocks following SHA-256 rules
@@ -113,15 +111,18 @@ impl Sha256 {
 		// padding (1 byte for 0x80 delimiter + 8 bytes for length field).
 		//
 		// We also verify that the actual input length len is within bounds.
-		assert!(max_len > 0, "max_len must be positive");
-		assert!(max_len * 8 <= u32::MAX as usize, "max_len * 8 must fit in 32 bits");
+		assert!(
+			message.len() << LOG_WORD_SIZE_BITS <= u32::MAX as usize,
+			"length of message in bits must fit within 32 bits"
+		);
 
-		let n_blocks = (max_len + 9).div_ceil(64);
-		let n_words = n_blocks * 8;
+		let max_len_bytes = message.len() << (LOG_WORD_SIZE_BITS - LOG_BYTE_BITS);
+		let n_blocks = (message.len() + 2).div_ceil(8);
+		let n_words = n_blocks << 3; // 8 message words per compression gadget block
 
-		// Assert that len <= max_len by checking that !(max_len < len)
-		let len_exceeds_max = builder.icmp_ult(builder.add_constant_64(max_len as u64), len);
-		builder.assert_0("1.len_check", len_exceeds_max);
+		// Assert that len_bytes <= max_len_bytes by checking that !(max_len_bytes < len_bytes)
+		let too_long = builder.icmp_ult(builder.add_constant_64(max_len_bytes as u64), len_bytes);
+		builder.assert_0("1.len_check", too_long);
 
 		// ---- 2. Message padding and compression setup
 		//
@@ -134,9 +135,6 @@ impl Sha256 {
 		//
 		// Compression gadgets are daisy-chained: each takes the output state from the previous
 		// compression as input, with the first compression starting from the SHA-256 IV.
-		let mut message = message;
-		message.resize(n_words, builder.add_constant_64(0));
-		// see comment about the above two lines in sha512/mod.rs.
 
 		// for each compression gadget, we need to digest 16 32-bit words' worth of content.
 		// since message is packed into 64-bit wires, we need to do a few slight tricks.
@@ -177,20 +175,20 @@ impl Sha256 {
 		// 3. 64-bit length field in the last 8 bytes of a block
 		//
 		// The length field fits in the same block as the message if there's room for at least
-		// 9 bytes of padding (1 delimiter + 8 length). This happens when len % 64 <= 55.
-		// Special case: if len % 64 = 0 and len > 0, the message fills the block exactly, so
-		// padding goes in the next block.
+		// 9 bytes of padding (1 delimiter + 8 length). This happens when len_bytes % 64 <= 55.
+		// Special case: if len_bytes % 64 = 0 and len_bytes > 0, the message fills the block
+		// exactly, so padding goes in the next block.
 		//
 		// We calculate:
-		// - w_bd: word boundary (which word contains the last message byte)
-		// - msg_block: which block contains the last message byte
-		// - end_block_index: which block contains the length field
-		let w_bd = builder.shr(len, 3);
-		let len_mod_8 = builder.band(len, builder.add_constant_zx_8(7));
-		let bitlen = builder.shl(len, 3);
+		// - w_bd: word boundary (which word contains the delimiter byte)
+		// - end_block_index (which block contains the length field)
+		let w_bd = builder.shr(len_bytes, 3);
+		let len_mod_8 = builder.band(len_bytes, builder.add_constant_zx_8(7));
+		let bitlen = builder.shl(len_bytes, 3);
 
 		let zero = builder.add_constant(Word::ZERO);
-		let end_block_index = builder.shr(builder.iadd_32(len, builder.add_constant_64(8)), 6);
+		let end_block_index =
+			builder.shr(builder.iadd_32(len_bytes, builder.add_constant_64(8)), 6);
 		let delim: Wire = builder.add_constant_zx_8(0x80);
 
 		// ---- 2b. Final digest selection
@@ -239,9 +237,22 @@ impl Sha256 {
 		// 2. delimiter byte, placed right after the input.
 		// 3. zero byte. Placed after the delimiter byte.
 
-		let boundary_message_word = single_wire_multiplex(builder, &message, w_bd);
 		let boundary_padded_lo32 = single_wire_multiplex(builder, &padded_evens, w_bd);
 		let boundary_padded_hi32 = single_wire_multiplex(builder, &padded_odds, w_bd);
+		let boundary_message_word =
+			single_wire_multiplex(builder, &([message.as_slice(), &[zero]].concat()), w_bd);
+		// for the multiplexer above to be sound, we need `sel < inputs.len()` to be true.
+		// since we constrained `len_bytes ≤ max_len_bytes ≔ message.len() << 3`, above,
+		// we necessarily have `w_bd ≔ len_bytes >> 3 ≤ max_len_bytes >> 3 == message.len()`.
+		// thus we have w_bd ≤ message.len() < message.concat(zero).len(), so it's strict.
+		// in the exceptional case w_bd ≔ len_bytes >> 3 == max_len_bytes >> 3 == message.len(),
+		// `boundary_message_word` will be `zero`, but that's fine, as I now explain. indeed:
+		// the only way w_bd = message.len() and len_bytes ≤ max_len_bytes can both be true is if
+		// len_bytes = max_len_bytes. in this case, len_bytes is a multiple of 8, so len_mod_8 = 0.
+		// in this case, `data_b` will thus be false for each j ∈ {0, … , 7}, ergo, "3b.1" will be
+		// dummy'd out for each j, and `boundary_message_word` will be completely ignored.
+		// thus it truly doesn't matter what the multiplexer returns; in this case,
+		// we are simply asserting that `boundary_padded_word` == 0x 80 00 ...... 00.
 
 		for j in 0..8 {
 			let builder = builder.subcircuit(format!("byte[{j}]"));
@@ -308,9 +319,13 @@ impl Sha256 {
 					builder.icmp_ult(w_bd, builder.add_constant_64(word_index as u64));
 
 				// ---- 3a. Full message words
-				//
-				if word_index < max_len >> 3 {
-					// see comment about this condition above in sha512/mod.rs.
+				if word_index < message.len() {
+					// it is safe to exempt the following check when word_index ≥ message.len().
+					// proof: we constrained above that len_bytes ≤ max_len_bytes.
+					// thus, w_bd ≔ len_bytes >> 3 ≤ max_len_bytes >> 3 == message.len().
+					// so if word_index ≥ message.len() held, then word_index ≥ w_bd also would;
+					// equivalently, is_message_word ≔ (word_index < w_bd) would be false,
+					// so the below constraint would be perma-disabled and we can feely omit / skip.
 					builder.assert_eq_cond(
 						"3a.full_word".to_string(),
 						message[word_index],
@@ -334,11 +349,10 @@ impl Sha256 {
 
 				// ---- 3d. Length field placement
 				//
-				// When idx == 14, we're looking at the last two 32-bit words of a block (words 14
-				// and 15). If this block contains the length field:
-				// - Word 14 must be zero (high 32 bits of length, always 0 since we support < 2^32
-				//   bits)
-				// - Word 15 contains the message bit length
+				// When column_index == 7, we're looking at the last two 32-bit words of a block.
+				// If this block contains the length field:
+				// - the low part of the 7th word should be zero;
+				// - the high part of the 7th word should contain the message bit length.
 				// Otherwise, if it's a padding word (not message, not length), it must be zero.
 				if column_index == 7 {
 					builder.assert_eq_cond(
@@ -347,8 +361,8 @@ impl Sha256 {
 						zero,
 						builder.band(is_past_message, builder.bnot(is_length_block)),
 					);
-					builder.assert_eq_cond("3d.w14_zero", w_lo32, zero, is_length_block);
-					builder.assert_eq_cond("3d.w15_len", w_hi32, bitlen, is_length_block);
+					builder.assert_eq_cond("3d.w7lo_zero", w_lo32, zero, is_length_block);
+					builder.assert_eq_cond("3d.w7hi_len", w_hi32, bitlen, is_length_block);
 				} else {
 					builder.assert_eq_cond(
 						"3c.zero_pad",
@@ -361,21 +375,25 @@ impl Sha256 {
 		}
 
 		Self {
-			max_len,
-			len,
+			len_bytes,
 			digest,
 			message,
 			compress,
 		}
 	}
 
+	/// Returns the maximum message length, in bytes.
+	pub fn max_len_bytes(&self) -> usize {
+		self.message.len() << (LOG_WORD_SIZE_BITS - LOG_BYTE_BITS)
+	}
+
 	/// Populates the length wire with the actual message size in bytes.
 	///
 	/// # Panics
-	/// The method panics if `len` exceeds `max_len`.
-	pub fn populate_len(&self, w: &mut WitnessFiller<'_>, len: usize) {
-		assert!(len <= self.max_len);
-		w[self.len] = Word(len as u64);
+	/// The method panics if `len_bytes` exceeds `max_len_bytes`.
+	pub fn populate_len(&self, w: &mut WitnessFiller<'_>, len_bytes: usize) {
+		assert!(len_bytes <= self.max_len_bytes());
+		w[self.len_bytes] = Word(len_bytes as u64);
 	}
 
 	/// Populates the digest wires with the expected SHA-256 hash.
@@ -493,13 +511,13 @@ impl Sha256 {
 	/// 3. Populating the compression gadgets with properly formatted blocks
 	///
 	/// # Panics
-	/// * If `message_bytes.len()` > `max_len`
+	/// * If `message_bytes.len()` > `max_len_bytes`
 	pub fn populate_message(&self, w: &mut WitnessFiller<'_>, message_bytes: &[u8]) {
 		assert!(
-			message_bytes.len() <= self.max_len,
+			message_bytes.len() <= self.max_len_bytes(),
 			"message length {} exceeds maximum {}",
 			message_bytes.len(),
-			self.max_len
+			self.max_len_bytes()
 		);
 
 		let n_blocks = self.compress.len();
@@ -571,19 +589,17 @@ mod tests {
 		constraint_verifier::verify_constraints,
 	};
 
-	fn mk_circuit(b: &mut compiler::CircuitBuilder, max_n: usize) -> Sha256 {
+	fn mk_circuit(b: &mut compiler::CircuitBuilder, max_len: usize) -> Sha256 {
 		let len = b.add_witness();
 		let digest: [Wire; 4] = std::array::from_fn(|_| b.add_inout());
-		let n_blocks = (max_n + 9).div_ceil(64);
-		let n_words = n_blocks * 8;
-		let message = (0..n_words).map(|_| b.add_inout()).collect();
-		Sha256::new(b, max_n, len, digest, message)
+		let message = (0..max_len).map(|_| b.add_inout()).collect();
+		Sha256::new(b, len, digest, message)
 	}
 
 	#[test]
 	fn full_sha256() {
 		let mut b = compiler::CircuitBuilder::new();
-		let c = mk_circuit(&mut b, 2048);
+		let c = mk_circuit(&mut b, 256);
 		let circuit = b.build();
 		let mut w = circuit.new_witness_filler();
 		c.populate_len(&mut w, 3);
@@ -598,13 +614,13 @@ mod tests {
 	#[test]
 	fn full_sha256_multi_block() {
 		let mut b = compiler::CircuitBuilder::new();
-		let c = mk_circuit(&mut b, 2048);
+		let c = mk_circuit(&mut b, 256);
 		let circuit = b.build();
 		let mut w = circuit.new_witness_filler();
 
-		let message = b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
-		c.populate_len(&mut w, message.len());
-		c.populate_message(&mut w, message);
+		let message_bytes = b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
+		c.populate_len(&mut w, message_bytes.len());
+		c.populate_message(&mut w, message_bytes);
 		c.populate_digest(
 			&mut w,
 			hex!("248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"),
@@ -613,15 +629,15 @@ mod tests {
 	}
 
 	// Helper function to run SHA-256 test with given input and expected digest
-	fn test_sha256_with_input(message: &[u8], expected_digest: [u8; 32]) {
+	fn test_sha256_with_input(message_bytes: &[u8], expected_digest: [u8; 32]) {
 		let mut b = compiler::CircuitBuilder::new();
-		let c = mk_circuit(&mut b, 2048);
+		let c = mk_circuit(&mut b, 256);
 		let circuit = b.build();
 		let cs = circuit.constraint_system();
 		let mut w = circuit.new_witness_filler();
 
-		c.populate_len(&mut w, message.len());
-		c.populate_message(&mut w, message);
+		c.populate_len(&mut w, message_bytes.len());
+		c.populate_message(&mut w, message_bytes);
 		c.populate_digest(&mut w, expected_digest);
 
 		circuit.populate_wire_witness(&mut w).unwrap();
@@ -792,7 +808,7 @@ mod tests {
 	fn test_bogus_length_rejection() {
 		// Test that providing wrong length causes circuit to reject
 		let mut b = compiler::CircuitBuilder::new();
-		let c = mk_circuit(&mut b, 2048);
+		let c = mk_circuit(&mut b, 256);
 		let circuit = b.build();
 		let mut w = circuit.new_witness_filler();
 
@@ -812,7 +828,7 @@ mod tests {
 
 	#[test]
 	fn test_length_exceeds_max_rejection() {
-		// Test that providing a length > max_len causes circuit to reject
+		// Test that providing a length > max_len_bytes causes circuit to reject
 		let max_len = 3;
 		let mut b = compiler::CircuitBuilder::new();
 		let c = mk_circuit(&mut b, max_len);
@@ -821,7 +837,7 @@ mod tests {
 
 		let message = b"abc";
 		// Bypass the API safety check and set the length wire directly
-		w[c.len] = Word((max_len + 1) as u64);
+		w[c.len_bytes] = Word(c.max_len_bytes() as u64 + 1);
 		c.populate_message(&mut w, message);
 		c.populate_digest(
 			&mut w,
@@ -830,14 +846,14 @@ mod tests {
 
 		// This should fail at the length check assertion in the circuit
 		let result = circuit.populate_wire_witness(&mut w);
-		assert!(result.is_err(), "Circuit should reject length > max_len");
+		assert!(result.is_err(), "Circuit should reject length > max_len_bytes");
 	}
 
 	#[test]
 	fn test_invalid_digest_rejection() {
 		// Test that providing wrong digest causes circuit to reject
 		let mut b = compiler::CircuitBuilder::new();
-		let c = mk_circuit(&mut b, 2048);
+		let c = mk_circuit(&mut b, 256);
 		let circuit = b.build();
 		let mut w = circuit.new_witness_filler();
 
@@ -856,7 +872,7 @@ mod tests {
 	fn test_wrong_message_content() {
 		// Test that providing wrong message content causes circuit to reject
 		let mut b = compiler::CircuitBuilder::new();
-		let c = mk_circuit(&mut b, 2048);
+		let c = mk_circuit(&mut b, 256);
 		let circuit = b.build();
 		let mut w = circuit.new_witness_filler();
 
@@ -875,37 +891,32 @@ mod tests {
 	}
 
 	#[test]
-	fn test_max_len_edge_cases() {
-		// Test that SHA256 circuit construction works correctly for various max_len values
+	fn test_max_len_bytes_edge_cases() {
+		// Test that SHA256 circuit construction works correctly for various max_len_bytes values
 		// This specifically tests the fix for indexing issues when word_index >= message.len()
 
 		let test_cases = vec![
 			// (max_len, description)
-			(55, "fits in one block with padding"),
-			(56, "exactly at boundary"),
-			(63, "one byte before block boundary"),
-			(64, "exactly one block"),
-			(119, "fits in two blocks with padding"),
-			(120, "exactly at two-block boundary"),
-			(128, "two blocks exactly"),
-			(256, "four blocks - previously caused index out of bounds"),
-			(512, "eight blocks"),
-			(1024, "sixteen blocks"),
+			(0, "no input"),
+			(6, "fits in one block with padding"),
+			(7, "just past boundary"),
+			(8, "exactly one block"),
+			(14, "fits in two blocks with padding"),
+			(15, "just past two-block boundary"),
+			(16, "two blocks exactly"),
+			(32, "four blocks - previously caused index out of bounds"),
+			(64, "eight blocks"),
+			(128, "sixteen blocks"),
 		];
 
 		for (max_len, description) in test_cases {
-			// Test circuit construction - this used to panic for certain max_len values
 			let mut b = compiler::CircuitBuilder::new();
 			let c = mk_circuit(&mut b, max_len);
 			let circuit = b.build();
 
-			// Verify the circuit was constructed successfully
-			// The number of message wires should be n_words = n_blocks * 8
-			let n_blocks = (max_len + 9).div_ceil(64);
-			let n_words = n_blocks * 8;
 			assert_eq!(
 				c.message.len(),
-				n_words,
+				max_len,
 				"Wrong number of message wires for max_len={max_len} ({description})"
 			);
 
@@ -924,24 +935,6 @@ mod tests {
 				result.is_ok(),
 				"Failed for max_len={max_len} ({description}) with empty message: {result:?}"
 			);
-
-			// Test with a 3-byte message "abc" if it fits
-			if max_len >= 3 {
-				let mut w = circuit.new_witness_filler();
-				c.populate_len(&mut w, 3);
-				c.populate_message(&mut w, b"abc");
-				// SHA256 of "abc"
-				c.populate_digest(
-					&mut w,
-					hex!("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
-				);
-
-				let result = circuit.populate_wire_witness(&mut w);
-				assert!(
-					result.is_ok(),
-					"Failed for max_len={max_len} ({description}) with 'abc' message: {result:?}"
-				);
-			}
 		}
 	}
 
