@@ -1,8 +1,8 @@
-# Boojum Design - Fundamental Algorithms with Precise Type Semantics
+# Spark Design - Fundamental Algorithms with Precise Type Semantics
 
 ## Core Principle
 
-**Boojum does NOT use any existing frontend infrastructure.**
+**Spark does NOT use any existing frontend infrastructure.**
 
 We compile DIRECTLY from witness operations to `binius_core::constraint_system` types with explicit type semantics for each `Word` value.
 
@@ -225,4 +225,4 @@ match (operation, type_interpretation) {
 
 The key insight: **Type interpretation determines constraint generation.**
 
-A Word is not just 64 bits - it's a field element XOR an integer XOR a bit pattern, and Boojum makes this explicit.
+A Word is not just 64 bits - it's a field element XOR an integer XOR a bit pattern, and Spark makes this explicit.

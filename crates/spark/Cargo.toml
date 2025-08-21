@@ -1,0 +1,15 @@
+[package]
+name = "binius-spark"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+binius-core = { path = "../core" }
+binius-frontend = { path = "../frontend" }
+
+[dev-dependencies]
+rand = { workspace = true, features = ["std_rng"] }

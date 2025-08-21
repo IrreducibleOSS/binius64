@@ -13,6 +13,7 @@ use super::{
 };
 
 /// Typed witness execution context with perfect method-to-operation mapping
+#[derive(Default)]
 pub struct WitnessContext {
     /// Next available IDs for each type
     next_field_id: u32,
@@ -30,19 +31,10 @@ pub struct WitnessContext {
     operations: Vec<Operation>,
 }
 
+
 impl WitnessContext {
     pub fn new() -> Self {
-        Self {
-            next_field_id: 0,
-            next_uint_id: 0,
-            next_bits_id: 0,
-            next_legacy_id: 0,
-            field_values: HashMap::new(),
-            uint_values: HashMap::new(),
-            bits_values: HashMap::new(),
-            legacy_values: HashMap::new(),
-            operations: Vec::new(),
-        }
+        Self::default()
     }
     
     // ========== WITNESS CREATION ==========
@@ -81,6 +73,19 @@ impl WitnessContext {
         BitsValue { value, id }
     }
     
+    /// Shorter aliases for witness creation
+    pub fn field(&mut self, value: Word) -> FieldValue {
+        self.witness_field(value)
+    }
+    
+    pub fn uint(&mut self, value: Word) -> UIntValue {
+        self.witness_uint(value)
+    }
+    
+    pub fn bits(&mut self, value: Word) -> BitsValue {
+        self.witness_bits(value)
+    }
+    
     /// Convenience constants
     pub fn zero_field(&mut self) -> FieldValue {
         self.witness_field(Word::ZERO)
@@ -97,7 +102,7 @@ impl WitnessContext {
     // ========== FIELD OPERATIONS (GF(2^64)) ==========
     
     /// Field addition (XOR operation in GF(2^64))
-    pub fn field_add(&mut self, a: FieldValue, b: FieldValue) -> FieldValue {
+    pub fn add(&mut self, a: FieldValue, b: FieldValue) -> FieldValue {
         let result_value = Word(a.value.0 ^ b.value.0);  // XOR = field addition
         let result_id = FieldId(self.next_field_id);
         self.next_field_id += 1;
@@ -111,11 +116,11 @@ impl WitnessContext {
     
     /// Alias for field addition (familiar name)
     pub fn xor(&mut self, a: FieldValue, b: FieldValue) -> FieldValue {
-        self.field_add(a, b)
+        self.add(a, b)
     }
     
     /// Field multiplication (carryless multiplication in GF(2^64))
-    pub fn field_mul(&mut self, a: FieldValue, b: FieldValue) -> FieldValue {
+    pub fn mul(&mut self, a: FieldValue, b: FieldValue) -> FieldValue {
         // For now, simple implementation - real CLMUL would be more complex
         let result_value = self.compute_field_mul(a.value, b.value);
         let result_id = FieldId(self.next_field_id);
@@ -130,7 +135,7 @@ impl WitnessContext {
     // ========== UNSIGNED INTEGER OPERATIONS ==========
     
     /// Unsigned integer addition with carry (mod 2^64 arithmetic)
-    pub fn uint_add(&mut self, a: UIntValue, b: UIntValue, carry_in: UIntValue) 
+    pub fn add_with_carry(&mut self, a: UIntValue, b: UIntValue, carry_in: UIntValue) 
         -> (UIntValue, UIntValue) {
         let carry_bit = carry_in.value.0 >> 63;  // Extract carry bit
         let (sum_val, carry_out_val) = {
@@ -166,11 +171,11 @@ impl WitnessContext {
     /// Alias for unsigned integer addition (familiar name)
     pub fn adc(&mut self, a: UIntValue, b: UIntValue, carry_in: UIntValue) 
         -> (UIntValue, UIntValue) {
-        self.uint_add(a, b, carry_in)
+        self.add_with_carry(a, b, carry_in)
     }
     
     /// Unsigned integer multiplication (64x64 -> 128 bit result)
-    pub fn uint_mul(&mut self, a: UIntValue, b: UIntValue) -> (UIntValue, UIntValue) {
+    pub fn mul_with_overflow(&mut self, a: UIntValue, b: UIntValue) -> (UIntValue, UIntValue) {
         let result128 = (a.value.0 as u128) * (b.value.0 as u128);
         let lo_val = Word((result128 & 0xFFFFFFFFFFFFFFFF) as u64);
         let hi_val = Word((result128 >> 64) as u64);
@@ -409,3 +414,4 @@ pub enum LegacyOperation {
     AssertEq(WitnessId, WitnessId, String),
     AssertZero(WitnessId, String),
 }
+

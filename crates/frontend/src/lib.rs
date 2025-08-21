@@ -1,4 +1,3 @@
-pub mod boojum;
 pub mod circuits;
 pub mod compiler;
 pub mod constraint_verifier;

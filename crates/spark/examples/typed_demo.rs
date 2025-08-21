@@ -1,16 +1,16 @@
-//! Demonstration of the new typed Boojum system
+//! Demonstration of the new typed Spark system
 //!
-//! Run with: cargo run --example boojum_typed_demo --release
+//! Run with: cargo run --example typed_demo --release
 
 use binius_core::Word;
-use binius_frontend::boojum::{
-    witness::WitnessContext,
+use binius_spark::{
+    witness::{WitnessContext},
     compiler::ConstraintCompiler,
     constraints::ConstraintOptimizer,
 };
 
 fn main() {
-    println!("=== Boojum Typed System Demonstration ===\n");
+    println!("=== Spark Typed System Demonstration ===\n");
     
     // Create witness context
     let mut ctx = WitnessContext::new();
@@ -19,7 +19,7 @@ fn main() {
     println!("1. Field Operations (GF(2^64)):");
     let a = ctx.witness_field(Word(3));
     let b = ctx.witness_field(Word(5));
-    let field_sum = ctx.field_add(a, b);  // XOR = field addition
+    let field_sum = ctx.add(a, b);  // XOR = field addition
     println!("   0x3 ⊕ 0x5 = 0x{:X} (field addition)", field_sum.value.0);
     
     // Alternative syntax using alias
@@ -32,12 +32,12 @@ fn main() {
     let x = ctx.witness_uint(Word(100));
     let y = ctx.witness_uint(Word(200));
     let zero = ctx.zero_uint();
-    let (int_sum, carry) = ctx.uint_add(x, y, zero);
+    let (int_sum, carry) = ctx.add_with_carry(x, y, zero);
     println!("   100 + 200 = {} (carry: {})", int_sum.value.0, carry.value.0);
     
     // Alternative syntax using alias  
     let z = ctx.witness_uint(Word(50));
-    let (total, carry2) = ctx.adc(int_sum, z, zero);
+    let (total, _carry2) = ctx.adc(int_sum, z, zero);
     println!("   {} + 50 = {} (using adc alias)", int_sum.value.0, total.value.0);
     
     // Bit operations
@@ -102,13 +102,13 @@ mod tests {
         // This works - field operations
         let a = ctx.witness_field(Word(3));
         let b = ctx.witness_field(Word(5));
-        let _sum = ctx.field_add(a, b);
+        let _sum = ctx.add(a, b);
         
         // This works - uint operations
         let x = ctx.witness_uint(Word(10));
         let y = ctx.witness_uint(Word(20));
         let z = ctx.zero_uint();
-        let (_sum2, _carry) = ctx.uint_add(x, y, z);
+        let (_sum2, _carry) = ctx.add_with_carry(x, y, z);
         
         // This works - bit operations
         let bits1 = ctx.witness_bits(Word(0xFF));
@@ -116,8 +116,8 @@ mod tests {
         let _masked = ctx.and(bits1, bits2);
         
         // Compile-time type safety prevents mixing:
-        // let wrong = ctx.field_add(a, x);  // Would not compile!
-        // let wrong2 = ctx.uint_add(a, b, z); // Would not compile!
+        // let wrong = ctx.add(a, x);  // Would not compile!
+        // let wrong2 = ctx.add_with_carry(a, b, z); // Would not compile!
         
         assert!(true, "Type safety ensured at compile time");
     }

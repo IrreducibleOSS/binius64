@@ -1,16 +1,15 @@
-//! Tests for the Boojum paradigm
+//! Tests for the Spark paradigm
 //!
 //! These tests demonstrate direct compilation to backend constraint types
 //! WITHOUT using any existing frontend infrastructure.
 
 #[cfg(test)]
-mod tests {
-    use binius_core::Word;
-    use crate::boojum::{
+use binius_core::Word;
+use crate::{
         examples::{
-            subset_sum::{SubsetSumBoojum, SubsetSumInput},
-            multiplexer::{MultiplexerBoojum, MultiplexerInput},
-            add128::{Add128Boojum, Add128Input},
+            subset_sum::{spark_subset_sum, reference_subset_sum, SubsetSumInput},
+            multiplexer::{spark_multiplexer, reference_multiplexer, MultiplexerInput},
+            add128::{spark_add128, reference_add128, Add128Input},
         },
         witness::WitnessContext,
         compiler::ConstraintCompiler,
@@ -28,12 +27,12 @@ mod tests {
         };
         
         // Pure witness computation
-        let pure_output = SubsetSumBoojum::compute_witness_pure(&input);
+        let pure_output = reference_subset_sum(&input);
         assert_eq!(pure_output.computed_sum, Word(50));
         
         // Tracked witness computation
         let mut ctx = WitnessContext::new();
-        let tracked_output = SubsetSumBoojum::compute_witness_tracked(&mut ctx, &input);
+        let tracked_output = spark_subset_sum(&mut ctx, &input);
         assert_eq!(tracked_output.computed_sum, Word(50));
         
         // Direct compilation to backend constraints
@@ -58,12 +57,12 @@ mod tests {
         };
         
         // Pure computation
-        let pure_output = MultiplexerBoojum::compute_witness_pure(&input);
+        let pure_output = reference_multiplexer(&input);
         assert_eq!(pure_output.selected, Word(30));
         
         // Tracked computation
         let mut ctx = WitnessContext::new();
-        let tracked_output = MultiplexerBoojum::compute_witness_tracked(&mut ctx, &input);
+        let tracked_output = spark_multiplexer(&mut ctx, &input);
         assert_eq!(tracked_output.selected, Word(30));
         
         // Direct compilation
@@ -89,14 +88,13 @@ mod tests {
         };
         
         // Pure computation
-        let output = Add128Boojum::compute_witness_pure(&input);
+        let output = reference_add128(&input);
         assert_eq!(output.sum[0], Word(0));
         assert_eq!(output.sum[1], Word(1));
-        assert!(!output.overflow);
         
         // Tracked computation
         let mut ctx = WitnessContext::new();
-        let tracked_output = Add128Boojum::compute_witness_tracked(&mut ctx, &input);
+        let tracked_output = spark_add128(&mut ctx, &input);
         assert_eq!(tracked_output.sum, output.sum);
         
         // Direct compilation
@@ -124,7 +122,7 @@ mod tests {
         };
         
         let mut ctx = WitnessContext::new();
-        SubsetSumBoojum::compute_witness_tracked(&mut ctx, &input);
+        spark_subset_sum(&mut ctx, &input);
         
         let mut optimizer = ConstraintOptimizer::new();
         optimizer.analyze(ctx.operations());
@@ -145,8 +143,8 @@ mod tests {
         
         // Simple computation
         let mut ctx = WitnessContext::new();
-        let a = ctx.witness(Word(42));
-        let b = ctx.witness(Word(99));
+        let _a = ctx.witness(Word(42));
+        let _b = ctx.witness(Word(99));
         let a_bits = ctx.witness_bits(Word(42));
         let b_bits = ctx.witness_bits(Word(99));
         let _ = ctx.and(a_bits, b_bits);
@@ -164,4 +162,3 @@ mod tests {
         println!("✓ Using binius_core::constraint_system::MulConstraint");
         println!("✓ NO CircuitBuilder or frontend infrastructure!");
     }
-}

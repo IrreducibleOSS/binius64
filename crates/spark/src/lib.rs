@@ -1,4 +1,4 @@
-//! Boojum: A new paradigm for ZK proof construction
+//! Spark: A new paradigm for ZK proof construction
 //!
 //! This module implements a dual-language architecture that separates:
 //! 1. Witness computation (imperative Rust code)
@@ -125,8 +125,8 @@ pub enum Operation {
     Assert(AssertOp),
 }
 
-/// The Boojum trait defines how high-level constructs map to constraints
-pub trait Boojum {
+/// The Spark trait defines how high-level constructs map to constraints
+pub trait Spark {
     /// Type representing the witness computation inputs
     type WitnessInput;
     /// Type representing the witness computation outputs  

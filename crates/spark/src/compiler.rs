@@ -9,7 +9,7 @@
 //! - Addition chains: Sequential additions are combined
 //! - Shift inlining: Shifts become ShiftedValueIndex instead of separate operations
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use binius_core::{
     constraint_system::{AndConstraint, MulConstraint, ShiftedValueIndex, ValueIndex},
     word::Word,
@@ -89,7 +89,7 @@ struct XorExpression {
     /// The base values that are XORed together
     components: Vec<FieldId>,
     /// Whether this expression has been materialized as a ValueIndex
-    materialized: Option<ValueIndex>,
+    _materialized: Option<ValueIndex>,
 }
 
 /// Typed constraint compiler that outputs backend constraint types directly
@@ -132,10 +132,16 @@ pub struct OptimizationStats {
     pub boolean_masks_optimized: usize,
 }
 
+impl Default for ConstraintCompiler {
+    fn default() -> Self {
+        Self::new_with_options(OptimizationFlags::default())
+    }
+}
+
 impl ConstraintCompiler {
     /// Create a compiler with default optimization settings (all optimizations enabled)
     pub fn new() -> Self {
-        Self::new_with_options(OptimizationFlags::default())
+        Self::default()
     }
     
     /// Create a compiler with specific optimization settings
@@ -169,6 +175,7 @@ impl ConstraintCompiler {
     }
     
     /// Get operand for a field value, expanding XOR expressions if optimizing
+    #[allow(dead_code)]
     fn get_field_operand(&mut self, id: FieldId) -> Vec<ShiftedValueIndex> {
         if self.optimization.fold_xor_operands {
             // Check if this is an XOR expression we can expand
@@ -196,15 +203,13 @@ impl ConstraintCompiler {
             
             // Try to find if any field XOR expression would map to this bits value
             for (field_id, expr) in self.xor_expressions.clone() {
-                if let Some(&field_idx) = self.field_map.get(&field_id) {
-                    if let Some(&bits_idx) = self.bits_map.get(&id) {
-                        if field_idx == bits_idx {
-                            // This bits value corresponds to a field XOR expression!
-                            return expr.components.iter()
-                                .map(|&comp_id| ShiftedValueIndex::plain(self.get_field_index(comp_id)))
-                                .collect();
-                        }
-                    }
+                if let Some(&field_idx) = self.field_map.get(&field_id)
+                    && let Some(&bits_idx) = self.bits_map.get(&id)
+                    && field_idx == bits_idx {
+                    // This bits value corresponds to a field XOR expression!
+                    return expr.components.iter()
+                        .map(|&comp_id| ShiftedValueIndex::plain(self.get_field_index(comp_id)))
+                        .collect();
                 }
             }
         }
@@ -276,8 +281,11 @@ impl ConstraintCompiler {
                     // Store the XOR expression for potential folding
                     self.xor_expressions.insert(*result, XorExpression {
                         components,
-                        materialized: None,
+                        _materialized: None,
                     });
+                    
+                    // Still need to ensure result has an index allocated
+                    self.get_field_index(*result);
                     
                     self.stats.xor_operations_folded += 1;
                 } else {
@@ -468,7 +476,7 @@ impl ConstraintCompiler {
                 // But we may need to materialize XOR expressions first
                 if self.optimization.fold_xor_operands {
                     // Check if this field is an XOR expression
-                    if let Some(expr) = self.xor_expressions.get(field_id) {
+                    if let Some(_expr) = self.xor_expressions.get(field_id) {
                         // We'll handle this when bits_id is used in a constraint
                         // For now, just track the mapping
                         let field_idx = self.get_field_index(*field_id);
@@ -579,12 +587,12 @@ impl ConstraintCompiler {
         let mut report = String::new();
         report.push_str("=== Optimization Report ===\n");
         report.push_str(&format!("Optimization flags: {:?}\n", self.optimization));
-        report.push_str(&format!("\nConstraints generated:\n"));
+        report.push_str("\nConstraints generated:\n");
         report.push_str(&format!("  AND constraints: {}\n", self.and_constraints.len()));
         report.push_str(&format!("  MUL constraints: {}\n", self.mul_constraints.len()));
         
         if self.optimization.fold_xor_operands {
-            report.push_str(&format!("\nXOR folding:\n"));
+            report.push_str("\nXOR folding:\n");
             report.push_str(&format!("  XOR operations tracked: {}\n", self.xor_expressions.len()));
             report.push_str(&format!("  XOR operations folded: {}\n", self.stats.xor_operations_folded));
             
@@ -603,12 +611,12 @@ impl ConstraintCompiler {
         }
         
         if self.optimization.inline_shifts {
-            report.push_str(&format!("\nShift inlining:\n"));
+            report.push_str("\nShift inlining:\n");
             report.push_str(&format!("  Shifts inlined: {}\n", self.stats.shifts_inlined));
         }
         
         if self.optimization.optimize_boolean_masks {
-            report.push_str(&format!("\nBoolean masking:\n"));
+            report.push_str("\nBoolean masking:\n");
             report.push_str(&format!("  Boolean masks optimized: {}\n", self.stats.boolean_masks_optimized));
         }
         
@@ -634,18 +642,18 @@ pub fn demonstrate_typed_compilation() {
     // Field operations
     let a = ctx.witness_field(Word(3));
     let b = ctx.witness_field(Word(5));
-    let field_sum = ctx.field_add(a, b);  // XOR in GF(2^64)
+    let _field_sum = ctx.add(a, b);  // XOR in GF(2^64)
     
     // Integer operations
     let x = ctx.witness_uint(Word(100));
     let y = ctx.witness_uint(Word(200));
     let zero = ctx.zero_uint();
-    let (int_sum, carry) = ctx.uint_add(x, y, zero);
+    let (_int_sum, _carry) = ctx.add_with_carry(x, y, zero);
     
     // Bit operations
     let mask = ctx.witness_bits(Word(0xFF00FF00FF00FF00));
     let value = ctx.witness_bits(Word(0x123456789ABCDEF0));
-    let masked = ctx.and(mask, value);
+    let _masked = ctx.and(mask, value);
     
     // Compile to constraints
     let mut compiler = ConstraintCompiler::new();
@@ -673,7 +681,7 @@ mod tests {
         let mut ctx = WitnessContext::new();
         let a = ctx.witness_field(Word(0x3));
         let b = ctx.witness_field(Word(0x5));
-        let sum = ctx.field_add(a, b);  // Field addition
+        let _sum = ctx.add(a, b);  // Field addition
         
         let mut compiler = ConstraintCompiler::new();
         compiler.compile(ctx.operations());
@@ -690,7 +698,7 @@ mod tests {
         let a = ctx.witness_uint(Word(100));
         let b = ctx.witness_uint(Word(200));
         let zero = ctx.zero_uint();
-        let (sum, carry) = ctx.uint_add(a, b, zero);
+        let (_sum, _carry) = ctx.add_with_carry(a, b, zero);
         
         let mut compiler = ConstraintCompiler::new();
         compiler.compile(ctx.operations());
@@ -701,7 +709,7 @@ mod tests {
         
         assert!(and_constraints.len() >= 2);  // Carry propagation needs 2 constraints
         assert_eq!(mul_constraints.len(), 0);
-        assert_eq!(mappings.uint_count, 4);  // a, b, zero, sum, carry
+        assert_eq!(mappings.uint_count, 5);  // a, b, zero, sum, carry
         assert_eq!(mappings.field_count, 0);
     }
     
@@ -709,8 +717,8 @@ mod tests {
     fn test_type_conversions() {
         let mut ctx = WitnessContext::new();
         let bits = ctx.witness_bits(Word(42));
-        let as_field = ctx.as_field(bits);
-        let as_uint = ctx.as_uint(bits);
+        let _as_field = ctx.as_field(bits);
+        let _as_uint = ctx.as_uint(bits);
         
         let mut compiler = ConstraintCompiler::new();
         compiler.compile(ctx.operations());

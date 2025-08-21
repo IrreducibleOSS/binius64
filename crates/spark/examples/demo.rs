@@ -1,32 +1,31 @@
-//! Demonstration that Boojum uses the EXACT backend constraint types
+//! Demonstration that Spark uses the EXACT backend constraint types
 //!
-//! Run with: cargo run --example boojum_demo --release
+//! Run with: cargo run --example demo --release
 
-use binius_core::{
-    constraint_system::{AndConstraint, MulConstraint, ShiftedValueIndex},
-    word::Word,
-};
-use binius_frontend::boojum::{
-    witness::WitnessContext,
+use binius_core::word::Word;
+use binius_spark::{
+    witness::{WitnessContext},
     compiler::ConstraintCompiler,
 };
 
 fn main() {
-    println!("=== Boojum Direct Constraint Generation Demo ===\n");
+    println!("=== Spark Direct Constraint Generation Demo ===\n");
     
     // Create a simple computation
     let mut ctx = WitnessContext::new();
     
-    // Some witness values
-    let a = ctx.witness(Word(0xFF00FF00FF00FF00));
-    let b = ctx.witness(Word(0x00FF00FF00FF00FF));
+    // Some witness values as bits
+    let a_word = Word(0xFF00FF00FF00FF00);
+    let b_word = Word(0x00FF00FF00FF00FF);
+    let a = ctx.witness_bits(a_word);
+    let b = ctx.witness_bits(b_word);
     
     println!("Witness computation:");
     println!("  a = 0x{:016X}", a.value.0);
     println!("  b = 0x{:016X}", b.value.0);
     
     // Perform operations
-    let c = ctx.band(a, b);
+    let c = ctx.and(a, b);
     println!("  c = a & b = 0x{:016X}", c.value.0);
     
     let d = ctx.shl(c, 8);
@@ -35,7 +34,11 @@ fn main() {
     let e = ctx.sar(a, 4);
     println!("  e = a >> 4 (arithmetic) = 0x{:016X}", e.value.0);
     
-    let f = ctx.bxor(d, e);
+    // Convert to field for XOR
+    let d_field = ctx.as_field(d);
+    let e_field = ctx.as_field(e);
+    let f_field = ctx.add(d_field, e_field);  // XOR in GF(2^64)
+    let f = ctx.as_bits(f_field);
     println!("  f = d ^ e = 0x{:016X}", f.value.0);
     
     // Now compile DIRECTLY to backend constraint types

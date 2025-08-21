@@ -1,13 +1,13 @@
-//! Comprehensive comparison of optimization techniques in Boojum
+//! Comprehensive comparison of optimization techniques in Spark
 //!
 //! This example compares naive vs optimized compilation across different
 //! circuit patterns to demonstrate the power of XOR folding and other optimizations.
 //!
-//! Run with: cargo run --example boojum_optimization_comparison --release
+//! Run with: cargo run --example optimization_comparison --release
 
 use binius_core::Word;
-use binius_frontend::boojum::{
-    witness::WitnessContext,
+use binius_spark::{
+    witness::{WitnessContext},
     compiler::{ConstraintCompiler, OptimizationFlags},
 };
 
@@ -25,13 +25,13 @@ fn compare_compilation(name: &str, ctx: &WitnessContext) {
     // Compile with XOR folding only
     let mut xor_only = ConstraintCompiler::new_with_options(OptimizationFlags::only_xor());
     xor_only.compile(ctx.operations());
-    let xor_report = xor_only.optimization_report();
+    let _xor_report = xor_only.optimization_report();
     let (xor_and, xor_mul) = xor_only.get_constraints();
     
     // Compile with all optimizations
     let mut full_opt = ConstraintCompiler::new_with_options(OptimizationFlags::all());
     full_opt.compile(ctx.operations());
-    let full_report = full_opt.optimization_report();
+    let _full_report = full_opt.optimization_report();
     let (full_and, full_mul) = full_opt.get_constraints();
     
     // Print comparison table
@@ -56,7 +56,7 @@ fn compare_compilation(name: &str, ctx: &WitnessContext) {
     println!("└─────────────────┴──────────┴──────────┴────────────┘");
     
     // Show operand complexity for interesting constraints
-    if xor_and.len() > 0 {
+    if !xor_and.is_empty() {
         println!("\nOperand complexity (XOR-optimized):");
         for (i, constraint) in xor_and.iter().take(3).enumerate() {
             let max_operand = constraint.a.len().max(constraint.b.len()).max(constraint.c.len());
@@ -69,7 +69,7 @@ fn compare_compilation(name: &str, ctx: &WitnessContext) {
 }
 
 fn main() {
-    println!("=== Boojum Optimization Comparison ===");
+    println!("=== Spark Optimization Comparison ===");
     println!("\nThis demo shows how different optimization techniques reduce");
     println!("constraint counts across various circuit patterns.\n");
     
@@ -83,7 +83,7 @@ fn main() {
         
         let mut result = values[0];
         for i in 1..8 {
-            result = ctx.field_add(result, values[i]);
+            result = ctx.add(result, values[i]);
         }
         
         // Use the result in a constraint
@@ -105,9 +105,9 @@ fn main() {
             let c = ctx.witness_field(Word(0x3333));
             let d = ctx.witness_field(Word(0x4444));
             
-            let ab = ctx.field_add(a, b);
-            let cd = ctx.field_add(c, d);
-            let abcd = ctx.field_add(ab, cd);
+            let ab = ctx.add(a, b);
+            let cd = ctx.add(c, d);
+            let abcd = ctx.add(ab, cd);
             
             // Use each chain result
             let mask = ctx.witness_bits(Word(0xFF));
@@ -126,14 +126,14 @@ fn main() {
         let a = ctx.witness_field(Word(10));
         let b = ctx.witness_field(Word(20));
         let c = ctx.witness_field(Word(30));
-        let ab = ctx.field_add(a, b);
-        let xor_result = ctx.field_add(ab, c);
+        let ab = ctx.add(a, b);
+        let xor_result = ctx.add(ab, c);
         
         // Integer addition
         let x = ctx.witness_uint(Word(100));
         let y = ctx.witness_uint(Word(200));
         let zero = ctx.zero_uint();
-        let (sum, _carry) = ctx.uint_add(x, y, zero);
+        let (sum, _carry) = ctx.add_with_carry(x, y, zero);
         
         // Combine with AND
         let xor_bits = ctx.as_bits(xor_result);
@@ -158,7 +158,7 @@ fn main() {
             let mut next_level = Vec::new();
             for chunk in level.chunks(2) {
                 if chunk.len() == 2 {
-                    next_level.push(ctx.field_add(chunk[0], chunk[1]));
+                    next_level.push(ctx.add(chunk[0], chunk[1]));
                 } else {
                     next_level.push(chunk[0]);
                 }
@@ -200,8 +200,8 @@ mod tests {
         let b = ctx.witness_field(Word(2));
         let c = ctx.witness_field(Word(3));
         
-        let ab = ctx.field_add(a, b);
-        let abc = ctx.field_add(ab, c);
+        let ab = ctx.add(a, b);
+        let abc = ctx.add(ab, c);
         
         let mask = ctx.witness_bits(Word(0xFF));
         let bits = ctx.as_bits(abc);

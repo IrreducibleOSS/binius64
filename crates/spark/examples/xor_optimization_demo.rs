@@ -1,13 +1,13 @@
-//! Demonstration of XOR folding optimization in Boojum
+//! Demonstration of XOR folding optimization in Spark
 //!
 //! This example shows how multiple XOR operations can be folded into 
 //! single constraint operands, making them FREE in Binius64.
 //!
-//! Run with: cargo run --example boojum_xor_optimization_demo --release
+//! Run with: cargo run --example xor_optimization_demo --release
 
 use binius_core::Word;
-use binius_frontend::boojum::{
-    witness::WitnessContext,
+use binius_spark::{
+    witness::{WitnessContext},
     compiler::{ConstraintCompiler, OptimizationFlags},
 };
 
@@ -28,10 +28,10 @@ fn main() {
     let mask = ctx.witness_bits(Word(0xFF00FF00FF00FF00));
     
     // Chain of XOR operations
-    let ab = ctx.field_add(a, b);
-    let abc = ctx.field_add(ab, c);
-    let abcd = ctx.field_add(abc, d);
-    let abcde = ctx.field_add(abcd, e);
+    let ab = ctx.add(a, b);
+    let abc = ctx.add(ab, c);
+    let abcd = ctx.add(abc, d);
+    let abcde = ctx.add(abcd, e);
     
     // Convert to bits and apply mask
     let xor_result_bits = ctx.as_bits(abcde);
@@ -96,7 +96,7 @@ fn main() {
     
     // Calculate savings
     let constraints_saved = naive_and.len() - opt_and.len();
-    let percentage_saved = if naive_and.len() > 0 {
+    let percentage_saved = if !naive_and.is_empty() {
         (constraints_saved * 100) / naive_and.len()
     } else {
         0
@@ -125,7 +125,7 @@ mod tests {
         
         let mut result = values[0];
         for i in 1..10 {
-            result = ctx.field_add(result, values[i]);
+            result = ctx.add(result, values[i]);
         }
         
         // Compile both ways

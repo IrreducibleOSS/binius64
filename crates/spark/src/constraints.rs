@@ -3,7 +3,7 @@
 //! This module provides pattern recognition and optimization for typed witness operations,
 //! with explicit tracking of type interpretations for each operation.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use super::{Operation, FieldOp, UIntOp, BitsOp, FieldId, UIntId, BitsId};
 
 /// Represents typed constraint patterns that can be optimized
@@ -28,15 +28,15 @@ pub enum TypedConstraintPattern {
 }
 
 /// Typed constraint optimizer that performs pattern-based optimizations
+#[derive(Default)]
 pub struct ConstraintOptimizer {
     patterns: Vec<TypedConstraintPattern>,
 }
 
+
 impl ConstraintOptimizer {
     pub fn new() -> Self {
-        Self {
-            patterns: Vec::new(),
-        }
+        Self::default()
     }
     
     /// Analyze typed operations to find optimization opportunities
@@ -113,10 +113,10 @@ impl ConstraintOptimizer {
                 }
                 _ => {
                     // Non-addition operation, save chain if exists
-                    if current_chain.len() > 2 && chain_output.is_some() {
+                    if current_chain.len() > 2 && let Some(output) = chain_output {
                         self.patterns.push(TypedConstraintPattern::UIntAdditionChain {
                             inputs: current_chain.clone(),
-                            output: chain_output.unwrap(),
+                            output,
                         });
                     }
                     current_chain.clear();
@@ -126,10 +126,10 @@ impl ConstraintOptimizer {
         }
         
         // Save final chain if exists
-        if current_chain.len() > 2 && chain_output.is_some() {
+        if current_chain.len() > 2 && let Some(output) = chain_output {
             self.patterns.push(TypedConstraintPattern::UIntAdditionChain {
                 inputs: current_chain,
-                output: chain_output.unwrap(),
+                output,
             });
         }
     }
@@ -232,9 +232,9 @@ mod tests {
         let c = ctx.witness_field(Word(3));
         let d = ctx.witness_field(Word(4));
         
-        let ab = ctx.field_add(a, b);
-        let abc = ctx.field_add(ab, c);
-        let abcd = ctx.field_add(abc, d);
+        let ab = ctx.add(a, b);
+        let abc = ctx.add(ab, c);
+        let _abcd = ctx.add(abc, d);
         
         let mut optimizer = ConstraintOptimizer::new();
         optimizer.analyze(ctx.operations());
@@ -254,8 +254,8 @@ mod tests {
         let c = ctx.witness_uint(Word(300));
         let zero = ctx.zero_uint();
         
-        let (ab, carry1) = ctx.uint_add(a, b, zero);
-        let (abc, _carry2) = ctx.uint_add(ab, c, carry1);
+        let (ab, carry1) = ctx.add_with_carry(a, b, zero);
+        let (_abc, _carry2) = ctx.add_with_carry(ab, c, carry1);
         
         let mut optimizer = ConstraintOptimizer::new();
         optimizer.analyze(ctx.operations());
@@ -273,7 +273,7 @@ mod tests {
         let bool_val = ctx.witness_bits(Word::ALL_ONE);  // -1 as signed
         let mask = ctx.sar(bool_val, 63);  // Spread sign bit
         let value = ctx.witness_bits(Word(0x123456789ABCDEF0));
-        let selected = ctx.and(value, mask);
+        let _selected = ctx.and(value, mask);
         
         let mut optimizer = ConstraintOptimizer::new();
         optimizer.analyze(ctx.operations());

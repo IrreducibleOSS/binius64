@@ -1,4 +1,4 @@
-# Boojum: A New Paradigm for ZK Proof Construction
+# Spark: A New Paradigm for ZK Proof Construction
 
 ## Core Insight
 
@@ -6,7 +6,7 @@
 
 ## Architecture
 
-The Boojum architecture strictly separates:
+The Spark architecture strictly separates:
 
 1. **Witness Computation** - Pure imperative Rust code
 2. **Constraint Compilation** - Declarative mapping to Binius64 primitives
@@ -44,7 +44,7 @@ Within any operand, we can use shifted values for FREE:
 
 This means `(x << 5) ⊕ (y >> 3) ⊕ (z >>_a 1)` is a single operand with no extra constraints!
 
-## How Boojum Preserves This Shape
+## How Spark Preserves This Shape
 
 The compilation flow ensures we ALWAYS output valid Binius64 constraints:
 
