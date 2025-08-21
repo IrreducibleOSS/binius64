@@ -386,6 +386,39 @@ impl Sha256 {
 		}
 	}
 
+	/// Converts bytes to message wire format.
+	///
+	/// SHA256 message wires use a special format with two XORed 32-bit big-endian words
+	/// per 64-bit wire. This helper performs the conversion.
+	///
+	/// # Arguments
+	/// * `bytes` - The bytes to convert (must be aligned to 8-byte chunks)
+	///
+	/// # Returns
+	/// A vector of Words in the message wire format
+	pub fn bytes_to_message_format(bytes: &[u8]) -> Vec<Word> {
+		assert_eq!(bytes.len() % 8, 0, "bytes must be aligned to 8-byte chunks");
+
+		let mut result = Vec::with_capacity(bytes.len() / 8);
+
+		for chunk in bytes.chunks(8) {
+			let mut lo_word = 0u32;
+			for j in 0..4 {
+				lo_word |= (chunk[j] as u32) << (24 - j * 8);
+			}
+
+			let mut hi_word = 0u32;
+			for j in 4..8 {
+				hi_word |= (chunk[j] as u32) << (24 - (j - 4) * 8);
+			}
+
+			let word = (lo_word as u64) ^ ((hi_word as u64) << 32);
+			result.push(Word(word));
+		}
+
+		result
+	}
+
 	/// Returns digest wires in little-endian packed format.
 	///
 	/// The SHA256 digest is stored as 4 wires, each containing 8 bytes of the hash
@@ -424,6 +457,29 @@ impl Sha256 {
 			wires[i] = le_wire;
 		}
 
+		wires
+	}
+
+	/// Converts digest wires to message wire format.
+	///
+	/// SHA256 digest wires are 64-bit big-endian values, but message wires
+	/// use a special format with two XORed 32-bit big-endian words.
+	/// This helper performs the conversion needed when chaining SHA256 circuits.
+	///
+	/// # Returns
+	/// An array of 4 wires in message format
+	pub fn digest_to_message_wires(&self, builder: &CircuitBuilder) -> [Wire; 4] {
+		let zero = builder.add_constant(Word::ZERO);
+		let mut wires = [zero; 4];
+		for i in 0..4 {
+			// The digest wire contains 8 bytes in big-endian format as a single 64-bit value
+			// The message format needs two XORed 32-bit BE words: lo_word ^ (hi_word << 32)
+			// where lo_word = bytes[0..4] as BE u32, hi_word = bytes[4..8] as BE u32
+			let digest_wire = self.digest[i];
+			let lo_word = builder.shr(digest_wire, 32);
+			let hi_word = builder.band(digest_wire, builder.add_constant(Word(0xFFFFFFFF)));
+			wires[i] = builder.bxor(lo_word, builder.shl(hi_word, 32));
+		}
 		wires
 	}
 
@@ -535,21 +591,9 @@ impl Sha256 {
 		// Pack the padded message into the witness format expected by the circuit:
 		// 1. Message wires: 8 bytes per wire, packed as two 32-bit big-endian words XORed together
 		// 2. Compression inputs: 64-byte blocks passed to each compression gadget
-		for (i, wire) in self.message.iter().enumerate() {
-			let byte_start = i * 8;
-
-			let mut lo_word = 0u32;
-			for j in 0..4 {
-				lo_word |= (padded_message_bytes[byte_start + j] as u32) << (24 - j * 8);
-			}
-
-			let mut hi_word = 0u32;
-			for j in 4..8 {
-				hi_word |= (padded_message_bytes[byte_start + j] as u32) << (24 - (j - 4) * 8);
-			}
-
-			let word = (lo_word as u64) ^ ((hi_word as u64) << 32);
-			w[*wire] = Word(word);
+		let message_words = Self::bytes_to_message_format(&padded_message_bytes);
+		for (wire, word) in self.message.iter().zip(message_words.iter()) {
+			w[*wire] = *word;
 		}
 
 		for (i, compress) in self.compress.iter().enumerate() {
@@ -1005,5 +1049,62 @@ mod tests {
 			extracted_bytes.push(byte);
 		}
 		assert_eq!(&extracted_bytes, message);
+	}
+
+	#[test]
+	fn test_sha256_compose() {
+		use sha2::{Digest as Sha2Digest, Sha256 as Sha256Hasher};
+
+		let builder = compiler::CircuitBuilder::new();
+
+		let initial_message: [Wire; 4] = std::array::from_fn(|_| builder.add_inout());
+		let intermediate_hash_digest: [Wire; 4] = std::array::from_fn(|_| builder.add_witness());
+		let final_hash_wires: [Wire; 4] = std::array::from_fn(|_| builder.add_witness());
+
+		let sha256_1 = Sha256::new(
+			&builder,
+			32,
+			builder.add_constant(Word::from_u64(32)),
+			intermediate_hash_digest,
+			initial_message.to_vec(),
+		);
+
+		// Convert intermediate hash from digest format to message format using helper
+		let intermediate_hash_message = sha256_1.digest_to_message_wires(&builder);
+
+		let sha256_2 = Sha256::new(
+			&builder,
+			32,
+			builder.add_constant(Word::from_u64(32)),
+			final_hash_wires,
+			intermediate_hash_message.to_vec(),
+		);
+
+		let expected_final: [Wire; 4] = std::array::from_fn(|_| builder.add_inout());
+		builder.assert_eq_v("final_hash_check", final_hash_wires, expected_final);
+
+		let circuit = builder.build();
+		let mut w = circuit.new_witness_filler();
+
+		let initial_value = b"test_simple_chain_sha256_value!!"; // 32 bytes
+		let hash1: [u8; 32] = Sha256Hasher::digest(initial_value).into();
+		let hash2: [u8; 32] = Sha256Hasher::digest(hash1).into();
+
+		sha256_1.populate_message(&mut w, initial_value);
+		sha256_1.populate_digest(&mut w, hash1);
+		sha256_1.populate_len(&mut w, 32);
+
+		sha256_2.populate_message(&mut w, &hash1);
+		sha256_2.populate_digest(&mut w, hash2);
+		sha256_2.populate_len(&mut w, 32);
+
+		for (i, bytes) in hash2.chunks(8).enumerate() {
+			let word = u64::from_be_bytes(bytes.try_into().unwrap());
+			w[expected_final[i]] = Word(word);
+		}
+
+		circuit.populate_wire_witness(&mut w).unwrap();
+		let cs = circuit.constraint_system();
+		verify_constraints(cs, &w.into_value_vec()).unwrap();
 	}
 }
