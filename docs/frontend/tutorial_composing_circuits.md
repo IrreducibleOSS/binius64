@@ -2,10 +2,64 @@
 
 This tutorial covers how to compose multiple circuits into complete applications in Binius64, demonstrating patterns for circuit interaction, data flow, and witness management.
 
+## Critical Design Insight for Circuit Composition
+
+### The Wire Type Choice Determines Composition Complexity
+
+The fundamental issue making circuit composition difficult in Binius64 is the choice between `add_witness()` and `add_inout()` for intermediate values:
+
+**`add_inout()` wires:**
+- Must be populated externally before evaluation
+- Cannot be computed by the circuit's evaluation form
+- Force external computation of intermediate values
+- Create the "population dance" in circuit composition
+
+**`add_witness()` wires:**
+- Can be computed during circuit evaluation
+- Populated automatically by the evaluation form's bytecode interpreter
+- Enable true computational chaining
+
+### The Technical Problem: Misuse of Input/Output Wires
+
+The current SHA256 implementation demonstrates the problem:
+
+```rust
+// Current: digest declared as input/output
+let digest: [Wire; 4] = std::array::from_fn(|_| b.add_inout());
+
+// This forces users to:
+// 1. Compute SHA256 externally
+// 2. Populate the digest manually
+// 3. Have the circuit redundantly verify the computation
+```
+
+A better design for composition:
+
+```rust
+// Better: digest as witness (computed internally)
+let digest: [Wire; 4] = std::array::from_fn(|_| b.add_witness());
+
+// Now the circuit's evaluation form computes the digest
+// No external SHA256 implementation needed
+// Chaining becomes automatic
+```
+
+### How This Solves the Composition Problem
+
+With proper wire type choices:
+
+1. **SHA256(SHA256(x)) becomes trivial**: First circuit computes intermediate hash, second circuit reads it directly
+2. **No duplicate wires needed**: Output wires of one circuit ARE input wires of the next
+3. **No external computation**: The evaluation form's bytecode handles all intermediate values
+4. **Single population point**: Only populate the initial input; everything else is computed
+
+The evaluation form has a complete instruction set (arithmetic, bitwise, shifts) and can compute any intermediate value. The choice to use `add_inout()` for computed values is what creates composition complexity, not any fundamental limitation of the system.
+
 ## Part 1: Introduction to Circuit Composition
 
 ### Why Circuit Composition Matters
 
+// REVIEW "In practice"
 In zero-knowledge proof systems, we rarely work with single, isolated circuits. Real applications require:
 - **JWT verification**: Base64 decoding → JSON parsing → RSA signature verification
 - **Blockchain transactions**: ECDSA signatures → Merkle tree updates → State transitions
@@ -18,7 +72,7 @@ Circuit composition is the practice of connecting these individual components in
 Before composing circuits, we need to identify natural boundaries. A circuit boundary should exist where:
 
 1. **Data format changes**: e.g., base64-encoded → raw bytes
-2. **Algorithm switches**: e.g., hashing → signature verification  
+2. **Algorithm switches**: e.g., hashing → signature verification
 3. **Responsibility shifts**: e.g., parsing → validation
 4. **Reusability emerges**: e.g., SHA256 used by multiple components
 
@@ -40,24 +94,136 @@ Example: In JWT verification, natural boundaries are:
 
 ### The Witness Lifecycle
 
-Understanding witness management is crucial because it's where most circuit composition errors occur. The witness lifecycle has three phases:
+Understanding witness management is crucial because it's where most circuit composition errors occur. To understand why, we need to examine the complete lifecycle of witness data as it flows through a circuit system.
 
-1. **Declaration Phase** (Circuit Building):
-   ```rust
-   let input = builder.add_witness();      // Declare a witness wire
-   let output = builder.add_witness();     // Declare another
-   ```
+#### The Three-Phase Process
 
-2. **Population Phase** (Witness Filling):
-   ```rust
-   w[input] = Word(42);                    // Assign actual value
-   // output will be computed by circuit evaluation
-   ```
+When you work with circuits in Binius64, witness data moves through three distinct phases. These phases are strictly ordered and cannot be interleaved - you must complete each phase before moving to the next. This rigid structure is what enables zero-knowledge proofs to work, but it's also what makes circuit composition challenging.
 
-3. **Evaluation Phase** (Circuit Execution):
-   ```rust
-   circuit.populate_wire_witness(&mut w)?; // Compute all intermediate values
-   ```
+**Phase 1: Declaration (Circuit Building)**
+
+During the declaration phase, you're defining the structure of your circuit - like drawing a blueprint. No actual computation happens yet; you're just reserving space for values that will come later. Think of it as declaring variables in a program, but these variables represent wires that will carry data through your circuit.
+
+```rust
+// This happens at compile time when building the circuit structure
+let mut builder = CircuitBuilder::new();
+
+// Declare wires that will hold values later
+let input = builder.add_witness();       // Private input wire
+let output = builder.add_witness();      // Will be computed
+let public = builder.add_inout();        // Public input/output
+
+// Create circuits that reference these wires
+let hasher = Sha256::new(&builder, input, output);
+
+// Build the final circuit structure
+let circuit = builder.build();
+```
+
+At this point, we have a circuit structure with "empty" wires - placeholders waiting for actual values. The circuit knows how wires connect and what constraints must be satisfied, but no actual data flows yet.
+
+**Phase 2: Population (Witness Filling)**
+
+The population phase is where you provide actual values for the input wires. This is like filling in a form - you can only write to each field once, and you must know which fields are yours to fill versus which will be computed automatically.
+
+```rust
+// Create a witness filler for this specific proof instance
+let mut w = circuit.new_witness_filler();
+
+// Populate input values (you must know which wires are inputs!)
+w[input] = Word(42);                     // Set input value
+w[public] = Word(100);                   // Set public value
+
+// Note: We do NOT set 'output' - it will be computed
+// Trying to set it would cause an error: "wire already set"
+
+// Some circuits provide helper methods for population
+hasher.populate_message(&mut w, b"hello world");
+// This internally does: w[hasher.message_wires[i]] = ...
+```
+
+The tricky part: you must know which wires to populate and which to leave for computation. This knowledge is often implicit and inconsistent across different circuits.
+
+**Phase 3: Evaluation (Circuit Execution)**
+
+The evaluation phase is where the magic happens - the circuit computes all intermediate and output values based on the inputs you provided. This phase traverses the circuit graph, evaluating each gate and propagating values forward.
+
+```rust
+// Execute the circuit to compute all intermediate values
+circuit.populate_wire_witness(&mut w)?;
+
+// After evaluation:
+// - All intermediate wires have values
+// - All output wires are computed
+// - All constraints are checked
+
+// Now you can extract computed values
+let computed_output = w[output];  // This now has a value!
+
+// The circuit has verified all constraints:
+// - If evaluation succeeds, all constraints are satisfied
+// - If it fails, you get an error indicating which constraint failed
+```
+
+#### Why This Matters for Composition
+
+The three-phase structure creates several challenges when composing circuits:
+
+1. **No Partial Evaluation**: In Binius64, you cannot partially evaluate circuits. The entire witness must be populated before ANY evaluation occurs. This means if circuit B depends on circuit A's computed output, you're stuck - there's no way to get A's output without fully populating and evaluating the entire circuit.
+   - Finally evaluate B (Phase 3 again)
+
+2. **Ownership Ambiguity**: When multiple circuits share wires, it's unclear:
+   - Who declares the wire? (Phase 1)
+   - Who populates it? (Phase 2)
+   - Who depends on it being computed? (Phase 3)
+
+3. **Hidden State**: The witness filler (`w`) carries state between phases, but:
+   - You can't query which wires are already set
+   - You can't "undo" a wire assignment
+   - Errors only appear during evaluation, not population
+
+#### Complete Example: Two-Circuit Pipeline
+
+Here's how the three phases work in a real composition scenario:
+
+```rust
+// PHASE 1: Declaration - Build circuit structure
+let mut builder = CircuitBuilder::new();
+
+// Declare all wires upfront
+let message = builder.add_witness();
+let hash_output = [(); 4].map(|_| builder.add_witness());
+let signature = builder.add_witness();
+let is_valid = builder.add_witness();
+
+// Build subcircuits that reference these wires
+let hasher = Sha256::new(&builder, message, hash_output);
+let verifier = SignatureVerifier::new(&builder, hash_output, signature, is_valid);
+
+let circuit = builder.build();
+
+// PHASE 2: Population - Provide input values
+let mut w = circuit.new_witness_filler();
+
+// Populate primary inputs
+w[message] = Word(encode_message(b"Hello"));
+w[signature] = Word(load_signature());
+
+// Note: We don't populate hash_output or is_valid - they're computed
+
+// PHASE 3: Evaluation - Compute everything
+circuit.populate_wire_witness(&mut w)?;
+
+// After evaluation, all wires have values:
+// - hasher read 'message', computed 'hash_output'
+// - verifier read 'hash_output' and 'signature', computed 'is_valid'
+
+// Extract final result
+let verification_result = w[is_valid];
+assert_eq!(verification_result, Word(1)); // Signature is valid
+```
+
+This rigid three-phase structure is why consistent circuit interfaces are so important - they make it clear which phase each operation belongs to and who is responsible for each wire.
 
 ### Witness Dependencies and Order
 
@@ -69,7 +235,7 @@ pub struct DependentCircuits {
     input: Wire,
     hash_output: [Wire; 4],
     verification_result: Wire,
-    
+
     hasher: Sha256,
     verifier: SignatureVerify,
 }
@@ -78,15 +244,15 @@ impl DependentCircuits {
     pub fn populate_witness(&self, w: &mut WitnessFiller, data: &[u8], signature: &[u8]) {
         // Step 1: Populate primary inputs (no dependencies)
         pack_bytes_into_wires_le(w, &[self.input], data);
-        
+
         // Step 2: Hash computation needs input to be populated
         // The hasher will read self.input and write to hash_output
         // (This happens during circuit evaluation)
-        
+
         // Step 3: Verifier needs hash_output, so populate signature
         // after circuit evaluation computes the hash
         self.verifier.populate_signature(w, signature);
-        
+
         // Step 4: Circuit evaluation will compute verification_result
     }
 }
@@ -102,9 +268,9 @@ When circuits share data, use the same wire references:
 pub struct SharedDataCircuits {
     // Single nonce used by multiple circuits
     shared_nonce: [Wire; 4],
-    
+
     // Both circuits read from shared_nonce
-    auth_circuit: AuthVerifier,     
+    auth_circuit: AuthVerifier,
     timestamp_circuit: TimestampChecker,
 }
 
@@ -112,14 +278,14 @@ impl SharedDataCircuits {
     pub fn new(builder: &mut CircuitBuilder) -> Self {
         // Create shared wires once
         let shared_nonce = array::from_fn(|_| builder.add_witness());
-        
+
         // Pass same wires to both circuits
         let auth_circuit = AuthVerifier::new(builder, shared_nonce);
         let timestamp_circuit = TimestampChecker::new(builder, shared_nonce);
-        
+
         Self { shared_nonce, auth_circuit, timestamp_circuit }
     }
-    
+
     pub fn populate(&self, w: &mut WitnessFiller, nonce: [u64; 4]) {
         // Populate shared witness exactly once
         for (i, &val) in nonce.iter().enumerate() {
@@ -161,15 +327,54 @@ fn debug_witness_population(circuit: &Circuit, w: &WitnessFiller) {
 
 ## Part 3: Data Representation and Wire Packing
 
-### The Wire Packing Challenge
+### The Type System Failure: Untyped Wires in a Multi-Protocol World
 
-Binius64 uses 64-bit wires, but real-world data comes in various formats:
-- **User input**: UTF-8 strings
-- **Network data**: Big-endian byte streams
-- **Cryptographic values**: Multi-precision integers
-- **File formats**: Base64, JSON, Protocol Buffers
+Imagine a CPU where every instruction expects data in a different endianness, but the registers have no type information. That's the wire packing problem in Binius64.
 
-Wire packing is the process of converting these formats into 64-bit wire values that circuits can process.
+#### The Missing Type Information
+
+Every wire is just a `Wire` - an opaque index with no type information:
+
+```rust
+// All these are just "Wire" - no type safety!
+let utf8_string: Wire = builder.add_witness();      // UTF-8 bytes packed LE
+let network_data: Wire = builder.add_witness();     // Network bytes in BE
+let sha256_state: Wire = builder.add_witness();     // 32-bit BE words packed as 64-bit BE
+let base64_chunk: Wire = builder.add_witness();     // 6-bit values packed LE
+let rsa_limb: Wire = builder.add_witness();         // Multi-precision integer limb
+
+// The type system can't prevent this disaster:
+sha256.populate(w, network_data);  // WRONG! SHA256 expects different packing
+base64.decode(utf8_string);         // WRONG! Base64 expects different format
+```
+
+#### The CPU Analogy: Instructions with Incompatible Formats
+
+It's like having a CPU where:
+- `SHA256` instruction expects 32-bit BE words packed into 64-bit BE registers
+- `BASE64` instruction expects 8-bit LE bytes packed into 64-bit LE registers  
+- `RSA` instruction expects 64-bit LE limbs of a big integer
+- `AES` instruction expects 128-bit BE blocks split across two 64-bit registers
+
+But all you have are untyped 64-bit registers, and **you must manually convert between formats** with no compiler help:
+
+```rust
+// Manual conversion hell - no type checking!
+let message_bytes = "hello".as_bytes();
+
+// For SHA256: Pack as 32-bit BE words into 64-bit BE wire
+let sha_wire = pack_for_sha256(message_bytes);  // Custom packing function
+
+// For Base64: Pack as 8-bit LE bytes into 64-bit LE wire  
+let b64_wire = pack_for_base64(message_bytes);  // Different packing!
+
+// For RSA: Pack as 64-bit LE limbs
+let rsa_wire = pack_for_rsa(message_bytes);     // Yet another format!
+```
+
+#### The Protocol Mismatch Problem
+
+Each circuit has its own "wire protocol" but there's no way to express or enforce it:
 
 ### Little-Endian Packing (Binius64 Default)
 
@@ -177,7 +382,7 @@ Little-endian packing places the least significant byte first. This matches x86/
 
 ```rust
 /// Pack up to 8 bytes into a single 64-bit wire using little-endian ordering
-/// 
+///
 /// Why LE packing?
 /// 1. Matches CPU byte order on most platforms (x86, ARM)
 /// 2. Allows efficient byte extraction using shift operations
@@ -230,9 +435,9 @@ fn fixedbytevec_le_to_biguint(builder: &mut CircuitBuilder, byte_vec: &FixedByte
     // 1. Input: LE-packed wires (Binius64 standard)
     // 2. Output: BE number for cryptographic operations
     // 3. Requires: Wire reversal AND byte reversal within each wire
-    
+
     let mut limbs = Vec::new();
-    
+
     // Process wires in reverse order (LE → BE conversion for limb array)
     for packed_wire in byte_vec.data.clone().into_iter().rev() {
         // Extract bytes from LE-packed wire
@@ -243,7 +448,7 @@ fn fixedbytevec_le_to_biguint(builder: &mut CircuitBuilder, byte_vec: &FixedByte
             let byte_masked = builder.band(byte, builder.add_constant_64(0xFF));
             bytes.push(byte_masked);
         }
-        
+
         // Repack bytes in reverse order (LE → BE within limb)
         let mut swapped_limb = bytes[7];  // Start with MSB
         for i in 1..8 {
@@ -252,7 +457,7 @@ fn fixedbytevec_le_to_biguint(builder: &mut CircuitBuilder, byte_vec: &FixedByte
         }
         limbs.push(swapped_limb);
     }
-    
+
     BigUint { limbs }
 }
 
@@ -263,6 +468,8 @@ fn fixedbytevec_le_to_biguint(builder: &mut CircuitBuilder, byte_vec: &FixedByte
 ```
 
 ### The FixedByteVec Pattern
+
+> Note: FixedByteVec is a specific circuit pattern for handling variable-length data. It's included here because understanding how it packs data is essential for circuit composition.
 
 For variable-length data with compile-time maximum bounds:
 
@@ -283,21 +490,21 @@ impl FixedByteVec {
     /// Create a new FixedByteVec for input/output data
     pub fn new_inout(b: &mut CircuitBuilder, max_len: usize) -> Self {
         assert_eq!(max_len % 8, 0, "max_len must be word-aligned");
-        
+
         Self {
             len: b.add_inout(),  // Public input: actual length
             data: (0..max_len / 8).map(|_| b.add_inout()).collect(),
             max_len,
         }
     }
-    
+
     /// Populate with actual data at runtime
     pub fn populate(&self, w: &mut WitnessFiller, bytes: &[u8]) {
         assert!(bytes.len() <= self.max_len);
-        
+
         // Set actual length
         w[self.len] = Word(bytes.len() as u64);
-        
+
         // Pack bytes into wires (using existing utility)
         pack_bytes_into_wires_le(w, &self.data, bytes);
         // Note: pack_bytes_into_wires_le handles zero-padding automatically
@@ -330,16 +537,16 @@ trait Circuit {
     fn new_inout(builder: &CircuitBuilder, ...) -> Self;
     fn new_witness(builder: &CircuitBuilder, ...) -> Self;
     fn new_constant(builder: &CircuitBuilder, ...) -> Self;
-    
+
     // === Population Methods ===
     fn populate(&self, w: &mut WitnessFiller, data: &[u8]);
     fn populate_len(&self, w: &mut WitnessFiller, len: usize);
     fn populate_<field>(&self, w: &mut WitnessFiller, value: T);
-    
+
     // === Conversion Methods ===
     fn to_le_wires(&self, builder: &CircuitBuilder) -> Vec<Wire>;
     fn from_be_bytes(builder: &CircuitBuilder, bytes: &[u8]) -> Self;
-    
+
     // === Query Methods ===
     fn is_zero(&self, builder: &CircuitBuilder) -> Wire;
     fn equals(&self, builder: &CircuitBuilder, other: &Self) -> Wire;
@@ -380,32 +587,76 @@ impl Base64UrlSafe {
 
 ### Composition Challenges
 
-This inconsistency creates composition problems:
+#### Understanding Witness Ownership and Population
+
+Before examining specific problems, it's crucial to understand witness management in composed circuits. The challenge stems from a fundamental question: when multiple circuits share wires, who is responsible for populating them with values? This seemingly simple question becomes complex when circuits are composed together, as ownership boundaries blur and responsibilities become ambiguous.
+
+**Witness Ownership Rules**
+
+In an ideal world, witness ownership would follow clear, consistent patterns. In practice, Binius64 circuits follow these implicit rules that developers must internalize:
+
+1. **Single Writer Rule**: Each wire can only be written to once during witness population
+2. **Construction vs Population**: Wires are declared during circuit construction but populated later with actual values
+3. **Explicit Ownership**: The circuit that creates a wire typically "owns" its population responsibility
+
+**The Two-Phase Process**
+
+Circuit composition happens in two distinct phases that cannot be mixed. Understanding this separation is critical for managing witness data flow:
 
 ```rust
-// Problem 1: Unclear data flow
+// Phase 1: Circuit Construction (compile-time)
+let wire = builder.add_witness();  // Declare wire existence
+let circuit = SomeCircuit::new(builder, wire);  // Pass wire reference
+
+// Phase 2: Witness Population (runtime)
+w[wire] = Word(42);  // Assign actual value
+// OR
+circuit.populate_something(w, value);  // Circuit handles population
+```
+
+**Population Strategies**
+
+Different circuits adopt different strategies for witness population, leading to the inconsistency problems we'll explore:
+
+1. **Owner Populates**: The circuit that creates the wire populates it
+2. **Delegated Population**: A circuit provides a populate method for its wires
+3. **Manual Coordination**: Parent circuit manually populates child circuit wires
+
+With this context, let's examine how inconsistent interfaces create problems:
+
+```rust
+// Problem 1: Unclear data flow and ownership
 let sha256 = Sha256::new(&builder, ...);
 let rs256 = Rs256Verify::new(&builder, message, ...);
 // Which circuit "owns" the message witness population?
 // Do I call sha256.populate_message() or rs256.populate_message()?
+// If both circuits reference the same message wires, who populates them?
+// Current answer: You must trace through constructors to understand ownership
 
-// Problem 2: Hidden dependencies
+// Problem 2: Hidden dependencies and missing abstractions
 let base64 = Base64UrlSafe::new(&builder, decoded, encoded, len);
-// Base64 doesn't populate anything - you must know to populate
-// decoded, encoded, and len yourself in the right order
+// Base64 doesn't provide populate methods - it assumes you know:
+// - That decoded, encoded, and len are YOUR responsibility
+// - The correct order of population (len before data)
+// - The correct packing format (LE, with zero padding)
+// This breaks encapsulation - internal details leak to users
 
-// Problem 3: Duplicate population logic
+// Problem 3: Duplicate population logic and coordination burden
 impl JwtVerifier {
     fn populate_witness(&self, w: &mut WitnessFiller, jwt: &str) {
-        // Must manually coordinate population across subcircuits
-        self.header_b64.populate_bytes_le(w, header);
+        // Parent must understand child circuit internals
+        self.header_b64.populate_bytes_le(w, header);  // FixedByteVec handles its own
+
         // But base64 decoder has no populate method!
-        // Must manually populate its wires...
+        // Parent must manually populate base64's wires, knowing internal structure
         w[self.header_decoder.len_decoded] = Word(header.len() as u64);
         pack_bytes_into_wires_le(w, &self.header_decoder.decoded, header);
+        // This violates abstraction - parent shouldn't need to know base64 internals
     }
 }
 ```
+
+The core issue: **witness ownership and population responsibility are implicit and inconsistent**, forcing developers to understand internal implementation details of every circuit they compose.
 
 ### Proposed Circuit Interface Standard
 
@@ -416,13 +667,13 @@ To improve composability, circuits should follow a consistent interface pattern:
 trait StandardCircuit {
     /// Associated type for circuit-specific parameters
     type Config;
-    
+
     /// Constructor always takes builder and config
     fn new(builder: &CircuitBuilder, config: Self::Config) -> Self;
-    
+
     /// Single populate method for all inputs
     fn populate_inputs(&self, w: &mut WitnessFiller, inputs: Self::Inputs);
-    
+
     /// Query methods for circuit properties
     fn input_wires(&self) -> &[Wire];
     fn output_wires(&self) -> &[Wire];
@@ -443,11 +694,11 @@ pub struct Sha256Inputs<'a> {
 impl StandardCircuit for Sha256 {
     type Config = Sha256Config;
     type Inputs = Sha256Inputs<'_>;
-    
+
     fn new(builder: &CircuitBuilder, config: Sha256Config) -> Self {
         // Consistent construction
     }
-    
+
     fn populate_inputs(&self, w: &mut WitnessFiller, inputs: Sha256Inputs) {
         // Single entry point for witness population
         self.populate_len(w, inputs.message.len());
@@ -526,11 +777,11 @@ impl CircuitPipeline {
         self.stages.push(Box::new(circuit));
         self
     }
-    
+
     pub fn connect(&mut self, from_output: usize, to_input: usize) {
         // Wire connection logic
     }
-    
+
     pub fn populate_sequential(&self, w: &mut WitnessFiller, inputs: Vec<Box<dyn Any>>) {
         // Coordinate population across stages
     }
@@ -547,6 +798,380 @@ To avoid breaking existing code while improving consistency:
 4. **Phase 4**: Remove deprecated methods in next major version
 
 This refactoring would significantly improve circuit composability and reduce the learning curve for new developers.
+
+### The Function-Calling Analogy: Are Circuits Just Stateless Functions?
+
+At first glance, circuit composition might seem like simple function composition. After all, circuits transform inputs to outputs with no internal state. So why is composition challenging? Let's explore whether circuits are truly just functions with wires as parameters, or if witness population fundamentally changes the model.
+
+#### The Ideal: Circuits as Pure Functions
+
+In an ideal world, circuits would compose like pure functions:
+
+```rust
+// Hypothetical pure function model
+fn sha256(input: Vec<u64>) -> [u64; 4] {
+    // Compute hash
+    hash_result
+}
+
+fn rs256_verify(message_hash: [u64; 4], signature: Vec<u64>) -> bool {
+    // Verify signature
+    is_valid
+}
+
+// Simple composition
+fn verify_signed_message(message: Vec<u64>, signature: Vec<u64>) -> bool {
+    let hash = sha256(message);
+    rs256_verify(hash, signature)
+}
+```
+
+This is beautifully simple: outputs become inputs, no coordination needed.
+
+#### The Reality: Wires and Witness Population
+
+But circuits in Binius64 don't work this way. Instead of values, we have wires (references to future values), and computation happens in two separate phases:
+
+```rust
+// Phase 1: Circuit Construction (no values yet!)
+fn build_sha256(b: &mut CircuitBuilder) -> Sha256Circuit {
+    let input_wires = (0..MAX_LEN).map(|_| b.add_witness()).collect();
+    let output_wires = [b.add_witness(); 4];
+
+    // Add constraints that relate input_wires to output_wires
+    // But we don't know the actual values yet!
+    add_sha256_constraints(b, &input_wires, &output_wires);
+
+    Sha256Circuit { input_wires, output_wires }
+}
+
+// Phase 2: Witness Population (actual values)
+fn populate_sha256(circuit: &Sha256Circuit, w: &mut WitnessFiller, message: &[u8]) {
+    // Now we have actual values to work with
+    populate_input(w, &circuit.input_wires, message);
+    // But wait - who populates output_wires?
+    // The constraint system will compute them during evaluation!
+}
+```
+
+#### Why This Breaks the Function Model
+
+The function-calling analogy breaks down for several reasons:
+
+**1. Split Personality: Construction vs Population**
+
+Functions have a single execution phase. Circuits have two completely separate phases that happen at different times with different information available:
+
+```rust
+// Construction time: We know structure but not values
+let hash_circuit = Sha256::new(builder);  // No message yet!
+
+// Population time: We know values but can't change structure
+hash_circuit.populate(w, actual_message);  // Can't add new wires!
+```
+
+**2. The Witness Population Dance**
+
+Unlike function parameters that flow naturally, witness values must be carefully choreographed:
+
+```rust
+// Problem: Who populates what and when?
+struct PipelineCircuit {
+    sha256: Sha256Circuit,
+    verifier: VerifierCircuit,
+    // These wires connect the circuits, but who fills them?
+    intermediate_hash: [Wire; 4],
+}
+
+impl PipelineCircuit {
+    fn populate(&self, w: &mut WitnessFiller, message: &[u8], signature: &[u8]) {
+        // sha256 needs its input
+        self.sha256.populate_input(w, message);
+
+        // But sha256's OUTPUT wires are verifier's INPUT wires!
+        // Do we:
+        // - Have sha256 populate them? (But it doesn't know the signature)
+        // - Have verifier populate them? (But it doesn't know the message)
+        // - Populate them here? (Breaking encapsulation)
+
+        // The answer depends on whether intermediate_hash is:
+        // - Computed by constraints (witness wires)
+        // - Known in advance (input/output wires)
+    }
+}
+```
+
+**3. The Verification-Only Model (Why Outputs Need Population)**
+
+Here's the surprising truth: **SHA256 circuits in Binius64 don't compute hashes - they verify them!** This is why outputs need population:
+
+```rust
+// SHA256 is a VERIFIER circuit, not a COMPUTER circuit
+let sha256 = Sha256::new(builder, max_len, len, digest_wires, message_wires);
+
+// It contains constraints that verify: SHA256(message) == digest
+// But it doesn't compute digest from message!
+
+// So you must:
+sha256.populate_message(w, message);  // Provide the input
+sha256.populate_digest(w, expected_hash);  // Provide the expected output
+
+// The circuit then VERIFIES that SHA256(message) == expected_hash
+// It doesn't COMPUTE the hash
+```
+
+This is fundamental to zero-knowledge proofs: circuits verify relationships, they don't compute results. The prover knows both inputs and outputs and proves they satisfy the relationship. This creates the wire "ownership" problem - both circuits need the same value populated, but neither computes it.
+
+#### The Fundamental Mismatch
+
+The core issue is that **circuits aren't really functions** - they're **constraint systems** that happen to have function-like interfaces. The witness population mechanism adds essential complexity because:
+
+1. **Constraints compute values**: Some wires get their values from constraint evaluation, not direct population
+2. **Timing matters**: Population order affects what values are available when
+3. **Single assignment rule**: Each wire can only be written once, but may be read many times
+4. **Separation of concerns**: The circuit that uses a value may not be the circuit that computes it
+
+#### Can We Fix This?
+
+Some approaches to make circuits more function-like:
+
+**Option 1: Explicit Data Flow Types**
+
+```rust
+enum WireSource {
+    Input,      // Populated externally
+    Computed,   // Populated by constraint evaluation
+    Constant,   // Known at construction time
+}
+
+struct TypedWire {
+    wire: Wire,
+    source: WireSource,
+    owner: CircuitId,  // Who can write to this wire
+}
+```
+
+**Option 2: Continuation-Passing Style**
+
+```rust
+impl Sha256Circuit {
+    fn populate_with_continuation(
+        &self,
+        w: &mut WitnessFiller,
+        input: &[u8],
+        on_complete: impl FnOnce(&mut WitnessFiller, [u64; 4])
+    ) {
+        self.populate_input(w, input);
+        // After evaluation completes...
+        let hash = self.read_output(w);
+        on_complete(w, hash);
+    }
+}
+```
+
+**Option 3: Builder Pattern with Explicit Wiring**
+
+```rust
+CircuitPipeline::new()
+    .add_stage("sha256", Sha256::new)
+    .add_stage("verify", Rs256::new)
+    .connect("sha256.output", "verify.message_hash")
+    .build(builder)
+```
+
+#### The Bottom Line
+
+While it's tempting to think of circuits as functions where wires are just variables passed between them, **the witness population mechanism fundamentally changes the programming model**. The two-phase construction/population split, combined with the constraint evaluation system, creates a unique paradigm that requires its own patterns and best practices.
+
+The challenge isn't just "wires as variables vs arguments" - it's that:
+- **Construction** happens without knowing values
+- **Population** happens without ability to change structure
+- **Evaluation** happens implicitly between populations
+- **Ownership** of wires is distributed and temporal
+
+This is why circuit composition requires careful design patterns rather than simple function composition. The witness mechanism isn't an implementation detail - it's fundamental to how zero-knowledge proofs maintain their security properties while allowing efficient verification.
+
+### A Better Design? The Input-Wire-Only Model
+
+The REVIEW comment suggests an alternative design: circuits should take input wires and only populate their own constants. In theory:
+
+```rust
+// Hypothetical better design
+struct Sha256Better {
+    input_wires: Vec<Wire>,     // Provided by caller
+    output_wires: [Wire; 4],    // Provided by caller
+    // Circuit only manages internal constants
+}
+
+impl Sha256Better {
+    fn new(builder: &CircuitBuilder, input: Vec<Wire>, output: [Wire; 4]) -> Self {
+        // Add constraints connecting input to output
+        // Only the circuit knows its internal algorithm
+        Self { input_wires: input, output_wires: output }
+    }
+    
+    fn populate(&self, w: &mut WitnessFiller) {
+        // Only populate internal constants, not inputs/outputs
+        // Inputs are populated by caller
+        // Outputs are... wait, who computes them?
+    }
+}
+```
+
+This design has a fatal flaw: **circuits in ZK systems verify, they don't compute**. The output wires still need to be populated by someone who knows the correct output. The circuit can't compute it during population because:
+
+1. **Population is value assignment, not computation**
+2. **Constraints verify relationships, not compute results**
+3. **The prover must know ALL values before verification**
+
+So even with this design, you'd still need:
+```rust
+// Caller still needs to compute and populate outputs!
+let hash = compute_sha256_externally(input_data);
+populate_wires(w, output_wires, hash);  // Still needed!
+```
+
+The fundamental issue remains: **ZK circuits are verifiers, not computers**.
+
+### Real-World Example: The SHA256 Chaining Problem
+
+Let's examine a real test case from the codebase that perfectly illustrates these challenges. This test, aptly named `this_is_difficult`, attempts to compute SHA256(SHA256(data)) - a seemingly simple operation that reveals the full complexity of circuit composition:
+
+```rust
+#[test]
+fn this_is_difficult() {
+    let builder = CircuitBuilder::new();
+
+    // Problem 1: Manual wire allocation for every intermediate value
+    let input_0: [Wire; 10] = array::from_fn(|_| builder.add_witness());
+    let output_0: [Wire; 4] = array::from_fn(|_| builder.add_witness());
+    let input_1: [Wire; 4] = array::from_fn(|_| builder.add_witness());
+    let output_1: [Wire; 4] = array::from_fn(|_| builder.add_witness());
+
+    // Create two SHA256 circuits
+    let sha256_0 = Sha256::new(&builder, 80, builder.add_constant_64(80),
+                               output_0, input_0.to_vec());
+    let sha256_1 = Sha256::new(&builder, 32, builder.add_constant_64(32),
+                               output_1, input_1.to_vec());
+
+    // Problem 2: Manual constraint connections
+    let output_data = sha256_0.digest_to_le_wires(&builder);
+    let input_data = sha256_1.message_to_le_wires(&builder);
+
+    for i in 0..4 {
+        builder.assert_eq("check intermediate hash", output_data[i], input_data[i]);
+    }
+
+    // Problem 3: Redundant witness population
+    let mut filler = circuit.new_witness_filler();
+
+    // Populate first SHA256
+    sha256_0.populate_message(&mut filler, &block_header);
+    let intermediate_hash: [u8; 32] = sha2::Sha256::digest(block_header).into();
+    sha256_0.populate_digest(&mut filler, intermediate_hash);
+
+    // Populate second SHA256 with THE SAME intermediate value
+    sha256_1.populate_message(&mut filler, &intermediate_hash);
+    sha256_1.populate_digest(&mut filler, final_hash);
+}
+```
+
+#### Why Is This Difficult?
+
+**The Conceptual Simplicity:**
+```
+block_header → SHA256 → intermediate → SHA256 → final_hash
+```
+
+**The Implementation Reality:**
+
+1. **Wire Duplication at the Type System Level**
+   ```
+   output_0: [Wire; 4]  // SHA256_0 writes here (witness indices 10-13)
+   input_1:  [Wire; 4]  // SHA256_1 reads here (witness indices 14-17)
+   ```
+   These are **distinct witness polynomial coefficients** in the constraint system. The SHA256 circuit constructor takes ownership of wire slices and has no mechanism to express "these wires are aliases." The type system enforces strict boundaries - SHA256_0 owns indices 10-13, SHA256_1 owns indices 14-17. There's no way to tell the compiler or constraint system that `w[10] == w[14]`, `w[11] == w[15]`, etc. without explicit constraints.
+
+2. **Constraint Overhead for Wire Equality**
+   ```rust
+   for i in 0..4 {
+       builder.assert_eq("check intermediate hash", output_data[i], input_data[i]);
+   }
+   ```
+   Each `assert_eq` generates an AND constraint in the R1CS: `(output_0[i] ⊕ input_1[i]) & 1 = 0`. That's **4 additional gates** just to express that the output of one circuit equals the input of another. In a 64-bit word system, these constraints consume ~4x the baseline AND gate cost - pure overhead with no computational value, solely to work around the lack of wire aliasing.
+
+3. **The Triple Population Requirement**
+
+   The witness filler must receive three separate populations for the same 32-byte value:
+   ```rust
+   // Population 1: The actual input
+   sha256_0.populate_message(&mut filler, &block_header);
+
+   // Population 2: SHA256_0's output (computed externally!)
+   let intermediate_hash = sha2::Sha256::digest(block_header).into();
+   sha256_0.populate_digest(&mut filler, intermediate_hash);
+
+   // Population 3: SHA256_1's input (same value as Population 2)
+   sha256_1.populate_message(&mut filler, &intermediate_hash);
+   ```
+
+   Why? Because the SHA256 circuit contains internal constraints that verify the correctness of the hash computation. It needs both input AND output populated to satisfy its constraints. But since we're chaining SHA256s, the first's output IS the second's input, yet we must:
+   - Compute the intermediate hash **outside the constraint system** using a separate SHA256 implementation
+   - Populate it into witness indices 10-13 (as SHA256_0's digest)
+   - Populate it AGAIN into witness indices 14-17 (as SHA256_1's message)
+   - Add 4 equality constraints to ensure indices 10-13 equal indices 14-17
+
+#### The Fundamental Architectural Mismatch
+
+This exposes a deep architectural problem in how circuits are composed:
+
+**The Constraint System is Declarative, Not Procedural**
+
+The constraint system defines algebraic relationships between witness polynomial coefficients:
+- `w[10] = SHA256_compress(w[0..10])` (simplified - actually ~25,000 constraints)
+- `w[14] = w[10]` (our manual equality constraint)
+- `w[18] = SHA256_compress(w[14..18])` (another ~25,000 constraints)
+
+But it cannot express: "compute SHA256_0, then pipe its output to SHA256_1." The system has no concept of data flow or sequencing. All constraints exist simultaneously in the polynomial space.
+
+**The Witness Population is Procedural, Not Declarative**
+
+Meanwhile, witness population is purely imperative:
+```rust
+filler[wire_id] = value;  // One-shot assignment
+```
+
+The filler doesn't understand constraint dependencies. It can't deduce that `w[10]` should equal `w[14]`. It can't compute `w[10]` from `w[0..10]` using the SHA256 constraints - that's what the constraint VERIFIER does, not what the witness POPULATOR does.
+
+**The Evaluation Model is Neither**
+
+Circuit evaluation (constraint satisfaction checking) happens in a third model entirely:
+1. All witnesses must be populated
+2. All constraints are checked simultaneously
+3. No intermediate computation happens - only verification
+
+This creates an **impossible trinity**:
+- **Construction** defines structure without values
+- **Population** assigns values without computation
+- **Evaluation** verifies relationships without assignment
+
+#### The Missing Abstraction Layer
+
+What's needed is a fourth layer that understands:
+- **Wire Aliasing**: `output_0[i]` and `input_1[i]` are the same witness coefficient
+- **Computed Witnesses**: Some wires are derived from others via constraint relationships
+- **Data Flow Dependencies**: SHA256_1 depends on SHA256_0's output
+- **Automatic Population Propagation**: Computing w[0..10] should automatically derive w[10..14]
+
+Without this layer, every circuit composition requires:
+- **2N wire declarations** (N for outputs, N for inputs)
+- **N equality constraints** (pure overhead)
+- **External computation** of all intermediate values
+- **2N witness populations** (outputs and inputs separately)
+
+For a pipeline of K circuits, this becomes O(K²) complexity in manual wiring, when it should be O(K).
+
+The test name "this_is_difficult" understates the problem - it reveals that **circuit composition in Binius64 lacks fundamental abstractions for modular design**.
 
 ## Part 5: Circuit Composition Patterns
 
@@ -567,11 +1192,11 @@ impl SignedMessagePipeline {
     pub fn new(b: &mut CircuitBuilder, max_msg_len: usize) -> Self {
         // Stage 1: Message input
         let message = FixedByteVec::new_inout(b, max_msg_len);
-        
+
         // Stage 2: Hash the message
         // Note: digest wires are intermediate, not input
         let digest: [Wire; 4] = array::from_fn(|_| b.add_witness());
-        
+
         let sha256 = Sha256::new(
             &b.subcircuit("sha256"),  // Namespace for debugging
             max_msg_len,
@@ -579,11 +1204,11 @@ impl SignedMessagePipeline {
             digest,                   // Output wires
             message.data.clone(),     // Input wires (shared reference)
         );
-        
+
         // Stage 3: Verify signature over hash
         let signature = FixedByteVec::new_inout(b, 256);
         let modulus = FixedByteVec::new_inout(b, 256);
-        
+
         // RS256 needs the original message for padding verification
         // and uses the SHA256 digest internally
         let rs256 = Rs256Verify::new(
@@ -592,7 +1217,7 @@ impl SignedMessagePipeline {
             signature,                // RSA signature
             modulus,                  // Public key modulus
         );
-        
+
         Self { message, sha256, rs256 }
     }
 }
@@ -611,25 +1236,25 @@ pub fn build_complex_jwt_verifier(b: &mut CircuitBuilder) {
     // Top-level logical groups
     let auth = b.subcircuit("auth");
     let data = b.subcircuit("data_processing");
-    
+
     // Authentication subsystems
     let jwt = auth.subcircuit("jwt");
-    
+
     // JWT has three base64-encoded parts
     let header_b64 = jwt.subcircuit("header_decoder");
-    let payload_b64 = jwt.subcircuit("payload_decoder");  
+    let payload_b64 = jwt.subcircuit("payload_decoder");
     let signature_b64 = jwt.subcircuit("signature_decoder");
-    
+
     // Build decoders with clear namespace hierarchy
     // Errors will show: "auth.jwt.header_decoder: constraint violation"
     let header_decoder = Base64UrlSafe::new(&header_b64, /* ... */);
     let payload_decoder = Base64UrlSafe::new(&payload_b64, /* ... */);
     let signature_decoder = Base64UrlSafe::new(&signature_b64, /* ... */);
-    
+
     // Data processing can have its own hierarchy
     let transform = data.subcircuit("transform");
     let validate = data.subcircuit("validate");
-    
+
     // Benefits:
     // - Constraint #1234 fails → "auth.jwt.payload_decoder.padding_check"
     // - Can instantiate multiple validators with different namespaces
@@ -654,10 +1279,10 @@ pub struct SimpleJwtVerifier {
     jwt_signature_b64: FixedByteVec,  // Base64-encoded signature
     rsa_modulus: FixedByteVec,        // RSA public key (2048-bit)
     expected_issuer: FixedByteVec,    // Expected "iss" claim value
-    
+
     // === Subcircuits ===
     header_decoder: Base64UrlSafe,    // Converts base64 → bytes
-    payload_decoder: Base64UrlSafe,   
+    payload_decoder: Base64UrlSafe,
     signature_decoder: Base64UrlSafe,
     payload_parser: JwtClaims,        // Validates JSON claims
     signing_payload_concat: Concat,   // Rebuilds signed message
@@ -671,20 +1296,20 @@ impl SimpleJwtVerifier {
         const MAX_PAYLOAD: usize = 512;   // User claims
         const MAX_SIGNATURE: usize = 256; // 2048-bit RSA = 256 bytes
         const MAX_ISSUER: usize = 64;     // e.g., "accounts.google.com"
-        
+
         // === Create public input wires ===
         let jwt_header_b64 = FixedByteVec::new_inout(b, MAX_HEADER);
         let jwt_payload_b64 = FixedByteVec::new_inout(b, MAX_PAYLOAD);
         let jwt_signature_b64 = FixedByteVec::new_inout(b, MAX_SIGNATURE);
         let rsa_modulus = FixedByteVec::new_inout(b, 256);
         let expected_issuer = FixedByteVec::new_inout(b, MAX_ISSUER);
-        
+
         // === Stage 1: Base64 Decoding ===
         // Create intermediate wires for decoded data
         let jwt_header = FixedByteVec::new_witness(b, MAX_HEADER);
         let jwt_payload = FixedByteVec::new_witness(b, MAX_PAYLOAD);
         let jwt_signature = FixedByteVec::new_witness(b, MAX_SIGNATURE);
-        
+
         // Base64 decoders verify: encode(decoded) == input
         // This ensures the decoded values are correct
         let header_decoder = Base64UrlSafe::new(
@@ -694,7 +1319,7 @@ impl SimpleJwtVerifier {
             jwt_header_b64.data.clone(),  // Input: base64 string
             jwt_header.len,                // Output length
         );
-        
+
         let payload_decoder = Base64UrlSafe::new(
             &b.subcircuit("decode_payload"),
             MAX_PAYLOAD,
@@ -702,7 +1327,7 @@ impl SimpleJwtVerifier {
             jwt_payload_b64.data.clone(),
             jwt_payload.len,
         );
-        
+
         let signature_decoder = Base64UrlSafe::new(
             &b.subcircuit("decode_signature"),
             MAX_SIGNATURE,
@@ -710,7 +1335,7 @@ impl SimpleJwtVerifier {
             jwt_signature_b64.data.clone(),
             jwt_signature.len,
         );
-        
+
         // === Stage 2: Claims Validation ===
         // Verify the JWT payload contains expected issuer
         let issuer_attribute = Attribute {
@@ -718,7 +1343,7 @@ impl SimpleJwtVerifier {
             len_value: expected_issuer.len,      // Variable length
             value: expected_issuer.data.clone(), // Expected value
         };
-        
+
         // This circuit verifies jwt_payload contains: "iss":"<expected_issuer>"
         let payload_parser = JwtClaims::new(
             &b.subcircuit("parse_claims"),
@@ -727,20 +1352,20 @@ impl SimpleJwtVerifier {
             jwt_payload.data.clone(),
             vec![issuer_attribute],  // Can verify multiple claims
         );
-        
+
         // === Stage 3: Signature Verification ===
         // JWT signing input is: base64(header) + "." + base64(payload)
         // Note: We use the base64 versions, not decoded
-        
+
         let max_signing_len = MAX_HEADER + 1 + MAX_PAYLOAD;
         let signing_payload = (0..max_signing_len / 8)
             .map(|_| b.add_witness())
             .collect();
         let signing_len = b.add_witness();
-        
+
         // Create the dot separator constant
         let dot_wire = b.add_constant_64(0x2E); // ASCII '.'
-        
+
         // Concatenate: header.payload
         let signing_payload_concat = Concat::new(
             &b.subcircuit("signing_payload"),
@@ -765,14 +1390,14 @@ impl SimpleJwtVerifier {
                 },
             ],
         );
-        
+
         // Create message structure for RS256 verifier
         let message = FixedByteVec {
             len: signing_len,
             data: signing_payload_concat.joined.clone(),
             max_len: max_signing_len,
         };
-        
+
         // RS256 verifier:
         // 1. Computes SHA256(message)
         // 2. Verifies RSA signature matches
@@ -783,7 +1408,7 @@ impl SimpleJwtVerifier {
             jwt_signature.clone(),
             rsa_modulus.clone(),
         );
-        
+
         Self {
             jwt_header_b64,
             jwt_payload_b64,
@@ -798,7 +1423,7 @@ impl SimpleJwtVerifier {
             signature_verifier,
         }
     }
-    
+
     pub fn populate_witness(
         &self,
         w: &mut WitnessFiller,
@@ -809,7 +1434,7 @@ impl SimpleJwtVerifier {
         // === Parse JWT string ===
         let parts: Vec<&str> = jwt.split('.').collect();
         assert_eq!(parts.len(), 3, "JWT must have three parts");
-        
+
         // === Populate public inputs ===
         // These are the actual values the verifier will check
         self.jwt_header_b64.populate(w, parts[0].as_bytes());
@@ -817,11 +1442,11 @@ impl SimpleJwtVerifier {
         self.jwt_signature_b64.populate(w, parts[2].as_bytes());
         self.rsa_modulus.populate(w, rsa_modulus);
         self.expected_issuer.populate(w, expected_issuer.as_bytes());
-        
+
         // === Compute intermediate witnesses ===
         // The circuit needs decoded values for constraint checking
         // In a real implementation, these would be computed by the prover
-        
+
         // Note: The circuit verifies these decodings are correct
         // We can't provide wrong values here - constraints will fail
     }
@@ -892,7 +1517,7 @@ The `crates/examples` directory provides a standardized framework for building t
 pub trait ExampleCircuit: Sized {
     type Params: clap::Args;     // CLI arguments for configuration
     type Instance: clap::Args;   // CLI arguments for test data
-    
+
     fn build(params: Self::Params, builder: &mut CircuitBuilder) -> Result<Self>;
     fn populate_witness(&self, instance: Self::Instance, filler: &mut WitnessFiller) -> Result<()>;
 }
@@ -914,7 +1539,7 @@ fn test_circuit_complexity_unchanged() {
     let mut builder = CircuitBuilder::new();
     let circuit = MyCircuit::new(&mut builder);
     let built = builder.build();
-    
+
     // Compares against saved snapshot
     // Fails if constraint count changes unexpectedly
     snapshot::check_snapshot("my_circuit", &built).unwrap();
@@ -970,7 +1595,7 @@ pub struct ParallelHashers {
 
 Use the Binius64 cost model to optimize:
 - AND constraint: 1x cost
-- MUL constraint: ~200x cost  
+- MUL constraint: ~200x cost
 - Witness commitment: ~0.2x cost
 
 Focus optimization efforts on reducing MUL constraints first, then AND constraints, and worry about witness count last.
