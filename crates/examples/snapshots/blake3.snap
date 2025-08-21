@@ -1,0 +1,11 @@
+blake3 circuit
+--
+Number of gates: 50546
+Number of evaluation instructions: 50548
+Number of AND constraints: 71716
+Number of MUL constraints: 0
+Length of value vec: 131072
+  Constants: 44
+  Inout: 256
+  Witness: 1
+  Internal: 71717
