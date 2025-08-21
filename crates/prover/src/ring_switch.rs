@@ -200,8 +200,8 @@ where
 /// The optimization works by:
 /// 1. Processing 4 elements at a time (2^2 chunks) for better cache locality
 /// 2. Precomputing a lookup table of 16 partial sums for 4-bit chunks
-/// 3. Using the lookup table to compute dot products via table lookups instead of multiplications
-/// 4. Leveraging [`square_transpose_const_size`] with const generics for loop unrolling
+/// 3. Bit-transpose 4-bit matrix chunks to get lookup indices
+/// 4. Using the lookup table to compute dot products via table lookups instead of multiplications
 ///
 /// ## Arguments
 ///
@@ -225,32 +225,39 @@ where
 	let log_scalar_bit_width = <B128 as ExtensionField<B1>>::LOG_DEGREE;
 	assert_eq!(mat.log_len(), vec.log_len()); // precondition
 
-	(vec.as_ref().par_chunks(1 << 2), mat.as_ref().par_chunks(1 << 2))
+	// Group bits into 4-bit nibbles for the lookups.
+	const LOG_CHUNK_BITS: usize = 2;
+	const CHUNK_BITS: usize = 1 << LOG_CHUNK_BITS;
+
+	(vec.as_ref().par_chunks(CHUNK_BITS), mat.as_ref().par_chunks(CHUNK_BITS))
 		.into_par_iter()
 		.fold(
 			|| FieldBuffer::zeros(log_scalar_bit_width),
 			|mut acc, (vec_packed_i, mat_packed_i)| {
-				let mut expanded = [B128::ZERO; 1 << 4];
-				for (i, vec_i) in vec_packed_i.iter().enumerate() {
-					let span = &mut expanded[..1 << (i + 1)];
-					let (lo_half, hi_half) = span.split_at_mut(1 << i);
-					for (lo_half_i, hi_half_i) in iter::zip(lo_half, hi_half) {
-						*hi_half_i = *lo_half_i + vec_i;
-					}
-				}
+				// Copy from slices to arrays. This works even when the inputs are less than the
+				// chunk size.
+				let mut vec_scalars = [B128::ZERO; CHUNK_BITS];
+				iter::zip(&mut vec_scalars, vec_packed_i.iter()).for_each(|(dst, &src)| *dst = src);
 
-				let mut mat_elems: [_; 4] = <B128 as PackedExtension<B1>>::cast_bases(mat_packed_i)
-					.try_into()
-					.unwrap();
-				square_transpose_const_size::<_, 2, 4>(&mut mat_elems);
+				let mut mat_scalars = [B128::ZERO; CHUNK_BITS];
+				iter::zip(&mut mat_scalars, mat_packed_i.iter()).for_each(|(dst, &src)| *dst = src);
+
+				// Build the lookup table of subset sums of the vector chunk elements.
+				let lookup = expand_subset_sums::<_, CHUNK_BITS, { 1 << CHUNK_BITS }>(vec_scalars);
+
+				square_transpose_const_size::<_, LOG_CHUNK_BITS, CHUNK_BITS>(
+					mat_scalars
+						.each_mut()
+						.map(<B128 as PackedExtension<B1>>::cast_base_mut),
+				);
 
 				{
 					let acc = acc.as_mut();
-					for (j, mat_elem) in mat_elems.iter().enumerate() {
-						let elem_bytes = B128::cast_ext_ref(mat_elem).val().to_le_bytes();
+					for (j, mat_elem) in mat_scalars.iter().enumerate() {
+						let elem_bytes = mat_elem.val().to_le_bytes();
 						for (i, &byte) in elem_bytes.iter().enumerate() {
-							acc[(i << 3) | j] += expanded[byte as usize & 0x0F];
-							acc[(i << 3) | (1 << 2) | j] += expanded[byte as usize >> 4];
+							acc[(i << 3) | j] += lookup[byte as usize & 0x0F];
+							acc[(i << 3) | (1 << 2) | j] += lookup[byte as usize >> 4];
 						}
 					}
 				}
@@ -267,6 +274,55 @@ where
 				lhs
 			},
 		)
+}
+
+/// Expands an array of field elements into all possible subset sums.
+///
+/// For an input array `[a, b, c]`, this computes all possible sums of subsets:
+/// `[0, a, b, a+b, c, a+c, b+c, a+b+c]`
+///
+/// This is used to create lookup tables for the Method of Four Russians optimization,
+/// where we precompute all possible combinations of a small set of values to avoid
+/// doing the additions at runtime.
+///
+/// ## Type Parameters
+///
+/// * `F` - The field element type
+/// * `N` - Size of the input array
+/// * `N_EXP2` - Size of the output array, must be 2^N
+///
+/// ## Arguments
+///
+/// * `elems` - Input array of N field elements
+///
+/// ## Returns
+///
+/// An array of size N_EXP2 containing all possible subset sums of the input elements
+///
+/// ## Preconditions
+///
+/// * N_EXP2 must equal 2^N
+///
+/// ## Example
+///
+/// ```ignore
+/// let input = [F::ONE, F::from(2)];
+/// let sums = expand_subset_sums(input);
+/// // sums = [F::ZERO, F::ONE, F::from(2), F::from(3)]
+/// ```
+fn expand_subset_sums<F: Field, const N: usize, const N_EXP2: usize>(elems: [F; N]) -> [F; N_EXP2] {
+	// TODO: deduplicate this code with `fold_words` and `create_partial_sums_lookup_tables`
+	assert_eq!(N_EXP2, 1 << N);
+
+	let mut expanded = [F::ZERO; N_EXP2];
+	for (i, elem_i) in elems.into_iter().enumerate() {
+		let span = &mut expanded[..1 << (i + 1)];
+		let (lo_half, hi_half) = span.split_at_mut(1 << i);
+		for (lo_half_i, hi_half_i) in iter::zip(lo_half, hi_half) {
+			*hi_half_i = *lo_half_i + elem_i;
+		}
+	}
+	expanded
 }
 
 /// Transpose square blocks of elements within packed field elements in place.
@@ -291,9 +347,8 @@ where
 /// * `LOG_N` must be less than or equal to `P::LOG_WIDTH`
 /// * `LOG_N` must be less than or equal to `log2(S)`
 fn square_transpose_const_size<P: PackedField, const LOG_N: usize, const S: usize>(
-	elems: &mut [P; S],
+	elems: [&mut P; S],
 ) {
-	assert!(S.is_power_of_two());
 	let log_size = checked_log_2(S);
 
 	assert!(LOG_N <= P::LOG_WIDTH);
@@ -309,11 +364,11 @@ fn square_transpose_const_size<P: PackedField, const LOG_N: usize, const S: usiz
 				let idx0 = (j << (log_w + i + 1)) | k;
 				let idx1 = idx0 | (1 << (log_w + i));
 
-				let v0 = elems[idx0];
-				let v1 = elems[idx1];
+				let v0 = *elems[idx0];
+				let v1 = *elems[idx1];
 				let (v0, v1) = v0.interleave(v1, i);
-				elems[idx0] = v0;
-				elems[idx1] = v1;
+				*elems[idx0] = v0;
+				*elems[idx1] = v1;
 			}
 		}
 	}
