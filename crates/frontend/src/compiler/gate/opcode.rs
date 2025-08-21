@@ -18,6 +18,7 @@ pub enum Opcode {
 	Iadd32,
 	IsubBinBout,
 	Imul,
+	Smul,
 
 	// Shifts
 	Shl,
@@ -101,6 +102,7 @@ impl Opcode {
 			Opcode::Iadd32 => gate::iadd32::shape(),
 			Opcode::IsubBinBout => gate::isub_bin_bout::shape(),
 			Opcode::Imul => gate::imul::shape(),
+			Opcode::Smul => gate::smul::shape(),
 
 			// Shifts
 			Opcode::Shr => gate::shr::shape(),
