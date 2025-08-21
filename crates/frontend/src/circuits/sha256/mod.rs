@@ -138,9 +138,16 @@ impl Sha256 {
 		message.resize(n_words, builder.add_constant_64(0));
 		// see comment about the above two lines in sha512/mod.rs.
 
-		let padded_message: Vec<[Wire; 16]> = (0..n_blocks)
-			.map(|_| std::array::from_fn(|_| builder.add_witness()))
-			.collect();
+		// for each compression gadget, we need to digest 16 32-bit words' worth of content.
+		// since message is packed into 64-bit wires, we need to do a few slight tricks.
+		// each chunk we feed into compression needs to contain 16 × 32 = 512 bits of information.
+		// we represent this as 16 64-bit wires, each of which is completely empty on the high half.
+		// it winds up being convenient to split the total `n_blocks` × 16 wires into two halves,
+		// `padded_evens` and `padded_odds`, each containing `n_blocks` × 8 total wires.
+		// for each `n_block`, the interleaving of padded_evens' and padded_odds' respective
+		// [n_block << 3 .. (n_block + 1) << 3] slices will give us the 16 half-empty wires we need.
+		let padded_evens: Vec<Wire> = (0..n_words).map(|_| builder.add_witness()).collect();
+		let padded_odds: Vec<Wire> = (0..n_words).map(|_| builder.add_witness()).collect();
 
 		let mut compress = Vec::with_capacity(n_blocks);
 		let mut states = Vec::with_capacity(n_blocks + 1);
@@ -149,7 +156,14 @@ impl Sha256 {
 			let c = Compress::new(
 				&builder.subcircuit(format!("compress[{block_no}]")),
 				states[block_no].clone(),
-				padded_message[block_no],
+				// grab appropriate interleaved wires, in order to feed into compression gadget.
+				std::array::from_fn(|i| {
+					if i & 1 == 0 {
+						padded_evens[block_no << 3 | i >> 1]
+					} else {
+						padded_odds[block_no << 3 | i >> 1]
+					}
+				}),
 			);
 			states.push(c.state_out.clone());
 			compress.push(c);
@@ -225,26 +239,6 @@ impl Sha256 {
 		// 2. delimiter byte, placed right after the input.
 		// 3. zero byte. Placed after the delimiter byte.
 
-		let padded_evens: Vec<Wire> = padded_message
-			.iter()
-			.flat_map(|block| {
-				block
-					.iter()
-					.enumerate()
-					.filter(|(i, _)| i % 2 == 0)
-					.map(|(_, &w)| w)
-			})
-			.collect();
-		let padded_odds: Vec<Wire> = padded_message
-			.iter()
-			.flat_map(|block| {
-				block
-					.iter()
-					.enumerate()
-					.filter(|(i, _)| i % 2 == 1)
-					.map(|(_, &w)| w)
-			})
-			.collect();
 		let boundary_message_word = single_wire_multiplex(builder, &message, w_bd);
 		let boundary_padded_lo32 = single_wire_multiplex(builder, &padded_evens, w_bd);
 		let boundary_padded_hi32 = single_wire_multiplex(builder, &padded_odds, w_bd);
@@ -297,8 +291,9 @@ impl Sha256 {
 
 			for column_index in 0..8 {
 				// From two adjacent 32-bit message schedule words get a packed 64-bit message word.
-				let w_lo32 = padded_message[block_index][column_index << 1];
-				let w_hi32 = padded_message[block_index][(column_index << 1) + 1];
+				let word_index = block_index << 3 | column_index;
+				let w_lo32 = padded_evens[word_index];
+				let w_hi32 = padded_odds[word_index];
 				let padded_message_word = builder.bxor(w_lo32, builder.shl(w_hi32, 32));
 
 				// flags that help us classify our current position.
@@ -306,8 +301,7 @@ impl Sha256 {
 				//     1. w     < w_bd - pure message word
 				//     2. w    == w_bd - message word at boundary. Mix of message and padding.
 				//     3. w_bd  < w    - pure padding word.
-				//
-				let word_index = block_index << 3 | column_index;
+
 				let is_message_word =
 					builder.icmp_ult(builder.add_constant_64(word_index as u64 + 1), w_bd);
 				let is_past_message: Wire =
