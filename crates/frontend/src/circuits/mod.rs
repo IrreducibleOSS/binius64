@@ -4,6 +4,7 @@ pub mod blake2b;
 pub mod concat;
 pub mod ecdsa;
 pub mod fixed_byte_vec;
+pub mod float64;
 pub mod hash_based_sig;
 pub mod jwt_claims;
 pub mod keccak;
