@@ -82,7 +82,11 @@ where
 	let verifier_computed_sumcheck_claim =
 		evaluate::<F, F, _>(&s_hat_u, &batching_scalars).unwrap();
 
-	let (final_fri_oracle, sumcheck_output) = basefold::verify(
+	let basefold::ReducedOutput {
+		final_fri_value,
+		final_sumcheck_value,
+		challenges,
+	} = basefold::verify(
 		codeword_commitment,
 		transcript,
 		verifier_computed_sumcheck_claim,
@@ -96,11 +100,11 @@ where
 
 	let rs_eq_at_basefold_challenges = eval_rs_eq::<F>(
 		eval_point_high,
-		&sumcheck_output.challenges,
+		&challenges,
 		eq_ind_partial_eval(&batching_scalars).as_ref(),
 	);
 
-	if sumcheck_output.eval != final_fri_oracle * rs_eq_at_basefold_challenges {
+	if final_sumcheck_value != final_fri_value * rs_eq_at_basefold_challenges {
 		return Err(VerificationError::FriOracleVerificationFailed.into());
 	}
 

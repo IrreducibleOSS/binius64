@@ -12,7 +12,7 @@ use crate::{
 	Error,
 	fri::{FRIParams, verify::FRIVerifier},
 	merkle_tree::MerkleTreeScheme,
-	protocols::sumcheck::{RoundCoeffs, RoundProof, SumcheckOutput},
+	protocols::sumcheck::{RoundCoeffs, RoundProof},
 };
 
 // The mle-check in basefold involves a degree 2 univariate round polynomial.
@@ -53,9 +53,6 @@ fn is_fri_commit_round(
 /// The verifier goes through the transcript, verifying each stage of the
 /// FRI and Sumcheck in parallel.
 ///
-/// The verifier returns the final FRI value, expected sumcheck claim, and
-/// the challenges used in the sumcheck rounds.
-///
 /// ## Arguments
 ///
 /// * `codeword_commitment` - The commitment to the codeword
@@ -65,6 +62,11 @@ fn is_fri_commit_round(
 /// * `fri_params` - The FRI parameters
 /// * `vcs` - The Merkle tree scheme
 /// * `n_vars` - The number of variables in the multilinear polynomial
+///
+/// ## Returns
+///
+/// The [`ReducedOutput`] holding the final FRI value, the final sumcheck value, and the challenges
+/// used in the sumcheck rounds.
 pub fn verify<F, MTScheme, Challenger_>(
 	codeword_commitment: MTScheme::Digest,
 	transcript: &mut VerifierTranscript<Challenger_>,
@@ -72,7 +74,7 @@ pub fn verify<F, MTScheme, Challenger_>(
 	fri_params: &FRIParams<F, F>,
 	vcs: &MTScheme,
 	n_vars: usize,
-) -> Result<(F, SumcheckOutput<F>), Error>
+) -> Result<ReducedOutput<F>, Error>
 where
 	F: BinaryField,
 	Challenger_: Challenger,
@@ -106,15 +108,20 @@ where
 	let fri_verifier =
 		FRIVerifier::new(fri_params, vcs, &codeword_commitment, &round_commitments, &challenges)?;
 
-	let fri_oracle = fri_verifier.verify(transcript)?;
+	let final_fri_value = fri_verifier.verify(transcript)?;
 
-	Ok((
-		fri_oracle,
-		SumcheckOutput {
-			eval: sum,
-			challenges,
-		},
-	))
+	Ok(ReducedOutput {
+		final_fri_value,
+		final_sumcheck_value: sum,
+		challenges,
+	})
+}
+
+/// Output type of the [`verify`] function.
+pub struct ReducedOutput<F> {
+	pub final_fri_value: F,
+	pub final_sumcheck_value: F,
+	pub challenges: Vec<F>,
 }
 
 /// Verifies that the final FRI oracle is consistent with the sumcheck
