@@ -215,12 +215,13 @@ where
 /// ## Preconditions
 ///
 /// * `mat` and `vec` must have the same log length
-pub fn fold_1b_rows_for_b128<Data>(
-	mat: &FieldBuffer<B128, Data>,
-	vec: &FieldBuffer<B128>,
+pub fn fold_1b_rows_for_b128<P, Data>(
+	mat: &FieldBuffer<P, Data>,
+	vec: &FieldBuffer<P>,
 ) -> FieldBuffer<B128>
 where
-	Data: Deref<Target = [B128]>,
+	P: PackedField<Scalar = B128>,
+	Data: Deref<Target = [P]>,
 {
 	let log_scalar_bit_width = <B128 as ExtensionField<B1>>::LOG_DEGREE;
 	assert_eq!(mat.log_len(), vec.log_len()); // precondition
@@ -233,31 +234,39 @@ where
 		.into_par_iter()
 		.fold(
 			|| FieldBuffer::zeros(log_scalar_bit_width),
-			|mut acc, (vec_packed_i, mat_packed_i)| {
-				// Copy from slices to arrays. This works even when the inputs are less than the
-				// chunk size.
-				let mut vec_scalars = [B128::ZERO; CHUNK_BITS];
-				iter::zip(&mut vec_scalars, vec_packed_i.iter()).for_each(|(dst, &src)| *dst = src);
+			|mut acc, (vec_chunk, mat_chunk)| {
+				let mut vec_chunk_iter = P::iter_slice(vec_chunk);
+				let mut mat_chunk_iter = P::iter_slice(mat_chunk);
 
-				let mut mat_scalars = [B128::ZERO; CHUNK_BITS];
-				iter::zip(&mut mat_scalars, mat_packed_i.iter()).for_each(|(dst, &src)| *dst = src);
+				for _ in 0..P::WIDTH {
+					// Copy from slices to arrays. This works even when the inputs are less than the
+					// chunk size.
+					let mut vec_scalars = [B128::ZERO; CHUNK_BITS];
+					iter::zip(&mut vec_scalars, &mut vec_chunk_iter)
+						.for_each(|(dst, src)| *dst = src);
 
-				// Build the lookup table of subset sums of the vector chunk elements.
-				let lookup = expand_subset_sums::<_, CHUNK_BITS, { 1 << CHUNK_BITS }>(vec_scalars);
+					let mut mat_scalars = [B128::ZERO; CHUNK_BITS];
+					iter::zip(&mut mat_scalars, &mut mat_chunk_iter)
+						.for_each(|(dst, src)| *dst = src);
 
-				square_transpose_const_size::<_, LOG_CHUNK_BITS, CHUNK_BITS>(
-					mat_scalars
-						.each_mut()
-						.map(<B128 as PackedExtension<B1>>::cast_base_mut),
-				);
+					// Build the lookup table of subset sums of the vector chunk elements.
+					let lookup =
+						expand_subset_sums::<_, CHUNK_BITS, { 1 << CHUNK_BITS }>(vec_scalars);
 
-				{
-					let acc = acc.as_mut();
-					for (j, mat_elem) in mat_scalars.iter().enumerate() {
-						let elem_bytes = mat_elem.val().to_le_bytes();
-						for (i, &byte) in elem_bytes.iter().enumerate() {
-							acc[(i << 3) | j] += lookup[byte as usize & 0x0F];
-							acc[(i << 3) | (1 << 2) | j] += lookup[byte as usize >> 4];
+					square_transpose_const_size::<_, LOG_CHUNK_BITS, CHUNK_BITS>(
+						mat_scalars
+							.each_mut()
+							.map(<B128 as PackedExtension<B1>>::cast_base_mut),
+					);
+
+					{
+						let acc = acc.as_mut();
+						for (j, mat_elem) in mat_scalars.iter().enumerate() {
+							let elem_bytes = mat_elem.val().to_le_bytes();
+							for (i, &byte) in elem_bytes.iter().enumerate() {
+								acc[(i << 3) | j] += lookup[byte as usize & 0x0F];
+								acc[(i << 3) | (1 << 2) | j] += lookup[byte as usize >> 4];
+							}
 						}
 					}
 				}
@@ -377,8 +386,8 @@ fn square_transpose_const_size<P: PackedField, const LOG_N: usize, const S: usiz
 #[cfg(test)]
 mod test {
 	use binius_field::{
-		BinaryField128bGhash, ExtensionField, PackedBinaryGhash2x128b, PackedExtension,
-		PackedField, PackedSubfield,
+		BinaryField128bGhash, ExtensionField, PackedBinaryGhash2x128b, PackedBinaryGhash4x128b,
+		PackedExtension, PackedField, PackedSubfield,
 	};
 	use binius_math::{
 		FieldBuffer,
@@ -504,14 +513,15 @@ mod test {
 	#[test]
 	fn test_fold_1b_rows_for_b128_consistency() {
 		let mut rng = StdRng::seed_from_u64(0);
+		type P = PackedBinaryGhash4x128b;
 
 		// Parameters - test with various sizes
 		for n in [4, 6, 8, 10] {
 			// Generate a random B128 matrix with 2^n elements
-			let mat = random_field_buffer::<B128>(&mut rng, n);
+			let mat = random_field_buffer::<P>(&mut rng, n);
 
 			// Generate a random B128 vector with 2^n elements
-			let vec = random_field_buffer::<B128>(&mut rng, n);
+			let vec = random_field_buffer::<P>(&mut rng, n);
 
 			// Call the generic fold_1b_rows function
 			let result_generic = fold_1b_rows(&mat, &vec);
