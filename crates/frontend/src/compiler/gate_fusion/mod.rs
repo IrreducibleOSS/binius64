@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 use binius_core::{
 	ValueIndex,
-	constraint_system::{AndConstraint, MulConstraint, Operand, ShiftVariant},
+	constraint_system::{AndConstraint, MulConstraint, Operand, ShiftedValueIndex},
 	word::Word,
 };
 use cranelift_entity::{EntitySet, PrimaryMap};
@@ -105,15 +105,14 @@ impl<'a> Fusion<'a> {
 				// No uses: Producer is dead. DCE will handle.
 				continue;
 			};
-			// Don't fuse this producer if any of the consumers shift this value.
-			if use_sites.iter().any(|u| u.shift.is_some()) {
-				continue;
-			}
+			// Check if fusion would be safe with shifted uses
+			// We need to ensure that opposing shifts don't cause incorrect results
 			// Check if all uses can accommodate the inlining
-			if !use_sites.iter().all(|use_site| {
+			let can_inline = use_sites.iter().all(|use_site| {
 				let operand = get_operand(use_site, self.and_constraints, self.mul_constraints);
 				would_inline_fit(operand, def_data.dst, &def_data.rhs, max_terms)
-			}) {
+			});
+			if !can_inline {
 				continue;
 			}
 
@@ -179,7 +178,6 @@ struct UseSite {
 	constraint_type: ConstraintType,
 	constraint_idx: usize,
 	operand: OperandSlot,
-	shift: Option<(ShiftVariant, usize)>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -260,17 +258,10 @@ fn harvest_uses(
 	operand_slot: OperandSlot,
 ) {
 	for term in operand.iter() {
-		let shift = if term.amount != 0 {
-			Some((term.shift_variant, term.amount))
-		} else {
-			None
-		};
-
 		uses.entry(term.value_index).or_default().push(UseSite {
 			constraint_type,
 			constraint_idx,
 			operand: operand_slot,
-			shift,
 		});
 	}
 }
@@ -304,54 +295,95 @@ fn get_operand<'a>(
 	}
 }
 
-/// Check if inlining would exceed the term limit.
+/// Compose two shifts: apply outer shift to inner shifted value.
 ///
-/// This performs an exact calculation of the resulting operand size after
-/// substitution and XOR cancellation, ensuring we never reject valid fusions.
-fn would_inline_fit(operand: &Operand, dst: ValueIndex, rhs: &Operand, max_terms: usize) -> bool {
-	// Check that dst appears exactly once (and unshifted)
-	let dst_count = operand
-		.iter()
-		.filter(|t| t.value_index == dst && t.amount == 0)
-		.count();
-	if dst_count != 1 {
-		// Either no dst or multiple dst (shouldn't happen).
-		return false;
+/// Returns the resulting shifted value index.
+fn compose_shifts(inner: ShiftedValueIndex, outer: ShiftedValueIndex) -> Option<ShiftedValueIndex> {
+	// If outer has no shift, return inner as-is
+	if outer.amount == 0 {
+		return Some(inner);
 	}
 
-	// Build the merged operand: original terms minus dst, plus rhs terms
-	let mut merged = Vec::with_capacity(operand.len() - 1 + rhs.len());
+	// If inner has no shift, apply outer shift
+	if inner.amount == 0 {
+		return Some(ShiftedValueIndex {
+			value_index: inner.value_index,
+			shift_variant: outer.shift_variant,
+			amount: outer.amount,
+		});
+	}
 
-	// Copy all terms except dst
-	for term in operand {
-		if !(term.value_index == dst && term.amount == 0) {
-			merged.push(*term);
+	// We can only compose shifts if they are of the same type.
+	//
+	// That is those are alright:
+	//
+	// (x << a) << b = x << (a+b)
+	// (x >> a) >> b = x >> (a+b)
+	//
+	// However,
+	//
+	// (x >> a) << b
+	//
+	// does not compose. For intuition, you can think of a shift operation as cropping bits from one
+	// side. Composing left and right shift would be equivalent of cropping from the two sides which
+	// cannot be expressed with sll, slr or sar. Composing slr and sar is not sound either in the
+	// general case.
+	if inner.shift_variant == outer.shift_variant {
+		// Composition only work if it does not shift the last bit out of the side, because we
+		// cannot even express that here.
+		if inner.amount + outer.amount <= 63 {
+			return Some(ShiftedValueIndex {
+				value_index: inner.value_index,
+				shift_variant: inner.shift_variant,
+				amount: inner.amount + outer.amount,
+			});
 		}
 	}
 
-	// Add RHS terms
-	merged.extend_from_slice(rhs);
+	None
+}
 
-	// Count unique terms after XOR cancellation
+/// Check if inlining would exceed the term limit and be semantically correct.
+fn would_inline_fit(operand: &Operand, dst: ValueIndex, rhs: &Operand, max_terms: usize) -> bool {
+	// Check if dst appears at all
+	if !operand.iter().any(|t| t.value_index == dst) {
+		return false;
+	}
+
+	// Apply substitution and check term count
+	let mut merged = Vec::new();
+	for term in operand {
+		if term.value_index == dst {
+			// Substitute dst with rhs, applying term's shift
+			for rhs_term in rhs {
+				let Some(value) = compose_shifts(*rhs_term, *term) else {
+					return false;
+				};
+				merged.push(value);
+			}
+		} else {
+			merged.push(*term);
+		}
+	}
 	count_unique_terms(&merged) <= max_terms
 }
 
 /// Substitute values in an operand based on the fusion map
 fn substitute_in_operand(operand: &mut Operand, fusion_map: &HashMap<ValueIndex, &Operand>) {
-	let mut new_terms = Vec::new();
 	let mut substituted = false;
+	let mut new_terms = Vec::new();
 
 	for term in operand.iter() {
-		if term.amount == 0 {
-			// Only substitute unshifted uses
-			if let Some(rhs) = fusion_map.get(&term.value_index) {
-				new_terms.extend_from_slice(rhs);
-				substituted = true;
-			} else {
-				new_terms.push(*term);
+		if let Some(rhs) = fusion_map.get(&term.value_index) {
+			for rhs_term in rhs.iter() {
+				let Some(value) = compose_shifts(*rhs_term, *term) else {
+					// This must not happen, as every opposing shift must've been filtered out.
+					unreachable!();
+				};
+				new_terms.push(value);
 			}
+			substituted = true;
 		} else {
-			// Keep shifted terms as-is
 			new_terms.push(*term);
 		}
 	}
@@ -510,18 +542,18 @@ mod tests {
 	}
 
 	#[test]
-	fn test_no_fusion_with_shifted_use() {
+	fn test_fusion_with_shifted_use() {
 		let mut and_constraints = vec![
-			// v2 = v0 ^ v1
+			// v3 = v1 ^ v2
 			AndConstraint {
 				a: make_operand(vec![(1, ShiftVariant::Sll, 0), (2, ShiftVariant::Sll, 0)]),
 				b: make_operand(vec![(0, ShiftVariant::Sll, 0)]), // all_ones
-				c: make_operand(vec![(3, ShiftVariant::Sll, 0)]), // v2
+				c: make_operand(vec![(3, ShiftVariant::Sll, 0)]), // v3
 			},
-			// v4 = v3 & sll(v2, 5)  - shifted use of v2
+			// v5 = v4 & sll(v3, 5)  - shifted use of v3
 			AndConstraint {
 				a: make_operand(vec![(4, ShiftVariant::Sll, 0)]),
-				b: make_operand(vec![(3, ShiftVariant::Sll, 5)]), // shifted v2!
+				b: make_operand(vec![(3, ShiftVariant::Sll, 5)]), // shifted v3!
 				c: make_operand(vec![(5, ShiftVariant::Sll, 0)]),
 			},
 		];
@@ -532,11 +564,11 @@ mod tests {
 			Fusion::new(&mut and_constraints, &mut mul_constraints, &constants).unwrap();
 		let stats = fusion.run();
 
-		// Should NOT fuse because v2 is used with a shift
+		// Now SHOULD fuse because we support shifted uses (no opposing shifts here)
 		assert_eq!(stats.and_constraints_before, 2);
-		assert_eq!(stats.and_constraints_after, 2);
+		assert_eq!(stats.and_constraints_after, 1);
 		assert_eq!(stats.producers_found, 1);
-		assert_eq!(stats.producers_fused, 0);
+		assert_eq!(stats.producers_fused, 1);
 	}
 
 	#[test]
