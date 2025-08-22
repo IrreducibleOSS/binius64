@@ -2,6 +2,21 @@ use binius_core::word::Word;
 
 use crate::compiler::{CircuitBuilder, Wire};
 
+/// Simple view of a decoded binary64 payload.
+#[derive(Clone, Copy)]
+pub struct Fp64Parts {
+	pub sign: Wire, // 0 or 1, placed in LSB
+	pub exp: Wire,  // unbiased field bits (0..=0x7FF)
+	pub frac: Wire, // 52-bit payload
+
+	// Common classifiers (all-1/all-0 masks):
+	pub is_nan: Wire,  // exp==0x7FF && frac!=0
+	pub is_inf: Wire,  // exp==0x7FF && frac==0
+	pub is_zero: Wire, // exp==0 && frac==0
+	pub is_sub: Wire,  // subnormal: exp==0 && frac!=0
+	pub is_norm: Wire, // normal: exp!=0 && exp!=0x7FF
+}
+
 /// Creates a wire containing the constant value 0.
 pub fn zero(builder: &CircuitBuilder) -> Wire {
 	builder.add_constant_64(0)
@@ -259,12 +274,330 @@ pub fn clz64(builder: &CircuitBuilder, x: Wire) -> Wire {
 	n
 }
 
+/// Build the 53-bit integer significand and effective exponent.
+///
+/// For multiplication, we use 53-bit integers (including hidden bit for normals)
+/// rather than the 64-bit extended format used for addition.
+///
+/// - Normals: `sig53 = (1<<52) | frac`, `exp_eff = exp`
+/// - Subnormals: `sig53 = frac`, `exp_eff = 1`
+///
+/// # Parameters
+/// - `p`: Parts from `fp64_unpack`
+///
+/// # Returns
+/// - `(sig53, exp_eff)`: 53-bit significand and effective exponent
+pub fn fp64_sig53_and_exp(builder: &CircuitBuilder, p: &Fp64Parts) -> (Wire, Wire) {
+	let one52 = builder.add_constant_64(1u64 << 52);
+	let sig_norm = builder.bor(one52, p.frac);
+	let sig = builder.select(p.is_norm, sig_norm, p.frac);
+	let exp_eff = builder.select(p.is_norm, p.exp, one(builder)); // subnormals use exp=1
+	(sig, exp_eff)
+}
+
+/// Right-shift a 128-bit value by a small constant and return the low 64 bits.
+///
+/// Given `p = (hi << 64) | lo`, computes `(p >> s).lo64 = (lo >> s) | (hi << (64 - s))`
+///
+/// # Parameters
+/// - `hi`: High 64 bits of 128-bit value
+/// - `lo`: Low 64 bits of 128-bit value
+/// - `s`: Shift amount (must be 0 < s < 64)
+///
+/// # Returns
+/// Low 64 bits of the right-shifted result
+#[inline]
+pub fn shr128_to_u64_const(builder: &CircuitBuilder, hi: Wire, lo: Wire, s: u32) -> Wire {
+	debug_assert!(s > 0 && s < 64);
+	let lo_part = builder.shr(lo, s);
+	let hi_part = builder.shl(hi, 64 - s);
+	builder.bor(lo_part, hi_part)
+}
+
+/// Extract sticky bit from the k least-significant bits of a value.
+///
+/// Returns 0/1 (in LSB) indicating whether any of the k least-significant
+/// bits of `lo` are set to 1.
+///
+/// # Parameters
+/// - `lo`: Input value
+/// - `k`: Number of LSBs to check (must be k < 64)
+///
+/// # Returns
+/// 0/1 value: 1 if any of k LSBs are set, 0 otherwise
+#[inline]
+pub fn sticky_from_low_k(builder: &CircuitBuilder, lo: Wire, k: u32) -> Wire {
+	debug_assert!(k < 64);
+	let mask = builder.add_constant_64((1u64 << k) - 1);
+	let nz_mask = is_nonzero_mask(builder, builder.band(lo, mask)); // all-1/all-0
+	builder.band(nz_mask, one(builder)) // 0/1 value in LSB
+}
+
+/// Unpack and classify a binary64 word.
+///
+/// Input:
+/// - `x`: 64-bit IEEE-754 encoding
+///
+/// Output:
+/// - `Fp64Parts` with fields:
+///   - `sign = (x >> 63) & 1`
+///   - `exp = (x >> 52) & 0x7FF`
+///   - `frac = x & ((1<<52)-1)`
+///   - `is_nan`: exp==0x7FF && frac!=0
+///   - `is_inf`: exp==0x7FF && frac==0
+///   - `is_zero`: exp==0 && frac==0
+///   - `is_sub`: exp==0 && frac!=0
+///   - `is_norm`: exp!=0 && exp!=0x7FF
+///
+/// All booleans are 64-bit masks (all-1/all-0), suitable for `select`.
+pub fn fp64_unpack(cb: &CircuitBuilder, x: Wire) -> Fp64Parts {
+	let exp_m = cb.add_constant_64(0x7FF);
+	let frac_m = cb.add_constant_64((1u64 << 52) - 1);
+
+	let sign = cb.shr(x, 63);
+	let exp = cb.band(cb.shr(x, 52), exp_m);
+	let frac = cb.band(x, frac_m);
+
+	let exp_is_max = cb.icmp_eq(exp, exp_m);
+	let exp_is_zero = cb.icmp_eq(exp, zero(cb));
+	let frac_nz = is_nonzero_mask(cb, frac);
+
+	let is_nan = cb.band(exp_is_max, frac_nz);
+	let is_inf = cb.band(exp_is_max, cb.bnot(frac_nz));
+	let is_zero = cb.band(exp_is_zero, cb.bnot(frac_nz));
+	let is_sub = cb.band(exp_is_zero, frac_nz);
+	let is_norm = cb.bnot(cb.bor(exp_is_max, exp_is_zero));
+
+	Fp64Parts {
+		sign,
+		exp,
+		frac,
+		is_nan,
+		is_inf,
+		is_zero,
+		is_sub,
+		is_norm,
+	}
+}
+
+/// Pre-round **underflow** handling: if `exp<=0`, right shift by `k=1-exp`
+/// and fold sticky into bit0. Also prepare the exponent for rounding geometry (Exp=1).
+///
+/// Input: `(res_sig, res_exp)`
+///
+/// Output:
+/// - `(sig_round_base, exp_round_base, exp_lt_1_mask)` where `exp_round_base = (exp<=0 ? 1 : exp)`.
+pub fn fp64_underflow_shift(
+	cb: &CircuitBuilder,
+	res_sig: Wire,
+	res_exp: Wire,
+) -> (Wire, Wire, Wire) {
+	let c1 = one(cb);
+	let keep = cb.bnot(c1);
+
+	let exp_lt_1 = cb.icmp_ult(res_exp, c1);
+	let k = isub(cb, c1, res_exp); // 1 - exp
+	let k_use = cb.select(exp_lt_1, k, zero(cb));
+
+	let (mut sig_u, st) = var_shr_with_sticky(cb, res_sig, k_use, true);
+	let bit0 = cb.bor(cb.band(sig_u, c1), cb.band(st, c1));
+	sig_u = cb.bor(cb.band(sig_u, keep), bit0);
+
+	let sig_round_base = cb.select(exp_lt_1, sig_u, res_sig);
+	let exp_round_base = cb.select(exp_lt_1, c1, res_exp);
+	(sig_round_base, exp_round_base, exp_lt_1)
+}
+
+/// Round-to-nearest, ties-to-even (RN-even).
+///
+/// Geometry:
+/// - Integer bit at 63; we interpret bits:
+///   - LSB of target mantissa at bit 11
+///   - Guard=10, Round=9, Sticky=bit 0 (already folded)
+///
+/// Input: `(sig_base, exp_base)`
+///
+/// Output:
+/// - `(mant_final_53, exp_after_round, mant_overflow_mask)`
+///   - `mant_final_53` is a 53-bit value (includes hidden 1 for normals)
+///   - If mant overflowed to 54 bits, we shift right 1 and increment exponent.
+pub fn fp64_round_rne(cb: &CircuitBuilder, sig_base: Wire, exp_base: Wire) -> (Wire, Wire, Wire) {
+	let lsb = bit_lsb(cb, sig_base, 11);
+	let g = bit_lsb(cb, sig_base, 10);
+	let r = bit_lsb(cb, sig_base, 9);
+	let s = cb.band(sig_base, one(cb));
+	let r_or_s = cb.bor(r, s);
+	let tie_or_gt = cb.bor(r_or_s, lsb);
+	let round_up01 = cb.band(g, tie_or_gt); // 0/1
+
+	let mant_trunc = cb.shr(sig_base, 11);
+	let mant_rounded = iadd(cb, mant_trunc, round_up01);
+
+	let overflow01 = bit_lsb(cb, mant_rounded, 53); // 0/1
+	let overflow_mask = to_mask01(cb, overflow01);
+	let mant_final_53 = cb.select(overflow_mask, cb.shr(mant_rounded, 1), mant_rounded);
+	let exp_after = iadd(cb, exp_base, overflow01);
+
+	(mant_final_53, exp_after, overflow_mask)
+}
+
+/// Pack finite (normal / subnormal) and apply overflow-to-Inf if needed.
+///
+/// Input:
+/// - `sign` (0/1), `mant_final_53`, `exp_after_round`
+/// - `stayed_sub_mask`: all-1 iff we are in subnormal regime **and** there was no mantissa overflow
+///
+/// Output:
+/// - `finite_or_inf`: packed 64-bit result (finite or +/−Inf on overflow)
+pub fn fp64_pack_finite_or_inf(
+	cb: &CircuitBuilder,
+	sign: Wire,
+	mant_final_53: Wire,
+	exp_after_round: Wire,
+	stayed_sub_mask: Wire,
+) -> Wire {
+	let frac_m = cb.add_constant_64((1u64 << 52) - 1);
+	let exp_2047 = cb.add_constant_64(0x7FF);
+	let sign_hi = cb.shl(sign, 63);
+
+	let frac = cb.band(mant_final_53, frac_m);
+	let packed_sub = cb.bor(sign_hi, frac);
+
+	let exp_sh = cb.shl(exp_after_round, 52);
+	let packed_norm = cb.bor(cb.bor(sign_hi, exp_sh), frac);
+
+	let finite_packed = cb.select(stayed_sub_mask, packed_sub, packed_norm);
+
+	// If mantissa is zero, the result is a signed zero regardless of exp_after_round.
+	let mant_is_zero = is_zero_mask(cb, mant_final_53);
+	let packed_zero = sign_hi; // exp=0, frac=0
+	let finite_or_zero = cb.select(mant_is_zero, packed_zero, finite_packed);
+
+	let overflow_to_inf = cb.bnot(cb.icmp_ult(exp_after_round, exp_2047));
+	let inf_payload = cb.shl(exp_2047, 52);
+	let packed_inf = cb.bor(sign_hi, inf_payload);
+
+	cb.select(overflow_to_inf, packed_inf, finite_or_zero)
+}
+
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use binius_core::word::Word;
 
 	use super::*;
 	use crate::constraint_verifier::verify_constraints;
+
+	// Reference implementations for testing (shared between add.rs and utils.rs tests)
+	pub struct Fp64UnpackResult {
+		pub sign: u64,
+		pub exp: u64,
+		pub frac: u64,
+		pub is_nan: u64,
+		pub is_inf: u64,
+		pub is_norm: u64,
+	}
+
+	pub fn ref_fp64_unpack(x: u64) -> Fp64UnpackResult {
+		let sign = (x >> 63) & 1;
+		let exp = (x >> 52) & 0x7FF;
+		let frac = x & ((1u64 << 52) - 1);
+
+		let exp_is_max = if exp == 0x7FF { u64::MAX } else { 0 };
+		let exp_is_zero = if exp == 0 { u64::MAX } else { 0 };
+		let frac_nz = if frac != 0 { u64::MAX } else { 0 };
+
+		let is_nan = exp_is_max & frac_nz;
+		let is_inf = exp_is_max & (!frac_nz);
+		let is_norm = (!exp_is_max) & (!exp_is_zero);
+
+		Fp64UnpackResult {
+			sign,
+			exp,
+			frac,
+			is_nan,
+			is_inf,
+			is_norm,
+		}
+	}
+
+	pub fn ref_fp64_underflow_shift(res_sig: u64, res_exp: u64) -> (u64, u64, u64) {
+		let exp_lt_1 = if res_exp < 1 { u64::MAX } else { 0 };
+
+		if exp_lt_1 == u64::MAX {
+			let k = 1u64.wrapping_sub(res_exp);
+			let k_use = std::cmp::min(k, 63);
+
+			let sig_shifted = res_sig >> k_use;
+			let lost_bits = res_sig & ((1u64 << k_use) - 1);
+			let sticky = if lost_bits != 0 { 1 } else { 0 };
+			let bit0 = (sig_shifted & 1) | sticky;
+			let sig_u = (sig_shifted & !1) | bit0;
+
+			(sig_u, 1, exp_lt_1)
+		} else {
+			(res_sig, res_exp, exp_lt_1)
+		}
+	}
+
+	pub fn ref_fp64_round_rne(sig_base: u64, exp_base: u64) -> (u64, u64, u64) {
+		let lsb = (sig_base >> 11) & 1;
+		let g = (sig_base >> 10) & 1;
+		let r = (sig_base >> 9) & 1;
+		let s = sig_base & 1;
+
+		let r_or_s = r | s;
+		let tie_or_gt = r_or_s | lsb;
+		let round_up = g & tie_or_gt;
+
+		let mant_trunc = sig_base >> 11;
+		let mant_rounded = mant_trunc.wrapping_add(round_up);
+
+		let overflow = (mant_rounded >> 53) & 1;
+		let overflow_mask = if overflow != 0 { u64::MAX } else { 0 };
+		let mant_final_53 = if overflow_mask == u64::MAX {
+			mant_rounded >> 1
+		} else {
+			mant_rounded
+		};
+		let exp_after = exp_base.wrapping_add(overflow);
+
+		(mant_final_53, exp_after, overflow_mask)
+	}
+
+	pub fn ref_fp64_pack_finite_or_inf(
+		sign: u64,
+		mant_final_53: u64,
+		exp_after_round: u64,
+		stayed_sub_mask: u64,
+	) -> u64 {
+		let sign_hi = sign << 63;
+		let frac = mant_final_53 & ((1u64 << 52) - 1);
+
+		let packed_sub = sign_hi | frac;
+		let exp_sh = exp_after_round << 52;
+		let packed_norm = sign_hi | exp_sh | frac;
+
+		let finite_packed = if stayed_sub_mask == u64::MAX {
+			packed_sub
+		} else {
+			packed_norm
+		};
+
+		// If mantissa is zero, this is a signed zero regardless of exponent
+		let finite_or_zero = if mant_final_53 == 0 {
+			sign_hi
+		} else {
+			finite_packed
+		};
+
+		let overflow_to_inf = exp_after_round >= 0x7FF;
+		if overflow_to_inf {
+			let inf_payload = 0x7FFu64 << 52;
+			sign_hi | inf_payload
+		} else {
+			finite_or_zero
+		}
+	}
 
 	#[test]
 	fn test_is_zero_mask() {
@@ -443,6 +776,263 @@ mod tests {
 			w[shift] = Word(shift_amt);
 			w[expected_out] = Word(expected_result);
 			w[expected_sticky] = Word(expected_sticky_val);
+
+			circuit.populate_wire_witness(&mut w).unwrap();
+			let cs = circuit.constraint_system();
+			verify_constraints(cs, &w.into_value_vec()).unwrap();
+		}
+	}
+
+	#[test]
+	fn test_fp64_sig53_and_exp() {
+		// fp64_unpack is now available through the parent module import
+
+		let test_values = vec![1.0f64, -1.0f64, 2.0f64, f64::MIN_POSITIVE, 0.5f64];
+
+		for val in test_values {
+			let builder = CircuitBuilder::new();
+			let input = builder.add_inout();
+			let parts = fp64_unpack(&builder, input);
+			let (sig, exp_eff) = fp64_sig53_and_exp(&builder, &parts);
+			let expected_sig = builder.add_inout();
+			let expected_exp = builder.add_inout();
+
+			builder.assert_eq("sig", sig, expected_sig);
+			builder.assert_eq("exp_eff", exp_eff, expected_exp);
+
+			let circuit = builder.build();
+			let mut w = circuit.new_witness_filler();
+			w[input] = Word(val.to_bits());
+
+			// Reference calculation
+			let bits = val.to_bits();
+			let exp = (bits >> 52) & 0x7FF;
+			let frac = bits & ((1u64 << 52) - 1);
+			let is_norm = exp != 0 && exp != 0x7FF;
+
+			let (exp_sig, exp_exp) = if is_norm {
+				((1u64 << 52) | frac, exp)
+			} else {
+				(frac, 1)
+			};
+
+			w[expected_sig] = Word(exp_sig);
+			w[expected_exp] = Word(exp_exp);
+
+			circuit.populate_wire_witness(&mut w).unwrap();
+			let cs = circuit.constraint_system();
+			verify_constraints(cs, &w.into_value_vec()).unwrap();
+		}
+	}
+
+	#[test]
+	fn test_shr128_to_u64_const() {
+		let test_cases = [
+			// (hi, lo, shift, expected)
+			(0x0123456789ABCDEFu64, 0xFEDCBA9876543210u64, 8),
+			(0xFFFFFFFFFFFFFFFFu64, 0x0000000000000000u64, 32),
+			(0x0000000000000000u64, 0xFFFFFFFFFFFFFFFFu64, 16),
+			(0x8000000000000000u64, 0x0000000000000001u64, 1),
+			(0x1234567890ABCDEFu64, 0x1111111111111111u64, 4),
+		];
+
+		for (hi, lo, shift) in test_cases {
+			let builder = CircuitBuilder::new();
+			let hi_wire = builder.add_inout();
+			let lo_wire = builder.add_inout();
+			let result = shr128_to_u64_const(&builder, hi_wire, lo_wire, shift);
+			let expected_wire = builder.add_inout();
+			builder.assert_eq("shr128_result", result, expected_wire);
+
+			let circuit = builder.build();
+			let mut w = circuit.new_witness_filler();
+			w[hi_wire] = Word(hi);
+			w[lo_wire] = Word(lo);
+
+			// Reference calculation: ((hi as u128) << 64 | lo as u128) >> shift
+			let p = ((hi as u128) << 64) | (lo as u128);
+			let expected = (p >> shift) as u64;
+			w[expected_wire] = Word(expected);
+
+			circuit.populate_wire_witness(&mut w).unwrap();
+			let cs = circuit.constraint_system();
+			verify_constraints(cs, &w.into_value_vec()).unwrap();
+		}
+	}
+
+	#[test]
+	fn test_sticky_from_low_k() {
+		let test_cases = [
+			// (value, k, expected)
+			(0x0000000000000000u64, 4, 0), // No bits set
+			(0x0000000000000001u64, 1, 1), // Bit 0 set
+			(0x0000000000000002u64, 1, 0), // Bit 0 not set, but bit 1 is
+			(0x0000000000000002u64, 2, 1), // Bit 1 set in 2 LSBs
+			(0x000000000000000Fu64, 4, 1), // All 4 LSBs set
+			(0x0000000000000010u64, 4, 0), // Bit 4 set, but not in 4 LSBs
+			(0x00000000000000FFu64, 8, 1), // All 8 LSBs set
+			(0x0000000000000100u64, 8, 0), // Bit 8 set, but not in 8 LSBs
+		];
+
+		for (value, k, expected_val) in test_cases {
+			let builder = CircuitBuilder::new();
+			let input = builder.add_inout();
+			let result = sticky_from_low_k(&builder, input, k);
+			let expected = builder.add_inout();
+			builder.assert_eq("sticky_result", result, expected);
+
+			let circuit = builder.build();
+			let mut w = circuit.new_witness_filler();
+			w[input] = Word(value);
+			w[expected] = Word(expected_val);
+
+			circuit.populate_wire_witness(&mut w).unwrap();
+			let cs = circuit.constraint_system();
+			verify_constraints(cs, &w.into_value_vec()).unwrap();
+		}
+	}
+
+	#[test]
+	fn test_fp64_unpack() {
+		let test_values = vec![
+			0.0f64,
+			-0.0f64,
+			1.0f64,
+			-1.0f64,
+			f64::INFINITY,
+			f64::NEG_INFINITY,
+			f64::NAN,
+			f64::MIN_POSITIVE,
+		];
+
+		for val in test_values {
+			let builder = CircuitBuilder::new();
+			let input = builder.add_inout();
+			let result = fp64_unpack(&builder, input);
+
+			// Create expected outputs
+			let expected_sign = builder.add_inout();
+			let expected_exp = builder.add_inout();
+			let expected_frac = builder.add_inout();
+			let expected_is_nan = builder.add_inout();
+			let expected_is_inf = builder.add_inout();
+			let expected_is_norm = builder.add_inout();
+
+			builder.assert_eq("sign", result.sign, expected_sign);
+			builder.assert_eq("exp", result.exp, expected_exp);
+			builder.assert_eq("frac", result.frac, expected_frac);
+			builder.assert_eq("is_nan", result.is_nan, expected_is_nan);
+			builder.assert_eq("is_inf", result.is_inf, expected_is_inf);
+			builder.assert_eq("is_norm", result.is_norm, expected_is_norm);
+
+			let circuit = builder.build();
+			let mut w = circuit.new_witness_filler();
+			w[input] = Word(val.to_bits());
+
+			// Get expected values from reference implementation
+			let result = ref_fp64_unpack(val.to_bits());
+
+			w[expected_sign] = Word(result.sign);
+			w[expected_exp] = Word(result.exp);
+			w[expected_frac] = Word(result.frac);
+			w[expected_is_nan] = Word(result.is_nan);
+			w[expected_is_inf] = Word(result.is_inf);
+			w[expected_is_norm] = Word(result.is_norm);
+
+			circuit.populate_wire_witness(&mut w).unwrap();
+			let cs = circuit.constraint_system();
+			verify_constraints(cs, &w.into_value_vec()).unwrap();
+		}
+	}
+
+	#[test]
+	fn test_fp64_underflow_shift() {
+		let test_cases = [
+			// (res_sig, res_exp)
+			(0x8000000000000000u64, 5),            // Normal case, no underflow
+			(0x8000000000000000u64, 0),            // Underflow case, exp = 0
+			(0x4000000000000000u64, -5i64 as u64), // Significant underflow
+		];
+
+		for (res_sig, res_exp) in test_cases {
+			let builder = CircuitBuilder::new();
+			let res_sig_wire = builder.add_inout();
+			let res_exp_wire = builder.add_inout();
+
+			let (sig_round_base, exp_round_base, exp_lt_1) =
+				fp64_underflow_shift(&builder, res_sig_wire, res_exp_wire);
+
+			let expected_sig = builder.add_inout();
+			let expected_exp = builder.add_inout();
+			let expected_lt1 = builder.add_inout();
+
+			builder.assert_eq("sig_round_base", sig_round_base, expected_sig);
+			builder.assert_eq("exp_round_base", exp_round_base, expected_exp);
+			builder.assert_eq("exp_lt_1", exp_lt_1, expected_lt1);
+
+			let circuit = builder.build();
+			let mut w = circuit.new_witness_filler();
+			w[res_sig_wire] = Word(res_sig);
+			w[res_exp_wire] = Word(res_exp);
+
+			let (ref_sig, ref_exp, ref_lt1) = ref_fp64_underflow_shift(res_sig, res_exp);
+			w[expected_sig] = Word(ref_sig);
+			w[expected_exp] = Word(ref_exp);
+			w[expected_lt1] = Word(ref_lt1);
+
+			circuit.populate_wire_witness(&mut w).unwrap();
+			let cs = circuit.constraint_system();
+			verify_constraints(cs, &w.into_value_vec()).unwrap();
+		}
+	}
+
+	/// Helper: semantic equality for f64 bit patterns, treating any-NaN as equal
+	pub fn f64_bits_semantic_eq(a_bits: u64, b_bits: u64) -> bool {
+		let a = f64::from_bits(a_bits);
+		let b = f64::from_bits(b_bits);
+		if a.is_nan() && b.is_nan() {
+			true
+		} else {
+			a_bits == b_bits
+		}
+	}
+
+	#[test]
+	fn test_fp64_round_rne() {
+		let test_cases = [
+			// (sig_base, exp_base) - test round-to-nearest-even
+			(0x8000000000000000u64, 1023), // No rounding needed
+			(0x8000000000000800u64, 1023), /* Round up (G=1, R=0, S=0, LSB=0 -> ties to even =
+			                                * no round) */
+			(0x8000000000001800u64, 1023), // Round up (G=1, R=1, S=0 -> round up)
+			(0x8000000000000C00u64, 1023), // Round up (G=1, R=0, S=1 -> round up)
+		];
+
+		for (sig_base, exp_base) in test_cases {
+			let builder = CircuitBuilder::new();
+			let sig_base_wire = builder.add_inout();
+			let exp_base_wire = builder.add_inout();
+
+			let (mant_final_53, exp_after_round, mant_overflow_mask) =
+				fp64_round_rne(&builder, sig_base_wire, exp_base_wire);
+
+			let expected_mant = builder.add_inout();
+			let expected_exp = builder.add_inout();
+			let expected_overflow = builder.add_inout();
+
+			builder.assert_eq("mant_final_53", mant_final_53, expected_mant);
+			builder.assert_eq("exp_after_round", exp_after_round, expected_exp);
+			builder.assert_eq("mant_overflow_mask", mant_overflow_mask, expected_overflow);
+
+			let circuit = builder.build();
+			let mut w = circuit.new_witness_filler();
+			w[sig_base_wire] = Word(sig_base);
+			w[exp_base_wire] = Word(exp_base);
+
+			let (ref_mant, ref_exp, ref_overflow) = ref_fp64_round_rne(sig_base, exp_base);
+			w[expected_mant] = Word(ref_mant);
+			w[expected_exp] = Word(ref_exp);
+			w[expected_overflow] = Word(ref_overflow);
 
 			circuit.populate_wire_witness(&mut w).unwrap();
 			let cs = circuit.constraint_system();
