@@ -65,7 +65,7 @@ fn is_fri_commit_round(
 /// * `fri_params` - The FRI parameters
 /// * `vcs` - The Merkle tree scheme
 /// * `n_vars` - The number of variables in the multilinear polynomial
-pub fn verify_transcript<F, MTScheme, Challenger_>(
+pub fn verify<F, MTScheme, Challenger_>(
 	codeword_commitment: MTScheme::Digest,
 	transcript: &mut VerifierTranscript<Challenger_>,
 	evaluation_claim: F,
