@@ -200,7 +200,7 @@ mod test {
 		config::StdChallenger,
 		fri::FRIParams,
 		hash::{StdCompression, StdDigest},
-		protocols::basefold::verifier::{sumcheck_fri_consistency, verify_transcript},
+		protocols::basefold::{sumcheck_fri_consistency, verify_transcript},
 	};
 	use rand::{SeedableRng, rngs::StdRng};
 

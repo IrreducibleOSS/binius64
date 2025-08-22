@@ -14,7 +14,7 @@ use binius_utils::DeserializeBytes;
 
 use crate::{
 	config::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme,
-	protocols::basefold::verifier::verify_transcript as verify_basefold_transcript,
+	protocols::basefold::verify_transcript as verify_basefold_transcript,
 	ring_switch::verifier::eval_rs_eq,
 };
 
