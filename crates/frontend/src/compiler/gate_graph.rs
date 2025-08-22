@@ -36,7 +36,7 @@ impl ConstPool {
 pub struct Wire(u32);
 entity_impl!(Wire);
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum WireKind {
 	Constant(Word),
 	Inout,
@@ -46,6 +46,12 @@ pub enum WireKind {
 	/// A scratch wire is a temporary wire used only during evaluation.
 	Scratch,
 }
+impl WireKind {
+	/// Returns `true` if this is a constant wire.
+	pub fn is_const(&self) -> bool {
+		matches!(self, WireKind::Constant(_))
+	}
+}
 
 #[derive(Copy, Clone)]
 pub struct WireData {
@@ -53,7 +59,7 @@ pub struct WireData {
 }
 
 /// Gate ID - identifies a gate in the graph
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Gate(u32);
 
 entity_impl!(Gate);
@@ -370,8 +376,85 @@ impl GateGraph {
 
 		let mut outputs = Vec::new();
 		outputs.extend_from_slice(gate_param.outputs);
-		outputs.extend_from_slice(gate_param.aux);
 		outputs
+	}
+
+	/// Returns an iterator over all wires and their data
+	pub fn iter_wires(&self) -> impl Iterator<Item = (Wire, &WireData)> {
+		self.wires.iter()
+	}
+
+	/// Returns an iterator over all constant wires and their data
+	pub fn iter_const_wires(&self) -> impl Iterator<Item = (Wire, &WireData)> {
+		self.wires
+			.iter()
+			.filter(|(wire, _)| self.wire_data(*wire).kind.is_const())
+	}
+
+	/// Gets wire data by reference
+	pub fn wire_data(&self, wire: Wire) -> &WireData {
+		&self.wires[wire]
+	}
+
+	/// Gets gate data by reference
+	pub fn gate_data(&self, gate: Gate) -> &GateData {
+		&self.gates[gate]
+	}
+
+	/// Replaces all occurrences of a wire in a gate with another wire
+	pub fn replace_gate_wire(&mut self, gate: Gate, old_wire: Wire, new_wire: Wire) {
+		let gate_data = &mut self.gates[gate];
+		for wire in &mut gate_data.wires {
+			if *wire == old_wire {
+				*wire = new_wire;
+			}
+		}
+	}
+
+	/// Updates use-def chains when replacing a wire use
+	pub fn update_wire_use(&mut self, old_wire: Wire, new_wire: Wire, gate: Gate) {
+		self.wire_uses[old_wire].remove(&gate);
+		self.wire_uses[new_wire].insert(gate);
+	}
+
+	/// Replaces all uses of old_wire with a constant wire containing the given value.
+	///
+	/// Returns the constant wire that was used, the number of individual wire replacements,
+	/// and the list of gates that were actually affected by this replacement.
+	/// This encapsulates both wire replacement and use-def chain updates.
+	pub fn replace_wire_with_constant(
+		&mut self,
+		old_wire: Wire,
+		value: Word,
+	) -> (Wire, usize, Vec<Gate>) {
+		let const_wire = self.add_constant(value);
+
+		if const_wire == old_wire {
+			return (const_wire, 0, Vec::new());
+		}
+
+		// Get all users of the old wire (clone to avoid borrow conflicts)
+		let users: Vec<Gate> = self.get_wire_uses(old_wire).iter().copied().collect();
+		let mut total_replacements = 0;
+
+		// Replace wire references in all user gates
+		for user_gate in &users {
+			// Count how many times this wire appears in this gate before replacing
+			let gate_data = self.gate_data(*user_gate);
+			let gate_param = gate_data.gate_param();
+			let replacements_in_gate = gate_param.inputs.iter().filter(|&&w| w == old_wire).count()
+				+ gate_param
+					.outputs
+					.iter()
+					.filter(|&&w| w == old_wire)
+					.count();
+			total_replacements += replacements_in_gate;
+
+			self.replace_gate_wire(*user_gate, old_wire, const_wire);
+			self.update_wire_use(old_wire, const_wire, *user_gate);
+		}
+
+		(const_wire, total_replacements, users)
 	}
 }
 

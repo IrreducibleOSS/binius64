@@ -21,6 +21,7 @@ mod gate;
 use gate::Opcode;
 
 pub mod circuit;
+pub mod const_prop;
 pub mod constraint_builder;
 mod dump;
 pub mod eval_form;
@@ -84,9 +85,17 @@ impl CircuitBuilder {
 		let Some(shared) = shared else {
 			panic!("CircuitBuilder::build called twice");
 		};
-		let graph = shared.graph;
+		let mut graph = shared.graph;
 
 		graph.validate();
+
+		// Run constant propagation optimization
+		if std::env::var("MONBIJOU_CONSTPROP").is_ok() {
+			let replaced = const_prop::constant_propagation(&mut graph);
+			if replaced > 0 {
+				eprintln!("Constant propagation: replaced {} wires with constants", replaced);
+			}
+		}
 
 		// `ValueVec` expects the wires to be in a certain order. Specifically:
 		//
