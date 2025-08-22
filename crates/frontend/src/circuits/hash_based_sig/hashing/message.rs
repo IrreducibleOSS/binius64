@@ -1,3 +1,5 @@
+use sha3::{Digest, Keccak256};
+
 use super::base::circuit_tweaked_keccak;
 use crate::{
 	circuits::{concat::Term, keccak::Keccak},
@@ -94,6 +96,25 @@ pub fn build_message_hash(
 	message.extend_from_slice(nonce_bytes);
 	message.extend_from_slice(message_bytes);
 	message
+}
+
+/// Compute the tweaked hash of a message from components.
+///
+/// Constructs the complete message for Keccak-256 hashing by concatenating:
+/// `param || 0x02 || nonce || message`
+///
+/// # Arguments
+///
+/// * `param_bytes` - The cryptographic parameter bytes
+/// * `nonce_bytes` - The random nonce bytes
+/// * `message_bytes` - The message content bytes
+///
+/// # Returns
+///
+/// The tweaked message hash
+pub fn hash_message(param: &[u8], nonce: &[u8], message: &[u8]) -> [u8; 32] {
+	let tweaked_message = build_message_hash(param, nonce, message);
+	Keccak256::digest(tweaked_message).into()
 }
 
 #[cfg(test)]

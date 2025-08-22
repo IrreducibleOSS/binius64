@@ -99,6 +99,23 @@ pub fn codeword(
 	coordinates
 }
 
+/// A function to extract the coordinates from a hash according to the rules
+/// specified in the `codeword` circuit
+pub fn extract_coordinates(hash: &[u8], dimension: usize, resolution_bits: usize) -> Vec<u8> {
+	let mut coords = Vec::new();
+	let coords_per_byte = 8 / resolution_bits;
+	let mask = (1u8 << resolution_bits) - 1;
+
+	for i in 0..dimension {
+		let byte_idx = i / coords_per_byte;
+		let coord_idx = i % coords_per_byte;
+		let shift = coord_idx * resolution_bits;
+		let coord = (hash[byte_idx] >> shift) & mask;
+		coords.push(coord);
+	}
+	coords
+}
+
 #[cfg(test)]
 mod tests {
 	use binius_core::Word;
