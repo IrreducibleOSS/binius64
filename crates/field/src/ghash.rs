@@ -62,6 +62,11 @@ impl BinaryField128bGhash {
 	}
 
 	#[inline]
+	pub const fn val(self) -> u128 {
+		self.0
+	}
+
+	#[inline]
 	pub fn mul_x(self) -> Self {
 		let val = self.to_underlier();
 		let shifted = val << 1;
