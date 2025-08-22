@@ -5,6 +5,7 @@ use crate::{
 		secp256k1::{Secp256k1, Secp256k1Affine, coord_zero},
 	},
 	compiler::{CircuitBuilder, Wire},
+	util::all_true,
 };
 
 /// EcRecover - an "Ethereum-style" verification of ECDSA signatures over secp256k1.
@@ -39,5 +40,6 @@ pub fn ecrecover(
 	let u1 = f_scalar.sub(b, &coord_zero(b), &f_scalar.mul(b, z, &r_inverse));
 	let u2 = f_scalar.mul(b, s, &r_inverse);
 
-	shamirs_trick(b, &curve, 256, &u1, &u2, nonce).pai_unless(b, b.band(valid_r, valid_s))
+	let conditions = [valid_r, valid_s, b.bnot(nonce.is_point_at_infinity)];
+	shamirs_trick(b, &curve, 256, &u1, &u2, nonce).pai_unless(b, all_true(b, conditions))
 }

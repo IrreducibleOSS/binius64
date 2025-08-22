@@ -16,6 +16,8 @@ binius-prover = { path = "../prover", default-features = false }
 clap.workspace = true
 tracing.workspace = true
 tracing-profile.workspace = true
+ethsign = "0.9.0"
+tiny-keccak = "2.0.2"
 
 [dev-dependencies]
 base64.workspace = true

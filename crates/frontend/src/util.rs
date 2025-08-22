@@ -74,6 +74,19 @@ pub fn bool_to_mask(b: &CircuitBuilder, boolean: Wire) -> Wire {
 	b.sar(boolean, (WORD_SIZE_BITS - 1) as u32)
 }
 
+/// Swap the byte order of the word.
+///
+/// Breaks the word down to bytes and reassembles in reversed order.
+pub fn byteswap(b: &CircuitBuilder, word: Wire) -> Wire {
+	let bytes = (0..8).map(|j| {
+		let byte = b.extract_byte(word, j as u32);
+		b.shl(byte, (56 - 8 * j) as u32)
+	});
+	bytes
+		.reduce(|lhs, rhs| b.bxor(lhs, rhs))
+		.expect("WORD_SIZE_BITS > 0")
+}
+
 /// Computes the binary logarithm of $n$ rounded up to the nearest integer.
 ///
 /// When $n$ is 0, this function returns 0. Otherwise, it returns $\lceil \log_2 n \rceil$.

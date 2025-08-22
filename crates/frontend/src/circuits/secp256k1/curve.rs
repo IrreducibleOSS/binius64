@@ -1,11 +1,11 @@
-use binius_core::{consts::WORD_SIZE_BITS, word::Word};
+use binius_core::consts::WORD_SIZE_BITS;
 
 use super::{
 	common::{coord_b, coord_field, coord_zero, pow_sqrt, scalar_field},
 	point::Secp256k1Affine,
 };
 use crate::{
-	circuits::bignum::{BigUint, PseudoMersennePrimeField, assert_eq, select},
+	circuits::bignum::{BigUint, PseudoMersennePrimeField, assert_eq, biguint_eq, select},
 	compiler::{CircuitBuilder, Wire},
 	util::bool_to_mask,
 };
@@ -54,7 +54,7 @@ impl Secp256k1 {
 	}
 
 	/// Recover the full affine point `(r, y)` by its x coordinate and y parity.
-	/// Assumes `r` is nonzero and less than scalar field modulus.
+	/// Returns point-at-infinity in case recovery isn't possible.
 	///
 	/// Note: we don't handle the case where r does not fit into the scalar field, thus
 	/// recid is boolean, and not a 0-3 bitmask signifying both parity and scalar field overflow.
@@ -76,12 +76,12 @@ impl Secp256k1 {
 		let is_res_2 = b.bxor(odd_1, recid_odd);
 
 		let y = select(b, &res_1, &res_2, is_res_2);
-		assert_eq(b, "recover", &f_p.square(b, &y), &y_squared);
+		let is_valid_point = biguint_eq(b, &f_p.square(b, &y), &y_squared);
 
 		Secp256k1Affine {
 			x: r.clone(),
 			y,
-			is_point_at_infinity: b.add_constant(Word::ZERO),
+			is_point_at_infinity: b.bnot(is_valid_point),
 		}
 	}
 
