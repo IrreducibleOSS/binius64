@@ -376,7 +376,7 @@ impl Sha256 {
 					builder.assert_eq_cond(
 						"3d.w_hi32_7_len",
 						w_hi32,
-						builder.select(zero, bitlen, is_length_block),
+						builder.select(is_length_block, bitlen, zero),
 						is_past_message,
 					);
 				} else {

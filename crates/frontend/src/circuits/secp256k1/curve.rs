@@ -75,7 +75,7 @@ impl Secp256k1 {
 		let odd_1 = b.shl(res_1_low_limb, (WORD_SIZE_BITS - 1) as u32);
 		let is_res_2 = b.bxor(odd_1, recid_odd);
 
-		let y = select(b, &res_1, &res_2, is_res_2);
+		let y = select(b, is_res_2, &res_2, &res_1);
 		let is_valid_point = biguint_eq(b, &f_p.square(b, &y), &y_squared);
 
 		Secp256k1Affine {
@@ -103,14 +103,14 @@ impl Secp256k1 {
 		let pai_1 = p1.is_point_at_infinity;
 		let pai_2 = p2.is_point_at_infinity;
 
-		let slope = select(b, &addition_slope, &doubling_slope, x_diff_zero);
+		let slope = select(b, x_diff_zero, &doubling_slope, &addition_slope);
 		let (add_x, add_y) = self.sloped_add(b, &slope, p1, p2);
 
-		let x = select(b, &select(b, &add_x, &p1.x, pai_2), &p2.x, pai_1);
-		let y = select(b, &select(b, &add_y, &p1.y, pai_2), &p2.y, pai_1);
+		let x = select(b, pai_1, &p2.x, &select(b, pai_2, &p1.x, &add_x));
+		let y = select(b, pai_1, &p2.y, &select(b, pai_2, &p1.y, &add_y));
 
 		let pai_sum = b.band(x_diff_zero, b.bnot(y_diff_zero)); // adding negation
-		let is_point_at_infinity = b.select(b.select(pai_sum, pai_1, pai_2), pai_2, pai_1);
+		let is_point_at_infinity = b.select(pai_1, pai_2, b.select(pai_2, pai_1, pai_sum));
 
 		Secp256k1Affine {
 			x,
@@ -137,11 +137,11 @@ impl Secp256k1 {
 		let pai_2 = p2.is_point_at_infinity;
 
 		let (add_x, add_y) = self.sloped_add(b, &slope, p1, p2);
-		let x = select(b, &select(b, &add_x, &p1.x, pai_2), &p2.x, pai_1);
-		let y = select(b, &select(b, &add_y, &p1.y, pai_2), &p2.y, pai_1);
+		let x = select(b, pai_1, &p2.x, &select(b, pai_2, &p1.x, &add_x));
+		let y = select(b, pai_1, &p2.y, &select(b, pai_2, &p1.y, &add_y));
 
 		let pai_sum = b.band(x_diff_zero, b.bnot(y_diff_zero)); // adding negation
-		let is_point_at_infinity = b.select(b.select(pai_sum, pai_1, pai_2), pai_2, pai_1);
+		let is_point_at_infinity = b.select(pai_1, pai_2, b.select(pai_2, pai_1, pai_sum));
 
 		b.assert_0("not_doubling", bool_to_mask(b, b.band(x_diff_zero, y_diff_zero)));
 

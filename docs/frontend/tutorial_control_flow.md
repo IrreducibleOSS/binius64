@@ -1,6 +1,6 @@
 # Circuit Control Flow: From Software to Constraints
 
-This document describes techniques for translating control flow patterns from traditional programming into zero-knowledge circuits in Binius64. The code snippets are for meant for conceptual understanding, they are simplified and are not guaranteed to compile. 
+This document describes techniques for translating control flow patterns from traditional programming into zero-knowledge circuits in Binius64. The code snippets are for meant for conceptual understanding, they are simplified and are not guaranteed to compile.
 
 ## Introduction
 
@@ -146,9 +146,9 @@ impl VariableLengthArray {
 
             // Convert boolean to mask (0x0 or 0xFFFFFFFFFFFFFFFF)
             let mask = builder.select(
-                builder.add_constant(Word::ZERO),
+                is_active,
                 builder.add_constant(Word::MAX),
-                is_active
+                builder.add_constant(Word::ZERO)
             );
 
             // Mask the value (zero if outside bounds)
@@ -251,9 +251,9 @@ impl VariableLengthMessage {
 
             // Conditionally update result
             result = builder.select(
-                result,           // Keep old if inactive
+                is_active,
                 block_result,     // Use new if active
-                is_active
+                result           // Keep old if inactive
             );
         }
 
@@ -282,17 +282,17 @@ All branches are computed with the result selected:
 
 ```rust
 // Circuit version: Multiplexing
-let result_a = expensive_computation_a(builder);
-let result_b = expensive_computation_b(builder);
-let result = builder.select(result_a, result_b, condition);
+let result_t = expensive_computation_if_true(builder);
+let result_f = expensive_computation_if_false(builder);
+let result = builder.select(condition, result_t, result_f);
 ```
 
 ### The Select Operation
 
 The `select` operation is fundamental. From `select.rs`:
 ```rust
-// Returns: MSB(cond) ? b : a
-// Using single AND constraint: out = a ⊕ ((cond >> 63) ∧ (b ⊕ a))
+// Returns: MSB(cond) ? t : f
+// Using single AND constraint: out = f ⊕ ((cond >> 63) ∧ (t ⊕ f))
 ```
 
 Implementation:
@@ -315,7 +315,7 @@ Circuits require selecting from all possibilities rather than using dynamic inde
 
 #### Multiplexer Operation
 
-The frontend library comes with a multiplexer gadget. A **multiplexer** (mux) selects one value from multiple inputs based on a selector signal. 
+The frontend library comes with a multiplexer gadget. A **multiplexer** (mux) selects one value from multiple inputs based on a selector signal.
 For 2 inputs (2-to-1 mux):
 ```rust
 // If selector is 0, output = input0
@@ -357,12 +357,12 @@ fn mux4(builder: &CircuitBuilder, options: [Wire; 4], index: Wire) -> Wire {
     // Step 2: First level - use bit0 to select within pairs
     // If bit0 = 0: select even indices (0 or 2)
     // If bit0 = 1: select odd indices (1 or 3)
-    let option_01 = builder.select(options[0], options[1], bit0);  // Selects from [0,1]
-    let option_23 = builder.select(options[2], options[3], bit0);  // Selects from [2,3]
+    let option_01 = builder.select(bit0, options[1], options[0]);  // Selects from [0,1]
+    let option_23 = builder.select(bit0, options[3], options[2]);  // Selects from [2,3]
 
     // Step 3: Second level - use bit1 to select between pairs
     // If bit1 = 0: select from lower pair [0,1]
     // If bit1 = 1: select from upper pair [2,3]
-    builder.select(option_01, option_23, bit1)
+    builder.select(bit1, option_23, option_01)
 }
 ```
