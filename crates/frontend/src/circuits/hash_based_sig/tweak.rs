@@ -9,6 +9,165 @@ use crate::{
 	util::pack_bytes_into_wires_le,
 };
 
+/// A circuit to verify message-specific Keccak-256 tweaking for hash-based signatures.
+///
+/// This circuit computes Keccak-256 of a message that's been tweaked with
+/// message-specific parameters: `Keccak256(param || TWEAK_MESSAGE || nonce || message)`
+pub struct MessageTweak {
+	/// The Keccak-256 hasher that computes the final digest
+	pub keccak: Keccak,
+	/// The cryptographic parameter wires (padded to multiple of 8 bytes)
+	pub param_wires: Vec<Wire>,
+	/// The actual parameter length in bytes (before padding)
+	pub param_len: usize,
+	/// The random nonce wires (padded to multiple of 8 bytes)
+	pub nonce_wires: Vec<Wire>,
+	/// The actual nonce length in bytes (before padding)
+	pub nonce_len: usize,
+	/// The message wires (32 bytes as 4x64-bit LE-packed wires)
+	pub message: Vec<Wire>,
+	/// The tweaked Keccak-256 digest (32 bytes as 4x64-bit wires)
+	pub digest: [Wire; 4],
+}
+
+impl MessageTweak {
+	/// Creates a new message-tweaked Keccak-256 circuit.
+	pub fn new(
+		builder: &CircuitBuilder,
+		param_wires: Vec<Wire>,
+		param_len: usize,
+		nonce_wires: Vec<Wire>,
+		nonce_len: usize,
+		message: Vec<Wire>,
+		digest: [Wire; 4],
+	) -> Self {
+		// Calculate total message length
+		let message_bytes = message.len() * 8;
+		let total_message_len = param_len + 1 + nonce_len + message_bytes; // +1 for tweak byte
+
+		// Create the message wires for Keccak (LE-packed)
+		let n_message_words = total_message_len.div_ceil(8);
+		let message_le: Vec<Wire> = (0..n_message_words)
+			.map(|_| builder.add_witness())
+			.collect();
+		let len = builder.add_witness();
+
+		// Keccak digest is 25 words (full state), but we only use first 4 for 256-bit output
+		let keccak_digest: [Wire; 25] = std::array::from_fn(|i| {
+			if i < 4 {
+				digest[i]
+			} else {
+				builder.add_witness()
+			}
+		});
+
+		let keccak =
+			Keccak::new(builder, total_message_len, len, keccak_digest, message_le.clone());
+
+		// Build the concatenated message: param || TWEAK_MESSAGE || nonce || message
+		let mut terms = Vec::new();
+
+		// Add parameter
+		let param_term = Term {
+			len: builder.add_constant_64(param_len as u64),
+			data: param_wires.clone(),
+			max_len: param_wires.len() * 8,
+		};
+		terms.push(param_term);
+
+		// Add TWEAK_MESSAGE byte (0x02)
+		let tweak_byte = builder.add_constant_64(0x02);
+		let tweak_term = Term {
+			len: builder.add_constant_64(1),
+			data: vec![tweak_byte],
+			max_len: 8,
+		};
+		terms.push(tweak_term);
+
+		// Add nonce
+		let nonce_term = Term {
+			len: builder.add_constant_64(nonce_len as u64),
+			data: nonce_wires.clone(),
+			max_len: nonce_wires.len() * 8,
+		};
+		terms.push(nonce_term);
+
+		// Add message
+		let message_term = Term {
+			len: builder.add_constant_64(message_bytes as u64),
+			data: message.clone(),
+			max_len: message_bytes,
+		};
+		terms.push(message_term);
+
+		// Create the concatenation circuit to verify message structure
+		let _message_structure_verifier =
+			Concat::new(builder, total_message_len.next_multiple_of(8), len, message_le, terms);
+
+		Self {
+			keccak,
+			param_wires,
+			param_len,
+			nonce_wires,
+			nonce_len,
+			message,
+			digest,
+		}
+	}
+
+	/// Populate the parameter into witness
+	pub fn populate_param(&self, w: &mut WitnessFiller, param_bytes: &[u8]) {
+		assert_eq!(param_bytes.len(), self.param_len);
+		pack_bytes_into_wires_le(w, &self.param_wires, param_bytes);
+	}
+
+	/// Populate the tweak byte into witness (for compatibility, but it's fixed at 0x02)
+	pub fn populate_tweak_byte(&self, _w: &mut WitnessFiller, tweak_byte: u8) {
+		assert_eq!(tweak_byte, 0x02, "MessageTweak always uses TWEAK_MESSAGE = 0x02");
+	}
+
+	/// Populate the nonce into witness
+	pub fn populate_nonce(&self, w: &mut WitnessFiller, nonce_bytes: &[u8]) {
+		assert_eq!(nonce_bytes.len(), self.nonce_len);
+		// Pad nonce to wire boundary if needed
+		let padded_len = self.nonce_wires.len() * 8;
+		if padded_len == self.nonce_len {
+			pack_bytes_into_wires_le(w, &self.nonce_wires, nonce_bytes);
+		} else {
+			let mut padded = vec![0u8; padded_len];
+			padded[..self.nonce_len].copy_from_slice(nonce_bytes);
+			pack_bytes_into_wires_le(w, &self.nonce_wires, &padded);
+		}
+	}
+
+	/// Populate the message into witness
+	pub fn populate_message(&self, w: &mut WitnessFiller, message_bytes: &[u8]) {
+		assert_eq!(message_bytes.len(), self.message.len() * 8);
+		pack_bytes_into_wires_le(w, &self.message, message_bytes);
+	}
+
+	/// Populate the full message for Keccak
+	pub fn populate_full_message(&self, w: &mut WitnessFiller, message: &[u8]) {
+		self.keccak.populate_len(w, message.len());
+		self.keccak.populate_message(w, message);
+	}
+
+	/// Populate the digest into witness
+	pub fn populate_digest(&self, w: &mut WitnessFiller, digest: [u8; 32]) {
+		pack_bytes_into_wires_le(w, &self.digest, &digest);
+	}
+
+	/// Build the full message for message tweaking
+	pub fn build_message(param_bytes: &[u8], nonce_bytes: &[u8], message_bytes: &[u8]) -> Vec<u8> {
+		let mut message = Vec::new();
+		message.extend_from_slice(param_bytes);
+		message.push(0x02); // TWEAK_MESSAGE
+		message.extend_from_slice(nonce_bytes);
+		message.extend_from_slice(message_bytes);
+		message
+	}
+}
+
 /// A circuit to verify chain-specific Keccak-256 tweaking for hash-based
 /// signatures.
 ///
