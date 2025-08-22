@@ -32,19 +32,18 @@ use crate::{
 /// * `codeword_commitment` - VCS commitment to the codeword
 /// * `fri_params` - the FRI parameters
 /// * `vcs` - the vector commitment scheme
-pub fn verify_transcript<F, FA, TranscriptChallenger, VCS>(
-	transcript: &mut VerifierTranscript<TranscriptChallenger>,
+pub fn verify_transcript<F, MTScheme, Challenger_>(
+	transcript: &mut VerifierTranscript<Challenger_>,
 	evaluation_claim: F,
 	eval_point: &[F],
-	codeword_commitment: VCS::Digest,
-	fri_params: &FRIParams<F, FA>,
-	vcs: &VCS,
+	codeword_commitment: MTScheme::Digest,
+	fri_params: &FRIParams<F, F>,
+	vcs: &MTScheme,
 ) -> Result<(), Error>
 where
-	F: Field + BinaryField + PackedField<Scalar = F> + ExtensionField<FA>,
-	FA: BinaryField,
-	TranscriptChallenger: Challenger,
-	VCS: MerkleTreeScheme<F, Digest: DeserializeBytes>,
+	F: Field + BinaryField + PackedField<Scalar = F>,
+	Challenger_: Challenger,
+	MTScheme: MerkleTreeScheme<F, Digest: DeserializeBytes>,
 {
 	let packing_degree = <F as ExtensionField<B1>>::LOG_DEGREE;
 
