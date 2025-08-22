@@ -4,10 +4,12 @@
 //! values. Those are also referred as internal wires.
 
 mod builder;
+mod const_eval;
 mod interpreter;
 
 use binius_core::{ValueIndex, ValueVec, Word};
 pub use builder::BytecodeBuilder;
+pub use const_eval::{evaluate_constant_gate, evaluate_gate_constants};
 use cranelift_entity::SecondaryMap;
 pub use interpreter::{AssertionFailure, ExecutionContext};
 

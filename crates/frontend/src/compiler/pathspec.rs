@@ -72,3 +72,9 @@ impl PathSpecTree {
 		self.root
 	}
 }
+
+impl Default for PathSpecTree {
+	fn default() -> Self {
+		Self::new()
+	}
+}
