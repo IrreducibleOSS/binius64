@@ -48,6 +48,11 @@ impl<'a> Fusion<'a> {
 	}
 
 	pub fn run(&mut self) -> Stats {
+		// If a XOR combination has this many terms after then we stop considering it for inlining
+		// because it's not worth it.
+		//
+		// This is a vibe-based estimation. We didn't think about it too much and we should probably
+		// narrow it to a more precise value.
 		const MAX_XOR_TERMS: usize = 64;
 
 		let and_constraints_before = self.and_constraints.len();
@@ -100,19 +105,29 @@ impl<'a> Fusion<'a> {
 	/// and that means there is little sense in inlining it in any of the consumers.
 	fn select_fusion_candidates(&self, max_terms: usize) -> EntitySet<LinearDef> {
 		let mut selected = EntitySet::new();
-		for (def_id, def_data) in &self.defs {
+		let mut inlined_sizes = Vec::with_capacity(128);
+		'def: for (def_id, def_data) in &self.defs {
 			let Some(use_sites) = self.uses.get(&def_data.dst) else {
 				// No uses: Producer is dead. DCE will handle.
 				continue;
 			};
-			// Check if fusion would be safe with shifted uses
-			// We need to ensure that opposing shifts don't cause incorrect results
-			// Check if all uses can accommodate the inlining
-			let can_inline = use_sites.iter().all(|use_site| {
-				let operand = get_operand(use_site, self.and_constraints, self.mul_constraints);
-				would_inline_fit(operand, def_data.dst, &def_data.rhs, max_terms)
-			});
-			if !can_inline {
+
+			inlined_sizes.clear();
+			for user in use_sites {
+				let operand = get_operand(user, self.and_constraints, self.mul_constraints);
+				match examine_inline_site(operand, def_data.dst, &def_data.rhs) {
+					Some(size) => inlined_sizes.push(size),
+					None => {
+						continue 'def;
+					}
+				}
+			}
+
+			// So far every def can be soundly inlined into its uses. Now, we need to check the
+			// resulting expression sizes and whether any of them can overrun the limit.
+			//
+			// The exception: if there is only one user we let it pass.
+			if inlined_sizes.iter().any(|&size| size > max_terms) && inlined_sizes.len() > 1 {
 				continue;
 			}
 
@@ -343,21 +358,22 @@ fn compose_shifts(inner: ShiftedValueIndex, outer: ShiftedValueIndex) -> Option<
 	None
 }
 
-/// Check if inlining would exceed the term limit and be semantically correct.
-fn would_inline_fit(operand: &Operand, dst: ValueIndex, rhs: &Operand, max_terms: usize) -> bool {
-	// Check if dst appears at all
+/// Examine the use site for inlining.
+///
+/// Returns the number of unique terms in the resulting inlined expression. Returns `None` if
+/// the inline is not semantically sound.
+fn examine_inline_site(operand: &Operand, dst: ValueIndex, rhs: &Operand) -> Option<usize> {
 	if !operand.iter().any(|t| t.value_index == dst) {
-		return false;
+		return None;
 	}
-
-	// Apply substitution and check term count
 	let mut merged = Vec::new();
 	for term in operand {
 		if term.value_index == dst {
 			// Substitute dst with rhs, applying term's shift
 			for rhs_term in rhs {
 				let Some(value) = compose_shifts(*rhs_term, *term) else {
-					return false;
+					// Shifts do not compose. Inline won't be sound. Bail.
+					return None;
 				};
 				merged.push(value);
 			}
@@ -365,7 +381,7 @@ fn would_inline_fit(operand: &Operand, dst: ValueIndex, rhs: &Operand, max_terms
 			merged.push(*term);
 		}
 	}
-	count_unique_terms(&merged) <= max_terms
+	count_unique_terms(&merged).into()
 }
 
 /// Substitute values in an operand based on the fusion map
@@ -765,15 +781,7 @@ mod tests {
 
 		let rhs = make_operand(rhs_terms);
 
-		// After substitution:
-		// - Remove dst (100): 40 terms left
-		// - Add rhs (15 terms): 55 terms total
-		// - But 10 terms cancel out: 35 unique terms
-
-		// Old heuristic would have rejected this (55 > 40 with conservative estimate)
-		// New exact calculation should accept it
-		assert!(would_inline_fit(&operand, ValueIndex(100), &rhs, 40));
-		assert!(!would_inline_fit(&operand, ValueIndex(100), &rhs, 34));
+		assert_eq!(examine_inline_site(&operand, ValueIndex(100), &rhs).unwrap(), 35);
 	}
 
 	#[test]
