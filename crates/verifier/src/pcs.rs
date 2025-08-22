@@ -13,8 +13,7 @@ use binius_transcript::{
 use binius_utils::DeserializeBytes;
 
 use crate::{
-	config::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme,
-	protocols::basefold::verify_transcript as verify_basefold_transcript,
+	config::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme, protocols::basefold,
 	ring_switch::verifier::eval_rs_eq,
 };
 
@@ -83,7 +82,7 @@ where
 	let verifier_computed_sumcheck_claim =
 		evaluate::<F, F, _>(&s_hat_u, &batching_scalars).unwrap();
 
-	let (final_fri_oracle, sumcheck_output) = verify_basefold_transcript(
+	let (final_fri_oracle, sumcheck_output) = basefold::verify(
 		codeword_commitment,
 		transcript,
 		verifier_computed_sumcheck_claim,

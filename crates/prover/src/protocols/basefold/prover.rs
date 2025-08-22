@@ -200,7 +200,7 @@ mod test {
 		config::StdChallenger,
 		fri::FRIParams,
 		hash::{StdCompression, StdDigest},
-		protocols::basefold::{sumcheck_fri_consistency, verify_transcript},
+		protocols::basefold,
 	};
 	use rand::{SeedableRng, rngs::StdRng};
 
@@ -266,7 +266,7 @@ mod test {
 
 		let retrieved_codeword_commitment = verifier_challenger.message().read()?;
 
-		let (final_fri_oracle, sumcheck_output) = verify_transcript(
+		let (final_fri_oracle, sumcheck_output) = basefold::verify(
 			retrieved_codeword_commitment,
 			&mut verifier_challenger,
 			evaluation_claim,
@@ -275,7 +275,7 @@ mod test {
 			n_vars,
 		)?;
 
-		if !sumcheck_fri_consistency(
+		if !basefold::sumcheck_fri_consistency(
 			final_fri_oracle,
 			sumcheck_output.eval,
 			&evaluation_point,
