@@ -1,6 +1,6 @@
 // Copyright 2025 Irreducible Inc.
 
-use binius_field::{BinaryField, ExtensionField, Field};
+use binius_field::{BinaryField, Field};
 use binius_math::multilinear::eq::eq_ind;
 use binius_transcript::{
 	VerifierTranscript,
@@ -65,19 +65,18 @@ fn is_fri_commit_round(
 /// * `fri_params` - The FRI parameters
 /// * `vcs` - The Merkle tree scheme
 /// * `n_vars` - The number of variables in the multilinear polynomial
-pub fn verify_transcript<F, FA, VCS, TranscriptChallenger>(
-	codeword_commitment: VCS::Digest,
-	transcript: &mut VerifierTranscript<TranscriptChallenger>,
+pub fn verify_transcript<F, MTScheme, Challenger_>(
+	codeword_commitment: MTScheme::Digest,
+	transcript: &mut VerifierTranscript<Challenger_>,
 	evaluation_claim: F,
-	fri_params: &FRIParams<F, FA>,
-	vcs: &VCS,
+	fri_params: &FRIParams<F, F>,
+	vcs: &MTScheme,
 	n_vars: usize,
 ) -> Result<(F, SumcheckOutput<F>), Error>
 where
-	F: Field + BinaryField + ExtensionField<FA>,
-	FA: BinaryField,
-	TranscriptChallenger: Challenger,
-	VCS: MerkleTreeScheme<F, Digest: DeserializeBytes>,
+	F: BinaryField,
+	Challenger_: Challenger,
+	MTScheme: MerkleTreeScheme<F, Digest: DeserializeBytes>,
 {
 	let mut challenges = Vec::with_capacity(n_vars);
 	let fri_commit_rounds = is_fri_commit_round(fri_params.fold_arities(), n_vars)?;
