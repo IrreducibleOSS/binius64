@@ -34,22 +34,25 @@ impl ExampleCircuit for KeccakExample {
 	type Instance = Instance;
 
 	fn build(params: Params, builder: &mut CircuitBuilder) -> Result<Self> {
-		// Create initial state as witness wires
+		// Create:
+		// 1. initial state as inout wires.
+		// 2. expected final state as inout wires.
 		let initial_state: [Wire; 25] = std::array::from_fn(|_| builder.add_inout());
+		let expected_final_state: [Wire; 25] = std::array::from_fn(|_| builder.add_inout());
 
-		// Chain n permutations
-		let mut state = initial_state;
+		// Chain n permutations starting from initial state
+		let mut computed_state = initial_state;
 		for _ in 0..params.n_permutations {
-			Permutation::keccak_f1600(builder, &mut state);
+			Permutation::keccak_f1600(builder, &mut computed_state);
 		}
 
-		// Store final state
-		let final_state = state;
+		// Constrain computed final state to equal expected final state
+		builder.assert_eq_v("final_state", computed_state, expected_final_state);
 
 		Ok(Self {
 			n_permutations: params.n_permutations,
 			initial_state,
-			final_state,
+			final_state: expected_final_state,
 		})
 	}
 
@@ -61,6 +64,19 @@ impl ExampleCircuit for KeccakExample {
 		// Populate initial state witness
 		for i in 0..25 {
 			w[self.initial_state[i]] = Word(initial_state[i]);
+		}
+
+		// Compute expected final state by running the permutation outside the circuit
+		let mut expected_final_state = initial_state;
+		for _ in 0..self.n_permutations {
+			binius_frontend::circuits::keccak::reference::keccak_f1600_reference(
+				&mut expected_final_state,
+			);
+		}
+
+		// Populate expected final state witness
+		for i in 0..25 {
+			w[self.final_state[i]] = Word(expected_final_state[i]);
 		}
 
 		Ok(())
