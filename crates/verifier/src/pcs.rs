@@ -93,8 +93,7 @@ where
 		fri_params,
 		vcs,
 		eval_point.len() - packing_degree,
-	)
-	.map_err(|e| VerificationError::BasefoldVerification(e.to_string()))?;
+	)?;
 
 	let (_, eval_point_high) = eval_point.split_at(packing_degree);
 
@@ -105,7 +104,7 @@ where
 	);
 
 	if final_sumcheck_value != final_fri_value * rs_eq_at_basefold_challenges {
-		return Err(VerificationError::FriOracleVerificationFailed.into());
+		return Err(VerificationError::EvaluationInconsistency.into());
 	}
 
 	Ok(())
@@ -115,6 +114,8 @@ where
 pub enum Error {
 	#[error("transcript error: {0}")]
 	Transcript(#[source] TranscriptError),
+	#[error("basefold error: {0}")]
+	Basefold(#[source] basefold::Error),
 	#[error("verification error: {0}")]
 	Verification(#[from] VerificationError),
 }
@@ -123,19 +124,28 @@ pub enum Error {
 pub enum VerificationError {
 	#[error("evaluation claim verification failed: expected {expected}, got {actual}")]
 	EvaluationClaimMismatch { expected: String, actual: String },
-	#[error("FRI oracle verification failed: sumcheck and FRI are inconsistent")]
-	FriOracleVerificationFailed,
-	#[error("basefold verification error: {0}")]
-	BasefoldVerification(String),
+	#[error("final evaluation check of sumcheck and FRI reductions failed")]
+	EvaluationInconsistency,
+	#[error("basefold: {0}")]
+	Basefold(#[from] basefold::VerificationError),
+	#[error("proof tape is empty")]
+	EmptyProof,
 }
 
 impl From<TranscriptError> for Error {
 	fn from(err: TranscriptError) -> Self {
 		match err {
-			TranscriptError::NotEnoughBytes => {
-				VerificationError::BasefoldVerification("transcript is empty".to_string()).into()
-			}
+			TranscriptError::NotEnoughBytes => VerificationError::EmptyProof.into(),
 			_ => Error::Transcript(err),
+		}
+	}
+}
+
+impl From<basefold::Error> for Error {
+	fn from(err: basefold::Error) -> Self {
+		match err {
+			basefold::Error::Verification(err) => VerificationError::Basefold(err).into(),
+			_ => Error::Basefold(err),
 		}
 	}
 }
