@@ -7,12 +7,11 @@ use binius_math::{
 	tensor_algebra::TensorAlgebra,
 };
 use binius_transcript::{
-	VerifierTranscript,
+	Error as TranscriptError, VerifierTranscript,
 	fiat_shamir::{CanSample, Challenger},
 };
 use binius_utils::DeserializeBytes;
 
-use super::{Error, VerificationError};
 use crate::{
 	config::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme,
 	protocols::basefold::verifier::verify_transcript as verify_basefold_transcript,
@@ -108,4 +107,33 @@ where
 	}
 
 	Ok(())
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+	#[error("transcript error: {0}")]
+	Transcript(#[source] TranscriptError),
+	#[error("verification error: {0}")]
+	Verification(#[from] VerificationError),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum VerificationError {
+	#[error("evaluation claim verification failed: expected {expected}, got {actual}")]
+	EvaluationClaimMismatch { expected: String, actual: String },
+	#[error("FRI oracle verification failed: sumcheck and FRI are inconsistent")]
+	FriOracleVerificationFailed,
+	#[error("basefold verification error: {0}")]
+	BasefoldVerification(String),
+}
+
+impl From<TranscriptError> for Error {
+	fn from(err: TranscriptError) -> Self {
+		match err {
+			TranscriptError::NotEnoughBytes => {
+				VerificationError::BasefoldVerification("transcript is empty".to_string()).into()
+			}
+			_ => Error::Transcript(err),
+		}
+	}
 }
