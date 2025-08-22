@@ -15,4 +15,5 @@ pub mod sha256;
 pub mod sha512;
 pub mod slice;
 pub mod subset_sum;
+pub mod variable_shifter;
 pub mod zklogin;
