@@ -63,6 +63,8 @@ impl Default for CircuitBuilder {
 					path_spec_tree,
 					n_witness: 0,
 					n_inout: 0,
+					wire_def: SecondaryMap::new(),
+					wire_uses: SecondaryMap::new(),
 				},
 			}))),
 		}
