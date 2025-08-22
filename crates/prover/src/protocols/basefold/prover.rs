@@ -266,7 +266,11 @@ mod test {
 
 		let retrieved_codeword_commitment = verifier_challenger.message().read()?;
 
-		let (final_fri_oracle, sumcheck_output) = basefold::verify(
+		let basefold::ReducedOutput {
+			final_fri_value,
+			final_sumcheck_value,
+			challenges,
+		} = basefold::verify(
 			retrieved_codeword_commitment,
 			&mut verifier_challenger,
 			evaluation_claim,
@@ -276,10 +280,10 @@ mod test {
 		)?;
 
 		if !basefold::sumcheck_fri_consistency(
-			final_fri_oracle,
-			sumcheck_output.eval,
+			final_fri_value,
+			final_sumcheck_value,
 			&evaluation_point,
-			&sumcheck_output.challenges,
+			&challenges,
 		) {
 			return Err("Sumcheck and FRI are inconsistent".into());
 		}
