@@ -101,12 +101,10 @@ jobs:
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
-
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
         with:
-          key: benchmarks-${{ matrix.instance.name }}
+          cache: true
           cache-on-failure: true
+          cache-key: rust-${{ hashFiles('**/Cargo.toml') }}-${{ matrix.instance.name }}
 
       - name: Run platform diagnostics
         run: cargo test -p binius-utils --features platform-diagnostics test_platform_diagnostics -- --nocapture
