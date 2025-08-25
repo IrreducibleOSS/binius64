@@ -67,9 +67,10 @@ pub struct Compress {
 
 impl Compress {
 	pub fn new(builder: &CircuitBuilder, state_in: State, m: [Wire; 16]) -> Self {
-		// it is "expected" that the wires `m` will have empty high (most-significant) halves.
-		// otoh, if schedule wires `m` with nonempty high halves are fed into this gadget,
-		// said high halves will have no effect, and will eventually be masked off.
+		// it is a PRECONDITION of this gadget that the high halves of the wires fed in be empty.
+		// that is, `m[i] & 0xffffffff == m[i]` must hold for each wire `i` passed in.
+		// it is the caller's responsibility to ensure that this is the case for all wires.
+		// if this isn't true, then the behavior becomes undefined / the gadget becomes insecure.
 
 		// ---- message-schedule ----
 		// W[0..15] = block_words

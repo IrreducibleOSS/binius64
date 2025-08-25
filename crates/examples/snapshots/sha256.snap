@@ -1,11 +1,11 @@
 sha256 circuit
 --
-Number of gates: 74990
-Number of evaluation instructions: 76219
-Number of AND constraints: 95393
+Number of gates: 74994
+Number of evaluation instructions: 76223
+Number of AND constraints: 95397
 Number of MUL constraints: 0
 Length of value vec: 131072
   Constants: 341
   Inout: 260
   Witness: 570
-  Internal: 94267
+  Internal: 94269
