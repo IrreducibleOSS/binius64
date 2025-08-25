@@ -2,10 +2,16 @@
 
 use std::iter::repeat_with;
 
-use binius_field::{Field, PackedField};
+use binius_field::{BinaryField128bGhash, Field, PackedBinaryGhash4x128b, PackedField};
 use rand::RngCore;
 
 use crate::FieldBuffer;
+
+/// Type alias for 128b field element with fast arithmetic.
+pub type B128 = BinaryField128bGhash;
+
+/// Type alias for a packed 128b field element with non-trivial packing width.
+pub type Packed128b = PackedBinaryGhash4x128b;
 
 /// Generates a vector of random field elements.
 ///
@@ -60,9 +66,9 @@ pub fn random_field_buffer<P: PackedField>(mut rng: impl RngCore, log_n: usize) 
 /// # Example
 ///
 /// ```
-/// # use binius_field::BinaryField32b;
+/// # use binius_field::BinaryField128bGhash as B128;
 /// # use binius_math::test_utils::index_to_hypercube_point;
-/// let point = index_to_hypercube_point::<BinaryField32b>(3, 5);
+/// let point = index_to_hypercube_point::<B128>(3, 5);
 /// // 5 = 0b101, so point = [F::ONE, F::ZERO, F::ONE]
 /// ```
 pub fn index_to_hypercube_point<F: Field>(n_vars: usize, index: usize) -> Vec<F> {
@@ -83,7 +89,7 @@ pub fn index_to_hypercube_point<F: Field>(n_vars: usize, index: usize) -> Vec<F>
 
 #[cfg(test)]
 mod tests {
-	use binius_field::BinaryField32b;
+	use binius_field::BinaryField128bGhash as B128;
 	use proptest::prelude::*;
 	use rand::{SeedableRng, rngs::StdRng};
 
@@ -98,8 +104,8 @@ mod tests {
 			let mut rng1 = StdRng::seed_from_u64(seed);
 			let mut rng2 = StdRng::seed_from_u64(seed);
 
-			let scalars1 = random_scalars::<BinaryField32b>(&mut rng1, n);
-			let scalars2 = random_scalars::<BinaryField32b>(&mut rng2, n);
+			let scalars1 = random_scalars::<B128>(&mut rng1, n);
+			let scalars2 = random_scalars::<B128>(&mut rng2, n);
 
 			prop_assert_eq!(scalars1, scalars2);
 		}
@@ -114,8 +120,8 @@ mod tests {
 			let mut rng1 = StdRng::seed_from_u64(seed1);
 			let mut rng2 = StdRng::seed_from_u64(seed2);
 
-			let scalars1 = random_scalars::<BinaryField32b>(&mut rng1, n);
-			let scalars2 = random_scalars::<BinaryField32b>(&mut rng2, n);
+			let scalars1 = random_scalars::<B128>(&mut rng1, n);
+			let scalars2 = random_scalars::<B128>(&mut rng2, n);
 
 			prop_assert_ne!(scalars1, scalars2);
 		}

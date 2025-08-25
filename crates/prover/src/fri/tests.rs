@@ -3,20 +3,18 @@
 use std::vec;
 
 use binius_field::{
-	BinaryField, BinaryField16b, BinaryField32b, BinaryField128b, ExtensionField,
-	PackedBinaryField1x128b, PackedBinaryField4x32b, PackedExtension, PackedField,
-	util::inner_product_par,
+	BinaryField, ExtensionField, PackedExtension, PackedField, util::inner_product_par,
 };
 use binius_math::{
 	BinarySubspace, ReedSolomonCode,
 	multilinear::eq::eq_ind_partial_eval,
 	ntt::{NeighborsLastSingleThread, domain_context::GenericOnTheFly},
-	test_utils::random_field_buffer,
+	test_utils::{Packed128b, random_field_buffer},
 };
 use binius_transcript::{ProverTranscript, fiat_shamir::CanSample};
 use binius_utils::checked_arithmetics::log2_strict_usize;
 use binius_verifier::{
-	config::StdChallenger,
+	config::{B128, StdChallenger},
 	fri::{FRIParams, verify::FRIVerifier},
 	hash::{StdCompression, StdDigest},
 };
@@ -151,7 +149,7 @@ fn test_commit_prove_verify_success_128b_full() {
 	let log_inv_rate = 2;
 	let arities = vec![1; log_dimension - log_final_dimension];
 
-	test_commit_prove_verify_success::<BinaryField128b, BinaryField16b, PackedBinaryField1x128b>(
+	test_commit_prove_verify_success::<_, B128, Packed128b>(
 		log_dimension,
 		log_inv_rate,
 		0,
@@ -165,7 +163,7 @@ fn test_commit_prove_verify_success_128b_higher_arity() {
 	let log_inv_rate = 2;
 	let arities = [3, 2, 1];
 
-	test_commit_prove_verify_success::<BinaryField128b, BinaryField16b, PackedBinaryField1x128b>(
+	test_commit_prove_verify_success::<_, B128, Packed128b>(
 		log_dimension,
 		log_inv_rate,
 		0,
@@ -180,7 +178,7 @@ fn test_commit_prove_verify_success_128b_interleaved() {
 	let log_batch_size = 2;
 	let arities = [3, 2, 1];
 
-	test_commit_prove_verify_success::<BinaryField128b, BinaryField16b, PackedBinaryField1x128b>(
+	test_commit_prove_verify_success::<_, B128, Packed128b>(
 		log_dimension,
 		log_inv_rate,
 		log_batch_size,
@@ -195,7 +193,7 @@ fn test_commit_prove_verify_success_128b_interleaved_packed() {
 	let log_batch_size = 2;
 	let arities = [3, 2, 1];
 
-	test_commit_prove_verify_success::<BinaryField32b, BinaryField16b, PackedBinaryField4x32b>(
+	test_commit_prove_verify_success::<_, B128, Packed128b>(
 		log_dimension,
 		log_inv_rate,
 		log_batch_size,
@@ -209,7 +207,7 @@ fn test_commit_prove_verify_success_without_folding() {
 	let log_inv_rate = 2;
 	let log_batch_size = 2;
 
-	test_commit_prove_verify_success::<BinaryField128b, BinaryField16b, PackedBinaryField1x128b>(
+	test_commit_prove_verify_success::<_, B128, Packed128b>(
 		log_dimension,
 		log_inv_rate,
 		log_batch_size,

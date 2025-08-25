@@ -203,14 +203,13 @@ pub fn eq_ind<F: Field>(x: &[F], y: &[F]) -> F {
 
 #[cfg(test)]
 mod tests {
-	use binius_field::{Field, PackedBinaryField4x32b};
 	use rand::prelude::*;
 
 	use super::*;
-	use crate::test_utils::{index_to_hypercube_point, random_scalars};
+	use crate::test_utils::{B128, Packed128b, index_to_hypercube_point, random_scalars};
 
-	type P = PackedBinaryField4x32b;
-	type F = <P as PackedField>::Scalar;
+	type P = Packed128b;
+	type F = B128;
 
 	#[test]
 	fn test_tensor_prod_eq_ind() {

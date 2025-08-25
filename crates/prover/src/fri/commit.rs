@@ -150,57 +150,32 @@ where
 
 #[cfg(test)]
 mod tests {
-	use binius_field::{
-		BinaryField16b, PackedBinaryField4x16b, PackedBinaryField16x16b, PackedField,
-	};
+	use binius_field::{PackedBinaryGhash2x128b, PackedBinaryGhash4x128b};
+	use binius_math::{FieldBuffer, test_utils::random_scalars};
+	use binius_verifier::config::B128;
+	use rand::{prelude::*, rngs::StdRng};
 
 	use super::*;
 
 	#[test]
 	fn test_parallel_iterator() {
+		let mut rng = StdRng::seed_from_u64(0);
+
 		// Compare results for small and large chunk sizes to ensure that they're identical
-		let data: Vec<_> = (0..64).map(BinaryField16b::from).collect();
+		let data = random_scalars::<B128>(&mut rng, 64);
 
-		let mut data_packed_4 = vec![];
+		let data_packed_2 = FieldBuffer::<PackedBinaryGhash2x128b, _>::from_values(&data).unwrap();
+		let data_packed_4 = FieldBuffer::<PackedBinaryGhash4x128b, _>::from_values(&data).unwrap();
 
-		for i in 0..64 / 4 {
-			let mut scalars = vec![];
-			for j in 0..4 {
-				scalars.push(data[4 * i + j]);
-			}
-
-			data_packed_4.push(PackedBinaryField4x16b::from_scalars(scalars.into_iter()));
-		}
-
-		let mut data_packed_16 = vec![];
-
-		for i in 0..64 / 16 {
-			let mut scalars = vec![];
-			for j in 0..16 {
-				scalars.push(data[16 * i + j]);
-			}
-
-			data_packed_16.push(PackedBinaryField16x16b::from_scalars(scalars.into_iter()));
-		}
-
-		let packing_smaller_than_chunk = to_par_scalar_big_chunks(&data_packed_4, 8);
-
-		let packing_bigger_than_chunk = to_par_scalar_small_chunks(&data_packed_16, 8);
+		let packing_smaller_than_chunk = to_par_scalar_big_chunks(data_packed_2.as_ref(), 2);
+		let packing_bigger_than_chunk = to_par_scalar_small_chunks(data_packed_4.as_ref(), 2);
 
 		let collected_smaller: Vec<_> = packing_smaller_than_chunk
-			.map(|inner| {
-				let result: Vec<_> = inner.collect();
-				result
-			})
+			.map(|inner| inner.collect::<Vec<_>>())
 			.collect();
-
 		let collected_bigger: Vec<_> = packing_bigger_than_chunk
-			.map(|inner| {
-				let result: Vec<_> = inner.collect();
-				result
-			})
+			.map(|inner| inner.collect::<Vec<_>>())
 			.collect();
-
 		assert_eq!(collected_smaller, collected_bigger);
 	}
 }

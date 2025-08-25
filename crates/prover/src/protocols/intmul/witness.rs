@@ -264,11 +264,11 @@ pub fn buffer_bivariate_product<P: PackedField, Data: Deref<Target = [P]>>(
 
 #[cfg(test)]
 mod tests {
-	use binius_field::PackedBinaryField4x128b;
+	use binius_math::test_utils::Packed128b;
 
 	use super::*;
 
-	type P = PackedBinaryField4x128b;
+	type P = Packed128b;
 
 	const LOG_BITS: usize = 6;
 

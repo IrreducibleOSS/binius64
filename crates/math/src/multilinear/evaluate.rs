@@ -107,20 +107,21 @@ where
 
 #[cfg(test)]
 mod tests {
-	use binius_field::{BinaryField128bGhash, PackedBinaryField8x16b};
 	use rand::{RngCore, SeedableRng, rngs::StdRng};
 
 	use super::*;
 	use crate::{
 		inner_product::inner_product_par,
-		test_utils::{index_to_hypercube_point, random_field_buffer, random_scalars},
+		test_utils::{
+			B128, Packed128b, index_to_hypercube_point, random_field_buffer, random_scalars,
+		},
 	};
+
+	type P = Packed128b;
+	type F = B128;
 
 	#[test]
 	fn test_evaluate_consistency() {
-		type P = PackedBinaryField8x16b;
-		type F = <P as PackedField>::Scalar;
-
 		/// Simple reference function for multilinear polynomial evaluation.
 		fn evaluate_with_inner_product<F, P, Data>(
 			evals: &FieldBuffer<P, Data>,
@@ -168,12 +169,12 @@ mod tests {
 
 		// Generate random multilinear with 8 variables
 		let log_n = 8;
-		let buffer = random_field_buffer::<BinaryField128bGhash>(&mut rng, log_n);
+		let buffer = random_field_buffer::<F>(&mut rng, log_n);
 
 		// Test 16 random hypercube indices
 		for _ in 0..16 {
 			let index = (rng.next_u32() as usize) % (1 << log_n);
-			let point = index_to_hypercube_point::<BinaryField128bGhash>(log_n, index);
+			let point = index_to_hypercube_point::<F>(log_n, index);
 
 			// Evaluate at the hypercube point
 			let eval_result = evaluate(&buffer, &point).unwrap();
@@ -192,13 +193,13 @@ mod tests {
 
 		// Generate random 8-variable multilinear and evaluation point
 		let log_n = 8;
-		let buffer = random_field_buffer::<BinaryField128bGhash>(&mut rng, log_n);
-		let mut point = random_scalars::<BinaryField128bGhash>(&mut rng, log_n);
+		let buffer = random_field_buffer::<F>(&mut rng, log_n);
+		let mut point = random_scalars::<F>(&mut rng, log_n);
 
 		// Test linearity for each coordinate
 		for coord_idx in 0..log_n {
 			// Choose three coordinate values
-			let coord_vals = random_scalars::<BinaryField128bGhash>(&mut rng, 3);
+			let coord_vals = random_scalars::<F>(&mut rng, 3);
 
 			// Evaluate at three points differing only in coordinate coord_idx
 			let evals: Vec<_> = coord_vals

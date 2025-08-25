@@ -756,12 +756,11 @@ impl<'a, P: PackedField> Drop for FieldBufferSplitMutInner<'a, P> {
 
 #[cfg(test)]
 mod tests {
-	use binius_field::{BinaryField64b, Field, PackedBinaryField4x64b};
-
 	use super::*;
+	use crate::test_utils::{B128, Packed128b};
 
-	type F = BinaryField64b;
-	type P = PackedBinaryField4x64b;
+	type P = Packed128b;
+	type F = B128;
 
 	#[test]
 	fn test_zeros() {
@@ -816,7 +815,7 @@ mod tests {
 
 		// Verify all values
 		for i in 0..16 {
-			assert_eq!(buffer.get(i).unwrap(), F::new(i as u64));
+			assert_eq!(buffer.get(i).unwrap(), F::new(i as u128));
 		}
 	}
 
@@ -868,10 +867,10 @@ mod tests {
 
 		// Set and verify values
 		for i in 0..16 {
-			buffer.set(i, F::new(i as u64 * 10)).unwrap();
+			buffer.set(i, F::new(i as u128 * 10)).unwrap();
 		}
 		for i in 0..16 {
-			assert_eq!(buffer.get(i).unwrap(), F::new(i as u64 * 10));
+			assert_eq!(buffer.get(i).unwrap(), F::new(i as u128 * 10));
 		}
 	}
 
@@ -898,12 +897,12 @@ mod tests {
 
 		// Set some values
 		for i in 0..8 {
-			buffer.set(i, F::new(i as u64)).unwrap();
+			buffer.set(i, F::new(i as u128)).unwrap();
 		}
 
 		// Get them back
 		for i in 0..8 {
-			assert_eq!(buffer.get(i).unwrap(), F::new(i as u64));
+			assert_eq!(buffer.get(i).unwrap(), F::new(i as u128));
 		}
 
 		// Test out of bounds
@@ -950,7 +949,7 @@ mod tests {
 		for (chunk_idx, chunk) in chunks.into_iter().enumerate() {
 			assert_eq!(chunk.len(), 4);
 			for i in 0..4 {
-				let expected = F::new((chunk_idx * 4 + i) as u64);
+				let expected = F::new((chunk_idx * 4 + i) as u128);
 				assert_eq!(chunk.get(i).unwrap(), expected);
 			}
 		}
@@ -976,7 +975,7 @@ mod tests {
 		for (chunk_idx, chunk) in chunks.into_iter().enumerate() {
 			assert_eq!(chunk.len(), 4);
 			for i in 0..4 {
-				let expected = F::new((chunk_idx * 4 + i) as u64);
+				let expected = F::new((chunk_idx * 4 + i) as u128);
 				assert_eq!(chunk.get(i).unwrap(), expected);
 			}
 		}
@@ -1000,14 +999,14 @@ mod tests {
 
 		for (chunk_idx, chunk) in chunks.iter_mut().enumerate() {
 			for i in 0..chunk.len() {
-				chunk.set(i, F::new((chunk_idx * 10 + i) as u64)).unwrap();
+				chunk.set(i, F::new((chunk_idx * 10 + i) as u128)).unwrap();
 			}
 		}
 
 		// Verify modifications
 		for chunk_idx in 0..4 {
 			for i in 0..4 {
-				let expected = F::new((chunk_idx * 10 + i) as u64);
+				let expected = F::new((chunk_idx * 10 + i) as u128);
 				assert_eq!(buffer.get(chunk_idx * 4 + i).unwrap(), expected);
 			}
 		}
@@ -1047,8 +1046,8 @@ mod tests {
 
 		// Verify values
 		for i in 0..8 {
-			assert_eq!(first.get(i).unwrap(), F::new(i as u64));
-			assert_eq!(second.get(i).unwrap(), F::new((i + 8) as u64));
+			assert_eq!(first.get(i).unwrap(), F::new(i as u128));
+			assert_eq!(second.get(i).unwrap(), F::new((i + 8) as u128));
 		}
 
 		// Test with buffer size = P::WIDTH (single packed element)
@@ -1113,7 +1112,7 @@ mod tests {
 
 		// Fill with test data
 		for i in 0..16 {
-			buffer.set(i, F::new(i as u64)).unwrap();
+			buffer.set(i, F::new(i as u128)).unwrap();
 		}
 
 		buffer
@@ -1123,16 +1122,16 @@ mod tests {
 
 				// Modify through the split halves
 				for i in 0..8 {
-					first.set(i, F::new((i * 10) as u64)).unwrap();
-					second.set(i, F::new((i * 20) as u64)).unwrap();
+					first.set(i, F::new((i * 10) as u128)).unwrap();
+					second.set(i, F::new((i * 20) as u128)).unwrap();
 				}
 			})
 			.unwrap();
 
 		// Verify changes were made to original buffer
 		for i in 0..8 {
-			assert_eq!(buffer.get(i).unwrap(), F::new((i * 10) as u64));
-			assert_eq!(buffer.get(i + 8).unwrap(), F::new((i * 20) as u64));
+			assert_eq!(buffer.get(i).unwrap(), F::new((i * 10) as u128));
+			assert_eq!(buffer.get(i + 8).unwrap(), F::new((i * 20) as u128));
 		}
 
 		// Test with buffer size = P::WIDTH (single packed element)
@@ -1141,7 +1140,7 @@ mod tests {
 
 		// Fill with test data
 		for i in 0..4 {
-			buffer.set(i, F::new(i as u64)).unwrap();
+			buffer.set(i, F::new(i as u128)).unwrap();
 		}
 
 		buffer
@@ -1214,7 +1213,7 @@ mod tests {
 
 		// Fill with test data
 		for i in 0..16 {
-			buffer.set(i, F::new(i as u64)).unwrap();
+			buffer.set(i, F::new(i as u128)).unwrap();
 		}
 
 		{
@@ -1226,16 +1225,16 @@ mod tests {
 
 			// Modify through the split halves
 			for i in 0..8 {
-				first.set(i, F::new((i * 10) as u64)).unwrap();
-				second.set(i, F::new((i * 20) as u64)).unwrap();
+				first.set(i, F::new((i * 10) as u128)).unwrap();
+				second.set(i, F::new((i * 20) as u128)).unwrap();
 			}
 			// split drops here and writes back the changes
 		}
 
 		// Verify changes were made to original buffer
 		for i in 0..8 {
-			assert_eq!(buffer.get(i).unwrap(), F::new((i * 10) as u64));
-			assert_eq!(buffer.get(i + 8).unwrap(), F::new((i * 20) as u64));
+			assert_eq!(buffer.get(i).unwrap(), F::new((i * 10) as u128));
+			assert_eq!(buffer.get(i + 8).unwrap(), F::new((i * 20) as u128));
 		}
 
 		// Test with buffer size = P::WIDTH (single packed element)
@@ -1244,7 +1243,7 @@ mod tests {
 
 		// Fill with test data
 		for i in 0..4 {
-			buffer.set(i, F::new(i as u64)).unwrap();
+			buffer.set(i, F::new(i as u128)).unwrap();
 		}
 
 		{

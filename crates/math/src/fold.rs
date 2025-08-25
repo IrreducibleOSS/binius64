@@ -126,11 +126,11 @@ where
 mod tests {
 	use std::iter;
 
-	use binius_field::{BinaryField128b as B128, Random};
+	use binius_field::Random;
 	use rand::{SeedableRng, rngs::StdRng};
 
 	use super::*;
-	use crate::test_utils::random_scalars;
+	use crate::test_utils::{B128, random_scalars};
 
 	#[test]
 	fn test_fold_cols_linear_in_matrix() {

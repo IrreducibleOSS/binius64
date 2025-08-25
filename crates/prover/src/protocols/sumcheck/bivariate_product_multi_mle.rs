@@ -191,10 +191,10 @@ enum RoundCoeffsOrSums<F: Field> {
 mod tests {
 	use std::iter::repeat_with;
 
-	use binius_field::{PackedBinaryField8x16b, Random};
+	use binius_field::Random;
 	use binius_math::{
 		multilinear::{eq::eq_ind_partial_eval, evaluate::evaluate_inplace},
-		test_utils::{random_field_buffer, random_scalars},
+		test_utils::{Packed128b, random_field_buffer, random_scalars},
 	};
 	use rand::{SeedableRng, rngs::StdRng};
 
@@ -205,7 +205,7 @@ mod tests {
 
 	#[test]
 	fn test_bivariate_multi_mlecheck_conforms_to_single_bivariate_mlecheck() {
-		type P = PackedBinaryField8x16b;
+		type P = Packed128b;
 		type F = <P as PackedField>::Scalar;
 
 		let n_vars = 8;
@@ -354,7 +354,7 @@ mod tests {
 	#[test]
 	fn test_bivariate_product_multi_mlecheck_consistency() {
 		for (n_vars, n_pairs) in [(0, 0), (0, 4), (1, 5), (7, 1), (3, 3)] {
-			test_bivariate_product_multi_mlecheck_consistency_helper::<_, PackedBinaryField8x16b>(
+			test_bivariate_product_multi_mlecheck_consistency_helper::<_, Packed128b>(
 				n_vars, n_pairs,
 			);
 		}
