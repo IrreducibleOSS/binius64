@@ -89,17 +89,16 @@ where
 mod tests {
 	use std::iter::repeat_with;
 
-	use binius_field::PackedBinaryField8x16b;
 	use rand::prelude::*;
 
 	use super::*;
 	use crate::{
 		multilinear::{eq::eq_ind_partial_eval, evaluate::evaluate},
-		test_utils::{random_field_buffer, random_scalars},
+		test_utils::{B128, Packed128b, random_field_buffer, random_scalars},
 	};
 
-	type P = PackedBinaryField8x16b;
-	type F = <P as PackedField>::Scalar;
+	type P = Packed128b;
+	type F = B128;
 
 	#[test]
 	fn test_fold_highest_var_inplace() {

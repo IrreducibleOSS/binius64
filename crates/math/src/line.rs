@@ -30,13 +30,14 @@ where
 
 #[cfg(test)]
 mod tests {
-	use binius_field::{Field, PackedBinaryField4x32b, PackedField, Random};
+	use binius_field::{Field, PackedField, Random};
 	use rand::prelude::*;
 
 	use super::*;
+	use crate::test_utils::{B128, Packed128b};
 
-	type P = PackedBinaryField4x32b;
-	type F = <P as PackedField>::Scalar;
+	type P = Packed128b;
+	type F = B128;
 
 	#[test]
 	fn test_extrapolate_line_packed_boundary_values() {

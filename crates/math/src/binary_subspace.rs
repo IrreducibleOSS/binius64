@@ -120,90 +120,83 @@ impl<F: BinaryField> Default for BinarySubspace<F> {
 #[cfg(test)]
 mod tests {
 	use assert_matches::assert_matches;
-	use binius_field::{BinaryField8b, BinaryField128b};
+	use binius_field::{AESTowerField8b as B8, BinaryField128bGhash as B128};
 
 	use super::*;
 
 	#[test]
 	fn test_default_binary_subspace_iterates_elements() {
-		let subspace = BinarySubspace::<BinaryField8b>::default();
+		let subspace = BinarySubspace::<B8>::default();
 		for i in 0..=255 {
-			assert_eq!(subspace.get(i), BinaryField8b::new(i as u8));
+			assert_eq!(subspace.get(i), B8::new(i as u8));
 		}
 	}
 
 	#[test]
 	fn test_binary_subspace_range_error() {
-		let subspace = BinarySubspace::<BinaryField8b>::default();
+		let subspace = BinarySubspace::<B8>::default();
 		assert_matches!(subspace.get_checked(256), Err(Error::ArgumentRangeError { .. }));
 	}
 
 	#[test]
 	fn test_default_large_binary_subspace_iterates_elements() {
-		let subspace = BinarySubspace::<BinaryField128b>::default();
+		let subspace = BinarySubspace::<B128>::default();
 		for i in 0..=255 {
-			assert_eq!(subspace.get(i), BinaryField128b::new(i as u128));
+			assert_eq!(subspace.get(i), B128::new(i as u128));
 		}
 	}
 
 	#[test]
 	fn test_default_binary_subspace() {
-		let subspace = BinarySubspace::<BinaryField8b>::default();
+		let subspace = BinarySubspace::<B8>::default();
 		assert_eq!(subspace.dim(), 8);
 		assert_eq!(subspace.basis().len(), 8);
 
 		assert_eq!(
 			subspace.basis(),
 			[
-				BinaryField8b::new(0b00000001),
-				BinaryField8b::new(0b00000010),
-				BinaryField8b::new(0b00000100),
-				BinaryField8b::new(0b00001000),
-				BinaryField8b::new(0b00010000),
-				BinaryField8b::new(0b00100000),
-				BinaryField8b::new(0b01000000),
-				BinaryField8b::new(0b10000000)
+				B8::new(0b00000001),
+				B8::new(0b00000010),
+				B8::new(0b00000100),
+				B8::new(0b00001000),
+				B8::new(0b00010000),
+				B8::new(0b00100000),
+				B8::new(0b01000000),
+				B8::new(0b10000000)
 			]
 		);
 
 		let expected_elements: [u8; 256] = (0..=255).collect::<Vec<_>>().try_into().unwrap();
 
 		for (i, &expected) in expected_elements.iter().enumerate() {
-			assert_eq!(subspace.get(i), BinaryField8b::new(expected));
+			assert_eq!(subspace.get(i), B8::new(expected));
 		}
 	}
 
 	#[test]
 	fn test_with_dim_valid() {
-		let subspace = BinarySubspace::<BinaryField8b>::with_dim(3).unwrap();
+		let subspace = BinarySubspace::<B8>::with_dim(3).unwrap();
 		assert_eq!(subspace.dim(), 3);
 		assert_eq!(subspace.basis().len(), 3);
 
-		assert_eq!(
-			subspace.basis(),
-			[
-				BinaryField8b::new(0b001),
-				BinaryField8b::new(0b010),
-				BinaryField8b::new(0b100)
-			]
-		);
+		assert_eq!(subspace.basis(), [B8::new(0b001), B8::new(0b010), B8::new(0b100)]);
 
 		let expected_elements: [u8; 8] = [0b000, 0b001, 0b010, 0b011, 0b100, 0b101, 0b110, 0b111];
 
 		for (i, &expected) in expected_elements.iter().enumerate() {
-			assert_eq!(subspace.get(i), BinaryField8b::new(expected));
+			assert_eq!(subspace.get(i), B8::new(expected));
 		}
 	}
 
 	#[test]
 	fn test_with_dim_invalid() {
-		let result = BinarySubspace::<BinaryField8b>::with_dim(10);
+		let result = BinarySubspace::<B8>::with_dim(10);
 		assert_matches!(result, Err(Error::DomainSizeTooLarge));
 	}
 
 	#[test]
 	fn test_reduce_dim_valid() {
-		let subspace = BinarySubspace::<BinaryField8b>::with_dim(6).unwrap();
+		let subspace = BinarySubspace::<B8>::with_dim(6).unwrap();
 		let reduced = subspace.reduce_dim(4).unwrap();
 		assert_eq!(reduced.dim(), 4);
 		assert_eq!(reduced.basis().len(), 4);
@@ -211,47 +204,47 @@ mod tests {
 		assert_eq!(
 			reduced.basis(),
 			[
-				BinaryField8b::new(0b0001),
-				BinaryField8b::new(0b0010),
-				BinaryField8b::new(0b0100),
-				BinaryField8b::new(0b1000)
+				B8::new(0b0001),
+				B8::new(0b0010),
+				B8::new(0b0100),
+				B8::new(0b1000)
 			]
 		);
 
 		let expected_elements: [u8; 16] = (0..16).collect::<Vec<_>>().try_into().unwrap();
 
 		for (i, &expected) in expected_elements.iter().enumerate() {
-			assert_eq!(reduced.get(i), BinaryField8b::new(expected));
+			assert_eq!(reduced.get(i), B8::new(expected));
 		}
 	}
 
 	#[test]
 	fn test_reduce_dim_invalid() {
-		let subspace = BinarySubspace::<BinaryField8b>::with_dim(4).unwrap();
+		let subspace = BinarySubspace::<B8>::with_dim(4).unwrap();
 		let result = subspace.reduce_dim(6);
 		assert_matches!(result, Err(Error::DomainSizeTooLarge));
 	}
 
 	#[test]
 	fn test_isomorphic_conversion() {
-		let subspace = BinarySubspace::<BinaryField8b>::with_dim(3).unwrap();
-		let iso_subspace: BinarySubspace<BinaryField128b> = subspace.isomorphic();
+		let subspace = BinarySubspace::<B8>::with_dim(3).unwrap();
+		let iso_subspace: BinarySubspace<B128> = subspace.isomorphic();
 		assert_eq!(iso_subspace.dim(), 3);
 		assert_eq!(iso_subspace.basis().len(), 3);
 
 		assert_eq!(
 			iso_subspace.basis(),
 			[
-				BinaryField128b::from(BinaryField8b::new(0b001)),
-				BinaryField128b::from(BinaryField8b::new(0b010)),
-				BinaryField128b::from(BinaryField8b::new(0b100))
+				B128::from(B8::new(0b001)),
+				B128::from(B8::new(0b010)),
+				B128::from(B8::new(0b100)),
 			]
 		);
 	}
 
 	#[test]
 	fn test_get_checked_valid() {
-		let subspace = BinarySubspace::<BinaryField8b>::default();
+		let subspace = BinarySubspace::<B8>::default();
 		for i in 0..256 {
 			assert!(subspace.get_checked(i).is_ok());
 		}
@@ -259,20 +252,20 @@ mod tests {
 
 	#[test]
 	fn test_get_checked_invalid() {
-		let subspace = BinarySubspace::<BinaryField8b>::default();
+		let subspace = BinarySubspace::<B8>::default();
 		assert_matches!(subspace.get_checked(256), Err(Error::ArgumentRangeError { .. }));
 	}
 
 	#[test]
 	fn test_iterate_subspace() {
-		let subspace = BinarySubspace::<BinaryField8b>::with_dim(3).unwrap();
+		let subspace = BinarySubspace::<B8>::with_dim(3).unwrap();
 		let elements: Vec<_> = subspace.iter().collect();
 		assert_eq!(elements.len(), 8);
 
 		let expected_elements: [u8; 8] = [0b000, 0b001, 0b010, 0b011, 0b100, 0b101, 0b110, 0b111];
 
 		for (i, &expected) in expected_elements.iter().enumerate() {
-			assert_eq!(elements[i], BinaryField8b::new(expected));
+			assert_eq!(elements[i], B8::new(expected));
 		}
 	}
 }

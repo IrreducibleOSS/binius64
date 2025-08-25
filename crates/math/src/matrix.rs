@@ -260,17 +260,17 @@ impl<F: Field> SubAssign<&Self> for Matrix<F> {
 
 #[cfg(test)]
 mod tests {
-	use binius_field::BinaryField32b;
 	use proptest::prelude::*;
 	use rand::{SeedableRng, rngs::StdRng};
 
 	use super::*;
+	use crate::test_utils::B128;
+
+	type F = B128;
 
 	proptest! {
 		#[test]
 		fn test_left_linearity(c_m in 0..8usize, c_n in 0..8usize, a_n in 0..8usize) {
-			type F = BinaryField32b;
-
 			let mut rng = StdRng::seed_from_u64(0);
 			let a0 = Matrix::<F>::random(c_m, a_n, &mut rng);
 			let a1 = Matrix::<F>::random(c_m, a_n, &mut rng);
@@ -290,8 +290,6 @@ mod tests {
 
 		#[test]
 		fn test_right_linearity(c_m in 0..8usize, c_n in 0..8usize, a_n in 0..8usize) {
-			type F = BinaryField32b;
-
 			let mut rng = StdRng::seed_from_u64(0);
 			let a = Matrix::<F>::random(c_m, a_n, &mut rng);
 			let b0 = Matrix::<F>::random(a_n, c_n, &mut rng);
@@ -311,8 +309,6 @@ mod tests {
 
 		#[test]
 		fn test_double_inverse(n in 0..8usize) {
-			type F = BinaryField32b;
-
 			let mut rng = StdRng::seed_from_u64(0);
 			let a = Matrix::<F>::random(n, n, &mut rng);
 			let mut a_inv = Matrix::<F>::zeros(n, n);
@@ -325,8 +321,6 @@ mod tests {
 
 		#[test]
 		fn test_inverse(n in 0..8usize) {
-			type F = BinaryField32b;
-
 			let mut rng = StdRng::seed_from_u64(0);
 			let a = Matrix::<F>::random(n, n, &mut rng);
 			let mut a_inv = Matrix::<F>::zeros(n, n);

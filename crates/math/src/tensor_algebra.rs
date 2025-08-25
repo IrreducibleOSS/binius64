@@ -212,15 +212,16 @@ where
 
 #[cfg(test)]
 mod tests {
-	use binius_field::{BinaryField8b, BinaryField128b, Random};
+	use binius_field::{BinaryField1b as B1, Random};
 	use rand::{SeedableRng, rngs::StdRng};
 
 	use super::*;
+	use crate::test_utils::B128;
 
 	#[test]
 	fn test_tensor_product() {
-		type F = BinaryField8b;
-		type FE = BinaryField128b;
+		type F = B1;
+		type FE = B128;
 
 		let mut rng = StdRng::seed_from_u64(0);
 
@@ -233,8 +234,8 @@ mod tests {
 
 	#[test]
 	fn test_try_extract_vertical() {
-		type F = BinaryField8b;
-		type FE = BinaryField128b;
+		type F = B1;
+		type FE = B128;
 
 		let mut rng = StdRng::seed_from_u64(0);
 
@@ -253,7 +254,7 @@ mod tests {
 		assert_eq!(elem.try_extract_vertical(), Some(vert));
 
 		// If we scale horizontally by an F element, we should remain in the vertical subring.
-		let hztl_subfield = FE::from(F::new(7));
+		let hztl_subfield = FE::from(F::ONE);
 		let elem = elem.scale_horizontal(hztl_subfield);
 		assert_eq!(elem.try_extract_vertical(), Some(vert * hztl_subfield));
 	}

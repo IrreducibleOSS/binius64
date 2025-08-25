@@ -254,32 +254,30 @@ pub fn estimate_optimal_arity(
 #[cfg(test)]
 mod tests {
 	use assert_matches::assert_matches;
-	use binius_field::{BinaryField32b, BinaryField128b};
 
 	use super::*;
+	use crate::config::B128;
 
 	#[test]
 	fn test_calculate_n_test_queries() {
 		let security_bits = 96;
 		let rs_code = ReedSolomonCode::new(28, 1).unwrap();
 		let n_test_queries =
-			calculate_n_test_queries::<BinaryField128b, BinaryField32b>(security_bits, &rs_code)
-				.unwrap();
+			calculate_n_test_queries::<B128, B128>(security_bits, &rs_code).unwrap();
 		assert_eq!(n_test_queries, 232);
 
 		let rs_code = ReedSolomonCode::new(28, 2).unwrap();
 		let n_test_queries =
-			calculate_n_test_queries::<BinaryField128b, BinaryField32b>(security_bits, &rs_code)
-				.unwrap();
+			calculate_n_test_queries::<B128, B128>(security_bits, &rs_code).unwrap();
 		assert_eq!(n_test_queries, 143);
 	}
 
 	#[test]
 	fn test_calculate_n_test_queries_unsatisfiable() {
 		let security_bits = 128;
-		let rs_code = ReedSolomonCode::<BinaryField32b>::new(28, 1).unwrap();
+		let rs_code = ReedSolomonCode::<B128>::new(28, 1).unwrap();
 		assert_matches!(
-			calculate_n_test_queries::<BinaryField128b, _>(security_bits, &rs_code),
+			calculate_n_test_queries::<B128, _>(security_bits, &rs_code),
 			Err(Error::ParameterError)
 		);
 	}
