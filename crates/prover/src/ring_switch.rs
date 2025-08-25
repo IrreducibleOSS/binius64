@@ -12,7 +12,10 @@ use binius_field::{
 use binius_math::{
 	FieldBuffer, inner_product::inner_product_subfield, multilinear::eq::eq_ind_partial_eval,
 };
-use binius_utils::{checked_arithmetics::checked_log_2, rayon::prelude::*};
+use binius_utils::{
+	checked_arithmetics::{checked_int_div, checked_log_2},
+	rayon::prelude::*,
+};
 use binius_verifier::config::{B1, B128};
 use itertools::izip;
 
@@ -148,11 +151,18 @@ where
 		})
 		.collect::<Vec<_>>();
 
+	assert_eq!(lookup_tables.len(), checked_int_div(B128::N_BITS, CHUNK_BITS));
+
 	elems.as_mut().par_iter_mut().for_each(|packed_elem| {
 		*packed_elem = P::from_scalars(packed_elem.into_iter().map(|scalar| {
 			let bytes = scalar.val().to_le_bytes();
-			iter::zip(bytes, &lookup_tables)
-				.map(|(byte, lookup_chunk)| lookup_chunk[byte as usize])
+			bytes
+				.into_iter()
+				.enumerate()
+				.map(|(i, byte)| {
+					// Safety: i is in the range 0..16, and byte is in range 0..256
+					unsafe { lookup_tables.get_unchecked(i).get_unchecked(byte as usize) }
+				})
 				.sum()
 		}));
 	});
