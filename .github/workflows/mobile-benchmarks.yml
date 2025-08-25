@@ -38,18 +38,18 @@ jobs:
         run: |
           import json
           import os
-          
+
           pools = "${{ github.event.inputs.device_pools || 'android-samsung-a14,android-samsung-s24-ultra' }}"
           device_list = [p.strip() for p in pools.split(',')]
           matrix = json.dumps({"device-pool": device_list})
-          
+
           print(f"Matrix JSON: {matrix}")
-          
+
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
               f.write(f"matrix={matrix}\n")
 
   build-apk:
-    runs-on: [self-hosted, c7a-4xl-android]
+    runs-on: c7a-4xl-android
 
     steps:
       - uses: actions/checkout@v4

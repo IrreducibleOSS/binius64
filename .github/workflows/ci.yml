@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 concurrency:
@@ -67,13 +67,16 @@ jobs:
   rust-tests:
     name: rust-${{ matrix.test.name }}-${{ matrix.machine.name }}
     runs-on: ${{ matrix.machine.runner }}
+    # Skip draft PRs to save costs, except for Graphite merge queue PRs (branch prefix: gtmq_)
+    # Graphite MQ docs: https://graphite.dev/docs/graphite-merge-queue
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false || startsWith(github.head_ref, 'gtmq_')
     strategy:
       fail-fast: false
       matrix:
         machine:
-          - runner: "r8g-2xlarge"
+          - runner: "m8g-2xlarge"
             name: "arm64"
-          - runner: "r7a-2xlarge"
+          - runner: "m7i-2xlarge"
             name: "x86_64"
         test:
           - name: "test"
