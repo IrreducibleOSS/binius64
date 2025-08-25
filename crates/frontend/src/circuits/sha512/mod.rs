@@ -312,16 +312,10 @@ impl Sha512 {
 				// Otherwise, if it's a padding word (not message, not length), it must be zero.
 				if column_index == 15 {
 					builder.assert_eq_cond(
-						"3c.zero_pad",
-						padded_message_word,
-						zero,
-						builder.band(is_past_message, builder.bnot(is_length_block)),
-					);
-					builder.assert_eq_cond(
 						"3d.w15_len",
 						padded_message_word,
-						bitlen,
-						is_length_block,
+						builder.select(zero, bitlen, is_length_block),
+						is_past_message,
 					);
 				} else {
 					builder.assert_eq_cond(
