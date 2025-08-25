@@ -36,8 +36,8 @@ pub fn shamirs_trick(
 		let pk_mult_bit = b.shl(pk_mult.limbs[limb], (WORD_SIZE_BITS - 1 - bit) as u32);
 
 		// A 3-to-1 mux
-		let x = select(b, &g.x, &select(b, &pk.x, &g_pk.x, g_mult_bit), pk_mult_bit);
-		let y = select(b, &g.y, &select(b, &pk.y, &g_pk.y, g_mult_bit), pk_mult_bit);
+		let x = select(b, pk_mult_bit, &select(b, g_mult_bit, &g_pk.x, &pk.x), &g.x);
+		let y = select(b, pk_mult_bit, &select(b, g_mult_bit, &g_pk.y, &pk.y), &g.y);
 
 		// Point at infinity flag is a single wire, allowing us to save a BigUint select.
 		let is_point_at_infinity = b.band(b.bnot(g_mult_bit), b.bnot(pk_mult_bit));

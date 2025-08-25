@@ -42,7 +42,7 @@ impl BigUint {
 		let limbs = self
 			.limbs
 			.iter()
-			.map(|&limb| b.select(zero, limb, cond))
+			.map(|&limb| b.select(cond, limb, zero))
 			.collect();
 		Self { limbs }
 	}
@@ -159,24 +159,24 @@ pub fn assert_eq_cond(
 ///
 /// # Arguments
 /// * `builder` - Circuit builder for constraint generation
-/// * `a` - First operand `BigUint`
-/// * `b` - Second operand `BigUint` (must have same number of limbs as `a`)
 /// * `cond` - an MSB-boolean
+/// * `t` - Value to select when cond is true (MSB=1)
+/// * `f` - Value to select when cond is false (MSB=0)
 ///
 /// # Return value
-/// Selects `b` if `cond` is true, otherwise selects `a`.
+/// Selects `t` if `cond` is true, otherwise selects `f`.
 ///
 /// # Panics
-/// Panics if `a` and `b` have different number of limbs.
-pub fn select(builder: &CircuitBuilder, a: &BigUint, b: &BigUint, cond: Wire) -> BigUint {
+/// Panics if `t` and `f` have different number of limbs.
+pub fn select(builder: &CircuitBuilder, cond: Wire, t: &BigUint, f: &BigUint) -> BigUint {
 	assert_eq!(
-		a.limbs.len(),
-		b.limbs.len(),
+		t.limbs.len(),
+		f.limbs.len(),
 		"biguint select: inputs must have the same number of limbs"
 	);
 
-	let limbs = iter::zip(&a.limbs, &b.limbs)
-		.map(|(&l1, &l2)| builder.select(l1, l2, cond))
+	let limbs = iter::zip(&t.limbs, &f.limbs)
+		.map(|(&l1, &l2)| builder.select(cond, l1, l2))
 		.collect();
 	BigUint { limbs }
 }

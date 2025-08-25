@@ -314,7 +314,7 @@ impl Sha512 {
 					builder.assert_eq_cond(
 						"3d.w15_len",
 						padded_message_word,
-						builder.select(zero, bitlen, is_length_block),
+						builder.select(is_length_block, bitlen, zero),
 						is_past_message,
 					);
 				} else {

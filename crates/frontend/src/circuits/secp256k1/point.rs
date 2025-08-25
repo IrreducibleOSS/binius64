@@ -40,7 +40,7 @@ impl Secp256k1Affine {
 	/// unchanged.
 	pub fn pai_unless(&self, b: &CircuitBuilder, cond: Wire) -> Secp256k1Affine {
 		let is_point_at_infinity =
-			b.select(b.add_constant(Word::ALL_ONE), self.is_point_at_infinity, cond);
+			b.select(cond, self.is_point_at_infinity, b.add_constant(Word::ALL_ONE));
 		Secp256k1Affine {
 			x: self.x.clone(),
 			y: self.y.clone(),

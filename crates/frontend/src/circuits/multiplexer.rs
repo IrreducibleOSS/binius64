@@ -101,7 +101,7 @@ pub fn single_wire_multiplex(b: &CircuitBuilder, inputs: &[Wire], sel: Wire) -> 
 				if let Ok([lhs, rhs]) = TryInto::<[Wire; 2]>::try_into(pair) {
 					// We have a pair - create a MUX gate
 					// Use the current bit level for selection
-					b.select(lhs, rhs, sel_bit)
+					b.select(sel_bit, rhs, lhs)
 				} else {
 					// Odd wire out - carry it forward to the next level
 					pair[0]
