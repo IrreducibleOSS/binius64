@@ -239,15 +239,12 @@ impl Sha256 {
 
 		let boundary_padded_lo32 = single_wire_multiplex(builder, &padded_evens, w_bd);
 		let boundary_padded_hi32 = single_wire_multiplex(builder, &padded_odds, w_bd);
-		// note that the high (most-significant) halves of these wires could be nonzero.
-		// nothing prevents the prover from doing this. these high halves will be ignored
-		// during the compression gadget, and will eventually be masked off during that gadget.
-		// in order for THIS gadget to be correct and secure, it's only necessary that the low
-		// (least-significant) halves of ALL wires fed into the compression gadget be correct.
-		// this condition is indeed guaranteed vis-à-vis these particular wires (directly below),
-		// as well as with respect to all other wires in `padded_evens` and `padded_odds`.
-		// these happen to be the only wires in `padded_evens` and `padded_odds` which the prover
-		// CAN make the high halves of nonempty; in any case, only the lows matter, as we've said.
+		// manually enforce that high halves of both of these words are empty
+		builder.assert_0("mask boundary lo", builder.shr(boundary_padded_lo32, 32));
+		builder.assert_0("mask boundary hi", builder.shr(boundary_padded_hi32, 32));
+		// this is the only place where we have to explicitly check emptiness of the high halves.
+		// for the other words, we guarantee this indirectly, via the other checks we are running.
+		// this condition in turn is necessary for the Compress gadget to be sound.
 
 		let boundary_message_word =
 			single_wire_multiplex(builder, &([message.as_slice(), &[zero]].concat()), w_bd);
