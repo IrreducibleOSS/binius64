@@ -147,17 +147,6 @@ macro_rules! define_packed_binary_field {
 	};
 }
 
-macro_rules! assert_scalar_matches_canonical {
-	($bin_type:ty) => {{
-		use std::any::TypeId;
-		type PackedFieldScalar = <$bin_type as crate::PackedField>::Scalar;
-		debug_assert_eq!(
-			TypeId::of::<PackedFieldScalar>(),
-			TypeId::of::<<PackedFieldScalar as crate::TowerField>::Canonical>()
-		);
-	}};
-}
-
 macro_rules! impl_serialize_deserialize_for_packed_binary_field {
 	($bin_type:ty) => {
 		impl binius_utils::SerializeBytes for $bin_type {
@@ -165,7 +154,6 @@ macro_rules! impl_serialize_deserialize_for_packed_binary_field {
 				&self,
 				write_buf: impl binius_utils::bytes::BufMut,
 			) -> Result<(), binius_utils::SerializationError> {
-				assert_scalar_matches_canonical!($bin_type);
 				self.0.serialize(write_buf)
 			}
 		}
@@ -174,7 +162,6 @@ macro_rules! impl_serialize_deserialize_for_packed_binary_field {
 			fn deserialize(
 				read_buf: impl binius_utils::bytes::Buf,
 			) -> Result<Self, binius_utils::SerializationError> {
-				assert_scalar_matches_canonical!($bin_type);
 				Ok(Self(
 					binius_utils::DeserializeBytes::deserialize(read_buf)?,
 					std::marker::PhantomData,
@@ -191,7 +178,6 @@ macro_rules! maybe_impl_ops {
 	($name:ident, $other_idx:tt) => {};
 }
 
-pub(crate) use assert_scalar_matches_canonical;
 pub(crate) use define_packed_binary_field;
 pub(crate) use define_packed_binary_fields;
 pub(crate) use impl_broadcast;

@@ -3,8 +3,7 @@
 use std::array;
 
 use binius_field::{
-	BinaryField8b, BinaryField16b, BinaryField32b, BinaryField64b, BinaryField128b,
-	BinaryField128bPolyval, Field, aes_field::AESTowerField8b,
+	BinaryField128bGhash, BinaryField128bPolyval, Field, aes_field::AESTowerField8b,
 };
 use criterion::{
 	BenchmarkGroup, Criterion, criterion_group, criterion_main, measurement::Measurement,
@@ -42,14 +41,8 @@ fn bench_all_fields<Op: FieldOperation>(c: &mut Criterion) {
 	let mut group = c.benchmark_group(Op::NAME);
 	group.throughput(criterion::Throughput::Elements(BATCH_SIZE as _));
 
-	run_bench!(group, BinaryField8b, Op);
-	run_bench!(group, BinaryField16b, Op);
-	run_bench!(group, BinaryField32b, Op);
-	run_bench!(group, BinaryField64b, Op);
-	run_bench!(group, BinaryField128b, Op);
-
 	run_bench!(group, AESTowerField8b, Op);
-
+	run_bench!(group, BinaryField128bGhash, Op);
 	run_bench!(group, BinaryField128bPolyval, Op);
 }
 

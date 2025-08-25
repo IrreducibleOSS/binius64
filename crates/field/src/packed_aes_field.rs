@@ -285,22 +285,11 @@ mod tests {
 
 	use proptest::prelude::*;
 
-	use super::{
-		test_utils::{
-			define_invert_tests, define_multiply_tests, define_square_tests,
-			define_transformation_tests,
-		},
-		*,
+	use super::test_utils::{
+		define_invert_tests, define_multiply_tests, define_square_tests,
+		define_transformation_tests,
 	};
-	use crate::{
-		PackedField,
-		arch::{
-			packed_8::*, packed_16::*, packed_32::*, packed_64::*, packed_128::*, packed_256::*,
-			packed_512::*,
-		},
-		linear_transformation::PackedTransformationFactory,
-		test_utils::implements_transformation_factory,
-	};
+	use crate::{PackedField, linear_transformation::PackedTransformationFactory};
 
 	define_multiply_tests!(Mul::mul, PackedField);
 
@@ -314,36 +303,4 @@ mod tests {
 	impl<T: PackedTransformationFactory<T>> SelfTransformationFactory for T {}
 
 	define_transformation_tests!(SelfTransformationFactory);
-
-	/// Compile-time test to ensure packed fields implement `PackedTransformationFactory`.
-	#[allow(unused)]
-	const fn test_implement_transformation_factory() {
-		// 8 bit packed aes tower
-		implements_transformation_factory::<PackedAESBinaryField1x8b, PackedAESBinaryField1x8b>();
-		implements_transformation_factory::<PackedBinaryField1x8b, PackedAESBinaryField1x8b>();
-
-		// 16 bit packed aes tower
-		implements_transformation_factory::<PackedAESBinaryField2x8b, PackedAESBinaryField2x8b>();
-		implements_transformation_factory::<PackedBinaryField2x8b, PackedAESBinaryField2x8b>();
-
-		// 32 bit packed aes tower
-		implements_transformation_factory::<PackedAESBinaryField4x8b, PackedAESBinaryField4x8b>();
-		implements_transformation_factory::<PackedBinaryField4x8b, PackedAESBinaryField4x8b>();
-
-		// 64 bit packed aes tower
-		implements_transformation_factory::<PackedAESBinaryField8x8b, PackedAESBinaryField8x8b>();
-		implements_transformation_factory::<PackedBinaryField8x8b, PackedAESBinaryField8x8b>();
-
-		// 128 bit packed aes tower
-		implements_transformation_factory::<PackedAESBinaryField16x8b, PackedAESBinaryField16x8b>();
-		implements_transformation_factory::<PackedBinaryField16x8b, PackedAESBinaryField16x8b>();
-
-		// 256 bit packed aes tower
-		implements_transformation_factory::<PackedAESBinaryField32x8b, PackedAESBinaryField32x8b>();
-		implements_transformation_factory::<PackedBinaryField32x8b, PackedAESBinaryField32x8b>();
-
-		// 512 bit packed aes tower
-		implements_transformation_factory::<PackedAESBinaryField64x8b, PackedAESBinaryField64x8b>();
-		implements_transformation_factory::<PackedBinaryField64x8b, PackedAESBinaryField64x8b>();
-	}
 }

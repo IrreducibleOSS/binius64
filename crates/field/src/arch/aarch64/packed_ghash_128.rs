@@ -83,3 +83,6 @@ impl InvertOrZero for PackedBinaryGhash1x128b {
 
 // Define linear transformations
 impl_transformation_with_strategy!(PackedBinaryGhash1x128b, PairwiseStrategy);
+
+// Define (de)serialize
+impl_serialize_deserialize_for_packed_binary_field!(PackedBinaryGhash1x128b);

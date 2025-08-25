@@ -95,14 +95,6 @@ impl TowerFieldArithmetic for BinaryField1b {
 	}
 }
 
-impl_arithmetic_using_packed!(BinaryField2b);
-impl_arithmetic_using_packed!(BinaryField4b);
-impl_arithmetic_using_packed!(BinaryField8b);
-impl_arithmetic_using_packed!(BinaryField16b);
-impl_arithmetic_using_packed!(BinaryField32b);
-impl_arithmetic_using_packed!(BinaryField64b);
-impl_arithmetic_using_packed!(BinaryField128b);
-
 /// For some architectures it may be faster to used SIM versions for packed fields than to use
 /// portable single-element arithmetics. That's why we need these functions
 #[inline]
@@ -124,82 +116,3 @@ pub(super) fn invert_or_zero_using_packed<P: PackedField>(value: P::Scalar) -> P
 pub(super) fn mul_alpha_using_packed<P: PackedField + MulAlpha>(value: P::Scalar) -> P::Scalar {
 	P::set_single(value).mul_alpha().get(0)
 }
-
-// `MulPrimitive` implementation for binary tower
-
-/// Multiply `val` by alpha as a packed field with `smaller_type` scalar
-macro_rules! mul_alpha_as_repacked {
-	($val:ident, $source_type:ty, $smaller_type:ty) => {{
-		use $crate::as_packed_field::AsPackedField;
-
-		let repacked_value = <$source_type as AsPackedField<$smaller_type>>::to_packed($val);
-		<$source_type as AsPackedField<$smaller_type>>::from_packed(
-			$crate::arithmetic_traits::MulAlpha::mul_alpha(repacked_value),
-		)
-	}};
-}
-
-pub(super) use mul_alpha_as_repacked;
-
-macro_rules! impl_mul_primitive {
-	($name:ty, $(mul_by $height_0:literal => $expr:expr,)* $(repack $height_1:literal => $subtype:ty,)*) => {
-		impl $crate::binary_field::MulPrimitive for $name {
-			#[inline]
-			fn mul_primitive(self, iota: usize) -> Result<Self, $crate::Error> {
-				match iota {
-					$($height_0 => Ok(self * $expr),)*
-					$($height_1 => {
-						let result = $crate::binary_field_arithmetic::mul_alpha_as_repacked!(self, $name, $subtype);
-						Ok(result)
-					},)*
-					_ => Err($crate::Error::ExtensionDegreeMismatch),
-				}
-			}
-		}
-	};
-}
-
-pub(super) use impl_mul_primitive;
-
-impl_mul_primitive!(BinaryField2b,
-	repack 0 => BinaryField2b,
-);
-impl_mul_primitive!(BinaryField4b,
-	repack 0 => BinaryField2b,
-	repack 1 => BinaryField4b,
-);
-impl_mul_primitive!(BinaryField8b,
-	repack 0 => BinaryField2b,
-	repack 1 => BinaryField4b,
-	repack 2 => BinaryField8b,
-);
-impl_mul_primitive!(BinaryField16b,
-	repack 0 => BinaryField2b,
-	repack 1 => BinaryField4b,
-	repack 2 => BinaryField8b,
-	repack 3 => BinaryField16b,
-);
-impl_mul_primitive!(BinaryField32b,
-	repack 0 => BinaryField2b,
-	repack 1 => BinaryField4b,
-	repack 2 => BinaryField8b,
-	repack 3 => BinaryField16b,
-	repack 4 => BinaryField32b,
-);
-impl_mul_primitive!(BinaryField64b,
-	repack 0 => BinaryField2b,
-	repack 1 => BinaryField4b,
-	repack 2 => BinaryField8b,
-	repack 3 => BinaryField16b,
-	repack 4 => BinaryField32b,
-	repack 5 => BinaryField64b,
-);
-impl_mul_primitive!(BinaryField128b,
-	repack 0 => BinaryField2b,
-	repack 1 => BinaryField4b,
-	repack 2 => BinaryField8b,
-	repack 3 => BinaryField16b,
-	repack 4 => BinaryField32b,
-	repack 5 => BinaryField64b,
-	repack 6 => BinaryField128b,
-);

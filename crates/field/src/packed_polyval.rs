@@ -141,43 +141,7 @@ mod tests {
 		define_invert_tests, define_multiply_tests, define_square_tests,
 		define_transformation_tests,
 	};
-	use crate::{
-		BinaryField128bPolyval, PackedBinaryField1x128b, PackedBinaryField2x128b,
-		PackedBinaryField4x128b, PackedField,
-		arch::{
-			packed_polyval_128::PackedBinaryPolyval1x128b,
-			packed_polyval_256::PackedBinaryPolyval2x128b,
-			packed_polyval_512::PackedBinaryPolyval4x128b,
-		},
-		linear_transformation::PackedTransformationFactory,
-		test_utils::implements_transformation_factory,
-		underlier::WithUnderlier,
-	};
-
-	fn check_get_set<const WIDTH: usize, PT>(a: [u128; WIDTH], b: [u128; WIDTH])
-	where
-		PT: PackedField<Scalar = BinaryField128bPolyval>
-			+ WithUnderlier<Underlier: From<[u128; WIDTH]>>,
-	{
-		let mut val = PT::from_underlier(a.into());
-		for i in 0..WIDTH {
-			assert_eq!(val.get(i), BinaryField128bPolyval::from(a[i]));
-			val.set(i, BinaryField128bPolyval::from(b[i]));
-			assert_eq!(val.get(i), BinaryField128bPolyval::from(b[i]));
-		}
-	}
-
-	proptest! {
-		#[test]
-		fn test_get_set_256(a in any::<[u128; 2]>(), b in any::<[u128; 2]>()) {
-			check_get_set::<2, PackedBinaryPolyval2x128b>(a, b);
-		}
-
-		#[test]
-		fn test_get_set_512(a in any::<[u128; 4]>(), b in any::<[u128; 4]>()) {
-			check_get_set::<4, PackedBinaryPolyval4x128b>(a, b);
-		}
-	}
+	use crate::{PackedField, linear_transformation::PackedTransformationFactory};
 
 	define_multiply_tests!(Mul::mul, PackedField);
 
@@ -191,20 +155,4 @@ mod tests {
 	impl<T: PackedTransformationFactory<T>> SelfTransformationFactory for T {}
 
 	define_transformation_tests!(SelfTransformationFactory);
-
-	/// Compile-time test to ensure packed fields implement `PackedTransformationFactory`.
-	#[allow(unused)]
-	const fn test_implement_transformation_factory() {
-		// 128 bit packed polyval
-		implements_transformation_factory::<PackedBinaryPolyval1x128b, PackedBinaryPolyval1x128b>();
-		implements_transformation_factory::<PackedBinaryField1x128b, PackedBinaryPolyval1x128b>();
-
-		// 256 bit packed polyval
-		implements_transformation_factory::<PackedBinaryPolyval2x128b, PackedBinaryPolyval2x128b>();
-		implements_transformation_factory::<PackedBinaryField2x128b, PackedBinaryPolyval2x128b>();
-
-		// 512 bit packed polyval
-		implements_transformation_factory::<PackedBinaryPolyval4x128b, PackedBinaryPolyval4x128b>();
-		implements_transformation_factory::<PackedBinaryField4x128b, PackedBinaryPolyval4x128b>();
-	}
 }

@@ -13,6 +13,7 @@ use cfg_if::cfg_if;
 use super::{super::portable::packed::PackedPrimitiveType, m128::M128};
 use crate::{
 	BinaryField128bGhash,
+	arch::portable::packed_macros::impl_serialize_deserialize_for_packed_binary_field,
 	arithmetic_traits::{InvertOrZero, Square},
 	packed::PackedField,
 };
@@ -110,3 +111,6 @@ cfg_if! {
 		);
 	}
 }
+
+// Define (de)serialize
+impl_serialize_deserialize_for_packed_binary_field!(PackedBinaryGhash1x128b);

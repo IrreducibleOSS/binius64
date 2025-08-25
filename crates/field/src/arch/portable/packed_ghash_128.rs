@@ -12,7 +12,10 @@ use super::{
 };
 use crate::{
 	BinaryField128bGhash,
-	arch::PairwiseStrategy,
+	arch::{
+		PairwiseStrategy,
+		portable::packed_macros::impl_serialize_deserialize_for_packed_binary_field,
+	},
 	arithmetic_traits::{InvertOrZero, Square, impl_transformation_with_strategy},
 	packed::PackedField,
 	underlier::WithUnderlier,
@@ -133,6 +136,9 @@ impl Square for PackedBinaryGhash1x128b {
 
 // Implement pairwise strategy for efficient batch operations
 impl_transformation_with_strategy!(PackedBinaryGhash1x128b, PairwiseStrategy);
+
+// Define (de)serialize
+impl_serialize_deserialize_for_packed_binary_field!(PackedBinaryGhash1x128b);
 
 /// Table where `value[i][k][j] = BinaryField128bGhash(j << 4 * k) ^ (2^(2^(i+1)))`
 /// Generated using the `generate_ghash_nibble_pow_2_n_table` test.

@@ -78,9 +78,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		arithmetic_traits::TaggedInvertOrZero,
-		test_utils::{
-			define_invert_tests, define_mul_alpha_tests, define_multiply_tests, define_square_tests,
-		},
+		test_utils::{define_invert_tests, define_multiply_tests, define_square_tests},
 	};
 
 	define_multiply_tests!(
@@ -96,10 +94,5 @@ mod tests {
 	define_invert_tests!(
 		TaggedInvertOrZero<HybridRecursiveStrategy>::invert_or_zero,
 		TaggedInvertOrZero<HybridRecursiveStrategy>
-	);
-
-	define_mul_alpha_tests!(
-		TaggedMulAlpha<HybridRecursiveStrategy>::mul_alpha,
-		TaggedMulAlpha<HybridRecursiveStrategy>
 	);
 }

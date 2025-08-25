@@ -6,7 +6,7 @@ use crate::{
 	arch::{
 		PairwiseStrategy,
 		portable::packed_macros::{
-			assert_scalar_matches_canonical, impl_broadcast, impl_ops_for_zero_height,
+			impl_broadcast, impl_ops_for_zero_height,
 			impl_serialize_deserialize_for_packed_binary_field,
 		},
 	},

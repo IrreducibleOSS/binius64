@@ -2,7 +2,8 @@
 
 pub use crate::arch::{
 	packed_1::*, packed_2::*, packed_4::*, packed_8::*, packed_16::*, packed_32::*, packed_64::*,
-	packed_128::*, packed_256::*, packed_512::*,
+	packed_128::*, packed_256::*, packed_512::*, packed_aes_8::*, packed_aes_16::*,
+	packed_aes_32::*, packed_aes_64::*, packed_aes_128::*, packed_aes_256::*, packed_aes_512::*,
 };
 
 /// Common code to test different multiply, square and invert implementations
@@ -91,6 +92,7 @@ pub mod test_utils {
 			struct TestMult<T>(std::marker::PhantomData<T>);
 
 			impl<T: $constraint + PackedField + $crate::underlier::WithUnderlier> TestMult<T> {
+				#[allow(unused)]
 				fn test_mul(
 					a: <T as $crate::underlier::WithUnderlier>::Underlier,
 					b: <T as $crate::underlier::WithUnderlier>::Underlier,
@@ -121,6 +123,7 @@ pub mod test_utils {
 			struct TestSquare<T>(std::marker::PhantomData<T>);
 
 			impl<T: $constraint + PackedField + $crate::underlier::WithUnderlier> TestSquare<T> {
+				#[allow(unused)]
 				fn test_square(a: <T as $crate::underlier::WithUnderlier>::Underlier) {
 					let a = T::from_underlier(a);
 
@@ -168,37 +171,6 @@ pub mod test_utils {
 	}
 
 	pub(crate) use define_check_packed_inverse;
-
-	macro_rules! define_check_packed_mul_alpha {
-		($mul_alpha_func:path, $constraint:path) => {
-			#[allow(unused)]
-			trait TestMulAlphaTrait<T> {
-				fn test_mul_alpha(_a: T) {}
-			}
-
-			impl<T> TestMulAlphaTrait<$crate::packed_binary_field::test_utils::Unit> for T {}
-
-			struct TestMulAlpha<T>(std::marker::PhantomData<T>);
-
-			impl<T: $constraint + PackedField + $crate::underlier::WithUnderlier> TestMulAlpha<T>
-			where
-				T::Scalar: $crate::arithmetic_traits::MulAlpha,
-			{
-				fn test_mul_alpha(a: <T as $crate::underlier::WithUnderlier>::Underlier) {
-					use $crate::arithmetic_traits::MulAlpha;
-
-					let a = T::from_underlier(a);
-
-					let c = $mul_alpha_func(a);
-					for i in 0..T::WIDTH {
-						assert_eq!(c.get(i), MulAlpha::mul_alpha(a.get(i)));
-					}
-				}
-			}
-		};
-	}
-
-	pub(crate) use define_check_packed_mul_alpha;
 
 	macro_rules! define_check_packed_transformation {
 		($constraint:path) => {
@@ -253,89 +225,70 @@ pub mod test_utils {
 				#[test]
 				fn test_mul_packed_8(a_val in proptest::prelude::any::<u8>(), b_val in proptest::prelude::any::<u8>()) {
 					use $crate::arch::packed_8::*;
+					use $crate::arch::packed_aes_8::*;
 
 					TestMult::<PackedBinaryField8x1b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField4x2b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField2x4b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField1x8b>::test_mul(a_val.into(), b_val.into());
+					TestMult::<PackedAESBinaryField1x8b>::test_mul(a_val.into(), b_val.into());
 				}
 
 				#[test]
 				fn test_mul_packed_16(a_val in proptest::prelude::any::<u16>(), b_val in proptest::prelude::any::<u16>()) {
 					use $crate::arch::packed_16::*;
+					use $crate::arch::packed_aes_16::*;
 
 					TestMult::<PackedBinaryField16x1b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField8x2b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField4x4b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField2x8b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField1x16b>::test_mul(a_val.into(), b_val.into());
+					TestMult::<PackedAESBinaryField2x8b>::test_mul(a_val.into(), b_val.into());
 				}
 
 				#[test]
 				fn test_mul_packed_32(a_val in proptest::prelude::any::<u32>(), b_val in proptest::prelude::any::<u32>()) {
 					use $crate::arch::packed_32::*;
+					use $crate::arch::packed_aes_32::*;
 
 					TestMult::<PackedBinaryField32x1b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField16x2b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField8x4b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField4x8b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField2x16b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField1x32b>::test_mul(a_val.into(), b_val.into());
+					TestMult::<PackedAESBinaryField4x8b>::test_mul(a_val.into(), b_val.into());
 				}
 
 				#[test]
 				fn test_mul_packed_64(a_val in proptest::prelude::any::<u64>(), b_val in proptest::prelude::any::<u64>()) {
 					use $crate::arch::packed_64::*;
+					use $crate::arch::packed_aes_64::*;
 
 					TestMult::<PackedBinaryField64x1b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField32x2b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField16x4b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField8x8b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField4x16b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField2x32b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField1x64b>::test_mul(a_val.into(), b_val.into());
+					TestMult::<PackedAESBinaryField8x8b>::test_mul(a_val.into(), b_val.into());
 				}
 
 				#[test]
 				fn test_mul_packed_128(a_val in proptest::prelude::any::<u128>(), b_val in proptest::prelude::any::<u128>()) {
 					use $crate::arch::packed_128::*;
+					use $crate::arch::packed_aes_128::*;
+					use $crate::arch::packed_ghash_128::*;
 
 					TestMult::<PackedBinaryField128x1b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField64x2b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField32x4b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField16x8b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField8x16b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField4x32b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField2x64b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField1x128b>::test_mul(a_val.into(), b_val.into());
+					TestMult::<PackedAESBinaryField16x8b>::test_mul(a_val.into(), b_val.into());
+					TestMult::<PackedBinaryGhash1x128b>::test_mul(a_val.into(), b_val.into());
 				}
 
 				#[test]
 				fn test_mul_packed_256(a_val in proptest::prelude::any::<[u128; 2]>(), b_val in proptest::prelude::any::<[u128; 2]>()) {
 					use $crate::arch::packed_256::*;
+					use $crate::arch::packed_aes_256::*;
+					use $crate::arch::packed_ghash_256::*;
 
 					TestMult::<PackedBinaryField256x1b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField128x2b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField64x4b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField32x8b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField16x16b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField8x32b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField4x64b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField2x128b>::test_mul(a_val.into(), b_val.into());
+					TestMult::<PackedAESBinaryField32x8b>::test_mul(a_val.into(), b_val.into());
+					TestMult::<PackedBinaryGhash2x128b>::test_mul(a_val.into(), b_val.into());
 				}
 
 				#[test]
 				fn test_mul_packed_512(a_val in proptest::prelude::any::<[u128; 4]>(), b_val in proptest::prelude::any::<[u128; 4]>()) {
 					use $crate::arch::packed_512::*;
+					use $crate::arch::packed_aes_512::*;
+					use $crate::arch::packed_ghash_512::*;
 
 					TestMult::<PackedBinaryField512x1b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField256x2b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField128x4b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField64x8b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField32x16b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField16x32b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField8x64b>::test_mul(a_val.into(), b_val.into());
-					TestMult::<PackedBinaryField4x128b>::test_mul(a_val.into(), b_val.into());
+					TestMult::<PackedAESBinaryField64x8b>::test_mul(a_val.into(), b_val.into());
+					TestMult::<PackedBinaryGhash4x128b>::test_mul(a_val.into(), b_val.into());
 				}
 			}
 		};
@@ -354,89 +307,70 @@ pub mod test_utils {
 				#[test]
 				fn test_square_packed_8(a_val in proptest::prelude::any::<u8>()) {
 					use $crate::arch::packed_8::*;
+					use $crate::arch::packed_aes_8::*;
 
 					TestSquare::<PackedBinaryField8x1b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField4x2b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField2x4b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField1x8b>::test_square(a_val.into());
+					TestSquare::<PackedAESBinaryField1x8b>::test_square(a_val.into());
 				}
 
 				#[test]
 				fn test_square_packed_16(a_val in proptest::prelude::any::<u16>()) {
 					use $crate::arch::packed_16::*;
+					use $crate::arch::packed_aes_16::*;
 
 					TestSquare::<PackedBinaryField16x1b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField8x2b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField4x4b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField2x8b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField1x16b>::test_square(a_val.into());
+					TestSquare::<PackedAESBinaryField2x8b>::test_square(a_val.into());
 				}
 
 				#[test]
 				fn test_square_packed_32(a_val in proptest::prelude::any::<u32>()) {
 					use $crate::arch::packed_32::*;
+					use $crate::arch::packed_aes_32::*;
 
 					TestSquare::<PackedBinaryField32x1b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField16x2b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField8x4b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField4x8b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField2x16b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField1x32b>::test_square(a_val.into());
+					TestSquare::<PackedAESBinaryField4x8b>::test_square(a_val.into());
 				}
 
 				#[test]
 				fn test_square_packed_64(a_val in proptest::prelude::any::<u64>()) {
 					use $crate::arch::packed_64::*;
+					use $crate::arch::packed_aes_64::*;
 
 					TestSquare::<PackedBinaryField64x1b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField32x2b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField16x4b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField8x8b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField4x16b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField2x32b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField1x64b>::test_square(a_val.into());
+					TestSquare::<PackedAESBinaryField8x8b>::test_square(a_val.into());
 				}
 
 				#[test]
 				fn test_square_packed_128(a_val in proptest::prelude::any::<u128>()) {
 					use $crate::arch::packed_128::*;
+					use $crate::arch::packed_aes_128::*;
+					use $crate::arch::packed_ghash_128::*;
 
 					TestSquare::<PackedBinaryField128x1b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField64x2b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField32x4b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField16x8b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField8x16b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField4x32b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField2x64b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField1x128b>::test_square(a_val.into());
+					TestSquare::<PackedAESBinaryField16x8b>::test_square(a_val.into());
+					TestSquare::<PackedBinaryGhash1x128b>::test_square(a_val.into());
 				}
 
 				#[test]
 				fn test_square_packed_256(a_val in proptest::prelude::any::<[u128; 2]>()) {
 					use $crate::arch::packed_256::*;
+					use $crate::arch::packed_aes_256::*;
+					use $crate::arch::packed_ghash_256::*;
 
 					TestSquare::<PackedBinaryField256x1b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField128x2b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField64x4b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField32x8b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField16x16b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField8x32b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField4x64b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField2x128b>::test_square(a_val.into());
+					TestSquare::<PackedAESBinaryField32x8b>::test_square(a_val.into());
+					TestSquare::<PackedBinaryGhash2x128b>::test_square(a_val.into());
 				}
 
 				#[test]
 				fn test_square_packed_512(a_val in proptest::prelude::any::<[u128; 4]>()) {
 					use $crate::arch::packed_512::*;
+					use $crate::arch::packed_aes_512::*;
+					use $crate::arch::packed_ghash_512::*;
 
 					TestSquare::<PackedBinaryField512x1b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField256x2b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField128x4b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField64x8b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField32x16b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField16x32b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField8x64b>::test_square(a_val.into());
-					TestSquare::<PackedBinaryField4x128b>::test_square(a_val.into());
+					TestSquare::<PackedAESBinaryField64x8b>::test_square(a_val.into());
+					TestSquare::<PackedBinaryGhash4x128b>::test_square(a_val.into());
 				}
 			}
 		};
@@ -455,190 +389,70 @@ pub mod test_utils {
 				#[test]
 				fn test_invert_packed_8(a_val in proptest::prelude::any::<u8>()) {
 					use $crate::arch::packed_8::*;
+					use $crate::arch::packed_aes_8::*;
 
 					TestInvert::<PackedBinaryField8x1b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField4x2b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField2x4b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField1x8b>::test_invert(a_val.into());
+					TestInvert::<PackedAESBinaryField1x8b>::test_invert(a_val.into());
 				}
 
 				#[test]
 				fn test_invert_packed_16(a_val in proptest::prelude::any::<u16>()) {
 					use $crate::arch::packed_16::*;
+					use $crate::arch::packed_aes_16::*;
 
 					TestInvert::<PackedBinaryField16x1b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField8x2b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField4x4b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField2x8b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField1x16b>::test_invert(a_val.into());
+					TestInvert::<PackedAESBinaryField2x8b>::test_invert(a_val.into());
 				}
 
 				#[test]
 				fn test_invert_packed_32(a_val in proptest::prelude::any::<u32>()) {
 					use $crate::arch::packed_32::*;
+					use $crate::arch::packed_aes_32::*;
 
 					TestInvert::<PackedBinaryField32x1b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField16x2b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField8x4b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField4x8b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField2x16b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField1x32b>::test_invert(a_val.into());
+					TestInvert::<PackedAESBinaryField4x8b>::test_invert(a_val.into());
 				}
 
 				#[test]
 				fn test_invert_packed_64(a_val in proptest::prelude::any::<u64>()) {
 					use $crate::arch::packed_64::*;
+					use $crate::arch::packed_aes_64::*;
 
 					TestInvert::<PackedBinaryField64x1b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField32x2b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField16x4b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField8x8b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField4x16b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField2x32b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField1x64b>::test_invert(a_val.into());
+					TestInvert::<PackedAESBinaryField8x8b>::test_invert(a_val.into());
 				}
 
 				#[test]
 				fn test_invert_packed_128(a_val in proptest::prelude::any::<u128>()) {
 					use $crate::arch::packed_128::*;
+					use $crate::arch::packed_aes_128::*;
+					use $crate::arch::packed_ghash_128::*;
 
 					TestInvert::<PackedBinaryField128x1b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField64x2b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField32x4b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField16x8b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField8x16b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField4x32b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField2x64b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField1x128b>::test_invert(a_val.into());
+					TestInvert::<PackedAESBinaryField16x8b>::test_invert(a_val.into());
+					TestInvert::<PackedBinaryGhash1x128b>::test_invert(a_val.into());
 				}
 
 				#[test]
 				fn test_invert_packed_256(a_val in proptest::prelude::any::<[u128; 2]>()) {
 					use $crate::arch::packed_256::*;
+					use $crate::arch::packed_aes_256::*;
+					use $crate::arch::packed_ghash_256::*;
 
 					TestInvert::<PackedBinaryField256x1b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField128x2b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField64x4b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField32x8b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField16x16b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField8x32b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField4x64b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField2x128b>::test_invert(a_val.into());
+					TestInvert::<PackedAESBinaryField32x8b>::test_invert(a_val.into());
+					TestInvert::<PackedBinaryGhash2x128b>::test_invert(a_val.into());
 				}
 
 				#[test]
 				fn test_invert_packed_512(a_val in proptest::prelude::any::<[u128; 4]>()) {
 					use $crate::arch::packed_512::*;
+					use $crate::arch::packed_aes_512::*;
+					use $crate::arch::packed_ghash_512::*;
 
 					TestInvert::<PackedBinaryField512x1b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField256x2b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField128x4b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField64x8b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField32x16b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField16x32b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField8x64b>::test_invert(a_val.into());
-					TestInvert::<PackedBinaryField4x128b>::test_invert(a_val.into());
-				}
-			}
-		};
-	}
-
-	/// Test if `mul_alpha_func` operation is a valid multiply by alpha operation on the given value
-	/// for all possible packed fields.
-	macro_rules! define_mul_alpha_tests {
-		($mul_alpha_func:path, $constraint:path) => {
-			$crate::packed_binary_field::test_utils::define_check_packed_mul_alpha!(
-				$mul_alpha_func,
-				$constraint
-			);
-
-			proptest::proptest! {
-				#[test]
-				fn test_mul_alpha_packed_8(a_val in proptest::prelude::any::<u8>()) {
-					use $crate::arch::packed_8::*;
-
-					TestMulAlpha::<PackedBinaryField8x1b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField4x2b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField2x4b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField1x8b>::test_mul_alpha(a_val.into());
-				}
-
-				#[test]
-				fn test_mul_alpha_packed_16(a_val in proptest::prelude::any::<u16>()) {
-					use $crate::arch::packed_16::*;
-
-					TestMulAlpha::<PackedBinaryField16x1b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField8x2b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField4x4b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField2x8b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField1x16b>::test_mul_alpha(a_val.into());
-				}
-
-				#[test]
-				fn test_mul_alpha_packed_32(a_val in proptest::prelude::any::<u32>()) {
-					use $crate::arch::packed_32::*;
-
-					TestMulAlpha::<PackedBinaryField32x1b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField16x2b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField8x4b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField4x8b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField2x16b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField1x32b>::test_mul_alpha(a_val.into());
-				}
-
-				#[test]
-				fn test_mul_alpha_packed_64(a_val in proptest::prelude::any::<u64>()) {
-					use $crate::arch::packed_64::*;
-
-					TestMulAlpha::<PackedBinaryField64x1b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField32x2b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField16x4b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField8x8b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField4x16b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField2x32b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField1x64b>::test_mul_alpha(a_val.into());
-				}
-
-				#[test]
-				fn test_mul_alpha_packed_128(a_val in proptest::prelude::any::<u128>()) {
-					use $crate::arch::packed_128::*;
-
-					TestMulAlpha::<PackedBinaryField128x1b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField64x2b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField32x4b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField16x8b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField8x16b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField4x32b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField2x64b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField1x128b>::test_mul_alpha(a_val.into());
-				}
-
-				#[test]
-				fn test_mul_alpha_packed_256(a_val in proptest::prelude::any::<[u128; 2]>()) {
-					use $crate::arch::packed_256::*;
-
-					TestMulAlpha::<PackedBinaryField256x1b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField128x2b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField64x4b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField32x8b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField16x16b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField8x32b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField4x64b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField2x128b>::test_mul_alpha(a_val.into());
-				}
-
-				#[test]
-				fn test_mul_alpha_packed_512(a_val in proptest::prelude::any::<[u128; 4]>()) {
-					use $crate::arch::packed_512::*;
-
-					TestMulAlpha::<PackedBinaryField512x1b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField256x2b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField128x4b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField64x8b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField32x16b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField16x32b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField8x64b>::test_mul_alpha(a_val.into());
-					TestMulAlpha::<PackedBinaryField4x128b>::test_mul_alpha(a_val.into());
+					TestInvert::<PackedAESBinaryField64x8b>::test_invert(a_val.into());
+					TestInvert::<PackedBinaryGhash4x128b>::test_invert(a_val.into());
 				}
 			}
 		};
@@ -665,7 +479,6 @@ pub mod test_utils {
 					use crate::arch::packed_2::*;
 
 					TestTransformation::<PackedBinaryField2x1b>::test_transformation($crate::underlier::U2::new_unchecked(a_val).into());
-					TestTransformation::<PackedBinaryField1x2b>::test_transformation($crate::underlier::U2::new_unchecked(a_val).into());
 				}
 
 				#[test]
@@ -673,103 +486,81 @@ pub mod test_utils {
 					use crate::arch::packed_4::*;
 
 					TestTransformation::<PackedBinaryField4x1b>::test_transformation($crate::underlier::U4::new_unchecked(a_val).into());
-					TestTransformation::<PackedBinaryField2x2b>::test_transformation($crate::underlier::U4::new_unchecked(a_val).into());
-					TestTransformation::<PackedBinaryField1x4b>::test_transformation($crate::underlier::U4::new_unchecked(a_val).into());
 				}
 
 				#[test]
 				fn test_transformation_packed_8(a_val in proptest::prelude::any::<u8>()) {
 					use crate::arch::packed_8::*;
+					use crate::arch::packed_aes_8::*;
 
 					TestTransformation::<PackedBinaryField8x1b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField4x2b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField2x4b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField1x8b>::test_transformation(a_val.into());
+					TestTransformation::<PackedAESBinaryField1x8b>::test_transformation(a_val.into());
 				}
 
 				#[test]
 				fn test_transformation_packed_16(a_val in proptest::prelude::any::<u16>()) {
 					use crate::arch::packed_16::*;
+					use crate::arch::packed_aes_16::*;
 
 					TestTransformation::<PackedBinaryField16x1b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField8x2b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField4x4b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField2x8b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField1x16b>::test_transformation(a_val.into());
+					TestTransformation::<PackedAESBinaryField2x8b>::test_transformation(a_val.into());
 				}
 
 				#[test]
 				fn test_transformation_packed_32(a_val in proptest::prelude::any::<u32>()) {
 					use crate::arch::packed_32::*;
+					use crate::arch::packed_aes_32::*;
 
 					TestTransformation::<PackedBinaryField32x1b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField16x2b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField8x4b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField4x8b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField2x16b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField1x32b>::test_transformation(a_val.into());
+					TestTransformation::<PackedAESBinaryField4x8b>::test_transformation(a_val.into());
 				}
 
 				#[test]
 				fn test_transformation_packed_64(a_val in proptest::prelude::any::<u64>()) {
 					use $crate::arch::packed_64::*;
+					use $crate::arch::packed_aes_64::*;
 
 					TestTransformation::<PackedBinaryField64x1b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField32x2b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField16x4b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField8x8b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField4x16b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField2x32b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField1x64b>::test_transformation(a_val.into());
+					TestTransformation::<PackedAESBinaryField8x8b>::test_transformation(a_val.into());
 				}
 
 				#[test]
 				fn test_transformation_packed_128(a_val in proptest::prelude::any::<u128>()) {
 					use $crate::arch::packed_128::*;
+					use $crate::arch::packed_aes_128::*;
+					use $crate::arch::packed_ghash_128::*;
 
 					TestTransformation::<PackedBinaryField128x1b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField64x2b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField32x4b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField16x8b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField8x16b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField4x32b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField2x64b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField1x128b>::test_transformation(a_val.into());
+					TestTransformation::<PackedAESBinaryField16x8b>::test_transformation(a_val.into());
+					TestTransformation::<PackedBinaryGhash1x128b>::test_transformation(a_val.into());
 				}
 
 				#[test]
 				fn test_transformation_packed_256(a_val in proptest::prelude::any::<[u128; 2]>()) {
 					use $crate::arch::packed_256::*;
+					use $crate::arch::packed_aes_256::*;
+					use $crate::arch::packed_ghash_256::*;
 
 					TestTransformation::<PackedBinaryField256x1b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField128x2b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField64x4b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField32x8b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField16x16b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField8x32b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField4x64b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField2x128b>::test_transformation(a_val.into());
+					TestTransformation::<PackedAESBinaryField32x8b>::test_transformation(a_val.into());
+					TestTransformation::<PackedBinaryGhash2x128b>::test_transformation(a_val.into());
 				}
 
 				#[test]
 				fn test_transformation_packed_512(a_val in proptest::prelude::any::<[u128; 4]>()) {
 					use $crate::arch::packed_512::*;
+					use $crate::arch::packed_aes_512::*;
+					use $crate::arch::packed_ghash_512::*;
 
 					TestTransformation::<PackedBinaryField512x1b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField256x2b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField128x4b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField64x8b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField32x16b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField16x32b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField8x64b>::test_transformation(a_val.into());
-					TestTransformation::<PackedBinaryField4x128b>::test_transformation(a_val.into());
+					TestTransformation::<PackedAESBinaryField64x8b>::test_transformation(a_val.into());
+					TestTransformation::<PackedBinaryGhash4x128b>::test_transformation(a_val.into());
 				}
 			}
 		};
 	}
 
 	pub(crate) use define_invert_tests;
-	pub(crate) use define_mul_alpha_tests;
 	pub(crate) use define_multiply_tests;
 	pub(crate) use define_square_tests;
 	pub(crate) use define_transformation_tests;
@@ -876,22 +667,18 @@ mod tests {
 	use binius_utils::{DeserializeBytes, SerializeBytes, bytes::BytesMut};
 	use proptest::prelude::*;
 	use rand::prelude::*;
-	use test_utils::{check_interleave_all_heights, implements_transformation_factory};
+	use test_utils::check_interleave_all_heights;
 
 	use super::{
 		test_utils::{
-			define_invert_tests, define_mul_alpha_tests, define_multiply_tests,
-			define_square_tests, define_transformation_tests,
+			define_invert_tests, define_multiply_tests, define_square_tests,
+			define_transformation_tests,
 		},
 		*,
 	};
 	use crate::{
-		PackedField, Random,
-		arch::{
-			packed_aes_16::*, packed_aes_32::*, packed_aes_64::*, packed_aes_128::*,
-			packed_aes_256::*, packed_aes_512::*,
-		},
-		arithmetic_traits::MulAlpha,
+		PackedBinaryGhash1x128b, PackedBinaryGhash2x128b, PackedBinaryGhash4x128b, PackedField,
+		Random,
 		linear_transformation::PackedTransformationFactory,
 		test_utils::check_transpose_all_heights,
 		underlier::{U2, U4},
@@ -946,75 +733,32 @@ mod tests {
 	}
 
 	#[test]
-	fn test_set_then_get_4b() {
-		test_set_then_get::<PackedBinaryField32x4b>();
-		test_set_then_get::<PackedBinaryField64x4b>();
-		test_set_then_get::<PackedBinaryField128x4b>();
-	}
-
-	#[test]
-	fn test_serialize_then_deserialize_4b() {
-		test_serialize_then_deserialize::<PackedBinaryField32x4b>();
-		test_serialize_then_deserialize::<PackedBinaryField64x4b>();
-		test_serialize_then_deserialize::<PackedBinaryField128x4b>();
-		test_serialize_then_deserialize::<PackedBinaryField8x4b>();
-	}
-
-	#[test]
-	fn test_set_then_get_32b() {
-		test_set_then_get::<PackedBinaryField4x32b>();
-		test_set_then_get::<PackedBinaryField8x32b>();
-		test_set_then_get::<PackedBinaryField16x32b>();
-	}
-
-	#[test]
-	fn test_serialize_then_deserialize_32b() {
-		test_serialize_then_deserialize::<PackedBinaryField4x32b>();
-		test_serialize_then_deserialize::<PackedBinaryField8x32b>();
-		test_serialize_then_deserialize::<PackedBinaryField16x32b>();
-	}
-
-	#[test]
-	fn test_set_then_get_64b() {
-		test_set_then_get::<PackedBinaryField2x64b>();
-		test_set_then_get::<PackedBinaryField4x64b>();
-		test_set_then_get::<PackedBinaryField8x64b>();
-	}
-
-	#[test]
-	fn test_serialize_then_deserialize_64b() {
-		test_serialize_then_deserialize::<PackedBinaryField2x64b>();
-		test_serialize_then_deserialize::<PackedBinaryField4x64b>();
-		test_serialize_then_deserialize::<PackedBinaryField8x64b>();
-	}
-
-	#[test]
 	fn test_set_then_get_128b() {
-		test_set_then_get::<PackedBinaryField1x128b>();
-		test_set_then_get::<PackedBinaryField2x128b>();
-		test_set_then_get::<PackedBinaryField4x128b>();
+		test_set_then_get::<PackedBinaryGhash1x128b>();
+		test_set_then_get::<PackedBinaryGhash2x128b>();
+		test_set_then_get::<PackedBinaryGhash4x128b>();
 	}
 
 	#[test]
 	fn test_serialize_then_deserialize_128b() {
-		test_serialize_then_deserialize::<PackedBinaryField1x128b>();
-		test_serialize_then_deserialize::<PackedBinaryField2x128b>();
-		test_serialize_then_deserialize::<PackedBinaryField4x128b>();
+		test_serialize_then_deserialize::<PackedBinaryGhash1x128b>();
+		test_serialize_then_deserialize::<PackedBinaryGhash2x128b>();
+		test_serialize_then_deserialize::<PackedBinaryGhash4x128b>();
 	}
 
 	#[test]
 	fn test_serialize_deserialize_different_packing_width() {
 		let mut rng = StdRng::seed_from_u64(0);
 
-		let packed0 = PackedBinaryField1x128b::random(&mut rng);
-		let packed1 = PackedBinaryField1x128b::random(&mut rng);
+		let packed0 = PackedBinaryGhash1x128b::random(&mut rng);
+		let packed1 = PackedBinaryGhash1x128b::random(&mut rng);
 
 		let mut buffer = BytesMut::new();
 		packed0.serialize(&mut buffer).unwrap();
 		packed1.serialize(&mut buffer).unwrap();
 
 		let mut read_buffer = buffer.freeze();
-		let packed01 = PackedBinaryField2x128b::deserialize(&mut read_buffer).unwrap();
+		let packed01 = PackedBinaryGhash2x128b::deserialize(&mut read_buffer).unwrap();
 
 		assert!(
 			packed01
@@ -1033,27 +777,12 @@ mod tests {
 
 		#[test]
 		fn test_add_packed_16x8b(a_val in any::<u128>(), b_val in any::<u128>()) {
-			test_add_packed::<PackedBinaryField16x8b>(a_val, b_val)
-		}
-
-		#[test]
-		fn test_add_packed_8x16b(a_val in any::<u128>(), b_val in any::<u128>()) {
-			test_add_packed::<PackedBinaryField8x16b>(a_val, b_val)
-		}
-
-		#[test]
-		fn test_add_packed_4x32b(a_val in any::<u128>(), b_val in any::<u128>()) {
-			test_add_packed::<PackedBinaryField4x32b>(a_val, b_val)
-		}
-
-		#[test]
-		fn test_add_packed_2x64b(a_val in any::<u128>(), b_val in any::<u128>()) {
-			test_add_packed::<PackedBinaryField2x64b>(a_val, b_val)
+			test_add_packed::<PackedAESBinaryField16x8b>(a_val, b_val)
 		}
 
 		#[test]
 		fn test_add_packed_1x128b(a_val in any::<u128>(), b_val in any::<u128>()) {
-			test_add_packed::<PackedBinaryField1x128b>(a_val, b_val)
+			test_add_packed::<PackedBinaryGhash1x128b>(a_val, b_val)
 		}
 	}
 
@@ -1064,40 +793,17 @@ mod tests {
 
 	#[test]
 	fn test_mul_packed_32x8b() {
-		test_mul_packed_random::<PackedBinaryField32x8b>()
-	}
-
-	#[test]
-	fn test_mul_packed_16x16b() {
-		test_mul_packed_random::<PackedBinaryField16x16b>()
-	}
-
-	#[test]
-	fn test_mul_packed_8x32b() {
-		test_mul_packed_random::<PackedBinaryField8x32b>()
-	}
-
-	#[test]
-	fn test_mul_packed_4x64b() {
-		test_mul_packed_random::<PackedBinaryField4x64b>()
+		test_mul_packed_random::<PackedAESBinaryField32x8b>()
 	}
 
 	#[test]
 	fn test_mul_packed_2x128b() {
-		test_mul_packed_random::<PackedBinaryField2x128b>()
+		test_mul_packed_random::<PackedBinaryGhash2x128b>()
 	}
 
 	#[test]
 	fn test_iter_size_hint() {
-		assert_valid_iterator_with_exact_size_hint::<crate::BinaryField128b>();
-		assert_valid_iterator_with_exact_size_hint::<crate::BinaryField32b>();
-		assert_valid_iterator_with_exact_size_hint::<crate::BinaryField1b>();
 		assert_valid_iterator_with_exact_size_hint::<PackedBinaryField128x1b>();
-		assert_valid_iterator_with_exact_size_hint::<PackedBinaryField64x2b>();
-		assert_valid_iterator_with_exact_size_hint::<PackedBinaryField32x4b>();
-		assert_valid_iterator_with_exact_size_hint::<PackedBinaryField16x16b>();
-		assert_valid_iterator_with_exact_size_hint::<PackedBinaryField8x32b>();
-		assert_valid_iterator_with_exact_size_hint::<PackedBinaryField4x64b>();
 	}
 
 	fn assert_valid_iterator_with_exact_size_hint<P: PackedField>() {
@@ -1113,8 +819,6 @@ mod tests {
 
 	define_invert_tests!(PackedField::invert_or_zero, PackedField);
 
-	define_mul_alpha_tests!(MulAlpha::mul_alpha, MulAlpha);
-
 	#[allow(unused)]
 	trait SelfTransformationFactory: PackedTransformationFactory<Self> {}
 
@@ -1122,263 +826,117 @@ mod tests {
 
 	define_transformation_tests!(SelfTransformationFactory);
 
-	/// Compile-time test to ensure packed fields implement `PackedTransformationFactory`.
-	#[allow(unused)]
-	const fn test_implement_transformation_factory() {
-		// 1 bit packed binary tower
-		implements_transformation_factory::<PackedBinaryField1x1b, PackedBinaryField1x1b>();
-
-		// 2 bit packed binary tower
-		implements_transformation_factory::<PackedBinaryField2x1b, PackedBinaryField2x1b>();
-		implements_transformation_factory::<PackedBinaryField1x2b, PackedBinaryField1x2b>();
-
-		// 4 bit packed binary tower
-		implements_transformation_factory::<PackedBinaryField4x1b, PackedBinaryField4x1b>();
-		implements_transformation_factory::<PackedBinaryField2x2b, PackedBinaryField2x2b>();
-		implements_transformation_factory::<PackedBinaryField1x4b, PackedBinaryField1x4b>();
-
-		// 8 bit packed binary tower
-		implements_transformation_factory::<PackedBinaryField8x1b, PackedBinaryField8x1b>();
-		implements_transformation_factory::<PackedBinaryField4x2b, PackedBinaryField4x2b>();
-		implements_transformation_factory::<PackedBinaryField2x4b, PackedBinaryField2x4b>();
-		implements_transformation_factory::<PackedBinaryField1x8b, PackedBinaryField1x8b>();
-
-		// 16 bit packed binary tower
-		implements_transformation_factory::<PackedBinaryField16x1b, PackedBinaryField16x1b>();
-		implements_transformation_factory::<PackedBinaryField8x2b, PackedBinaryField8x2b>();
-		implements_transformation_factory::<PackedBinaryField4x4b, PackedBinaryField4x4b>();
-		implements_transformation_factory::<PackedBinaryField2x8b, PackedBinaryField2x8b>();
-		implements_transformation_factory::<PackedAESBinaryField2x8b, PackedBinaryField2x8b>();
-		implements_transformation_factory::<PackedBinaryField1x16b, PackedBinaryField1x16b>();
-
-		// 32 bit packed binary tower
-		implements_transformation_factory::<PackedBinaryField32x1b, PackedBinaryField32x1b>();
-		implements_transformation_factory::<PackedBinaryField16x2b, PackedBinaryField16x2b>();
-		implements_transformation_factory::<PackedBinaryField8x4b, PackedBinaryField8x4b>();
-		implements_transformation_factory::<PackedBinaryField4x8b, PackedBinaryField4x8b>();
-		implements_transformation_factory::<PackedAESBinaryField4x8b, PackedBinaryField4x8b>();
-		implements_transformation_factory::<PackedBinaryField2x16b, PackedBinaryField2x16b>();
-		implements_transformation_factory::<PackedBinaryField1x32b, PackedBinaryField1x32b>();
-
-		// 64 bit packed binary tower
-		implements_transformation_factory::<PackedBinaryField64x1b, PackedBinaryField64x1b>();
-		implements_transformation_factory::<PackedBinaryField32x2b, PackedBinaryField32x2b>();
-		implements_transformation_factory::<PackedBinaryField16x4b, PackedBinaryField16x4b>();
-		implements_transformation_factory::<PackedBinaryField8x8b, PackedBinaryField8x8b>();
-		implements_transformation_factory::<PackedAESBinaryField8x8b, PackedBinaryField8x8b>();
-		implements_transformation_factory::<PackedBinaryField4x16b, PackedBinaryField4x16b>();
-		implements_transformation_factory::<PackedBinaryField2x32b, PackedBinaryField2x32b>();
-		implements_transformation_factory::<PackedBinaryField1x64b, PackedBinaryField1x64b>();
-
-		// 128 bit packed binary tower
-		implements_transformation_factory::<PackedBinaryField128x1b, PackedBinaryField128x1b>();
-		implements_transformation_factory::<PackedBinaryField64x2b, PackedBinaryField64x2b>();
-		implements_transformation_factory::<PackedBinaryField32x4b, PackedBinaryField32x4b>();
-		implements_transformation_factory::<PackedBinaryField16x8b, PackedBinaryField16x8b>();
-		implements_transformation_factory::<PackedAESBinaryField16x8b, PackedBinaryField16x8b>();
-		implements_transformation_factory::<PackedBinaryField8x16b, PackedBinaryField8x16b>();
-		implements_transformation_factory::<PackedBinaryField4x32b, PackedBinaryField4x32b>();
-		implements_transformation_factory::<PackedBinaryField2x64b, PackedBinaryField2x64b>();
-		implements_transformation_factory::<PackedBinaryField1x128b, PackedBinaryField1x128b>();
-
-		// 256 bit packed binary tower
-		implements_transformation_factory::<PackedBinaryField256x1b, PackedBinaryField256x1b>();
-		implements_transformation_factory::<PackedBinaryField128x2b, PackedBinaryField128x2b>();
-		implements_transformation_factory::<PackedBinaryField64x4b, PackedBinaryField64x4b>();
-		implements_transformation_factory::<PackedBinaryField32x8b, PackedBinaryField32x8b>();
-		implements_transformation_factory::<PackedAESBinaryField32x8b, PackedBinaryField32x8b>();
-		implements_transformation_factory::<PackedBinaryField16x16b, PackedBinaryField16x16b>();
-		implements_transformation_factory::<PackedBinaryField8x32b, PackedBinaryField8x32b>();
-		implements_transformation_factory::<PackedBinaryField4x64b, PackedBinaryField4x64b>();
-		implements_transformation_factory::<PackedBinaryField2x128b, PackedBinaryField2x128b>();
-
-		// 512 bit packed binary tower
-		implements_transformation_factory::<PackedBinaryField512x1b, PackedBinaryField512x1b>();
-		implements_transformation_factory::<PackedBinaryField256x2b, PackedBinaryField256x2b>();
-		implements_transformation_factory::<PackedBinaryField128x4b, PackedBinaryField128x4b>();
-		implements_transformation_factory::<PackedBinaryField64x8b, PackedBinaryField64x8b>();
-		implements_transformation_factory::<PackedAESBinaryField64x8b, PackedBinaryField64x8b>();
-		implements_transformation_factory::<PackedBinaryField32x16b, PackedBinaryField32x16b>();
-		implements_transformation_factory::<PackedBinaryField16x32b, PackedBinaryField16x32b>();
-		implements_transformation_factory::<PackedBinaryField8x64b, PackedBinaryField8x64b>();
-		implements_transformation_factory::<PackedBinaryField4x128b, PackedBinaryField4x128b>();
-	}
-
 	proptest! {
 		#[test]
 		fn test_interleave_2b(a_val in 0u8..3, b_val in 0u8..3) {
 			check_interleave_all_heights::<PackedBinaryField2x1b>(U2::new(a_val), U2::new(b_val));
-			check_interleave_all_heights::<PackedBinaryField1x2b>(U2::new(a_val), U2::new(b_val));
 		}
 
 		#[test]
 		fn test_interleave_4b(a_val in 0u8..16, b_val in 0u8..16) {
 			check_interleave_all_heights::<PackedBinaryField4x1b>(U4::new(a_val), U4::new(b_val));
-			check_interleave_all_heights::<PackedBinaryField2x2b>(U4::new(a_val), U4::new(b_val));
-			check_interleave_all_heights::<PackedBinaryField1x4b>(U4::new(a_val), U4::new(b_val));
 		}
 
 		#[test]
 		fn test_interleave_8b(a_val in 0u8.., b_val in 0u8..) {
 			check_interleave_all_heights::<PackedBinaryField8x1b>(a_val, b_val);
-			check_interleave_all_heights::<PackedBinaryField4x2b>(a_val, b_val);
-			check_interleave_all_heights::<PackedBinaryField2x4b>(a_val, b_val);
-			check_interleave_all_heights::<PackedBinaryField1x8b>(a_val, b_val);
+			check_interleave_all_heights::<PackedAESBinaryField1x8b>(a_val, b_val);
 		}
 
 		#[test]
 		fn test_interleave_16b(a_val in 0u16.., b_val in 0u16..) {
 			check_interleave_all_heights::<PackedBinaryField16x1b>(a_val, b_val);
-			check_interleave_all_heights::<PackedBinaryField8x2b>(a_val, b_val);
-			check_interleave_all_heights::<PackedBinaryField4x4b>(a_val, b_val);
-			check_interleave_all_heights::<PackedBinaryField2x8b>(a_val, b_val);
-			check_interleave_all_heights::<PackedBinaryField1x16b>(a_val, b_val);
+			check_interleave_all_heights::<PackedAESBinaryField2x8b>(a_val, b_val);
 		}
 
 		#[test]
 		fn test_interleave_32b(a_val in 0u32.., b_val in 0u32..) {
 			check_interleave_all_heights::<PackedBinaryField32x1b>(a_val, b_val);
-			check_interleave_all_heights::<PackedBinaryField16x2b>(a_val, b_val);
-			check_interleave_all_heights::<PackedBinaryField8x4b>(a_val, b_val);
-			check_interleave_all_heights::<PackedBinaryField4x8b>(a_val, b_val);
-			check_interleave_all_heights::<PackedBinaryField2x16b>(a_val, b_val);
-			check_interleave_all_heights::<PackedBinaryField1x32b>(a_val, b_val);
+			check_interleave_all_heights::<PackedAESBinaryField4x8b>(a_val, b_val);
 		}
 
 		#[test]
 		fn test_interleave_64b(a_val in 0u64.., b_val in 0u64..) {
 			check_interleave_all_heights::<PackedBinaryField64x1b>(a_val, b_val);
-			check_interleave_all_heights::<PackedBinaryField32x2b>(a_val, b_val);
-			check_interleave_all_heights::<PackedBinaryField16x4b>(a_val, b_val);
-			check_interleave_all_heights::<PackedBinaryField8x8b>(a_val, b_val);
-			check_interleave_all_heights::<PackedBinaryField4x16b>(a_val, b_val);
-			check_interleave_all_heights::<PackedBinaryField2x32b>(a_val, b_val);
-			check_interleave_all_heights::<PackedBinaryField1x64b>(a_val, b_val);
+			check_interleave_all_heights::<PackedAESBinaryField8x8b>(a_val, b_val);
 		}
 
 		#[test]
 		#[allow(clippy::useless_conversion)] // this warning depends on the target platform
 		fn test_interleave_128b(a_val in 0u128.., b_val in 0u128..) {
 			check_interleave_all_heights::<PackedBinaryField128x1b>(a_val.into(), b_val.into());
-			check_interleave_all_heights::<PackedBinaryField64x2b>(a_val.into(), b_val.into());
-			check_interleave_all_heights::<PackedBinaryField32x4b>(a_val.into(), b_val.into());
-			check_interleave_all_heights::<PackedBinaryField16x8b>(a_val.into(), b_val.into());
-			check_interleave_all_heights::<PackedBinaryField8x16b>(a_val.into(), b_val.into());
-			check_interleave_all_heights::<PackedBinaryField4x32b>(a_val.into(), b_val.into());
-			check_interleave_all_heights::<PackedBinaryField2x64b>(a_val.into(), b_val.into());
-			check_interleave_all_heights::<PackedBinaryField1x128b>(a_val.into(), b_val.into());
+			check_interleave_all_heights::<PackedAESBinaryField16x8b>(a_val.into(), b_val.into());
+			check_interleave_all_heights::<PackedBinaryGhash1x128b>(a_val.into(), b_val.into());
 		}
 
 		#[test]
 		fn test_interleave_256b(a_val in any::<[u128; 2]>(), b_val in any::<[u128; 2]>()) {
 			check_interleave_all_heights::<PackedBinaryField256x1b>(a_val.into(), b_val.into());
-			check_interleave_all_heights::<PackedBinaryField128x2b>(a_val.into(), b_val.into());
-			check_interleave_all_heights::<PackedBinaryField64x4b>(a_val.into(), b_val.into());
-			check_interleave_all_heights::<PackedBinaryField32x8b>(a_val.into(), b_val.into());
-			check_interleave_all_heights::<PackedBinaryField16x16b>(a_val.into(), b_val.into());
-			check_interleave_all_heights::<PackedBinaryField8x32b>(a_val.into(), b_val.into());
-			check_interleave_all_heights::<PackedBinaryField4x64b>(a_val.into(), b_val.into());
-			check_interleave_all_heights::<PackedBinaryField2x128b>(a_val.into(), b_val.into());
+			check_interleave_all_heights::<PackedAESBinaryField32x8b>(a_val.into(), b_val.into());
+			check_interleave_all_heights::<PackedBinaryGhash2x128b>(a_val.into(), b_val.into());
 		}
 
 		#[test]
 		fn test_interleave_512b(a_val in any::<[u128; 4]>(), b_val in any::<[u128; 4]>()) {
 			check_interleave_all_heights::<PackedBinaryField512x1b>(a_val.into(), b_val.into());
-			check_interleave_all_heights::<PackedBinaryField256x2b>(a_val.into(), b_val.into());
-			check_interleave_all_heights::<PackedBinaryField128x4b>(a_val.into(), b_val.into());
-			check_interleave_all_heights::<PackedBinaryField64x8b>(a_val.into(), b_val.into());
-			check_interleave_all_heights::<PackedBinaryField32x16b>(a_val.into(), b_val.into());
-			check_interleave_all_heights::<PackedBinaryField16x32b>(a_val.into(), b_val.into());
-			check_interleave_all_heights::<PackedBinaryField8x64b>(a_val.into(), b_val.into());
-			check_interleave_all_heights::<PackedBinaryField4x128b>(a_val.into(), b_val.into());
+			check_interleave_all_heights::<PackedAESBinaryField64x8b>(a_val.into(), b_val.into());
+			check_interleave_all_heights::<PackedBinaryGhash4x128b>(a_val.into(), b_val.into());
 		}
 
 		#[test]
 		fn check_transpose_2b(a_val in 0u8..3, b_val in 0u8..3) {
 			check_transpose_all_heights::<PackedBinaryField2x1b>(U2::new(a_val), U2::new(b_val));
-			check_transpose_all_heights::<PackedBinaryField1x2b>(U2::new(a_val), U2::new(b_val));
 		}
 
 		#[test]
 		fn check_transpose_4b(a_val in 0u8..16, b_val in 0u8..16) {
 			check_transpose_all_heights::<PackedBinaryField4x1b>(U4::new(a_val), U4::new(b_val));
-			check_transpose_all_heights::<PackedBinaryField2x2b>(U4::new(a_val), U4::new(b_val));
-			check_transpose_all_heights::<PackedBinaryField1x4b>(U4::new(a_val), U4::new(b_val));
 		}
 
 		#[test]
 		fn check_transpose_8b(a_val in 0u8.., b_val in 0u8..) {
 			check_transpose_all_heights::<PackedBinaryField8x1b>(a_val, b_val);
-			check_transpose_all_heights::<PackedBinaryField4x2b>(a_val, b_val);
-			check_transpose_all_heights::<PackedBinaryField2x4b>(a_val, b_val);
-			check_transpose_all_heights::<PackedBinaryField1x8b>(a_val, b_val);
+			check_transpose_all_heights::<PackedAESBinaryField1x8b>(a_val, b_val);
 		}
 
 		#[test]
 		fn check_transpose_16b(a_val in 0u16.., b_val in 0u16..) {
 			check_transpose_all_heights::<PackedBinaryField16x1b>(a_val, b_val);
-			check_transpose_all_heights::<PackedBinaryField8x2b>(a_val, b_val);
-			check_transpose_all_heights::<PackedBinaryField4x4b>(a_val, b_val);
-			check_transpose_all_heights::<PackedBinaryField2x8b>(a_val, b_val);
-			check_transpose_all_heights::<PackedBinaryField1x16b>(a_val, b_val);
+			check_transpose_all_heights::<PackedAESBinaryField2x8b>(a_val, b_val);
 		}
 
 		#[test]
 		fn check_transpose_32b(a_val in 0u32.., b_val in 0u32..) {
 			check_transpose_all_heights::<PackedBinaryField32x1b>(a_val, b_val);
-			check_transpose_all_heights::<PackedBinaryField16x2b>(a_val, b_val);
-			check_transpose_all_heights::<PackedBinaryField8x4b>(a_val, b_val);
-			check_transpose_all_heights::<PackedBinaryField4x8b>(a_val, b_val);
-			check_transpose_all_heights::<PackedBinaryField2x16b>(a_val, b_val);
-			check_transpose_all_heights::<PackedBinaryField1x32b>(a_val, b_val);
+			check_transpose_all_heights::<PackedAESBinaryField4x8b>(a_val, b_val);
 		}
 
 		#[test]
 		fn check_transpose_64b(a_val in 0u64.., b_val in 0u64..) {
 			check_transpose_all_heights::<PackedBinaryField64x1b>(a_val, b_val);
-			check_transpose_all_heights::<PackedBinaryField32x2b>(a_val, b_val);
-			check_transpose_all_heights::<PackedBinaryField16x4b>(a_val, b_val);
-			check_transpose_all_heights::<PackedBinaryField8x8b>(a_val, b_val);
-			check_transpose_all_heights::<PackedBinaryField4x16b>(a_val, b_val);
-			check_transpose_all_heights::<PackedBinaryField2x32b>(a_val, b_val);
-			check_transpose_all_heights::<PackedBinaryField1x64b>(a_val, b_val);
+			check_transpose_all_heights::<PackedAESBinaryField8x8b>(a_val, b_val);
 		}
 
 		#[test]
 		#[allow(clippy::useless_conversion)] // this warning depends on the target platform
 		fn check_transpose_128b(a_val in 0u128.., b_val in 0u128..) {
 			check_transpose_all_heights::<PackedBinaryField128x1b>(a_val.into(), b_val.into());
-			check_transpose_all_heights::<PackedBinaryField64x2b>(a_val.into(), b_val.into());
-			check_transpose_all_heights::<PackedBinaryField32x4b>(a_val.into(), b_val.into());
-			check_transpose_all_heights::<PackedBinaryField16x8b>(a_val.into(), b_val.into());
-			check_transpose_all_heights::<PackedBinaryField8x16b>(a_val.into(), b_val.into());
-			check_transpose_all_heights::<PackedBinaryField4x32b>(a_val.into(), b_val.into());
-			check_transpose_all_heights::<PackedBinaryField2x64b>(a_val.into(), b_val.into());
-			check_transpose_all_heights::<PackedBinaryField1x128b>(a_val.into(), b_val.into());
+			check_transpose_all_heights::<PackedAESBinaryField16x8b>(a_val.into(), b_val.into());
+			check_transpose_all_heights::<PackedBinaryGhash1x128b>(a_val.into(), b_val.into());
 		}
 
 		#[test]
 		fn check_transpose_256b(a_val in any::<[u128; 2]>(), b_val in any::<[u128; 2]>()) {
 			check_transpose_all_heights::<PackedBinaryField256x1b>(a_val.into(), b_val.into());
-			check_transpose_all_heights::<PackedBinaryField128x2b>(a_val.into(), b_val.into());
-			check_transpose_all_heights::<PackedBinaryField64x4b>(a_val.into(), b_val.into());
-			check_transpose_all_heights::<PackedBinaryField32x8b>(a_val.into(), b_val.into());
-			check_transpose_all_heights::<PackedBinaryField16x16b>(a_val.into(), b_val.into());
-			check_transpose_all_heights::<PackedBinaryField8x32b>(a_val.into(), b_val.into());
-			check_transpose_all_heights::<PackedBinaryField4x64b>(a_val.into(), b_val.into());
-			check_transpose_all_heights::<PackedBinaryField2x128b>(a_val.into(), b_val.into());
+			check_transpose_all_heights::<PackedAESBinaryField32x8b>(a_val.into(), b_val.into());
+			check_transpose_all_heights::<PackedBinaryGhash2x128b>(a_val.into(), b_val.into());
 		}
 
 		#[test]
 		fn check_transpose_512b(a_val in any::<[u128; 4]>(), b_val in any::<[u128; 4]>()) {
 			check_transpose_all_heights::<PackedBinaryField512x1b>(a_val.into(), b_val.into());
-			check_transpose_all_heights::<PackedBinaryField256x2b>(a_val.into(), b_val.into());
-			check_transpose_all_heights::<PackedBinaryField128x4b>(a_val.into(), b_val.into());
-			check_transpose_all_heights::<PackedBinaryField64x8b>(a_val.into(), b_val.into());
-			check_transpose_all_heights::<PackedBinaryField32x16b>(a_val.into(), b_val.into());
-			check_transpose_all_heights::<PackedBinaryField16x32b>(a_val.into(), b_val.into());
-			check_transpose_all_heights::<PackedBinaryField8x64b>(a_val.into(), b_val.into());
-			check_transpose_all_heights::<PackedBinaryField4x128b>(a_val.into(), b_val.into());
+			check_transpose_all_heights::<PackedAESBinaryField64x8b>(a_val.into(), b_val.into());
+			check_transpose_all_heights::<PackedBinaryGhash4x128b>(a_val.into(), b_val.into());
 		}
 	}
 }

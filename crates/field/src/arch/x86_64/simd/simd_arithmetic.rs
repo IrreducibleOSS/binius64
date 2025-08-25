@@ -3,7 +3,7 @@
 use std::{any::TypeId, arch::x86_64::*};
 
 use crate::{
-	BinaryField, BinaryField8b, PackedField, TowerField,
+	BinaryField, PackedField, TowerField,
 	aes_field::AESTowerField8b,
 	arch::{
 		SimdStrategy,
@@ -96,9 +96,7 @@ pub trait TowerSimdType: Sized + Copy + UnderlierWithBitOps {
 				3 => {
 					// Compiler will optimize this if out for each instantiation
 					let type_id = TypeId::of::<Scalar>();
-					let value = if type_id == TypeId::of::<BinaryField8b>() {
-						0x10
-					} else if type_id == TypeId::of::<AESTowerField8b>() {
+					let value = if type_id == TypeId::of::<AESTowerField8b>() {
 						0xd3u8 as i8
 					} else {
 						panic!("tower field not supported")
@@ -362,7 +360,7 @@ where
 mod tests {
 	use super::*;
 	use crate::test_utils::{
-		define_invert_tests, define_mul_alpha_tests, define_multiply_tests, define_square_tests,
+		define_invert_tests, define_multiply_tests, define_square_tests,
 		define_transformation_tests,
 	};
 
@@ -374,8 +372,6 @@ mod tests {
 		TaggedInvertOrZero<SimdStrategy>::invert_or_zero,
 		TaggedInvertOrZero<SimdStrategy>
 	);
-
-	define_mul_alpha_tests!(TaggedMulAlpha<SimdStrategy>::mul_alpha, TaggedMulAlpha<SimdStrategy>);
 
 	#[allow(unused)]
 	trait SelfPackedTransformationFactory:

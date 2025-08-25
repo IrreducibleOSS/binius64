@@ -41,30 +41,18 @@ fn packed_128(c: &mut Criterion) {
 	let mut group = c.benchmark_group("packed_128");
 
 	benchmark_from_fn!(PackedBinaryField128x1b, group);
-	benchmark_from_fn!(PackedBinaryField16x8b, group);
-	benchmark_from_fn!(PackedBinaryField4x32b, group);
-	benchmark_from_fn!(PackedBinaryField2x64b, group);
-	benchmark_from_fn!(PackedBinaryField1x128b, group);
 }
 
 fn packed_256(c: &mut Criterion) {
 	let mut group = c.benchmark_group("packed_256");
 
 	benchmark_from_fn!(PackedBinaryField256x1b, group);
-	benchmark_from_fn!(PackedBinaryField32x8b, group);
-	benchmark_from_fn!(PackedBinaryField8x32b, group);
-	benchmark_from_fn!(PackedBinaryField4x64b, group);
-	benchmark_from_fn!(PackedBinaryField2x128b, group);
 }
 
 fn packed_512(c: &mut Criterion) {
 	let mut group = c.benchmark_group("packed_512");
 
 	benchmark_from_fn!(PackedBinaryField512x1b, group);
-	benchmark_from_fn!(PackedBinaryField64x8b, group);
-	benchmark_from_fn!(PackedBinaryField16x32b, group);
-	benchmark_from_fn!(PackedBinaryField8x64b, group);
-	benchmark_from_fn!(PackedBinaryField4x128b, group);
 }
 
 criterion_group!(initialization, packed_128, packed_256, packed_512);

@@ -22,7 +22,7 @@ use rand::{
 
 use super::{
 	arithmetic_traits::InvertOrZero,
-	binary_field::{BinaryField, BinaryField1b, BinaryField128b, TowerField},
+	binary_field::{BinaryField, BinaryField1b, TowerField},
 	error::Error,
 	extension::ExtensionField,
 	underlier::WithUnderlier,
@@ -34,7 +34,7 @@ use crate::{
 	binary_field_arithmetic::{
 		invert_or_zero_using_packed, multiple_using_packed, square_using_packed,
 	},
-	linear_transformation::{FieldLinearTransformation, Transformation},
+	linear_transformation::FieldLinearTransformation,
 	transpose::square_transforms_extension_field,
 	underlier::{IterationMethods, IterationStrategy, NumCast, U1, UnderlierWithBitOps},
 };
@@ -483,7 +483,7 @@ impl BinaryField for BinaryField128bPolyval {
 }
 
 impl TowerField for BinaryField128bPolyval {
-	type Canonical = BinaryField128b;
+	type Canonical = BinaryField128bPolyval;
 
 	fn min_tower_level(self) -> usize {
 		match self {
@@ -630,150 +630,6 @@ pub const BINARY_TO_POLYVAL_TRANSFORMATION: FieldLinearTransformation<BinaryFiel
 		BinaryField128bPolyval(0x8749050496dd288244c49c70aa92831f),
 		BinaryField128bPolyval(0x0fc80b1d600406b2370368d94947961a),
 	]);
-
-impl From<BinaryField128b> for BinaryField128bPolyval {
-	fn from(value: BinaryField128b) -> Self {
-		BINARY_TO_POLYVAL_TRANSFORMATION.transform(&value)
-	}
-}
-
-pub const POLYVAL_TO_BINARY_TRANSFORMATION: FieldLinearTransformation<BinaryField128b> =
-	FieldLinearTransformation::new_const(&[
-		BinaryField128b(0x66e1d645d7eb87dca8fc4d30a32dadcc),
-		BinaryField128b(0x53ca87ba77172fd8c5675d78c59c1901),
-		BinaryField128b(0x1a9cf63d31827dcda15acb755a948567),
-		BinaryField128b(0xa8f28bdf6d29cee2474b0401a99f6c0a),
-		BinaryField128b(0x4eefa9efe87ed19c06b39ca9799c8d73),
-		BinaryField128b(0x06ec578f505abf1e9885a6b2bc494f3e),
-		BinaryField128b(0x70ecdfe1f601f8509a96d3fb9cd3348a),
-		BinaryField128b(0xcb0d16fc7f13733deb25f618fc3faf28),
-		BinaryField128b(0x4e9a97aa2c84139ffcb578115fcbef3c),
-		BinaryField128b(0xc6de6210afe8c6bd9a441bffe19219ad),
-		BinaryField128b(0x73e3e8a7c59748601be5bf1e30c488d3),
-		BinaryField128b(0x1f6d67e2e64bd6c4b39e7f4bb37dce9c),
-		BinaryField128b(0xc34135d567eada885f5095b4c155f3b5),
-		BinaryField128b(0x23f165958d59a55e4790b8e2e37330e4),
-		BinaryField128b(0x4f2be978f16908e405b88802add08d17),
-		BinaryField128b(0x6442b00f5bbf4009907936513c3a7d45),
-		BinaryField128b(0xac63f0397d911a7a5d61b9f18137026f),
-		BinaryField128b(0x8e70543ae0e43313edf07cbc6698e144),
-		BinaryField128b(0xcb417a646d59f652aa5a07984066d026),
-		BinaryField128b(0xf028de8dd616318735bd8f76de7bb84e),
-		BinaryField128b(0x2e03a12472d21599f15b4bcaa9bf186c),
-		BinaryField128b(0x54a376cc03e5b2cfa27d8e48d1b9ca76),
-		BinaryField128b(0xd22894c253031b1b201b87da07cb58ae),
-		BinaryField128b(0x6bc1416afea6308ff77d902dd5d2a563),
-		BinaryField128b(0x9958ecd28adbebf850055f8ac3095121),
-		BinaryField128b(0x595a1b37062233d7e6bb6f54c227fb91),
-		BinaryField128b(0x41ffcfcdda4583c4f671558ee315d809),
-		BinaryField128b(0x780c2490f3e5cb4763e982ec4b3e6ea2),
-		BinaryField128b(0xf7a450b35931fa76722a6b9037b6db34),
-		BinaryField128b(0xe21991100e84821328592772430ad07e),
-		BinaryField128b(0x360d4079f62863cc60c65ec87d6f9277),
-		BinaryField128b(0xd898bfa0b076cc4eaca590e7a60dbe92),
-		BinaryField128b(0xcaacddd5e114fe5c2e1647fc34b549bf),
-		BinaryField128b(0x3042e34911c28e90617776ddb2d3f888),
-		BinaryField128b(0x3728a3b0da53cdfecfd8455b13cb9b14),
-		BinaryField128b(0x2f2eb3d5bc7b2c48a7c643bffbddc6b2),
-		BinaryField128b(0x3b71a5c04010c0aa501b04302706b908),
-		BinaryField128b(0x0701845b090e79bb9be54df766e48c51),
-		BinaryField128b(0x1e9eac7bf45b14c8db06fcfff7408f78),
-		BinaryField128b(0x6b1b8e39a339423d0eb3bef69eee8b0b),
-		BinaryField128b(0x8b06616385967df95d3a99cff1edcf0a),
-		BinaryField128b(0x5d921137890a3ded58e1dd1a51fe6a30),
-		BinaryField128b(0x828ed6fba42805b2628b705d38121acc),
-		BinaryField128b(0x9b7a95220e9d5b0ff70ecb6116cabd81),
-		BinaryField128b(0x0eb9055cb11711ed047f136cab751c88),
-		BinaryField128b(0xd6f590777c17a6d0ca451290f7d5c78a),
-		BinaryField128b(0x401a922a6461fbe691f910cb0893e71f),
-		BinaryField128b(0x15a549308bc53902c927ebad9ed253f7),
-		BinaryField128b(0x45dccafc72a584480f340a43f11a1b84),
-		BinaryField128b(0x19d2a2c057d60656e6d3e20451335d5b),
-		BinaryField128b(0x035af143a5827a0f99197c8b9a811454),
-		BinaryField128b(0x7ee35d174ad7cc692191fd0e013f163a),
-		BinaryField128b(0xc4c0401d841f965c9599fac8831effa9),
-		BinaryField128b(0x63e809a843fc04f84acfca3fc5630691),
-		BinaryField128b(0xdb2f3301594e3de49fb7d78e2d6643c4),
-		BinaryField128b(0x1b31772535984ef93d709319cc130a7c),
-		BinaryField128b(0x036dc9c884cd6d6c918071b62a0593f3),
-		BinaryField128b(0x4700cd0e81c88045132360b078027103),
-		BinaryField128b(0xdfa3f35eb236ea63b0350e17ed2d625d),
-		BinaryField128b(0xf0fd7c7760099f1ac28be91822978e15),
-		BinaryField128b(0x852a1eba3ad160e95034e9eed1f21205),
-		BinaryField128b(0x4a07dd461892df45ca9efee1701763c3),
-		BinaryField128b(0xadbbaa0add4c82fe85fd61b42f707384),
-		BinaryField128b(0x5c63d0673f33c0f2c231db13f0e15600),
-		BinaryField128b(0x24ddc1516501135626e0e794dd4b3076),
-		BinaryField128b(0xb60c601bbf72924e38afd02d201fb05b),
-		BinaryField128b(0x2ef68918f416caca84334bcf70649aeb),
-		BinaryField128b(0x0b72a3124c504bcad815534c707343f2),
-		BinaryField128b(0xcfd8b2076040c43d5d396f8523d80fe0),
-		BinaryField128b(0x098d9daf64154a63504192bb27cc65e1),
-		BinaryField128b(0x3ae44070642e6720283621f8fb6a6704),
-		BinaryField128b(0x19cd9b2843d0ff936bfe2b373f47fd05),
-		BinaryField128b(0x451e2e4159c78e65db10450431d26122),
-		BinaryField128b(0x797b753e29b9d0e9423b36807c70f3ae),
-		BinaryField128b(0xa8d0e8ba9bb634f6ea30600915664e22),
-		BinaryField128b(0xdf8c74bbd66f86809c504cb944475b0a),
-		BinaryField128b(0x32831a457ced3a417a5a94d498128018),
-		BinaryField128b(0x1aca728985936a6147119b9b5f00350e),
-		BinaryField128b(0x6f436d64b4ee1a556b66764ed05bb1db),
-		BinaryField128b(0x25930eaed3fd982915e483cb21e5a1a2),
-		BinaryField128b(0x21735f5eb346e56006bf1d7e151780ab),
-		BinaryField128b(0x55fc6f607f10e17f805eb16d7bd5345c),
-		BinaryField128b(0x4b4d289591f878114965292af4aeb57e),
-		BinaryField128b(0x30608bc7444bcbaff67998c1883c1cf3),
-		BinaryField128b(0xa12a72abe4152e4a657c6e6395404343),
-		BinaryField128b(0x7579186d4e0959dec73f9cd68fb0e2fb),
-		BinaryField128b(0xb5560ce63f7894cc965c822892b7bfda),
-		BinaryField128b(0x6b06d7165072861eba63d9fd645995d7),
-		BinaryField128b(0x359f439f5ec9107dde3c8ef8f9bf4e29),
-		BinaryField128b(0xcbfe7985c6006a46105821cd8b55b06b),
-		BinaryField128b(0x2110b3b51f5397ef1129fb9076474061),
-		BinaryField128b(0x1928478b6f3275c944c33b275c388c47),
-		BinaryField128b(0x23f978e6a0a54802437111aa4652421a),
-		BinaryField128b(0xe8c526bf924dc5cd1dd32dbedd310f5b),
-		BinaryField128b(0xa0ac29f901f79ed5f43c73d22a05c8e4),
-		BinaryField128b(0x55e0871c6e97408f47f4635b747145ea),
-		BinaryField128b(0x6c2114c3381f53667d3c2dfefd1ebcb3),
-		BinaryField128b(0x42d23c18722fbd58863c3aceaaa3eef7),
-		BinaryField128b(0xbb0821ab38d5de133838f8408a72fdf1),
-		BinaryField128b(0x035d7239054762b131fa387773bb9153),
-		BinaryField128b(0x8fa898aafe8b154f9ab652e8979139e7),
-		BinaryField128b(0x6a383e5cd4a16923c658193f16cb726c),
-		BinaryField128b(0x9948caa8c6cefb0182022f32ae3f68b9),
-		BinaryField128b(0x8d2a8decf9855bd4df7bac577ed73b44),
-		BinaryField128b(0x09c7b8300f0f984259d548c5aa959879),
-		BinaryField128b(0x92e16d2d24e070efdca8b8e134047afc),
-		BinaryField128b(0x47d8621457f4118aaf24877fb5031512),
-		BinaryField128b(0x25576941a55f0a0c19583a966a85667f),
-		BinaryField128b(0xb113cad79cd35f2e83fda3bc6285a8dc),
-		BinaryField128b(0xc76968eecb2748d0c3e6318431ffe580),
-		BinaryField128b(0x7211122aa7e7f6fe39e6618395b68416),
-		BinaryField128b(0x88463599bf7d3e92f450d00a45146d11),
-		BinaryField128b(0x6e12b7d5adf95da33bbb7f79a18ee123),
-		BinaryField128b(0xe0a98ac4025bc568eaca7e7b7280ff16),
-		BinaryField128b(0xc13fc79f6c35048df274057ac892ff77),
-		BinaryField128b(0x93c1a3145d4e47dee39cae4de47eb505),
-		BinaryField128b(0x780064be3036df98f1e5d7c53bdbd52b),
-		BinaryField128b(0x48c467b5cec265628b709172ecaff561),
-		BinaryField128b(0x5bbbab77ce5552ff7682094560524a7e),
-		BinaryField128b(0x551537ef6048831fb128fec4e4a23a63),
-		BinaryField128b(0xe7ef397fcc095ead439317a13568b284),
-		BinaryField128b(0xbc5d2927eac0a720f9d75d62d92c6332),
-		BinaryField128b(0x3bfeb420021f93e9b2bc992b5b59e61e),
-		BinaryField128b(0xc651dc438e2f1bc64af1b7307b574ed9),
-		BinaryField128b(0xbfe0a17ee2b777542a1ddb55413a4e43),
-		BinaryField128b(0xa062da2427df3d1a7dfc01c05d732a32),
-		BinaryField128b(0x1e4889fd72b70ecf93417ba0b085e1e8),
-		BinaryField128b(0xc4f4769f4f9c2e33c26a6bf2ca842f17),
-	]);
-
-impl From<BinaryField128bPolyval> for BinaryField128b {
-	fn from(value: BinaryField128bPolyval) -> Self {
-		POLYVAL_TO_BINARY_TRANSFORMATION.transform(&value)
-	}
-}
 
 pub const AES_TO_POLYVAL_TRANSFORMATION: FieldLinearTransformation<BinaryField128bPolyval> =
 	FieldLinearTransformation::new_const(&[
@@ -1186,14 +1042,9 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		PackedBinaryField1x128b, PackedBinaryField2x128b, PackedBinaryField4x128b, PackedField,
-		Random,
-		arch::{
-			packed_polyval_256::PackedBinaryPolyval2x128b,
-			packed_polyval_512::PackedBinaryPolyval4x128b,
-		},
+		PackedField, Random,
 		binary_field::tests::is_binary_field_valid_generator,
-		linear_transformation::PackedTransformationFactory,
+		linear_transformation::{PackedTransformationFactory, Transformation},
 	};
 
 	#[test]
@@ -1238,6 +1089,7 @@ mod tests {
 		assert!(is_binary_field_valid_generator::<BinaryField128bPolyval>());
 	}
 
+	#[allow(dead_code)]
 	fn test_packed_conversion<
 		PT1: PackedField<Scalar: BinaryField> + PackedTransformationFactory<PT2>,
 		PT2: PackedField<Scalar: BinaryField>,
@@ -1254,24 +1106,6 @@ mod tests {
 
 	proptest! {
 		#[test]
-		fn test_to_from_tower_basis(a_val in any::<u128>(), b_val in any::<u128>()) {
-			let a_tower = BinaryField128b::new(a_val);
-			let b_tower = BinaryField128b::new(b_val);
-			let a_polyval = BinaryField128bPolyval::from(a_tower);
-			let b_polyval = BinaryField128bPolyval::from(b_tower);
-			assert_eq!(BinaryField128b::from(a_polyval * b_polyval), a_tower * b_tower);
-		}
-
-		#[test]
-		fn test_conversion_mul_consistency(a in any::<u128>(), b in any::<u128>()) {
-			let a_val = BinaryField128b::new(a);
-			let b_val = BinaryField128b::new(b);
-			let converted_a = BinaryField128bPolyval::from(a_val);
-			let converted_b = BinaryField128bPolyval::from(b_val);
-			assert_eq!(BinaryField128bPolyval::from(a_val * b_val), converted_a * converted_b);
-		}
-
-		#[test]
 		fn test_conversion_from_aes8_mul_consistency(a in any::<u8>(), b in any::<u8>()) {
 			let a_val = AESTowerField8b::new(a);
 			let b_val = AESTowerField8b::new(b);
@@ -1279,25 +1113,6 @@ mod tests {
 			let converted_b = BinaryField128bPolyval::from(b_val);
 			assert_eq!(BinaryField128bPolyval::from(a_val * b_val), converted_a * converted_b);
 		}
-
-		#[test]
-		fn test_conversion_128b(a in any::<u128>()) {
-			test_packed_conversion::<PackedBinaryPolyval1x128b, PackedBinaryField1x128b>(a.into(), POLYVAL_TO_BINARY_TRANSFORMATION);
-			test_packed_conversion::<PackedBinaryField1x128b, PackedBinaryPolyval1x128b>(a.into(), BINARY_TO_POLYVAL_TRANSFORMATION);
-		}
-
-		#[test]
-		fn test_conversion_256b(a in any::<[u128; 2]>()) {
-			test_packed_conversion::<PackedBinaryPolyval2x128b, PackedBinaryField2x128b>(a.into(), POLYVAL_TO_BINARY_TRANSFORMATION);
-			test_packed_conversion::<PackedBinaryField2x128b, PackedBinaryPolyval2x128b>(a.into(), BINARY_TO_POLYVAL_TRANSFORMATION);
-		}
-
-		#[test]
-		fn test_conversion_512b(a in any::<[u128; 4]>()) {
-			test_packed_conversion::<PackedBinaryPolyval4x128b, PackedBinaryField4x128b>(PackedBinaryPolyval4x128b::from_underlier(a.into()), POLYVAL_TO_BINARY_TRANSFORMATION);
-			test_packed_conversion::<PackedBinaryField4x128b, PackedBinaryPolyval4x128b>(PackedBinaryField4x128b::from_underlier(a.into()), BINARY_TO_POLYVAL_TRANSFORMATION);
-		}
-
 
 		#[test]
 		fn test_invert_or_zero(a_val in any::<u128>()) {
