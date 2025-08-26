@@ -105,7 +105,7 @@ where
 		//
 		// We also do switchover there, which by definition requires small scratchpads to hold
 		// large field partial evaluations of the transparent multilinears.
-		const MAX_CHUNK_VARS: usize = 12;
+		const MAX_CHUNK_VARS: usize = 8;
 		let chunk_vars = max(MAX_CHUNK_VARS, P::LOG_WIDTH).min(self.n_vars() - 1);
 		let chunk_count = 1 << (self.n_vars() - 1 - chunk_vars);
 
@@ -197,9 +197,9 @@ where
 			.map(|coeffs| coeffs.evaluate(challenge))
 			.collect();
 
-		for gruen34 in &mut self.gruen34s {
-			gruen34.fold(challenge)?;
-		}
+		self.gruen34s
+			.par_iter_mut()
+			.try_for_each(|gruen34| gruen34.fold(challenge))?;
 
 		self.switchover.fold(challenge)?;
 		fold_highest_var_inplace(&mut self.selected, challenge)?;

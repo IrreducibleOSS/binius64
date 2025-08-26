@@ -90,7 +90,7 @@ where
 		//
 		// We also do switchover there, which by definition requires small scratchpads to hold
 		// large field partial evaluations of the transparent multilinears.
-		const MAX_CHUNK_VARS: usize = 12;
+		const MAX_CHUNK_VARS: usize = 8;
 		let chunk_vars = max(MAX_CHUNK_VARS, P::LOG_WIDTH).min(self.n_vars() - 1);
 		let chunk_count = 1 << (self.n_vars() - 1 - chunk_vars);
 
