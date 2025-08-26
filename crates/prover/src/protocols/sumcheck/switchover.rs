@@ -14,6 +14,7 @@ use binius_utils::{
 	bitwise::{BitSelector, Bitwise},
 	checked_arithmetics::checked_log_2,
 	random_access_sequence::{MatrixVertSliceSubrange, RandomAccessSequence},
+	rayon::prelude::*,
 };
 
 use super::error::Error;
@@ -110,9 +111,9 @@ where
 	pub fn fold(&mut self, challenge: F) -> Result<(), Error> {
 		if let Some(folded) = &mut self.folded {
 			// Post-switchover: fold high as usual
-			for multilinear in folded {
-				fold_highest_var_inplace(multilinear, challenge)?;
-			}
+			folded
+				.par_iter_mut()
+				.try_for_each(|multilinear| fold_highest_var_inplace(multilinear, challenge))?;
 		} else {
 			// Pre-switchover: update the folding tensor
 			assert!(self.tensor.log_len() < self.switchover);
@@ -134,19 +135,21 @@ where
 
 		let folded_n_vars = self.n_vars_transparent() - self.tensor.log_len();
 
-		let mut all_folded = Vec::with_capacity(self.n_multilinears);
-		for bit_offset in 0..self.n_multilinears {
-			let mut folded = FieldBuffer::<P>::zeros(folded_n_vars);
-			get_binary_chunk(
-				&mut folded,
-				&self.tensor,
-				&BitSelector::new(bit_offset, self.bitmasks),
-				folded_n_vars,
-				0,
-			)?;
+		let all_folded = (0..self.n_multilinears)
+			.into_par_iter()
+			.map(|bit_offset| -> Result<_, Error> {
+				let mut folded = FieldBuffer::<P>::zeros(folded_n_vars);
+				get_binary_chunk(
+					&mut folded,
+					&self.tensor,
+					&BitSelector::new(bit_offset, self.bitmasks),
+					folded_n_vars,
+					0,
+				)?;
 
-			all_folded.push(folded);
-		}
+				Ok(folded)
+			})
+			.collect::<Result<Vec<_>, _>>()?;
 
 		self.folded = Some(all_folded);
 		Ok(())

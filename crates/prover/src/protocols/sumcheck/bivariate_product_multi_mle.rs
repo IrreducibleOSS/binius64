@@ -75,7 +75,7 @@ where
 		// composition on its own pass, but that would require reading the entirety of eq field
 		// buffer on each pass, which will evict the latter from the cache. By doing chunked
 		// compute, we reasonably hope that eq chunk always stays in L1 cache.
-		const MAX_CHUNK_VARS: usize = 12;
+		const MAX_CHUNK_VARS: usize = 8;
 		let chunk_vars = max(MAX_CHUNK_VARS, P::LOG_WIDTH).min(self.n_vars() - 1);
 
 		let packed_prime_evals = (0..1 << (self.n_vars() - 1 - chunk_vars))
@@ -143,9 +143,9 @@ where
 			.map(|coeffs| coeffs.evaluate(challenge))
 			.collect();
 
-		for multilinear in &mut self.multilinears {
-			fold_highest_var_inplace(multilinear, challenge)?;
-		}
+		self.multilinears
+			.par_iter_mut()
+			.try_for_each(|multilinear| fold_highest_var_inplace(multilinear, challenge))?;
 
 		self.gruen34.fold(challenge)?;
 		self.last_coeffs_or_sums = RoundCoeffsOrSums::Sums(sums);

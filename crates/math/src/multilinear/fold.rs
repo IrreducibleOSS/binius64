@@ -35,6 +35,8 @@ pub fn fold_highest_var_inplace<P: PackedField, Data: DerefMut<Target = [P]>>(
 /// indexed variables of the binary multilinear to the vertex coordinates and take an
 /// inner product of the remaining multilinear and the tensor.
 ///
+/// This method is single threaded.
+///
 /// # Throws
 ///
 /// * `PowerOfTwoLengthRequired` if the bool sequence is not of power of two length.
@@ -62,7 +64,7 @@ where
 
 	values
 		.as_mut()
-		.par_iter_mut()
+		.iter_mut()
 		.enumerate()
 		.for_each(|(i, packed)| {
 			*packed = P::from_scalars((0..width).map(|j| {

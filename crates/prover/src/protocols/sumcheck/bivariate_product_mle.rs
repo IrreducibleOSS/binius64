@@ -159,9 +159,9 @@ where
 
 		let sum = prime_coeffs.evaluate(challenge);
 
-		for multilinear in &mut self.multilinears {
-			fold_highest_var_inplace(multilinear, challenge)?;
-		}
+		self.multilinears
+			.par_iter_mut()
+			.try_for_each(|multilinear| fold_highest_var_inplace(multilinear, challenge))?;
 
 		self.gruen34.fold(challenge)?;
 		self.last_coeffs_or_eval = RoundCoeffsOrEval::Eval(sum);
