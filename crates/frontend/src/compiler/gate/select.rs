@@ -6,7 +6,7 @@
 //!
 //! The gate inspects the MSB (Most Significant Bit) of the condition value to select between
 //! two inputs. This is computed using a single AND constraint with the formula:
-//! `out = f ⊕ ((cond >> 63) ∧ (t ⊕ f))`
+//! `out = f ⊕ ((cond ~>> 63) ∧ (t ⊕ f))`
 //!
 //! The arithmetic shift right by 63 broadcasts the MSB to all bit positions, creating
 //! an all-ones mask if MSB=1 or all-zeros if MSB=0.

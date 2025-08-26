@@ -39,6 +39,7 @@ pub enum Opcode {
 	AssertEq,
 	Assert0,
 	AssertBand0,
+	AssertMSBFalse,
 	AssertEqCond,
 
 	// Hints
@@ -123,6 +124,7 @@ impl Opcode {
 			Opcode::AssertEq => gate::assert_eq::shape(),
 			Opcode::Assert0 => gate::assert_0::shape(),
 			Opcode::AssertBand0 => gate::assert_band_0::shape(),
+			Opcode::AssertMSBFalse => gate::assert_msb_false::shape(),
 			Opcode::AssertEqCond => gate::assert_eq_cond::shape(),
 
 			// Hints (no constraints)

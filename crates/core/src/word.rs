@@ -11,6 +11,7 @@ impl Word {
 	pub const ONE: Word = Word(1);
 	pub const ALL_ONE: Word = Word(u64::MAX);
 	pub const MASK_32: Word = Word(0x00000000_FFFFFFFF);
+	pub const MSB_ONE: Word = Word(0x80000000_00000000);
 }
 
 impl fmt::Debug for Word {

@@ -84,7 +84,7 @@ fn test_icmp_ult() {
 	let b = builder.add_inout();
 	let actual = builder.icmp_ult(a, b);
 	let expected = builder.add_inout();
-	builder.assert_eq("lt", actual, expected);
+	builder.assert_msb_false("lt", builder.bxor(actual, expected));
 	let circuit = builder.build();
 
 	// check that it actually works.
@@ -106,7 +106,7 @@ fn test_icmp_eq() {
 	let b = builder.add_inout();
 	let actual = builder.icmp_eq(a, b);
 	let expected = builder.add_inout();
-	builder.assert_eq("eq", actual, expected);
+	builder.assert_msb_false("eq", builder.bxor(actual, expected));
 	let circuit = builder.build();
 
 	// check that it actually works.
@@ -297,7 +297,7 @@ fn prop_check_icmp_ult(a: u64, b: u64, expected_result: Word) {
 	let mut w = circuit.new_witness_filler();
 	circuit.populate_wire_witness(&mut w).unwrap();
 
-	assert_eq!(w[result_wire], expected_result);
+	assert_eq!(w[result_wire] >> 63, expected_result >> 63);
 
 	let cs = circuit.constraint_system();
 	verify_constraints(cs, &w.value_vec).unwrap();
@@ -313,7 +313,7 @@ fn prop_check_icmp_eq(a: u64, b: u64, expected_result: Word) {
 	let mut w = circuit.new_witness_filler();
 	circuit.populate_wire_witness(&mut w).unwrap();
 
-	assert_eq!(w[result_wire], expected_result);
+	assert_eq!(w[result_wire] >> 63, expected_result >> 63);
 
 	let cs = circuit.constraint_system();
 	verify_constraints(cs, &w.value_vec).unwrap();

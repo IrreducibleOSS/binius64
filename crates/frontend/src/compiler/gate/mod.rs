@@ -13,6 +13,7 @@ pub mod assert_0;
 pub mod assert_band_0;
 pub mod assert_eq;
 pub mod assert_eq_cond;
+pub mod assert_msb_false;
 pub mod band;
 pub mod biguint_divide_hint;
 pub mod biguint_mod_pow_hint;
@@ -53,9 +54,10 @@ pub fn constrain(gate: Gate, graph: &GateGraph, builder: &mut ConstraintBuilder)
 		Opcode::AssertEq => assert_eq::constrain(gate, data, builder),
 		Opcode::Assert0 => assert_0::constrain(gate, data, builder),
 		Opcode::AssertBand0 => assert_band_0::constrain(gate, data, builder),
+		Opcode::AssertMSBFalse => assert_msb_false::constrain(gate, data, builder),
+		Opcode::AssertEqCond => assert_eq_cond::constrain(gate, data, builder),
 		Opcode::Imul => imul::constrain(gate, data, builder),
 		Opcode::Smul => smul::constrain(gate, data, builder),
-		Opcode::AssertEqCond => assert_eq_cond::constrain(gate, data, builder),
 		Opcode::IcmpUlt => icmp_ult::constrain(gate, data, builder),
 		Opcode::IcmpEq => icmp_eq::constrain(gate, data, builder),
 		Opcode::ExtractByte => extract_byte::constrain(gate, data, builder),
@@ -105,6 +107,10 @@ pub fn emit_gate_bytecode(
 		Opcode::AssertEqCond => {
 			let assertion_path = graph.assertion_names[gate];
 			assert_eq_cond::emit_eval_bytecode(gate, data, assertion_path, builder, wire_to_reg)
+		}
+		Opcode::AssertMSBFalse => {
+			let assertion_path = graph.assertion_names[gate];
+			assert_msb_false::emit_eval_bytecode(gate, data, assertion_path, builder, wire_to_reg)
 		}
 		Opcode::Imul => imul::emit_eval_bytecode(gate, data, builder, wire_to_reg),
 		Opcode::Smul => smul::emit_eval_bytecode(gate, data, builder, wire_to_reg),
