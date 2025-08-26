@@ -1,8 +1,8 @@
 use binius_core::Word;
 
-use super::tweak::ChainTweak;
+use super::tweak::verify_chain_tweak;
 use crate::{
-	circuits::multiplexer::multi_wire_multiplex,
+	circuits::{keccak::Keccak, multiplexer::multi_wire_multiplex},
 	compiler::{CircuitBuilder, Wire},
 };
 
@@ -41,7 +41,7 @@ use crate::{
 ///
 /// # Returns
 ///
-/// A vector of `ChainTweak` hashers that need to be populated with witness values.
+/// A vector of `Keccak` hashers that need to be populated with witness values.
 /// The number of hashers equals the maximum chain length supported.
 #[allow(clippy::too_many_arguments)]
 pub fn verify_chain(
@@ -53,7 +53,7 @@ pub fn verify_chain(
 	coordinate: Wire,
 	max_chain_len: u64,
 	end_hash: [Wire; 4],
-) -> Vec<ChainTweak> {
+) -> Vec<Keccak> {
 	assert!(
 		param_len <= param.len() * 8,
 		"param_len {} exceeds maximum capacity {} of param wires",
@@ -74,7 +74,7 @@ pub fn verify_chain(
 		let (position_plus_one, _) = builder.iadd_cin_cout(position, one, zero);
 
 		let next_hash = std::array::from_fn(|_| builder.add_witness());
-		let hasher = ChainTweak::new(
+		let keccak = verify_chain_tweak(
 			builder,
 			param.to_vec(),
 			param_len,
@@ -84,7 +84,7 @@ pub fn verify_chain(
 			next_hash,
 		);
 
-		hashers.push(hasher);
+		hashers.push(keccak);
 
 		// Conditionally select the hash based on whether position + 1 < max_chain_len
 		// If position + 1 < max_chain_len, use next_hash, otherwise keep current_hash
@@ -106,7 +106,7 @@ mod tests {
 	use proptest::{prelude::*, strategy::Just};
 	use sha3::{Digest, Keccak256};
 
-	use super::*;
+	use super::{super::tweak::build_chain_tweak, *};
 	use crate::{constraint_verifier::verify_constraints, util::pack_bytes_into_wires_le};
 
 	proptest! {
@@ -147,38 +147,41 @@ mod tests {
 			w[chain_index] = Word::from_u64(chain_index_val);
 			w[coordinate] = Word::from_u64(coordinate_val);
 
+			// Populate param wires (they're reused for all hashers)
+			pack_bytes_into_wires_le(&mut w, &param, &param_bytes);
+
+			// Track current hash through the chain
 			let mut current_hash: [u8; 32] = signature_chunk_bytes;
-			for (step, hasher) in hashers.iter().enumerate() {
-				let hash_position = step as u64 + coordinate_val + 1;
 
-				hasher.populate_param(&mut w, &param_bytes);
-				hasher.populate_hash(&mut w, &current_hash);
-				hasher.populate_chain_index(&mut w, chain_index_val);
-				hasher.populate_position(&mut w, hash_position);
+			for (step, keccak) in hashers.iter().enumerate() {
+				// Calculate position for this step
+				let position = step as u64 + coordinate_val;
+				let position_plus_one = position + 1;
 
-				let message = ChainTweak::build_message(
+				// Build the message for this hash using current_hash
+				let message = build_chain_tweak(
 					&param_bytes,
 					&current_hash,
 					chain_index_val,
-					hash_position,
+					position_plus_one,
 				);
-				hasher.populate_message(&mut w, &message);
 
-				// The circuit always computes the hash, even if it won't be used in the final result
-				// This is because the constraint system verifies all hash computations
+				// Populate the Keccak circuit
+				keccak.populate_message(&mut w, &message);
+
+				// Compute the hash
 				let digest: [u8; 32] = Keccak256::digest(&message).into();
-				hasher.populate_digest(&mut w, digest);
+				keccak.populate_digest(&mut w, digest);
 
-				// Only update current_hash if this hash is actually selected by the multiplexer
-				// (when hash_position < max_chain_len)
-				if hash_position < max_chain_len {
+				// Update current_hash for next iteration if this hash is selected
+				// The multiplexer in the circuit selects next_hash when position_plus_one < max_chain_len
+				if position_plus_one < max_chain_len {
 					current_hash = digest;
 				}
 			}
 
 			pack_bytes_into_wires_le(&mut w, &end_hash, &current_hash);
 			pack_bytes_into_wires_le(&mut w, &signature_chunk, &signature_chunk_bytes);
-			pack_bytes_into_wires_le(&mut w, &param, &param_bytes);
 			circuit.populate_wire_witness(&mut w).unwrap();
 
 			let cs = circuit.constraint_system();
