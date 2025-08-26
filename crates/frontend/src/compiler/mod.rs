@@ -8,13 +8,13 @@ use binius_core::{
 	consts::MIN_WORDS_PER_SEGMENT,
 	word::Word,
 };
-use cranelift_entity::{PrimaryMap, SecondaryMap};
+use cranelift_entity::SecondaryMap;
 
 use crate::compiler::{
 	circuit::Circuit,
 	constraint_builder::ConstraintBuilder,
-	gate_graph::{ConstPool, GateGraph, WireKind},
-	pathspec::{PathSpec, PathSpecTree},
+	gate_graph::{GateGraph, WireKind},
+	pathspec::PathSpec,
 };
 
 mod gate;
@@ -50,31 +50,18 @@ pub struct CircuitBuilder {
 
 impl Default for CircuitBuilder {
 	fn default() -> Self {
-		let path_spec_tree = PathSpecTree::new();
-		let root = path_spec_tree.root();
-		CircuitBuilder {
-			current_path: root,
-			shared: Rc::new(RefCell::new(Some(Shared {
-				graph: GateGraph {
-					gates: PrimaryMap::new(),
-					wires: PrimaryMap::new(),
-					assertion_names: SecondaryMap::with_default(root),
-					gate_origin: SecondaryMap::with_default(root),
-					const_pool: ConstPool::new(),
-					path_spec_tree,
-					n_witness: 0,
-					n_inout: 0,
-					wire_def: SecondaryMap::new(),
-					wire_uses: SecondaryMap::new(),
-				},
-			}))),
-		}
+		CircuitBuilder::new()
 	}
 }
 
 impl CircuitBuilder {
 	pub fn new() -> Self {
-		CircuitBuilder::default()
+		let graph = GateGraph::new();
+		let root = graph.path_spec_tree.root();
+		CircuitBuilder {
+			current_path: root,
+			shared: Rc::new(RefCell::new(Some(Shared { graph }))),
+		}
 	}
 
 	/// # Preconditions

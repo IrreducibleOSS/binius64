@@ -117,32 +117,13 @@ fn try_evaluate_gate_with_constants(
 #[cfg(test)]
 mod tests {
 	use binius_core::word::Word;
-	use cranelift_entity::{PrimaryMap, SecondaryMap};
 
 	use super::*;
-	use crate::compiler::{gate::opcode::Opcode, gate_graph::ConstPool, pathspec::PathSpecTree};
-
-	fn create_test_graph() -> GateGraph {
-		let path_spec_tree = PathSpecTree::new();
-		let root = path_spec_tree.root();
-
-		GateGraph {
-			gates: PrimaryMap::new(),
-			wires: PrimaryMap::new(),
-			assertion_names: SecondaryMap::with_default(root),
-			gate_origin: SecondaryMap::with_default(root),
-			const_pool: ConstPool::new(),
-			path_spec_tree,
-			n_witness: 0,
-			n_inout: 0,
-			wire_def: SecondaryMap::new(),
-			wire_uses: SecondaryMap::new(),
-		}
-	}
+	use crate::compiler::gate::opcode::Opcode;
 
 	#[test]
 	fn test_constant_propagation() {
-		let mut graph = create_test_graph();
+		let mut graph = GateGraph::new();
 		let root = graph.path_spec_tree.root();
 
 		// Create constant wires
@@ -198,7 +179,7 @@ mod tests {
 
 	#[test]
 	fn test_constant_propagation_with_shifts() {
-		let mut graph = create_test_graph();
+		let mut graph = GateGraph::new();
 		let root = graph.path_spec_tree.root();
 
 		// Create a constant wire
@@ -244,7 +225,7 @@ mod tests {
 
 	#[test]
 	fn test_constant_propagation_with_hint() {
-		let mut graph = create_test_graph();
+		let mut graph = GateGraph::new();
 		let root = graph.path_spec_tree.root();
 
 		// Test BigUintDivideHint with constants
@@ -303,7 +284,7 @@ mod tests {
 	#[test]
 	#[should_panic(expected = "Constant propagation detected an always-failing gate")]
 	fn test_constant_propagation_with_failing_gate() {
-		let mut graph = create_test_graph();
+		let mut graph = GateGraph::new();
 		let root = graph.path_spec_tree.root();
 
 		// Create an Assert0 gate with a non-zero constant input
