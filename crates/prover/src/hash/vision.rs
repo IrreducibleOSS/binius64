@@ -3,15 +3,14 @@
 use std::{array, mem::MaybeUninit};
 
 use binius_field::{BinaryField128bGhash as Ghash, Field};
-use binius_utils::SerializeBytes;
+use binius_utils::{DeserializeBytes, SerializeBytes};
 use binius_verifier::hash::vision::{
 	M,
-	digest::{PADDING_BLOCK, RATE_AS_U8, VisionHasherDigest, fill_padding},
+	digest::{PADDING_BLOCK, RATE_AS_U8, RATE_AS_U128, VisionHasherDigest, fill_padding},
 };
 use digest::Output;
-use itertools::izip;
 
-use super::parallel_digest::MultiDigest;
+use super::{parallel_digest::MultiDigest, vision_parallel::flattened_parallel_permutation};
 
 /// A Vision hasher suited for parallelization.
 ///
@@ -22,23 +21,27 @@ use super::parallel_digest::MultiDigest;
 /// We slightly modify Montogery's trick to use a binary tree structure,
 /// maximizing independence of multiplications for better instruction pipelining.
 #[derive(Clone)]
-struct VisionHasherMultiDigest<const N: usize> {
-	states: [[Ghash; M]; N],
+pub struct VisionHasherMultiDigest<const N: usize, const MN: usize> {
+	states: [Ghash; MN],
+	scratchpad: Vec<Ghash>,
 	buffers: [[u8; RATE_AS_U8]; N],
 	filled_bytes: usize,
 }
 
-impl<const N: usize> Default for VisionHasherMultiDigest<N> {
+impl<const N: usize, const MN: usize> Default for VisionHasherMultiDigest<N, MN> {
 	fn default() -> Self {
+		assert!(N.is_power_of_two() && N >= 2, "N must be a power of 2 and >= 2");
+		assert_eq!(MN, M * N);
 		Self {
-			states: array::from_fn(|_| [Ghash::ZERO; M]),
+			states: array::from_fn(|_| Ghash::ZERO),
+			scratchpad: vec![Ghash::ZERO; 2 * MN],
 			buffers: array::from_fn(|_| [0; RATE_AS_U8]),
 			filled_bytes: 0,
 		}
 	}
 }
 
-impl<const N: usize> VisionHasherMultiDigest<N> {
+impl<const N: usize, const MN: usize> VisionHasherMultiDigest<N, MN> {
 	#[inline]
 	fn advance_data(data: &mut [&[u8]; N], bytes: usize) {
 		for i in 0..N {
@@ -46,20 +49,37 @@ impl<const N: usize> VisionHasherMultiDigest<N> {
 		}
 	}
 
-	fn permute(states: &mut [[Ghash; M]; N], data: [&[u8]; N]) {
-		// Trivial independence for now. Optimization with amortization later.
-		izip!(states, data).for_each(|(state, data)| {
-			VisionHasherDigest::permute(state, data);
-		});
+	fn permute(states: &mut [Ghash; MN], scratchpad: &mut [Ghash], data: [&[u8]; N]) {
+		for (i, data) in data.iter().enumerate() {
+			debug_assert_eq!(data.len(), RATE_AS_U8);
+
+			// Overwrite first RATE_AS_U128 elements of state i with data
+			let state_start = i * M;
+			for j in 0..RATE_AS_U128 {
+				let element_bytes = &data[j * (128 / 8)..];
+				states[state_start + j] =
+					Ghash::deserialize(element_bytes).expect("data len checked");
+			}
+		}
+
+		flattened_parallel_permutation::<N, MN>(states, scratchpad);
 	}
 	fn finalize(&mut self, out: &mut [MaybeUninit<digest::Output<VisionHasherDigest>>; N]) {
 		if self.filled_bytes != 0 {
 			for i in 0..N {
 				fill_padding(&mut self.buffers[i][self.filled_bytes..]);
 			}
-			Self::permute(&mut self.states, array::from_fn(|i| &self.buffers[i][..]));
+			Self::permute(
+				&mut self.states,
+				&mut self.scratchpad,
+				array::from_fn(|i| &self.buffers[i][..]),
+			);
 		} else {
-			Self::permute(&mut self.states, array::from_fn(|_| &PADDING_BLOCK[..]));
+			Self::permute(
+				&mut self.states,
+				&mut self.scratchpad,
+				array::from_fn(|_| &PADDING_BLOCK[..]),
+			);
 		}
 
 		// Serialize first two state elements for each digest (32 bytes total per digest)
@@ -67,17 +87,17 @@ impl<const N: usize> VisionHasherMultiDigest<N> {
 			let output_slice = out[i].as_mut_ptr() as *mut u8;
 			let output_bytes = unsafe { std::slice::from_raw_parts_mut(output_slice, 32) };
 			let (state0, state1) = output_bytes.split_at_mut(16);
-			self.states[i][0]
+			self.states[i * M]
 				.serialize(state0)
 				.expect("fits in 16 bytes");
-			self.states[i][1]
+			self.states[i * M + 1]
 				.serialize(state1)
 				.expect("fits in 16 bytes");
 		}
 	}
 }
 
-impl<const N: usize> MultiDigest<N> for VisionHasherMultiDigest<N> {
+impl<const N: usize, const MN: usize> MultiDigest<N> for VisionHasherMultiDigest<N, MN> {
 	type Digest = VisionHasherDigest;
 
 	fn new() -> Self {
@@ -99,14 +119,18 @@ impl<const N: usize> MultiDigest<N> for VisionHasherMultiDigest<N> {
 			self.filled_bytes += to_copy;
 
 			if self.filled_bytes == RATE_AS_U8 {
-				Self::permute(&mut self.states, array::from_fn(|i| &self.buffers[i][..]));
+				Self::permute(
+					&mut self.states,
+					&mut self.scratchpad,
+					array::from_fn(|i| &self.buffers[i][..]),
+				);
 				self.filled_bytes = 0;
 			}
 		}
 
 		while data[0].len() >= RATE_AS_U8 {
 			let chunks = array::from_fn(|i| &data[i][..RATE_AS_U8]);
-			Self::permute(&mut self.states, chunks);
+			Self::permute(&mut self.states, &mut self.scratchpad, chunks);
 			Self::advance_data(&mut data, RATE_AS_U8);
 		}
 
@@ -128,7 +152,7 @@ impl<const N: usize> MultiDigest<N> for VisionHasherMultiDigest<N> {
 	}
 
 	fn reset(&mut self) {
-		self.states = array::from_fn(|_| [Ghash::ZERO; M]);
+		self.states = array::from_fn(|_| Ghash::ZERO);
 		self.buffers = array::from_fn(|_| [0; RATE_AS_U8]);
 		self.filled_bytes = 0;
 	}
@@ -164,10 +188,13 @@ mod tests {
 	}
 
 	// Generic test function that compares parallel vs sequential execution
-	fn test_parallel_vs_sequential<const N: usize>(data: [&[u8]; N], description: &str) {
+	fn test_parallel_vs_sequential<const N: usize, const MN: usize>(
+		data: [&[u8]; N],
+		description: &str,
+	) {
 		// Parallel computation
 		let mut parallel_outputs = [MaybeUninit::uninit(); N];
-		VisionHasherMultiDigest::<N>::digest(data, &mut parallel_outputs);
+		VisionHasherMultiDigest::<N, MN>::digest(data, &mut parallel_outputs);
 		let parallel_results: [Output<VisionHasherDigest>; N] =
 			array::from_fn(|i| unsafe { parallel_outputs[i].assume_init() });
 
@@ -191,14 +218,14 @@ mod tests {
 	fn test_empty_inputs() {
 		const N: usize = 4;
 		let data: [&[u8]; N] = [&[], &[], &[], &[]];
-		test_parallel_vs_sequential(data, "empty inputs");
+		test_parallel_vs_sequential::<N, { N * M }>(data, "empty inputs");
 	}
 
 	#[test]
 	fn test_small_inputs() {
-		const N: usize = 3;
-		let data: [&[u8]; N] = [b"Hello... World!", b"Rust is awesome", b"Parallel hash!!"];
-		test_parallel_vs_sequential(data, "small inputs");
+		const N: usize = 2;
+		let data: [&[u8]; N] = [b"Hello... World!", b"Rust is awesome"];
+		test_parallel_vs_sequential::<N, { N * M }>(data, "small inputs");
 	}
 
 	#[test]
@@ -209,7 +236,7 @@ mod tests {
 		let data_vecs = generate_random_data::<N>(target_len, 42);
 		let data: [&[u8]; N] = array::from_fn(|i| data_vecs[i].as_slice());
 
-		test_parallel_vs_sequential(data, "multi-block inputs");
+		test_parallel_vs_sequential::<N, { N * M }>(data, "multi-block inputs");
 	}
 
 	#[test]
@@ -224,10 +251,10 @@ mod tests {
 		];
 
 		for &size in &sizes {
-			const N: usize = 3;
+			const N: usize = 2;
 			let data_vecs = generate_random_data::<N>(size, 123);
 			let data: [&[u8]; N] = array::from_fn(|i| data_vecs[i].as_slice());
-			test_parallel_vs_sequential(data, &format!("size {size}"));
+			test_parallel_vs_sequential::<N, { N * M }>(data, &format!("size {size}"));
 		}
 	}
 }

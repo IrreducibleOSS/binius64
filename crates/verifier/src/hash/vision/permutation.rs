@@ -43,6 +43,11 @@ fn batch_invert(state: &mut [Ghash; M]) {
 	state[3] = if x3 == zero { zero } else { x2_nz * right_inv };
 }
 
+pub fn linearized_b_inv_transform_scalar(x: &mut Ghash) {
+	linearized_transform_scalar(x, &LINEAR_B_INV_TABLE);
+	*x += B_INV_COEFFS[0];
+}
+
 pub fn linearized_transform_scalar(x: &mut Ghash, table: &'static [[Ghash; 256]; BYTES_PER_GHASH]) {
 	struct TableCallback {
 		table: &'static [[Ghash; 256]; BYTES_PER_GHASH],
