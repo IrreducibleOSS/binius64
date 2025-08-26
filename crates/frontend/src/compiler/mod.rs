@@ -34,8 +34,43 @@ mod tests;
 
 pub use gate_graph::Wire;
 
+/// Options for the compiler.
+pub(crate) struct Options {
+	enable_gate_fusion: bool,
+	enable_constant_propagation: bool,
+}
+
+// Shut up clippy since this is just so happens to be derivable for now.
+#[allow(clippy::derivable_impls)]
+impl Default for Options {
+	fn default() -> Self {
+		Self {
+			enable_gate_fusion: false,
+			enable_constant_propagation: false,
+		}
+	}
+}
+
+impl Options {
+	fn from_env() -> Self {
+		// This is a very temporary solution for now.
+		//
+		// We do not expect those feature sets to soak here for too long neither we expect that
+		// the features are going to be detected using the environment variables.
+		let mut opts = Self::default();
+		if std::env::var("MONBIJOU_FUSION").is_ok() {
+			opts.enable_gate_fusion = true;
+		}
+		if std::env::var("MONBIJOU_CONSTPROP").is_ok() {
+			opts.enable_constant_propagation = true;
+		}
+		opts
+	}
+}
+
 pub(crate) struct Shared {
 	pub(crate) graph: GateGraph,
+	pub(crate) opts: Options,
 }
 
 /// # Clone
@@ -56,11 +91,16 @@ impl Default for CircuitBuilder {
 
 impl CircuitBuilder {
 	pub fn new() -> Self {
+		let opts = Options::from_env();
+		Self::with_opts(opts)
+	}
+
+	pub(crate) fn with_opts(opts: Options) -> Self {
 		let graph = GateGraph::new();
 		let root = graph.path_spec_tree.root();
 		CircuitBuilder {
 			current_path: root,
-			shared: Rc::new(RefCell::new(Some(Shared { graph }))),
+			shared: Rc::new(RefCell::new(Some(Shared { graph, opts }))),
 		}
 	}
 
@@ -77,7 +117,7 @@ impl CircuitBuilder {
 		graph.validate();
 
 		// Run constant propagation optimization
-		if std::env::var("MONBIJOU_CONSTPROP").is_ok() {
+		if shared.opts.enable_constant_propagation {
 			let replaced = const_prop::constant_propagation(&mut graph);
 			if replaced > 0 {
 				eprintln!("Constant propagation: replaced {} wires with constants", replaced);
@@ -173,7 +213,7 @@ impl CircuitBuilder {
 		let (mut and_constraints, mut mul_constraints) = builder.build(&wire_mapping);
 
 		// Perform fusion if the corresponding feature flag is turned on.
-		if std::env::var("MONBIJOU_FUSION").is_ok() {
+		if shared.opts.enable_gate_fusion {
 			let fusion =
 				gate_fusion::Fusion::new(&mut and_constraints, &mut mul_constraints, &constants);
 			if let Some(mut fusion) = fusion {
