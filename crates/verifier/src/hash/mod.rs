@@ -3,8 +3,6 @@
 pub mod compress;
 mod serialization;
 
-pub mod vision;
-
 pub use compress::{CompressionFunction, PseudoCompressionFunction};
 pub use serialization::*;
 
