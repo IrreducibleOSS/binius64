@@ -3,7 +3,7 @@ use proptest::prelude::*;
 use rand::{Rng, SeedableRng as _, rngs::StdRng};
 
 use super::*;
-use crate::constraint_verifier::verify_constraints;
+use crate::{constraint_verifier::verify_constraints, util::num_biguint_from_u64_limbs};
 
 #[test]
 fn wires_layout() {
@@ -405,5 +405,47 @@ proptest! {
 	fn prop_icmp_eq_not_equal(a in any::<u64>(), b in any::<u64>()) {
 		prop_assume!(a != b);
 		prop_check_icmp_eq(a, b, Word::ZERO);
+	}
+
+	#[test]
+	fn prop_secp256k1_endosplit(k in any::<[u64; 4]>()) {
+		let modulus = num_bigint::BigUint::from_bytes_be(
+			&hex_literal::hex!("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141")
+		);
+		let lambda =  num_bigint::BigUint::from_bytes_be(
+			&hex_literal::hex!("5363ad4cc05c30e0a5261c028812645a122e22ea20816678df02967c1b23bd72")
+		);
+		let k_bignum = num_biguint_from_u64_limbs(k.iter());
+		prop_assume!(k_bignum < modulus);
+		prop_assume!(k_bignum > num_bigint::BigUint::ZERO);
+
+		let builder = CircuitBuilder::new();
+		let k = k.map(|limb| builder.add_constant_64(limb));
+		let (k1_neg, k2_neg, k1_abs, k2_abs) =
+			builder.secp256k1_endomorphism_split_hint(&k);
+
+		let circuit = builder.build();
+		let mut w = circuit.new_witness_filler();
+		circuit.populate_wire_witness(&mut w).unwrap();
+
+		let k1_abs_bignum = num_biguint_from_u64_limbs(k1_abs.iter().map(|&l| &w[l].0));
+		let k2_abs_bignum = num_biguint_from_u64_limbs(k2_abs.iter().map(|&l| &w[l].0));
+
+		assert!(k1_abs_bignum.bits() <= 128);
+		assert!(k2_abs_bignum.bits() <= 128);
+
+		let k1 = if w[k1_neg] != Word::ZERO {
+			&modulus - k1_abs_bignum
+		} else {
+			k1_abs_bignum
+		};
+
+		let k2 = if w[k2_neg] != Word::ZERO {
+			&modulus - k2_abs_bignum
+		} else {
+			k2_abs_bignum
+		};
+
+		assert_eq!((k1 + lambda * k2) % modulus, k_bignum);
 	}
 }

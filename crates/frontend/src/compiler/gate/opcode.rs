@@ -47,6 +47,7 @@ pub enum Opcode {
 	BigUintDivideHint,
 	BigUintModPowHint,
 	ModInverseHint,
+	Secp256k1EndosplitHint,
 }
 
 /// The shape of an opcode is a description of it's inputs and outputs. It allows treating a gate as
@@ -133,6 +134,7 @@ impl Opcode {
 			Opcode::BigUintDivideHint => gate::biguint_divide_hint::shape(dimensions),
 			Opcode::BigUintModPowHint => gate::biguint_mod_pow_hint::shape(dimensions),
 			Opcode::ModInverseHint => gate::mod_inverse_hint::shape(dimensions),
+			Opcode::Secp256k1EndosplitHint => gate::secp256k1_endosplit_hint::shape(),
 		}
 	}
 
