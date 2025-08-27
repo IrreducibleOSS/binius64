@@ -221,14 +221,12 @@ impl Sha512 {
 		// 3. zero byte. Placed after the delimiter byte.
 
 		let boundary_padded_word = single_wire_multiplex(builder, &padded_message, w_bd);
-		let boundary_message_word =
-			single_wire_multiplex(builder, &([message.as_slice(), &[zero]].concat()), w_bd);
+		let boundary_message_word = single_wire_multiplex(builder, &message, w_bd);
 		// for the multiplexer above to be sound, we need `sel < inputs.len()` to be true.
 		// since we constrained `len_bytes ≤ max_len_bytes ≔ message.len() << 3`, above,
 		// we necessarily have `w_bd ≔ len_bytes >> 3 ≤ max_len_bytes >> 3 == message.len()`.
-		// thus we have w_bd ≤ message.len() < message.concat(zero).len(), so it's strict.
-		// in the exceptional case w_bd ≔ len_bytes >> 3 == max_len_bytes >> 3 == message.len(),
-		// `boundary_message_word` will be `zero`, but that's fine, as I now explain. indeed:
+		// in the exceptional case w_bd ≔ len_bytes >> 3 == max_len_bytes >> 3 == message.len().
+		// this case can indeed happen. but i claim that we will still get soundness in this case.
 		// the only way w_bd = message.len() and len_bytes ≤ max_len_bytes can both be true is if
 		// len_bytes = max_len_bytes. in this case, len_bytes is a multiple of 8, so len_mod_8 = 0.
 		// in this case, `data_b` will thus be false for each j ∈ {0, … , 7}, ergo, "3b.1" will be
