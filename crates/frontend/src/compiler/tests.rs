@@ -84,7 +84,7 @@ fn test_icmp_ult() {
 	let b = builder.add_inout();
 	let actual = builder.icmp_ult(a, b);
 	let expected = builder.add_inout();
-	builder.assert_msb_false("lt", builder.bxor(actual, expected));
+	builder.assert_false("lt", builder.bxor(actual, expected));
 	let circuit = builder.build();
 
 	// check that it actually works.
@@ -106,7 +106,7 @@ fn test_icmp_eq() {
 	let b = builder.add_inout();
 	let actual = builder.icmp_eq(a, b);
 	let expected = builder.add_inout();
-	builder.assert_msb_false("eq", builder.bxor(actual, expected));
+	builder.assert_false("eq", builder.bxor(actual, expected));
 	let circuit = builder.build();
 
 	// check that it actually works.

@@ -52,11 +52,11 @@ impl BigUint {
 		// TODO: it's more efficient to add all-1 BigUint and check carry out (jimpo)
 		//       do this once BigUint addition returning a Wire carry out exists
 		let zero = b.add_constant(Word::ZERO);
-		let all_one = b.add_constant(Word::ALL_ONE);
+		let msb_one = b.add_constant(Word::MSB_ONE);
 		self.limbs
 			.iter()
 			.map(|&limb| b.icmp_eq(limb, zero))
-			.fold(all_one, |lhs, rhs| b.band(lhs, rhs))
+			.fold(msb_one, |lhs, rhs| b.band(lhs, rhs))
 	}
 
 	/// Pads to given limb length with zeros.

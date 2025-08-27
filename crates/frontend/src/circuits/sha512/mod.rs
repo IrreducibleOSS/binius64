@@ -123,7 +123,7 @@ impl Sha512 {
 
 		// Assert that len_bytes <= max_len_bytes by checking that !(max_len_bytes < len_bytes)
 		let too_long = builder.icmp_ult(builder.add_constant_64(max_len_bytes as u64), len_bytes);
-		builder.assert_msb_false("1.len_check", too_long);
+		builder.assert_false("1.len_check", too_long);
 
 		// ---- 2. Message padding and compression setup
 		//

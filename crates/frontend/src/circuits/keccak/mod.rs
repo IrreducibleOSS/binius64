@@ -54,7 +54,7 @@ impl Keccak {
 
 		// constrain the message length claim to be explicitly within bounds
 		let len_check = b.icmp_ult(b.add_constant_64(max_len_bytes as u64), len_bytes); // max_len_bytes < len_bytes
-		b.assert_msb_false("len_check", len_check);
+		b.assert_false("len_check", len_check);
 
 		let padded_message: Vec<Wire> = (0..n_blocks * N_WORDS_PER_BLOCK)
 			.map(|_| b.add_witness())

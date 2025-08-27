@@ -553,15 +553,28 @@ impl CircuitBuilder {
 		graph.assertion_names[gate] = path_spec;
 	}
 
+	/// asserts that the given wire, interpreted as a MSB-bool, is false.
+	/// this is equivalent to asserting that x & 0x8000000000000000 == 0.
+	///
+	/// # Cost
+	///
+	/// 1 AND constraint.
+	pub fn assert_false(&self, name: impl Into<String>, x: Wire) {
+		let mut graph = self.graph_mut();
+		let gate = graph.emit_gate(self.current_path, Opcode::AssertFalse, [x], []);
+		let path_spec = graph.path_spec_tree.extend(self.current_path, name);
+		graph.assertion_names[gate] = path_spec;
+	}
+
 	/// asserts that the given wire, interpreted as a MSB-bool, is true.
 	/// this is equivalent to asserting that x & 0x8000000000000000 == 0x8000000000000000.
 	///
 	/// # Cost
 	///
 	/// 1 AND constraint.
-	pub fn assert_msb_false(&self, name: impl Into<String>, x: Wire) {
+	pub fn assert_true(&self, name: impl Into<String>, x: Wire) {
 		let mut graph = self.graph_mut();
-		let gate = graph.emit_gate(self.current_path, Opcode::AssertMSBFalse, [x], []);
+		let gate = graph.emit_gate(self.current_path, Opcode::AssertTrue, [x], []);
 		let path_spec = graph.path_spec_tree.extend(self.current_path, name);
 		graph.assertion_names[gate] = path_spec;
 	}
