@@ -111,7 +111,7 @@ impl PseudoMersennePrimeField {
 		let remainder = BigUint { limbs: remainder }.pad_limbs_to(self.limbs_len(), zero);
 
 		// TODO: replace with assert_true once available
-		b.assert_0("remainder < modulus", b.bnot(biguint_lt(b, &remainder, &self.modulus)));
+		b.assert_msb_false("remainder < modulus", b.bnot(biguint_lt(b, &remainder, &self.modulus)));
 
 		// constraint: product == remainder + quotient * modulus
 		PseudoMersenneModReduce::new(
@@ -147,7 +147,7 @@ impl PseudoMersennePrimeField {
 		let product = mul(b, &inverse, fe);
 
 		// TODO: replace with assert_true once available
-		b.assert_0("inverse < modulus", b.bnot(biguint_lt(b, &inverse, &self.modulus)));
+		b.assert_msb_false("inverse < modulus", b.bnot(biguint_lt(b, &inverse, &self.modulus)));
 
 		// constraint: base * inverse = 1 + quotient * modulus
 		PseudoMersenneModReduce::new(
