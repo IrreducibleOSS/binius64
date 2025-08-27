@@ -171,12 +171,12 @@ impl Sha512 {
 		let w_bd = builder.shr(len_bytes, 3);
 		let len_mod_8 = builder.band(len_bytes, builder.add_constant_zx_8(7));
 		let bitlen = builder.shl(len_bytes, 3);
-		// For SHA-512, the length field is 128 bits. We only support messages < 2^32 bits,
+		// For SHA-512, the length field is 128 bits. We only support messages < 2^64 bits,
 		// so the high 64 bits are zero. We keep `bitlen` as the low 64-bit portion.
 
 		// end_block_index = floor((len + 16) / 128) using 64-bit add
-		let end_block_index =
-			builder.shr(builder.iadd_32(len_bytes, builder.add_constant_64(16)), 7);
+		let (sum, _carry) = builder.iadd_cin_cout(len_bytes, builder.add_constant_64(16), zero);
+		let end_block_index = builder.shr(sum, 7);
 		let delim: Wire = builder.add_constant_zx_8(0x80);
 		// ---- 2b. Final digest selection
 		//

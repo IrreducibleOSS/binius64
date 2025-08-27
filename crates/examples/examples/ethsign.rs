@@ -49,7 +49,7 @@ impl ExampleCircuit for EthSignExample {
 		let max_msg_len_bytes = params.max_msg_len_bytes as usize;
 		let signatures = (0..params.n_signatures)
 			.map(|_| {
-				let msg_len = builder.add_inout();
+				let len_bytes = builder.add_inout();
 				let message = (0..params.max_msg_len_bytes.div_ceil(8))
 					.map(|_| builder.add_inout())
 					.collect::<Vec<_>>();
@@ -59,13 +59,7 @@ impl ExampleCircuit for EthSignExample {
 				let address = array::from_fn(|_| builder.add_inout());
 
 				let msg_final_state = array::from_fn(|_| builder.add_witness());
-				let msg_keccak = Keccak::new(
-					builder,
-					max_msg_len_bytes,
-					msg_len,
-					msg_final_state,
-					message.clone(),
-				);
+				let msg_keccak = Keccak::new(builder, len_bytes, msg_final_state, message.clone());
 
 				// The Keccak digest is little endian encoded into 4 words, while Ethereum expects
 				// big endian
@@ -103,7 +97,6 @@ impl ExampleCircuit for EthSignExample {
 				let address_final_state = array::from_fn(|_| builder.add_witness());
 				let address_keccak = Keccak::new(
 					builder,
-					64,
 					builder.add_constant_64(64),
 					address_final_state,
 					public_key_message,
@@ -148,8 +141,8 @@ impl ExampleCircuit for EthSignExample {
 			let secret_key = SecretKey::from_raw(&sk_bytes)?;
 
 			// Random message
-			let msg_len = rng.random_range(1..=self.max_msg_len_bytes);
-			let msg_bytes = (0..msg_len).map(|_| rng.random()).collect::<Vec<u8>>();
+			let len_bytes = rng.random_range(1..=self.max_msg_len_bytes);
+			let msg_bytes = (0..len_bytes).map(|_| rng.random()).collect::<Vec<u8>>();
 			let msg_hash = keccak256(&msg_bytes);
 
 			// Sign the message with ECDSA
@@ -157,7 +150,7 @@ impl ExampleCircuit for EthSignExample {
 			let public = secret_key.public();
 
 			// Hash the message with Keccak
-			msg_keccak.populate_len(w, msg_len);
+			msg_keccak.populate_len_bytes(w, len_bytes);
 			msg_keccak.populate_message(w, &msg_bytes);
 			msg_keccak.populate_digest(w, msg_hash);
 
@@ -179,7 +172,7 @@ impl ExampleCircuit for EthSignExample {
 			let pk_bytes = public.bytes();
 			let pk_hash = keccak256(pk_bytes);
 
-			address_keccak.populate_len(w, 64);
+			address_keccak.populate_len_bytes(w, 64);
 			address_keccak.populate_message(w, pk_bytes);
 			address_keccak.populate_digest(w, pk_hash);
 

@@ -76,18 +76,9 @@ impl ChainTweak {
 		let message_le: Vec<Wire> = (0..n_message_words)
 			.map(|_| builder.add_witness())
 			.collect();
-		let len = builder.add_witness();
+		let len_bytes = builder.add_witness();
 
-		// Keccak digest is 25 words (full state), but we only use first 4 for 256-bit output
-		let keccak_digest: [Wire; 25] = std::array::from_fn(|i| {
-			if i < 4 {
-				digest[i]
-			} else {
-				builder.add_witness()
-			}
-		});
-
-		let keccak = Keccak::new(builder, message_len, len, keccak_digest, message_le.clone());
+		let keccak = Keccak::new(builder, len_bytes, digest, message_le.clone());
 
 		let mut terms = Vec::new();
 
@@ -123,7 +114,7 @@ impl ChainTweak {
 
 		// Create the concatenation circuit to verify message structure
 		// message = param || tweak_byte || hash || chain_index || position
-		let _message_structure_verifier = Concat::new(builder, len, message_le, terms);
+		let _message_structure_verifier = Concat::new(builder, len_bytes, message_le, terms);
 
 		ChainTweak {
 			keccak,
@@ -167,19 +158,19 @@ impl ChainTweak {
 	}
 
 	/// Populate the message wires with the complete concatenated message.
-	pub fn populate_message(&self, w: &mut WitnessFiller, message: &[u8]) {
-		let expected_len = self.param_len + FIXED_MESSAGE_OVERHEAD;
+	pub fn populate_message(&self, w: &mut WitnessFiller, message_bytes: &[u8]) {
+		let expected_len_bytes = self.param_len + FIXED_MESSAGE_OVERHEAD;
 		assert_eq!(
-			message.len(),
-			expected_len,
+			message_bytes.len(),
+			expected_len_bytes,
 			"Message length {} doesn't match expected length {}",
-			message.len(),
-			expected_len
+			message_bytes.len(),
+			expected_len_bytes
 		);
 		// this populates both the message wires (shared with Concat) and the
 		// padded_message wires (Keccak-specific padding)
-		self.keccak.populate_message(w, message);
-		self.keccak.populate_len(w, expected_len);
+		self.keccak.populate_message(w, message_bytes);
+		self.keccak.populate_len_bytes(w, expected_len_bytes);
 	}
 
 	/// Populate the digest wires.

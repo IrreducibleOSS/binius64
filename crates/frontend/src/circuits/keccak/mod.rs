@@ -4,8 +4,12 @@ pub mod reference;
 use binius_core::word::Word;
 use permutation::Permutation;
 
-use crate::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
+use crate::{
+	circuits::multiplexer::{multi_wire_multiplex, single_wire_multiplex},
+	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
+};
 
+pub const N_WORDS_PER_DIGEST: usize = 4;
 pub const N_WORDS_PER_STATE: usize = 25;
 pub const RATE_BYTES: usize = 136;
 pub const N_WORDS_PER_BLOCK: usize = RATE_BYTES / 8;
@@ -14,16 +18,14 @@ pub const N_WORDS_PER_BLOCK: usize = RATE_BYTES / 8;
 ///
 /// # Arguments
 ///
-/// * `max_len` - max message length in bytes
-/// * `len` - A wire representing the input message length in bytes
+/// * `len_bytes` - A wire representing the input message length in bytes
 /// * `digest` - Array of 4 wires representing the 256-bit output digest
 /// * `message` - Vector of wires representing the input message
 pub struct Keccak {
-	pub max_len: usize,
-	pub len: Wire,
-	pub digest: [Wire; N_WORDS_PER_STATE],
+	pub len_bytes: Wire,
+	pub digest: [Wire; N_WORDS_PER_DIGEST],
 	pub message: Vec<Wire>,
-	padded_message: Vec<[Wire; N_WORDS_PER_BLOCK]>,
+	padded_message: Vec<Wire>,
 	n_blocks: usize,
 }
 
@@ -42,40 +44,110 @@ impl Keccak {
 	/// * max_len > 0
 	pub fn new(
 		b: &CircuitBuilder,
-		max_len: usize,
-		len: Wire,
-		digest: [Wire; N_WORDS_PER_STATE],
+		len_bytes: Wire,
+		digest: [Wire; N_WORDS_PER_DIGEST],
 		message: Vec<Wire>,
 	) -> Self {
-		assert!(max_len > 0, "max_len must be positive");
-
+		let max_len_bytes = message.len() << 3;
 		// number of blocks needed for the maximum sized message
-		let n_blocks = (max_len + 1).div_ceil(RATE_BYTES);
+		let n_blocks = (max_len_bytes + 1).div_ceil(RATE_BYTES);
 
 		// constrain the message length claim to be explicitly within bounds
-		let len_check = b.icmp_ult(b.add_constant_64(max_len as u64), len); // len <= max_len
-		b.assert_0("len_check", len_check);
+		let len_check = b.icmp_ult(b.add_constant_64(max_len_bytes as u64), len_bytes); // max_len_bytes < len_bytes
+		b.assert_msb_false("len_check", len_check);
 
 		// run keccak function, producing the intermediate states between permutations
 		let (permutation_states, padded_message) = Self::compute_digest(b, n_blocks);
 
-		// ensure digest was correctly computed by keccak
-		let is_final_block_flags =
-			Self::constrain_claimed_digest(b, permutation_states, digest, len, n_blocks);
+		// begin "constrain claimed digest".
+		// want to do: `let block_index = (len_bytes + 1).divceil(136)`.
+		// royal pain in the ass that 136 is not a power of 2, so we can't compute this in circuit
+		// still though, i believe that there might be tricks better than what we're doing below.
+		let mut end_block_index = b.add_constant(Word::ZERO);
+		let mut is_not_last_column = b.add_constant(Word::ZERO);
+		// `is_not_last_column` will be true if and only if `len_bytes >> 3` != 16 (mod 17).
+		// true iff the WORD w/ the very first post-message byte is NOT the last word in its block.
+		for block_no in 0..n_blocks {
+			// start of this block
+			let block_start = b.add_constant_64((block_no * RATE_BYTES) as u64);
+			let block_end = b.add_constant_64(((block_no + 1) * RATE_BYTES) as u64);
+			let last_word_start = b.add_constant_64(((block_no + 1) * RATE_BYTES - 8) as u64);
 
-		// ensure message padding matches keccak expectations
-		Self::constrain_message_padding(
-			b,
-			len,
-			message.clone(),
-			n_blocks,
-			padded_message.clone(),
-			is_final_block_flags,
-		);
+			let lt_start = b.icmp_ult(len_bytes, block_start);
+			let lt_end = b.icmp_ult(len_bytes, block_end);
+			let lt_last_word = b.icmp_ult(len_bytes, last_word_start);
+			let is_final_block = b.band(b.bnot(lt_start), lt_end);
+
+			// flag that this block is the final block per the claimed length
+			end_block_index =
+				b.select(is_final_block, b.add_constant_64(block_no as u64), end_block_index);
+			is_not_last_column = b.select(is_final_block, lt_last_word, is_not_last_column);
+		}
+
+		let inputs: Vec<&[Wire]> = permutation_states.iter().map(|arr| &arr[..]).collect();
+		let computed_digest_vec = multi_wire_multiplex(b, &inputs, end_block_index);
+		let computed_digest = computed_digest_vec[..N_WORDS_PER_DIGEST]
+			.try_into()
+			.unwrap();
+		b.assert_eq_v("claimed digest is correct", digest, computed_digest);
+
+		// begin treatment of boundary word.
+		let word_boundary = b.shr(len_bytes, 3);
+		let boundary_word = single_wire_multiplex(b, &message, word_boundary);
+		let boundary_padded_word = single_wire_multiplex(b, &padded_message, word_boundary);
+		// When the last word of the message is not full, we expect a padding byte to be
+		// somewhere within the word. Since the top bit will also be in this word.
+		let candidates: Vec<Wire> = (0..8)
+			.map(|i| {
+				let mask = b.add_constant_64(0x00FFFFFFFFFFFFFF >> ((7 - i) << 3));
+				let padding_byte = b.add_constant_64(1 << (i << 3));
+				let message_low = b.band(boundary_word, mask);
+				b.bxor(message_low, padding_byte)
+			})
+			.collect();
+
+		let zero = b.add_constant(Word::ZERO);
+		let msb_1 = b.add_constant(Word::MSB_ONE);
+		let len_bytes_mod_8 = b.band(len_bytes, b.add_constant_64(7));
+		let expected_partial = single_wire_multiplex(b, &candidates, len_bytes_mod_8);
+		let with_possible_end = b.bxor(expected_partial, b.select(is_not_last_column, zero, msb_1));
+
+		b.assert_eq("expected partial", with_possible_end, boundary_padded_word);
+
+		// Within the final rate block, ensure that the pad byte and top bit are where they are
+		// supposed to be
+		for block_index in 0..n_blocks {
+			let is_end_block = b.icmp_eq(end_block_index, b.add_constant_64(block_index as u64));
+			for column_index in 0..N_WORDS_PER_BLOCK {
+				let word_index = block_index * N_WORDS_PER_BLOCK + column_index;
+
+				let padded_word = padded_message[word_index];
+
+				// a potentially padded word is at this index
+				let word_idx_wire = b.add_constant_64(word_index as u64);
+				if word_index < message.len() {
+					let message_word = message[word_index];
+					let is_before_end = b.icmp_ult(word_idx_wire, word_boundary);
+					b.assert_eq_cond("full", padded_word, message_word, is_before_end);
+				}
+
+				let is_past_message = b.icmp_ult(word_boundary, word_idx_wire);
+
+				if column_index == 16 {
+					// last word in the block
+					let must_check_delimiter = b.band(is_end_block, is_not_last_column);
+					b.assert_eq_cond("delim", padded_word, msb_1, must_check_delimiter);
+					// if the word in which 0x01 must reside is NOT the last word in the block,
+					// then the presence of the 0x80 delimiter is NOT treated with the boundary word
+					// thus we must separately check that the ACTUAL last word in the block has it
+				} else {
+					b.assert_eq_cond("after-message padding", padded_word, zero, is_past_message);
+				}
+			}
+		}
 
 		Self {
-			max_len,
-			len,
+			len_bytes,
 			digest,
 			message,
 			padded_message,
@@ -89,9 +161,9 @@ impl Keccak {
 	fn compute_digest(
 		b: &CircuitBuilder,
 		n_blocks: usize,
-	) -> (Vec<[Wire; N_WORDS_PER_STATE]>, Vec<[Wire; N_WORDS_PER_BLOCK]>) {
-		let padded_message: Vec<[Wire; N_WORDS_PER_BLOCK]> = (0..n_blocks)
-			.map(|_| std::array::from_fn(|_| b.add_witness()))
+	) -> (Vec<[Wire; N_WORDS_PER_STATE]>, Vec<Wire>) {
+		let padded_message: Vec<Wire> = (0..n_blocks * N_WORDS_PER_BLOCK)
+			.map(|_| b.add_witness())
 			.collect();
 
 		// zero initialized keccak state
@@ -104,7 +176,8 @@ impl Keccak {
 			let state_in = states[block_no];
 			let mut xored_state = state_in;
 			for i in 0..N_WORDS_PER_BLOCK {
-				xored_state[i] = b.bxor(state_in[i], padded_message[block_no][i]);
+				xored_state[i] =
+					b.bxor(state_in[i], padded_message[block_no * N_WORDS_PER_BLOCK + i]);
 			}
 
 			Permutation::keccak_f1600(b, &mut xored_state);
@@ -112,64 +185,7 @@ impl Keccak {
 			states.push(xored_state);
 		}
 
-		(states, padded_message)
-	}
-
-	/// Checks if the supposed digest is truly a valid keccak digest of the message.
-	///
-	/// This is done by ensuring that the supposed digest is correctly found at the end of the
-	/// states collected during the absorption of the message. By doing this, we ensure that
-	/// digests not only are correctly computed using the keccak permutation but that they
-	/// emerge after the expected number of permutations.
-	fn constrain_claimed_digest(
-		b: &CircuitBuilder,
-		computed_states: Vec<[Wire; N_WORDS_PER_STATE]>,
-		digest: [Wire; N_WORDS_PER_STATE],
-		length: Wire,
-		n_blocks: usize,
-	) -> Vec<Wire> {
-		let zero = b.add_constant(Word::ZERO);
-
-		let mut computed_digest = [zero; N_WORDS_PER_STATE];
-
-		// flags to determine if a block at a given index is the final block
-		let mut is_final_block_flags = Vec::with_capacity(n_blocks);
-
-		// A supposed final block can be validated by checking whether its supposed length
-		// lies within the expected block range. This expectation is further constrained
-		// later on in the circuit by ensuring that the padding expectations for a message
-		// also match up to these checks.
-		for block_no in 0..n_blocks {
-			// start of this block
-			let block_start = b.add_constant_64((block_no * RATE_BYTES) as u64);
-			let block_end = b.add_constant_64(((block_no + 1) * RATE_BYTES) as u64);
-
-			// supposed length >= block_start
-			let ge_start = if block_no == 0 {
-				b.add_constant(Word::ALL_ONE) // block 0 always len >= 0
-			} else {
-				b.bnot(b.icmp_ult(length, block_start))
-			};
-
-			// supposed length < block_end
-			let lt_end = b.icmp_ult(length, block_end);
-
-			// the final block will fall within the range: len < block_end and len >= block_start
-			let is_final_block = b.band(ge_start, lt_end);
-
-			// flag that this block is the final block per the claimed length
-			is_final_block_flags.push(is_final_block);
-
-			// ensure that if this block is final, that the digest matches the claimed digest
-			for i in 0..4 {
-				let masked = b.band(is_final_block, computed_states[block_no + 1][i]);
-				computed_digest[i] = b.bxor(computed_digest[i], masked);
-			}
-		}
-
-		b.assert_eq_v("claimed digest is correct", computed_digest, digest);
-
-		is_final_block_flags
+		(states[1..].to_vec(), padded_message)
 	}
 
 	/// Constrains message padding to match keccak expectations
@@ -191,131 +207,9 @@ impl Keccak {
 	///
 	/// 3. The final word of a message is in the final word and the final byte of the block. Meaning
 	///    that the padding byte and the top bit are within the same byte.
-	fn constrain_message_padding(
-		b: &CircuitBuilder,
-		len: Wire,
-		message: Vec<Wire>,
-		n_blocks: usize,
-		padded_message: Vec<[Wire; N_WORDS_PER_BLOCK]>,
-		is_final_block_flags: Vec<Wire>,
-	) {
-		let total_rate_words = n_blocks * N_WORDS_PER_BLOCK;
 
-		// bit masks for extracting up to the possible locations for the pad byte within a word
-		const LOW_MASK: [u64; 8] = [
-			0,
-			0x0000_00FF,
-			0x0000_FFFF,
-			0x00FF_FFFF,
-			0xFFFF_FFFF,
-			0xFF_FFFF_FFFF,
-			0xFFFF_FFFF_FFFF,
-			0xFF_FFFF_FFFF_FFFF,
-		];
-
-		// possible pad byte placements within a word
-		const PAD_BYTE: [u64; 8] = [
-			0x01,
-			0x01_00,
-			0x01_00_00,
-			0x01_00_00_00,
-			0x01_00_00_00_00,
-			0x01_00_00_00_00_00,
-			0x01_00_00_00_00_00_00,
-			0x01_00_00_00_00_00_00_00,
-		];
-
-		let word_boundary = b.shr(len, 3);
-
-		let zero = b.add_constant_64(0);
-
-		// byte offset for where the pad byte is within a partial word given the claimed length
-		let r = b.band(len, b.add_constant_64(7));
-
-		// Within the final rate block, ensure that the pad byte and top bit are where they are
-		// supposed to be
-		for word_index in 0..total_rate_words {
-			// Retrieve the word of the supposed padded message corresponding to the final padded
-			// word
-			let block_idx = word_index / N_WORDS_PER_BLOCK;
-			let word_in_block = word_index % N_WORDS_PER_BLOCK;
-			let padded_word = padded_message[block_idx][word_in_block];
-
-			// a potentially padded word is at this index
-			let word_idx_wire = b.add_constant_64(word_index as u64);
-			let message_word = *message.get(word_index).unwrap_or(&zero);
-
-			//  true if message ends exactly at the block boundary
-			let msg_last_full = b.icmp_ult(word_idx_wire, word_boundary);
-
-			// true if last block word is the last word of msg, so it will be the same as the word
-			// boundary
-			let block_last_is_msg_last = b.icmp_eq(word_idx_wire, word_boundary);
-
-			// In the case where the word is full and is also the last word in the block, it should
-			// match the original msg word.
-			b.assert_eq_cond("full", message_word, padded_word, msg_last_full);
-
-			// When the last word of the message is not full, we expect a padding byte to be
-			// somewhere within the word. Since the top bit will also be in this word.
-			let mut expected_partial = zero;
-			for k in 0..8 {
-				let r_is_k = b.icmp_eq(r, b.add_constant_64(k as u64));
-				let msk = b.add_constant_64(LOW_MASK[k]);
-				let pbyte = b.add_constant_64(PAD_BYTE[k]);
-				let msg_lo = b.band(message_word, msk);
-				let cand = b.bxor(msg_lo, pbyte);
-
-				expected_partial = b.bxor(expected_partial, b.band(r_is_k, cand));
-			}
-
-			// this will be true if the current word is the last word of the block
-			let is_last_block_word = b.icmp_eq(
-				b.add_constant_64(word_in_block as u64),
-				b.add_constant_64(N_WORDS_PER_BLOCK as u64 - 1),
-			);
-
-			// this will be true if the current word is the last word of the block and the last word
-			// of the message is the last word of the block
-			let partial_and_last = b.band(block_last_is_msg_last, is_last_block_word);
-
-			// Set the top bit into the expected partial word after it has had its padding byte set
-			// If this is not the last word of the block, the expected partial word will not change
-			let top_bit_const = b.add_constant_64(0x80_00_00_00_00_00_00_00u64);
-			let extra_0x80 = b.band(partial_and_last, top_bit_const);
-			let expected_for_partial = b.bxor(expected_partial, extra_0x80);
-
-			// If the last block word is the last word of the message, then assert that the partial
-			// word matches
-			b.assert_eq_cond(
-				"partial matches expected",
-				expected_for_partial,
-				padded_word,
-				block_last_is_msg_last,
-			);
-
-			let is_final_block = is_final_block_flags[block_idx];
-
-			// Only assert 0x80 alone when it's the last word but NOT partial
-			let last_not_partial = b.band(is_last_block_word, b.bnot(block_last_is_msg_last));
-			let last_in_final_block = b.band(is_final_block, last_not_partial);
-			b.assert_eq_cond(
-				"0x80 in final block",
-				padded_word,
-				top_bit_const,
-				last_in_final_block,
-			);
-
-			// Words after the partial word (but before last word) should be zero
-			let is_after_partial = b.icmp_ult(word_boundary, word_idx_wire);
-			let not_last = b.bnot(is_last_block_word);
-			let must_be_zero = b.band(is_final_block, b.band(is_after_partial, not_last));
-			b.assert_eq_cond("zero after partial", padded_word, zero, must_be_zero);
-
-			// All words after final block must be zero
-			let after_final = b.icmp_ult(len, b.add_constant_64((block_idx * RATE_BYTES) as u64));
-			b.assert_eq_cond("zero after final", padded_word, zero, after_final);
-		}
+	pub fn max_len_bytes(&self) -> usize {
+		self.message.len() << 3
 	}
 
 	/// Populates the witness with the actual message length
@@ -324,14 +218,14 @@ impl Keccak {
 	///
 	/// * w - The witness filler to populate
 	/// * len_bytes - The actual byte length of the message
-	pub fn populate_len(&self, w: &mut WitnessFiller<'_>, len_bytes: usize) {
+	pub fn populate_len_bytes(&self, w: &mut WitnessFiller<'_>, len_bytes: usize) {
 		assert!(
-			len_bytes <= self.max_len,
+			len_bytes <= self.max_len_bytes(),
 			"Message length {} exceeds maximum {}",
 			len_bytes,
-			self.max_len
+			self.max_len_bytes()
 		);
-		w[self.len] = Word(len_bytes as u64);
+		w[self.len_bytes] = Word(len_bytes as u64);
 	}
 
 	/// Populates the witness with the expected digest value packed into 4 64-bit words
@@ -355,14 +249,14 @@ impl Keccak {
 	/// * message_bytes - The input message as a byte slice
 	pub fn populate_message(&self, w: &mut WitnessFiller<'_>, message_bytes: &[u8]) {
 		assert!(
-			message_bytes.len() <= self.max_len,
+			message_bytes.len() <= self.max_len_bytes(),
 			"Message length {} exceeds maximum {}",
 			message_bytes.len(),
-			self.max_len
+			self.max_len_bytes()
 		);
 
 		// populate message words from input bytes
-		let words = self.pack_bytes_into_words(message_bytes, self.max_len.div_ceil(8));
+		let words = self.pack_bytes_into_words(message_bytes, self.max_len_bytes().div_ceil(8));
 		for (i, word) in words.iter().enumerate() {
 			if i < self.message.len() {
 				w[self.message[i]] = Word(*word);
@@ -388,7 +282,7 @@ impl Keccak {
 				.enumerate()
 			{
 				let word = u64::from_le_bytes(chunk.try_into().unwrap());
-				w[self.padded_message[block_idx][i]] = Word(word);
+				w[self.padded_message[block_idx * N_WORDS_PER_BLOCK + i]] = Word(word);
 			}
 		}
 	}
@@ -419,36 +313,40 @@ mod tests {
 	use rand::{Rng, SeedableRng, rngs::StdRng};
 	use sha3::{Digest, Keccak256};
 
-	use super::{Keccak, N_WORDS_PER_STATE};
+	use super::{Keccak, N_WORDS_PER_DIGEST};
 	use crate::{
 		circuits::keccak::RATE_BYTES,
 		compiler::{CircuitBuilder, Wire},
 		constraint_verifier::verify_constraints,
 	};
 
-	fn keccak_crate(message: &[u8]) -> [u8; 32] {
+	fn keccak_crate(message_bytes: &[u8]) -> [u8; 32] {
 		let mut hasher = Keccak256::new();
-		hasher.update(message);
+		hasher.update(message_bytes);
 		hasher.finalize().into()
 	}
 
 	// runs keccak circuit on a message and returns the expected digest
-	fn validate_keccak_circuit(message: &[u8], expected_digest: [u8; 32], max_len: usize) {
+	fn validate_keccak_circuit(
+		message_bytes: &[u8],
+		expected_digest: [u8; 32],
+		max_len_bytes: usize,
+	) {
 		let b = CircuitBuilder::new();
 
 		let len = b.add_witness();
-		let digest: [Wire; N_WORDS_PER_STATE] = std::array::from_fn(|_| b.add_inout());
+		let digest: [Wire; N_WORDS_PER_DIGEST] = std::array::from_fn(|_| b.add_inout());
 
-		let n_words = max_len.div_ceil(8);
-		let message_wires = (0..n_words).map(|_| b.add_inout()).collect();
+		let n_words = max_len_bytes.div_ceil(8);
+		let message = (0..n_words).map(|_| b.add_inout()).collect();
 
-		let keccak = Keccak::new(&b, max_len, len, digest, message_wires);
+		let keccak = Keccak::new(&b, len, digest, message);
 		let circuit = b.build();
 
 		// populate witness
 		let mut w = circuit.new_witness_filler();
-		keccak.populate_len(&mut w, message.len());
-		keccak.populate_message(&mut w, message);
+		keccak.populate_len_bytes(&mut w, message_bytes.len());
+		keccak.populate_message(&mut w, message_bytes);
 		keccak.populate_digest(&mut w, expected_digest);
 
 		// ensure correct final digest
@@ -464,11 +362,11 @@ mod tests {
 	fn test_valid_message() {
 		let mut rng = StdRng::seed_from_u64(0);
 
-		let message = repeat_n(rng.gen_range(0..=255), 1000).collect::<Vec<_>>();
-		let max_message_len = 2048;
+		let message_bytes: Vec<u8> = repeat_n(rng.gen_range(0..=255), 1000).collect::<Vec<_>>();
+		let max_len_bytes = 2048;
 
-		let expected_digest = keccak_crate(&message);
-		validate_keccak_circuit(&message, expected_digest, max_message_len);
+		let expected_digest = keccak_crate(&message_bytes);
+		validate_keccak_circuit(&message_bytes, expected_digest, max_len_bytes);
 	}
 
 	#[test]
@@ -478,10 +376,10 @@ mod tests {
 		let mut rng = StdRng::seed_from_u64(0);
 
 		let message = repeat_n(rng.gen_range(0..=255), 3000).collect::<Vec<_>>();
-		let max_message_len = 2048;
+		let max_len_bytes = 2048;
 
 		let expected_digest = keccak_crate(&message);
-		validate_keccak_circuit(&message, expected_digest, max_message_len);
+		validate_keccak_circuit(&message, expected_digest, max_len_bytes);
 	}
 
 	/// This one byte message ends well before the final word of the block. To pad this message,
