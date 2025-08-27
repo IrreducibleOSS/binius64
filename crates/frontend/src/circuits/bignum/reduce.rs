@@ -156,7 +156,7 @@ impl PseudoMersenneModReduce {
 	}
 
 	/// Apply the reduction constraint conditionally based on the value of boolean `mask` wire.
-	pub fn constrain_cond(self, builder: &CircuitBuilder, mask: Wire) {
-		assert_eq_cond(builder, "modreduce_pseudo_mersenne", &self.lhs, &self.rhs, mask)
+	pub fn constrain_cond(self, builder: &CircuitBuilder, cond: Wire) {
+		assert_eq_cond(builder, "modred_pseudo_mersenne", &self.lhs, &self.rhs, cond)
 	}
 }

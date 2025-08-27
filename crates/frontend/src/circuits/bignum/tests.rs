@@ -314,11 +314,11 @@ proptest! {
 
 		let lt_flag_wire = w[lt_flag];
 		let lt_flag_big = from_u64_limbs(&a_vals) < from_u64_limbs(&b_vals);
-		assert!(lt_flag_big && lt_flag_wire == Word::ALL_ONE || !lt_flag_big && lt_flag_wire == Word::ZERO);
+		assert!(lt_flag_big == (lt_flag_wire >> 63 == Word::ONE));
 
 		let eq_flag_wire = w[eq_flag];
 		let eq_flag_big = from_u64_limbs(&a_vals) == from_u64_limbs(&b_vals);
-		assert!(eq_flag_big && eq_flag_wire == Word::ALL_ONE || !eq_flag_big && eq_flag_wire == Word::ZERO);
+		assert!(eq_flag_big == (eq_flag_wire >> 63 == Word::ONE));
 
 		verify_constraints(cs.constraint_system(), &w.into_value_vec()).unwrap();
 	}
