@@ -22,6 +22,20 @@ where
 	}
 }
 
+impl<T, U> FromParallelIterator<(T, U)> for (Vec<T>, Vec<U>)
+where
+	T: Send,
+	U: Send,
+{
+	#[inline(always)]
+	fn from_par_iter<I>(par_iter: I) -> Self
+	where
+		I: IntoParallelIterator<Item = (T, U)>,
+	{
+		par_iter.into_par_iter().into_inner().unzip()
+	}
+}
+
 impl<T, E> FromParallelIterator<Result<T, E>> for Result<Vec<T>, E>
 where
 	T: Send,

@@ -5,6 +5,7 @@ use binius_frontend::{
 	circuits::zklogin::{Config, ZkLogin},
 	compiler::{CircuitBuilder, circuit::WitnessFiller},
 };
+use binius_utils::rayon::config::adjust_thread_pool;
 use clap::Args;
 use jwt_simple::prelude::*;
 use rand::prelude::*;
@@ -211,6 +212,7 @@ impl ExampleCircuit for ZkLoginExample {
 
 fn main() -> Result<()> {
 	let _tracing_guard = tracing_profile::init_tracing()?;
+	adjust_thread_pool();
 
 	Cli::<ZkLoginExample>::new("zklogin")
 		.about("Circuit verifying knowledge of a valid OpenID Connect login")

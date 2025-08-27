@@ -60,13 +60,10 @@ impl<'b, F: Field, P: PackedField<Scalar = F>, B: Bitwise> SelectorMlecheckProve
 			return Err(Error::BitmasksSizeMismatch);
 		}
 
-		let mut gruen34s = Vec::with_capacity(claims.len());
-		let mut sums = Vec::with_capacity(claims.len());
-
-		for Claim { point, value } in claims {
-			gruen34s.push(Gruen34::new(&point));
-			sums.push(value);
-		}
+		let (gruen34s, sums) = claims
+			.into_par_iter()
+			.map(|Claim { point, value }| (Gruen34::new(&point), value))
+			.collect::<(Vec<_>, Vec<_>)>();
 
 		let switchover = BinarySwitchover::new(sums.len(), switchover.min(n_vars), bitmasks);
 		let last_coeffs_or_sums = RoundCoeffsOrSums::Sums(sums);
@@ -316,7 +313,7 @@ mod tests {
 				let direct_mle_prover = BivariateProductMultiMlecheckProver::new(
 					[[direct_selector, selected.clone()]].to_vec(),
 					&point,
-					&[direct_eval_claim],
+					vec![direct_eval_claim],
 				)
 				.unwrap();
 				let direct_prover = MleToSumCheckDecorator::new(direct_mle_prover);
@@ -325,7 +322,7 @@ mod tests {
 				let inverted_mle_prover = BivariateProductMultiMlecheckProver::new(
 					[[inverted_selector, ones.clone()]].to_vec(),
 					&point,
-					&[inverted_eval_claim],
+					vec![inverted_eval_claim],
 				)
 				.unwrap();
 				let inverted_prover = MleToSumCheckDecorator::new(inverted_mle_prover);

@@ -261,7 +261,7 @@ mod tests {
 				.map(|selector| [selector, ones.clone()])
 				.collect_vec(),
 			&eval_point,
-			&eval_claims,
+			eval_claims.clone(),
 		)
 		.unwrap();
 

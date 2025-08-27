@@ -8,6 +8,7 @@ use binius_frontend::{
 	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
 	util::{byteswap, pack_bytes_into_wires_le},
 };
+use binius_utils::rayon::config::adjust_thread_pool;
 use clap::Args;
 use ethsign::SecretKey;
 use rand::{Rng, SeedableRng, rngs::StdRng};
@@ -215,6 +216,7 @@ fn keccak256(bytes: &[u8]) -> [u8; 32] {
 
 fn main() -> Result<()> {
 	let _tracing_guard = tracing_profile::init_tracing()?;
+	adjust_thread_pool();
 
 	Cli::<EthSignExample>::new("ethsign")
 		.about("Ethereum-style signing example")

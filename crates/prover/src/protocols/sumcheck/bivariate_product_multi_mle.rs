@@ -25,7 +25,7 @@ impl<F: Field, P: PackedField<Scalar = F>> BivariateProductMultiMlecheckProver<P
 	pub fn new(
 		multilinears: Vec<[FieldBuffer<P>; 2]>,
 		eval_point: &[F],
-		eval_claims: &[F],
+		eval_claims: Vec<F>,
 	) -> Result<Self, Error> {
 		let n_vars = eval_point.len();
 
@@ -42,7 +42,7 @@ impl<F: Field, P: PackedField<Scalar = F>> BivariateProductMultiMlecheckProver<P
 		}
 
 		let multilinears = multilinears.into_iter().flatten().collect_vec();
-		let last_coeffs_or_sums = RoundCoeffsOrSums::Sums(eval_claims.to_vec());
+		let last_coeffs_or_sums = RoundCoeffsOrSums::Sums(eval_claims);
 
 		let gruen34 = Gruen34::new(eval_point);
 
@@ -234,7 +234,7 @@ mod tests {
 		let mut multi_prover = BivariateProductMultiMlecheckProver::new(
 			[multilinears].to_vec(),
 			&eval_point,
-			&[eval_claim],
+			vec![eval_claim],
 		)
 		.unwrap();
 
@@ -295,7 +295,7 @@ mod tests {
 			.collect_vec();
 
 		let mlecheck_prover =
-			BivariateProductMultiMlecheckProver::new(multilinears, &eval_point, &eval_claims)
+			BivariateProductMultiMlecheckProver::new(multilinears, &eval_point, eval_claims)
 				.unwrap();
 		let mut prover = MleToSumCheckDecorator::new(mlecheck_prover);
 
