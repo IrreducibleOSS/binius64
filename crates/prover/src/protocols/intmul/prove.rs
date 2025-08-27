@@ -294,7 +294,14 @@ where
 			assert_eq!(c_hi_l.len(), 2 << depth);
 			assert_eq!(evals.len(), 3 << depth);
 
-			let layer = [a_l, c_lo_l, c_hi_l].concat();
+			// NB: you may be tempted to use .concat here, but don't be - it clones, whereas the
+			// code below moves.
+			let mut layer = Vec::with_capacity(6 << depth);
+			layer.extend(a_l);
+			layer.extend(c_lo_l);
+			layer.extend(c_hi_l);
+			assert_eq!(layer.len(), 6 << depth);
+
 			let sumcheck_prover =
 				BivariateProductMultiMlecheckProver::new(make_pairs(layer), &eval_point, &evals)?;
 
@@ -345,8 +352,19 @@ where
 		assert_eq!(b_eval_point.len(), a_layer.first().expect("log_bits >= 1").log_len());
 		assert_eq!(a_c_eval_point.len(), b_eval_point.len());
 
-		let layer = [a_layer, c_lo_layer, c_hi_layer].concat();
-		let evals = [a_evals, c_lo_evals, c_hi_evals].concat();
+		// NB: you may be tempted to use .concat here, but don't be - it clones, whereas the code
+		// below moves.
+		let mut layer = Vec::with_capacity(3 << log_bits);
+		layer.extend(a_layer);
+		layer.extend(c_lo_layer);
+		layer.extend(c_hi_layer);
+		assert_eq!(layer.len(), 3 << log_bits);
+
+		let mut evals = Vec::with_capacity(3 << (log_bits - 1));
+		evals.extend(a_evals);
+		evals.extend(c_lo_evals);
+		evals.extend(c_hi_evals);
+		assert_eq!(evals.len(), 3 << (log_bits - 1));
 
 		let a_c_sumcheck_prover =
 			BivariateProductMultiMlecheckProver::new(make_pairs(layer), a_c_eval_point, &evals)?;
