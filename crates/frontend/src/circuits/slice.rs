@@ -63,7 +63,7 @@ impl Slice {
 		// Verify bounds: offset + len_slice <= len_input
 		let offset_plus_len_slice = b.iadd_32(offset, len_slice);
 		let overflow = b.icmp_ult(len_input, offset_plus_len_slice);
-		b.assert_msb_false("bounds_check", overflow);
+		b.assert_false("bounds_check", overflow);
 
 		// Decompose offset = word_offset * 8 + byte_offset
 		let word_offset = b.shr(offset, 3); // offset / 8

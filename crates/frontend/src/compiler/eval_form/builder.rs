@@ -238,9 +238,16 @@ impl BytecodeBuilder {
 		self.emit_u32(error_id);
 	}
 
-	pub fn emit_assert_msb_false(&mut self, src: u32, error_id: u32) {
+	pub fn emit_assert_false(&mut self, src: u32, error_id: u32) {
 		self.n_eval_insn += 1;
 		self.emit_u8(0x63);
+		self.emit_reg(src);
+		self.emit_u32(error_id);
+	}
+
+	pub fn emit_assert_true(&mut self, src: u32, error_id: u32) {
+		self.n_eval_insn += 1;
+		self.emit_u8(0x64);
 		self.emit_reg(src);
 		self.emit_u32(error_id);
 	}

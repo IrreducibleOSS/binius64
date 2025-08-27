@@ -156,7 +156,7 @@ impl Concat {
 
 			let too_long =
 				b.icmp_ult(b.add_constant(Word((term.data.len() << 3) as u64)), term.len_bytes);
-			b.assert_msb_false("term_length_check", too_long);
+			b.assert_false("term_length_check", too_long);
 
 			// 2. Word-level verification for current term
 			//
@@ -217,7 +217,7 @@ impl Concat {
 		b.assert_eq("concat_length", offset, len_joined_bytes);
 		let too_long =
 			b.icmp_ult(b.add_constant(Word((joined.len() << 3) as u64)), len_joined_bytes);
-		b.assert_msb_false("concat_length_lt_joined_len", too_long);
+		b.assert_false("concat_length_lt_joined_len", too_long);
 
 		Concat {
 			len_joined_bytes,

@@ -1,5 +1,5 @@
-//! Assert that a wire, interpreted as a MSB-bool, is true.
-//! i.e., we are checking whether its most-significant bit is 1. all lower bits get ignored.
+//! Assert that a wire, interpreted as a MSB-bool, is false.
+//! i.e., we are checking whether its most-significant bit is 0. all lower bits get ignored.
 //!
 //! Enforces `x & 0x8000000000000000 = 0` using an AND constraint.
 //!
@@ -52,5 +52,5 @@ pub fn emit_eval_bytecode(
 ) {
 	let GateParam { inputs, .. } = data.gate_param();
 	let [x] = inputs else { unreachable!() };
-	builder.emit_assert_msb_false(wire_to_reg(*x), assertion_path.as_u32());
+	builder.emit_assert_false(wire_to_reg(*x), assertion_path.as_u32());
 }
