@@ -135,23 +135,18 @@ pub fn create_slice_cs_with_witness() -> (ConstraintSystem, ValueVec) {
 	use binius_frontend::circuits::slice::Slice;
 
 	let builder = CircuitBuilder::new();
-	let max_n_input: usize = 32; // Maximum input size
-	let max_n_slice: usize = 16; // Maximum slice size
 
 	// Create wires for slice circuit
 	let len_input = builder.add_witness();
 	let len_slice = builder.add_witness();
-	let input: Vec<binius_frontend::compiler::Wire> = (0..max_n_input / 8)
-		.map(|_| builder.add_witness())
-		.collect();
-	let slice: Vec<binius_frontend::compiler::Wire> = (0..max_n_slice / 8)
-		.map(|_| builder.add_witness())
-		.collect();
+	let input: Vec<binius_frontend::compiler::Wire> =
+		(0..4).map(|_| builder.add_witness()).collect();
+	let slice: Vec<binius_frontend::compiler::Wire> =
+		(0..2).map(|_| builder.add_witness()).collect();
 	let offset = builder.add_witness();
 
 	// Create the Slice circuit
-	let slice_circuit =
-		Slice::new(&builder, max_n_input, max_n_slice, len_input, len_slice, input, slice, offset);
+	let slice_circuit = Slice::new(&builder, len_input, len_slice, input, slice, offset);
 
 	let circuit = builder.build();
 	let mut witness_filler = circuit.new_witness_filler();

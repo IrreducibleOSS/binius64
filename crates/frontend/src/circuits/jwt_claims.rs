@@ -223,11 +223,8 @@ impl JwtClaims {
 			b.assert_eq("attr_length".to_string(), value_length, attr.len_value);
 
 			// Use Slice to verify the value content
-			let max_value_size = attr.value.len() * 8;
 			let _slice = Slice::new(
 				&b,
-				max_len_json,
-				max_value_size,
 				len_json,
 				value_length,
 				json.clone(),
