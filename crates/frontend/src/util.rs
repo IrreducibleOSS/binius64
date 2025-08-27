@@ -37,28 +37,6 @@ pub fn pack_bytes_into_wires_le(w: &mut WitnessFiller, wires: &[Wire], bytes: &[
 	}
 }
 
-/// Packs bytes into wires with zero padding to fill the wire capacity.
-///
-/// This is useful when you have a fixed number of wires but variable-length data.
-/// The bytes are padded with zeros to fill wires.len() * 8 bytes.
-pub fn pack_bytes_into_wires_le_padded(w: &mut WitnessFiller, wires: &[Wire], bytes: &[u8]) {
-	let wire_capacity = wires.len() * 8;
-	assert!(
-		bytes.len() <= wire_capacity,
-		"bytes length {} exceeds wire capacity {}",
-		bytes.len(),
-		wire_capacity
-	);
-
-	if bytes.len() == wire_capacity {
-		pack_bytes_into_wires_le(w, wires, bytes);
-	} else {
-		let mut padded = vec![0u8; wire_capacity];
-		padded[..bytes.len()].copy_from_slice(bytes);
-		pack_bytes_into_wires_le(w, wires, &padded);
-	}
-}
-
 /// Returns a BigUint from u64 limbs with little-endian ordering
 pub fn num_biguint_from_u64_limbs<I>(limbs: I) -> num_bigint::BigUint
 where
