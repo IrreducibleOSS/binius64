@@ -6,6 +6,7 @@ pub mod ecdsa;
 pub mod fixed_byte_vec;
 pub mod float64;
 pub mod hash_based_sig;
+pub mod hmac;
 pub mod jwt_claims;
 pub mod keccak;
 pub mod multiplexer;
