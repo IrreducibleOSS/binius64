@@ -4,13 +4,12 @@ use binius_utils::random_access_sequence::RandomAccessSequence;
 use bytemuck::{Pod, zeroed_vec};
 
 use crate::{
-	AESTowerField8b, BinaryField128bGhash, BinaryField128bPolyval, PackedBinaryGhash1x128b,
-	PackedBinaryGhash2x128b, PackedBinaryGhash4x128b, PackedField,
+	AESTowerField8b, BinaryField128bGhash, PackedBinaryGhash1x128b, PackedBinaryGhash2x128b,
+	PackedBinaryGhash4x128b, PackedField,
 	arch::{
 		packed_8::*, packed_16::*, packed_32::*, packed_64::*, packed_128::*, packed_256::*,
 		packed_512::*, packed_aes_8::*, packed_aes_16::*, packed_aes_32::*, packed_aes_64::*,
-		packed_aes_128::*, packed_aes_256::*, packed_aes_512::*, packed_polyval_128::*,
-		packed_polyval_256::*, packed_polyval_512::*,
+		packed_aes_128::*, packed_aes_256::*, packed_aes_512::*,
 	},
 };
 
@@ -41,12 +40,6 @@ unsafe impl SequentialBytes for PackedAESBinaryField8x8b {}
 unsafe impl SequentialBytes for PackedAESBinaryField16x8b {}
 unsafe impl SequentialBytes for PackedAESBinaryField32x8b {}
 unsafe impl SequentialBytes for PackedAESBinaryField64x8b {}
-
-unsafe impl SequentialBytes for BinaryField128bPolyval {}
-
-unsafe impl SequentialBytes for PackedBinaryPolyval1x128b {}
-unsafe impl SequentialBytes for PackedBinaryPolyval2x128b {}
-unsafe impl SequentialBytes for PackedBinaryPolyval4x128b {}
 
 unsafe impl SequentialBytes for BinaryField128bGhash {}
 

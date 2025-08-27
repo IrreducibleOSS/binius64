@@ -622,14 +622,13 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		AESTowerField8b, BinaryField1b, BinaryField128bGhash, BinaryField128bPolyval,
-		PackedBinaryGhash1x128b, PackedBinaryGhash2x128b, PackedBinaryGhash4x128b, PackedField,
+		AESTowerField8b, BinaryField1b, BinaryField128bGhash, PackedBinaryGhash1x128b,
+		PackedBinaryGhash2x128b, PackedBinaryGhash4x128b, PackedField,
 		arch::{
 			packed_1::*, packed_2::*, packed_4::*, packed_8::*, packed_16::*, packed_32::*,
 			packed_64::*, packed_128::*, packed_256::*, packed_512::*, packed_aes_8::*,
 			packed_aes_16::*, packed_aes_32::*, packed_aes_64::*, packed_aes_128::*,
-			packed_aes_256::*, packed_aes_512::*, packed_polyval_128::*, packed_polyval_256::*,
-			packed_polyval_512::*,
+			packed_aes_256::*, packed_aes_512::*,
 		},
 	};
 
@@ -661,12 +660,6 @@ mod tests {
 		test.run::<PackedAESBinaryField16x8b>();
 		test.run::<PackedAESBinaryField32x8b>();
 		test.run::<PackedAESBinaryField64x8b>();
-
-		// POLYVAL
-		test.run::<BinaryField128bPolyval>();
-		test.run::<PackedBinaryPolyval1x128b>();
-		test.run::<PackedBinaryPolyval2x128b>();
-		test.run::<PackedBinaryPolyval4x128b>();
 
 		// GHASH
 		test.run::<BinaryField128bGhash>();

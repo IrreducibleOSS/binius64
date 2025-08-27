@@ -22,10 +22,6 @@ pub mod packed_aes_512;
 pub mod packed_aes_64;
 pub mod packed_aes_8;
 
-pub mod packed_polyval_128;
-pub mod packed_polyval_256;
-pub mod packed_polyval_512;
-
 pub mod packed_ghash_128;
 pub mod packed_ghash_256;
 pub mod packed_ghash_512;

@@ -5,11 +5,11 @@ use std::iter;
 use proptest::prelude::*;
 
 use crate::{
-	AESTowerField8b, BinaryField1b, BinaryField128bGhash, BinaryField128bPolyval, Field,
-	PackedAESBinaryField4x8b, PackedAESBinaryField8x8b, PackedAESBinaryField16x8b,
-	PackedAESBinaryField32x8b, PackedAESBinaryField64x8b, PackedBinaryField64x1b,
-	PackedBinaryField128x1b, PackedBinaryField256x1b, PackedBinaryField512x1b,
-	PackedBinaryGhash1x128b, PackedBinaryGhash2x128b, PackedBinaryGhash4x128b, PackedField,
+	AESTowerField8b, BinaryField1b, BinaryField128bGhash, Field, PackedAESBinaryField4x8b,
+	PackedAESBinaryField8x8b, PackedAESBinaryField16x8b, PackedAESBinaryField32x8b,
+	PackedAESBinaryField64x8b, PackedBinaryField64x1b, PackedBinaryField128x1b,
+	PackedBinaryField256x1b, PackedBinaryField512x1b, PackedBinaryGhash1x128b,
+	PackedBinaryGhash2x128b, PackedBinaryGhash4x128b, PackedField,
 	underlier::{SmallU, WithUnderlier},
 };
 
@@ -17,10 +17,6 @@ use crate::{
 fn test_field_text_debug() {
 	assert_eq!(format!("{:?}", BinaryField1b::ONE), "BinaryField1b(0x1)");
 	assert_eq!(format!("{:?}", AESTowerField8b::new(127)), "AESTowerField8b(0x7f)");
-	assert_eq!(
-		format!("{:?}", BinaryField128bPolyval::from_underlier(162259276829213363391578010288127)),
-		"BinaryField128bPolyval(0xcffc05f0000000000000000000000000)"
-	);
 	assert_eq!(
 		format!(
 			"{:?}",
