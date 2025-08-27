@@ -146,21 +146,18 @@ impl ZkLogin {
 
 		let _base64decode_check_header = Base64UrlSafe::new(
 			&b.subcircuit("base64_check_header"),
-			config.max_len_json_jwt_header,
 			jwt_header.data.clone(),
 			base64_jwt_header.data.clone(),
 			jwt_header.len,
 		);
 		let _base64decode_check_payload = Base64UrlSafe::new(
 			&b.subcircuit("base64_check_payload"),
-			config.max_len_json_jwt_payload,
 			jwt_payload.data.clone(),
 			base64_jwt_payload.data.clone(),
 			jwt_payload.len,
 		);
 		let _base64decode_check_signature = Base64UrlSafe::new(
 			&b.subcircuit("base64_check_signature"),
-			config.max_len_jwt_signature,
 			jwt_signature.data.clone(),
 			base64_jwt_signature.data.clone(),
 			jwt_signature.len,
@@ -274,7 +271,6 @@ impl ZkLogin {
 		let base64_check_nonce_builder = b.subcircuit("base64_check_nonce");
 		let _base64decode_check_nonce = Base64UrlSafe::new(
 			&base64_check_nonce_builder,
-			48,
 			nonce_le_for_base64.clone(),
 			base64_jwt_payload_nonce.to_vec(),
 			base64_check_nonce_builder.add_constant_64(32),

@@ -8,19 +8,22 @@ edition = "2024"
 authors = ["Irreducible Team <opensource@irreducible.com>"]
 
 [profile.dev]
-opt-level = 1
+opt-level = 0
 
 [profile.release]
 lto = "thin"
 debug = true
+opt-level = 0
 
 [profile.profiling]
 inherits = "release"
 debug = true
+opt-level = 0
 
 [profile.bench]
 inherits = "release"
 debug = true
+opt-level = 0
 
 [workspace.dependencies]
 anyhow = "1.0.98"
