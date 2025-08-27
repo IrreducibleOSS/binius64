@@ -92,44 +92,38 @@ impl ChainTweak {
 		let mut terms = Vec::new();
 
 		let param_term = Term {
-			len: builder.add_constant_64(param_len as u64),
+			len_bytes: builder.add_constant_64(param_len as u64),
 			data: param_wires.clone(),
-			max_len: param_wires.len() * 8,
 		};
 		terms.push(param_term);
 
 		let tweak_term = Term {
-			len: builder.add_constant_64(1),
+			len_bytes: builder.add_constant_64(1),
 			data: vec![tweak_byte],
-			max_len: 8,
 		};
 		terms.push(tweak_term);
 
 		let hash_term = Term {
-			len: builder.add_constant_64(32),
+			len_bytes: builder.add_constant_64(32),
 			data: hash.to_vec(),
-			max_len: 32,
 		};
 		terms.push(hash_term);
 
 		let chain_index_term = Term {
-			len: builder.add_constant_64(8),
+			len_bytes: builder.add_constant_64(8),
 			data: vec![chain_index],
-			max_len: 8,
 		};
 		terms.push(chain_index_term);
 
 		let position_term = Term {
-			len: builder.add_constant_64(8),
+			len_bytes: builder.add_constant_64(8),
 			data: vec![position],
-			max_len: 8,
 		};
 		terms.push(position_term);
 
 		// Create the concatenation circuit to verify message structure
 		// message = param || tweak_byte || hash || chain_index || position
-		let _message_structure_verifier =
-			Concat::new(builder, message_len.next_multiple_of(8), len, message_le, terms);
+		let _message_structure_verifier = Concat::new(builder, len, message_le, terms);
 
 		ChainTweak {
 			keccak,

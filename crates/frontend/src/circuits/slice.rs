@@ -97,29 +97,18 @@ impl Slice {
 			// For partial words, we need to ensure:
 			// 1. The valid bytes match the extracted word
 			// 2. The invalid bytes are zero
-
-			// First, check that invalid bytes in slice are zero
-			// We do this by asserting that slice_word & ~mask == 0
-			// Which is equivalent to asserting slice_word & ~mask == 0 & ~mask
-			let invalid_mask = b.bnot(mask);
-			let invalid_bytes = b.band(slice_word, invalid_mask);
+			// Assert they are equal (only if word is at least partially valid)
 			let zero = b.add_constant(Word::ZERO);
 			b.assert_eq_cond(
-				format!("slice_word_{slice_idx}_padding"),
-				invalid_bytes,
-				zero,
+				format!("slice_word_{slice_idx}"),
+				b.band(slice_word, mask),
+				b.band(extracted_word, mask),
 				word_partially_valid,
 			);
-
-			// Then check that valid bytes match
-			let masked_slice = b.band(slice_word, mask);
-			let masked_extracted = b.band(extracted_word, mask);
-
-			// Assert they are equal (only if word is at least partially valid)
 			b.assert_eq_cond(
-				format!("slice_word_{slice_idx}"),
-				masked_slice,
-				masked_extracted,
+				format!("slice_word_{slice_idx}_padding"),
+				b.band(slice_word, b.bnot(mask)),
+				zero,
 				word_partially_valid,
 			);
 
@@ -230,7 +219,7 @@ impl Slice {
 ///
 /// # Returns
 /// A wire containing the extracted 8-byte word
-fn extract_word(b: &CircuitBuilder, input: &[Wire], word_idx: Wire, byte_offset: Wire) -> Wire {
+pub fn extract_word(b: &CircuitBuilder, input: &[Wire], word_idx: Wire, byte_offset: Wire) -> Wire {
 	let next_word_idx = b.iadd_32(word_idx, b.add_constant(Word(1)));
 	// Aligned case: directly select the word
 	let aligned_word = single_wire_multiplex(b, input, word_idx);
@@ -267,7 +256,7 @@ fn extract_word(b: &CircuitBuilder, input: &[Wire], word_idx: Wire, byte_offset:
 ///
 /// # Returns
 /// A wire containing the byte mask
-fn create_byte_mask(b: &CircuitBuilder, n_bytes: Wire) -> Wire {
+pub fn create_byte_mask(b: &CircuitBuilder, n_bytes: Wire) -> Wire {
 	// Handle values ≥ 8 by treating them as 8
 	let eight = b.add_constant(Word(8));
 	let is_lt_eight = b.icmp_ult(n_bytes, eight);

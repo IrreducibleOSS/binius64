@@ -194,29 +194,24 @@ impl ZkLogin {
 		// Create the concatenation that outputs to the LE wires
 		let _zkaddr_preimage_concat = Concat::new(
 			&b.subcircuit("zkaddr_preimage_concat"),
-			max_len_zkaddr_preimage,
 			zkaddr_preimage_len,
 			zkaddr_joined_le,
 			vec![
 				Term {
 					data: sub.data.clone(),
-					len: sub.len,
-					max_len: sub.max_len,
+					len_bytes: sub.len,
 				},
 				Term {
 					data: aud.data.clone(),
-					len: aud.len,
-					max_len: aud.max_len,
+					len_bytes: aud.len,
 				},
 				Term {
 					data: iss.data.clone(),
-					len: iss.len,
-					max_len: iss.max_len,
+					len_bytes: iss.len,
 				},
 				Term {
 					data: salt.data.clone(),
-					len: salt.len,
-					max_len: salt.max_len,
+					len_bytes: salt.len,
 				},
 			],
 		);
@@ -245,24 +240,20 @@ impl ZkLogin {
 		let nonce_joined_le = nonce_preimage_le_wires[..nonce_joined_words].to_vec();
 		let _nonce_preimage_concat = Concat::new(
 			&b.subcircuit("nonce_preimage_concat"),
-			max_len_nonce_preimage,
 			nonce_preimage_len,
 			nonce_joined_le,
 			vec![
 				Term {
 					data: vk_u.to_vec(),
-					len: b.add_constant_64(32),
-					max_len: 32,
+					len_bytes: b.add_constant_64(32),
 				},
 				Term {
 					data: t_max.data.clone(),
-					len: t_max.len,
-					max_len: t_max.max_len,
+					len_bytes: t_max.len,
 				},
 				Term {
 					data: nonce_r.data.clone(),
-					len: nonce_r.len,
-					max_len: nonce_r.max_len,
+					len_bytes: nonce_r.len,
 				},
 			],
 		);
@@ -317,24 +308,20 @@ impl ZkLogin {
 		let signing_joined_le = jwt_signing_payload_le_wires[..signing_joined_words].to_vec();
 		let _jwt_signing_payload_concat = Concat::new(
 			&b.subcircuit("jwt_signing_payload_concat"),
-			max_len_jwt_signing_payload,
 			jwt_signing_payload_sha256_len,
 			signing_joined_le,
 			vec![
 				Term {
 					data: base64_jwt_header.data.clone(),
-					len: base64_jwt_header.len,
-					max_len: base64_jwt_header.max_len,
+					len_bytes: base64_jwt_header.len,
 				},
 				Term {
 					data: vec![b.add_constant_zx_8(b'.')],
-					len: b.add_constant_64(1),
-					max_len: 8,
+					len_bytes: b.add_constant_64(1),
 				},
 				Term {
 					data: base64_jwt_payload.data.clone(),
-					len: base64_jwt_payload.len,
-					max_len: base64_jwt_payload.max_len,
+					len_bytes: base64_jwt_payload.len,
 				},
 			],
 		);
