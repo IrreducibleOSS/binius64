@@ -401,7 +401,7 @@ impl ZkLogin {
 
 	pub fn populate_base64_jwt_signature(&self, w: &mut WitnessFiller, bytes: &[u8]) {
 		let mut padded = bytes.to_vec();
-		let expected_len = (self.jwt_signature.data.len() / 3) * 4; // 264/3*4 = 352
+		let expected_len = ((self.jwt_signature.data.len() * 8) / 3) * 4; // (264 bytes / 3) * 4 = 352
 		padded.resize(expected_len, 0);
 		self.base64_jwt_signature.populate_bytes_le(w, &padded);
 	}

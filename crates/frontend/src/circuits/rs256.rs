@@ -506,7 +506,7 @@ mod tests {
 		rng.try_fill_bytes(&mut message_bytes).unwrap();
 
 		// Sign with PKCS1v15 padding scheme
-		let digest = Sha256::digest(&message_bytes);
+		let digest = Sha256::digest(message_bytes);
 		let signature_bytes = private_key
 			.sign(rsa::Pkcs1v15Sign::new::<Sha256>(), &digest)
 			.expect("failed to sign");

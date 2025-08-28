@@ -727,7 +727,7 @@ mod tests {
 			for len in lengths {
 				let data_bytes = vec![0x55u8; len << 3]; // Repeated pattern
 				let mut wrong_data = data_bytes.clone();
-				wrong_data[len << 3 - 1] = 0xAA; // Change last byte
+				wrong_data[(len << 3) - 1] = 0xAA; // Change last byte
 
 				let term_specs = vec![(data_bytes.clone(), len)];
 
