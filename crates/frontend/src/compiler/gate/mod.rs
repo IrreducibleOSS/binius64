@@ -2,7 +2,9 @@ use crate::compiler::{
 	constraint_builder::ConstraintBuilder,
 	eval_form::BytecodeBuilder,
 	gate_graph::{Gate, GateData, GateGraph},
-	hints::{BigUintDivideHint, BigUintModPowHint, HintRegistry, ModInverseHint},
+	hints::{
+		BigUintDivideHint, BigUintModPowHint, HintRegistry, ModInverseHint, Secp256k1EndosplitHint,
+	},
 };
 
 pub mod opcode;
@@ -32,6 +34,7 @@ pub mod mod_inverse_hint;
 pub mod rotr;
 pub mod rotr32;
 pub mod sar;
+pub mod secp256k1_endosplit_hint;
 pub mod select;
 pub mod shl;
 pub mod shr;
@@ -70,6 +73,7 @@ pub fn constrain(gate: Gate, graph: &GateGraph, builder: &mut ConstraintBuilder)
 		Opcode::BigUintDivideHint => (),
 		Opcode::BigUintModPowHint => (),
 		Opcode::ModInverseHint => (),
+		Opcode::Secp256k1EndosplitHint => (),
 	}
 }
 
@@ -139,6 +143,10 @@ pub fn emit_gate_bytecode(
 		Opcode::BigUintDivideHint => {
 			let hint_id = hint_registry.register(Box::new(BigUintDivideHint::new()));
 			biguint_divide_hint::emit_eval_bytecode(gate, data, builder, wire_to_reg, hint_id)
+		}
+		Opcode::Secp256k1EndosplitHint => {
+			let hint_id = hint_registry.register(Box::new(Secp256k1EndosplitHint::new()));
+			secp256k1_endosplit_hint::emit_eval_bytecode(gate, data, builder, wire_to_reg, hint_id)
 		}
 	}
 }
