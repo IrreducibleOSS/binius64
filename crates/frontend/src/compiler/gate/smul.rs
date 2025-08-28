@@ -386,8 +386,8 @@ mod tests {
 			let (hi, lo) = builder.smul(x, zero);
 
 			// Result should be 0
-			builder.assert_0("hi_is_zero", hi);
-			builder.assert_0("lo_is_zero", lo);
+			builder.assert_zero("hi_is_zero", hi);
+			builder.assert_zero("lo_is_zero", lo);
 			let circuit = builder.build();
 
 			let mut w = circuit.new_witness_filler();

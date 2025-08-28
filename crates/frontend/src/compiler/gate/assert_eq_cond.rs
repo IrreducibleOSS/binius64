@@ -56,7 +56,7 @@ pub fn emit_eval_bytecode(
 	// Broadcast MSB: mask = cond >> 63 (arithmetic)
 	builder.emit_sar(wire_to_reg(*mask), wire_to_reg(*cond), 63);
 
-	builder.emit_assert_cond(
+	builder.emit_assert_eq_cond(
 		wire_to_reg(*mask),
 		wire_to_reg(*x),
 		wire_to_reg(*y),

@@ -56,9 +56,9 @@ impl Slice {
 		assert!(max_len_slice < (1u64 << 32) as usize, "max_n_slice must be < 2^32");
 
 		// Ensure all values fit in 32 bits to prevent overflow in iadd_32
-		b.assert_0("offset_32bit", b.shr(offset, 32));
-		b.assert_0("len_slice_32bit", b.shr(len_slice, 32));
-		b.assert_0("len_input_32bit", b.shr(len_input, 32));
+		b.assert_zero("offset_32bit", b.shr(offset, 32));
+		b.assert_zero("len_slice_32bit", b.shr(len_slice, 32));
+		b.assert_zero("len_input_32bit", b.shr(len_input, 32));
 
 		// Verify bounds: offset + len_slice <= len_input
 		let offset_plus_len_slice = b.iadd_32(offset, len_slice);

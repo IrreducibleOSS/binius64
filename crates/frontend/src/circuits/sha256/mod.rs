@@ -240,8 +240,8 @@ impl Sha256 {
 		let boundary_padded_lo32 = single_wire_multiplex(builder, &padded_evens, w_bd);
 		let boundary_padded_hi32 = single_wire_multiplex(builder, &padded_odds, w_bd);
 		// manually enforce that high halves of both of these words are empty
-		builder.assert_0("mask boundary lo", builder.shr(boundary_padded_lo32, 32));
-		builder.assert_0("mask boundary hi", builder.shr(boundary_padded_hi32, 32));
+		builder.assert_zero("mask boundary lo", builder.shr(boundary_padded_lo32, 32));
+		builder.assert_zero("mask boundary hi", builder.shr(boundary_padded_hi32, 32));
 		// this is the only place where we have to explicitly check emptiness of the high halves.
 		// for the other words, we guarantee this indirectly, via the other checks we are running.
 		// this condition in turn is necessary for the Compress gadget to be sound.

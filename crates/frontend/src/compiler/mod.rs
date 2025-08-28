@@ -528,28 +528,16 @@ impl CircuitBuilder {
 
 	/// Asserts that the given wire equals zero using a single AND constraint.
 	/// This is more efficient than using assert_eq with a zero constant.
-	pub fn assert_0(&self, name: impl Into<String>, x: Wire) {
+	pub fn assert_zero(&self, name: impl Into<String>, x: Wire) {
 		let mut graph = self.graph_mut();
-		let gate = graph.emit_gate(self.current_path, Opcode::Assert0, [x], []);
+		let gate = graph.emit_gate(self.current_path, Opcode::AssertZero, [x], []);
 		let path_spec = graph.path_spec_tree.extend(self.current_path, name);
 		graph.assertion_names[gate] = path_spec;
 	}
 
-	/// Bitwise AND assertion with constant equals zero.
-	///
-	/// Asserts that the bitwise AND of a wire with a constant equals zero.
-	/// This is useful for checking that specific bits are unset.
-	///
-	/// Takes wire a and constant c and enforces a & c = 0.
-	/// If the assertion fails, the circuit will report an error with the given name.
-	///
-	/// # Cost
-	///
-	/// 1 AND constraint.
-	pub fn assert_band_0(&self, name: impl Into<String>, x: Wire, c: Word) {
-		let c = self.add_constant(c);
+	pub fn assert_non_zero(&self, name: impl Into<String>, x: Wire) {
 		let mut graph = self.graph_mut();
-		let gate = graph.emit_gate(self.current_path, Opcode::AssertBand0, [x, c], []);
+		let gate = graph.emit_gate(self.current_path, Opcode::AssertNonZero, [x], []);
 		let path_spec = graph.path_spec_tree.extend(self.current_path, name);
 		graph.assertion_names[gate] = path_spec;
 	}

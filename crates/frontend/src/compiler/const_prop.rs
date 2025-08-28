@@ -309,7 +309,7 @@ mod tests {
 		// Create an Assert0 gate with a non-zero constant input
 		// This should fail evaluation because Assert0 expects the input to be zero
 		let non_zero_const = graph.add_constant(Word(42)); // Non-zero value
-		let _assert_gate = graph.emit_gate(root, Opcode::Assert0, vec![non_zero_const], vec![]);
+		let _assert_gate = graph.emit_gate(root, Opcode::AssertZero, vec![non_zero_const], vec![]);
 
 		// This should panic when the Assert0 gate fails during evaluation
 		// because the constant input (42) is not zero
