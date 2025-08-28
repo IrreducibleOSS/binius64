@@ -35,6 +35,10 @@ rayon = ["binius-utils/rayon"]
 bench = false
 
 [[bench]]
+name = "batch_invert"
+harness = false
+
+[[bench]]
 name = "ntt"
 harness = false
 
