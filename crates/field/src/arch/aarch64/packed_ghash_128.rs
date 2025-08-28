@@ -12,7 +12,11 @@ use std::ops::Mul;
 use super::{super::portable::packed::PackedPrimitiveType, m128::M128};
 use crate::{
 	BinaryField128bGhash,
-	arch::{PairwiseStrategy, shared::ghash::ClMulUnderlier},
+	arch::{
+		PairwiseStrategy,
+		portable::packed_macros::impl_serialize_deserialize_for_packed_binary_field,
+		shared::ghash::ClMulUnderlier,
+	},
 	arithmetic_traits::{InvertOrZero, Square, impl_transformation_with_strategy},
 	packed::PackedField,
 };
