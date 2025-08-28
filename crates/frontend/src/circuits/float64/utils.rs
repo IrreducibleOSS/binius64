@@ -1,5 +1,3 @@
-use binius_core::word::Word;
-
 use crate::compiler::{CircuitBuilder, Wire};
 
 /// Simple view of a decoded binary64 payload.
@@ -18,66 +16,35 @@ pub struct Fp64Parts {
 }
 
 /// Creates a wire containing the constant value 0.
-pub fn zero(builder: &CircuitBuilder) -> Wire {
-	builder.add_constant_64(0)
+pub fn zero(b: &CircuitBuilder) -> Wire {
+	b.add_constant_64(0)
 }
 
 /// Creates a wire containing the constant value 1.
-pub fn one(builder: &CircuitBuilder) -> Wire {
-	builder.add_constant_64(1)
-}
-
-/// Helpers for MSB-bool logic (true = 1 in MSB, false = 0).
-#[inline]
-fn msb_true(cb: &CircuitBuilder) -> Wire {
-	cb.add_constant(Word::MSB_ONE)
-}
-
-#[inline]
-fn msb_false(cb: &CircuitBuilder) -> Wire {
-	zero(cb)
+pub fn one(b: &CircuitBuilder) -> Wire {
+	b.add_constant_64(1)
 }
 
 /// Extracts bit `i` from `x` as an MSB-bool (true = bit63 set, false = 0).
 ///
 /// Returns `((x >> i) & 1) << 63`.
 #[inline]
-pub fn bit_msb(builder: &CircuitBuilder, x: Wire, i: u32) -> Wire {
-	builder.shl(bit_lsb(builder, x, i), 63)
+pub fn bit_msb01(b: &CircuitBuilder, x: Wire, i: u32) -> Wire {
+	b.shl(bit_lsb(b, x, i), 63)
 }
 
+/// Moves MSB to LSB position zeroing all other bits.
 #[inline]
-pub fn msb_to_lsb01(cb: &CircuitBuilder, b_msb: Wire) -> Wire {
-	cb.shr(b_msb, 63)
-}
-
-#[inline]
-pub fn bool_and(cb: &CircuitBuilder, a: Wire, b: Wire) -> Wire {
-	cb.select(a, b, msb_false(cb))
-}
-
-#[inline]
-pub fn bool_or(cb: &CircuitBuilder, a: Wire, b: Wire) -> Wire {
-	cb.select(a, msb_true(cb), b)
-}
-
-#[inline]
-pub fn bool_not(cb: &CircuitBuilder, a: Wire) -> Wire {
-	cb.select(a, msb_false(cb), msb_true(cb))
-}
-
-#[inline]
-pub fn bool_canonical(cb: &CircuitBuilder, a: Wire) -> Wire {
-	// Convert possibly non-canonical MSB-bool into exact MSB mask (only bit63 set or zero)
-	cb.shl(msb_to_lsb01(cb, a), 63)
+pub fn msb_to_lsb01(b: &CircuitBuilder, b_msb: Wire) -> Wire {
+	b.shr(b_msb, 63)
 }
 
 /// Performs integer addition: `a + b`.
 ///
 /// This is a wrapper around the circuit builder's integer addition that handles
 /// carry-in/carry-out automatically with zero carry-in.
-pub fn iadd(builder: &CircuitBuilder, a: Wire, b: Wire) -> Wire {
-	let (s, _c) = builder.iadd_cin_cout(a, b, zero(builder));
+pub fn iadd(b: &CircuitBuilder, a: Wire, b_: Wire) -> Wire {
+	let (s, _c) = b.iadd_cin_cout(a, b_, zero(b));
 	s
 }
 
@@ -85,16 +52,16 @@ pub fn iadd(builder: &CircuitBuilder, a: Wire, b: Wire) -> Wire {
 ///
 /// This is a wrapper around the circuit builder's integer subtraction that handles
 /// borrow-in/borrow-out automatically with zero borrow-in.
-pub fn isub(builder: &CircuitBuilder, a: Wire, b: Wire) -> Wire {
-	let (d, _b) = builder.isub_bin_bout(a, b, zero(builder));
+pub fn isub(b: &CircuitBuilder, a: Wire, b_: Wire) -> Wire {
+	let (d, _b) = b.isub_bin_bout(a, b_, zero(b));
 	d
 }
 
 /// Extracts bit `i` from `x` as a 0/1 value.
 ///
 /// Returns `(x >> i) & 1`.
-pub fn bit_lsb(builder: &CircuitBuilder, x: Wire, i: u32) -> Wire {
-	builder.band(builder.shr(x, i), one(builder))
+pub fn bit_lsb(b: &CircuitBuilder, x: Wire, i: u32) -> Wire {
+	b.band(b.shr(x, i), one(b))
 }
 
 /// Performs variable right shift with sticky bit tracking.
@@ -112,88 +79,88 @@ pub fn bit_lsb(builder: &CircuitBuilder, x: Wire, i: u32) -> Wire {
 /// - First wire: The shifted value
 /// - Second wire: Sticky bit (all-1 mask if any bits were lost, all-0 otherwise)
 pub fn var_shr_with_sticky(
-	builder: &CircuitBuilder,
+	b: &CircuitBuilder,
 	x: Wire,
 	d: Wire,
 	saturate_at_63: bool,
 ) -> (Wire, Wire) {
-	let c63 = builder.add_constant_64(63);
-	let c64 = builder.add_constant_64(64);
+	let c63 = b.add_constant_64(63);
+	let c64 = b.add_constant_64(64);
 	let d_eff = if saturate_at_63 {
-		let lt64 = builder.icmp_ult(d, c64);
-		builder.select(lt64, d, c63)
+		let lt64 = b.icmp_ult(d, c64);
+		b.select(lt64, d, c63)
 	} else {
-		builder.band(d, c63)
+		b.band(d, c63)
 	};
 
 	let mut v = x;
-	let mut sticky01 = zero(builder); // 0/1 sticky
+	let mut sticky01 = zero(b); // 0/1 sticky
 
 	// Stage 32 (bit 5)
 	{
-		let cond01 = bit_lsb(builder, d_eff, 5);
-		let cond = bit_msb(builder, d_eff, 5);
-		let lost = builder.band(v, builder.add_constant_64((1u64 << 32) - 1));
-		let lost_eq0 = builder.icmp_eq(lost, zero(builder));
-		let lost_nz01 = msb_to_lsb01(builder, bool_not(builder, lost_eq0));
-		sticky01 = builder.bor(sticky01, builder.band(lost_nz01, cond01));
-		let shifted = builder.shr(v, 32);
-		v = builder.select(cond, shifted, v);
+		let cond01 = bit_lsb(b, d_eff, 5);
+		let cond = bit_msb01(b, d_eff, 5);
+		let lost = b.band(v, b.add_constant_64((1u64 << 32) - 1));
+		let lost_eq0 = b.icmp_eq(lost, zero(b));
+		let lost_nz01 = msb_to_lsb01(b, b.bnot(lost_eq0));
+		sticky01 = b.bor(sticky01, b.band(lost_nz01, cond01));
+		let shifted = b.shr(v, 32);
+		v = b.select(cond, shifted, v);
 	}
 	// Stage 16 (bit 4)
 	{
-		let cond01 = bit_lsb(builder, d_eff, 4);
-		let cond = bit_msb(builder, d_eff, 4);
-		let lost = builder.band(v, builder.add_constant_64((1u64 << 16) - 1));
-		let lost_eq0 = builder.icmp_eq(lost, zero(builder));
-		let lost_nz01 = msb_to_lsb01(builder, bool_not(builder, lost_eq0));
-		sticky01 = builder.bor(sticky01, builder.band(lost_nz01, cond01));
-		let shifted = builder.shr(v, 16);
-		v = builder.select(cond, shifted, v);
+		let cond01 = bit_lsb(b, d_eff, 4);
+		let cond = bit_msb01(b, d_eff, 4);
+		let lost = b.band(v, b.add_constant_64((1u64 << 16) - 1));
+		let lost_eq0 = b.icmp_eq(lost, zero(b));
+		let lost_nz01: Wire = msb_to_lsb01(b, b.bnot(lost_eq0));
+		sticky01 = b.bor(sticky01, b.band(lost_nz01, cond01));
+		let shifted = b.shr(v, 16);
+		v = b.select(cond, shifted, v);
 	}
 	// Stage 8 (bit 3)
 	{
-		let cond01 = bit_lsb(builder, d_eff, 3);
-		let cond = bit_msb(builder, d_eff, 3);
-		let lost = builder.band(v, builder.add_constant_64((1u64 << 8) - 1));
-		let lost_eq0 = builder.icmp_eq(lost, zero(builder));
-		let lost_nz01 = msb_to_lsb01(builder, bool_not(builder, lost_eq0));
-		sticky01 = builder.bor(sticky01, builder.band(lost_nz01, cond01));
-		let shifted = builder.shr(v, 8);
-		v = builder.select(cond, shifted, v);
+		let cond01 = bit_lsb(b, d_eff, 3);
+		let cond = bit_msb01(b, d_eff, 3);
+		let lost = b.band(v, b.add_constant_64((1u64 << 8) - 1));
+		let lost_eq0 = b.icmp_eq(lost, zero(b));
+		let lost_nz01 = msb_to_lsb01(b, b.bnot(lost_eq0));
+		sticky01 = b.bor(sticky01, b.band(lost_nz01, cond01));
+		let shifted = b.shr(v, 8);
+		v = b.select(cond, shifted, v);
 	}
 	// Stage 4 (bit 2)
 	{
-		let cond01 = bit_lsb(builder, d_eff, 2);
-		let cond = bit_msb(builder, d_eff, 2);
-		let lost = builder.band(v, builder.add_constant_64((1u64 << 4) - 1));
-		let lost_eq0 = builder.icmp_eq(lost, zero(builder));
-		let lost_nz01 = msb_to_lsb01(builder, bool_not(builder, lost_eq0));
-		sticky01 = builder.bor(sticky01, builder.band(lost_nz01, cond01));
-		let shifted = builder.shr(v, 4);
-		v = builder.select(cond, shifted, v);
+		let cond01 = bit_lsb(b, d_eff, 2);
+		let cond = bit_msb01(b, d_eff, 2);
+		let lost = b.band(v, b.add_constant_64((1u64 << 4) - 1));
+		let lost_eq0 = b.icmp_eq(lost, zero(b));
+		let lost_nz01 = msb_to_lsb01(b, b.bnot(lost_eq0));
+		sticky01 = b.bor(sticky01, b.band(lost_nz01, cond01));
+		let shifted = b.shr(v, 4);
+		v = b.select(cond, shifted, v);
 	}
 	// Stage 2 (bit 1)
 	{
-		let cond01 = bit_lsb(builder, d_eff, 1);
-		let cond = bit_msb(builder, d_eff, 1);
-		let lost = builder.band(v, builder.add_constant_64((1u64 << 2) - 1));
-		let lost_eq0 = builder.icmp_eq(lost, zero(builder));
-		let lost_nz01 = msb_to_lsb01(builder, bool_not(builder, lost_eq0));
-		sticky01 = builder.bor(sticky01, builder.band(lost_nz01, cond01));
-		let shifted = builder.shr(v, 2);
-		v = builder.select(cond, shifted, v);
+		let cond01 = bit_lsb(b, d_eff, 1);
+		let cond = bit_msb01(b, d_eff, 1);
+		let lost = b.band(v, b.add_constant_64((1u64 << 2) - 1));
+		let lost_eq0 = b.icmp_eq(lost, zero(b));
+		let lost_nz01 = msb_to_lsb01(b, b.bnot(lost_eq0));
+		sticky01 = b.bor(sticky01, b.band(lost_nz01, cond01));
+		let shifted = b.shr(v, 2);
+		v = b.select(cond, shifted, v);
 	}
 	// Stage 1 (bit 0)
 	{
-		let cond01 = bit_lsb(builder, d_eff, 0);
-		let cond = bit_msb(builder, d_eff, 0);
-		let lost = builder.band(v, builder.add_constant_64(1));
-		let lost_eq0 = builder.icmp_eq(lost, zero(builder));
-		let lost_nz01 = msb_to_lsb01(builder, bool_not(builder, lost_eq0));
-		sticky01 = builder.bor(sticky01, builder.band(lost_nz01, cond01));
-		let shifted = builder.shr(v, 1);
-		v = builder.select(cond, shifted, v);
+		let cond01 = bit_lsb(b, d_eff, 0);
+		let cond = bit_msb01(b, d_eff, 0);
+		let lost = b.band(v, b.add_constant_64(1));
+		let lost_eq0 = b.icmp_eq(lost, zero(b));
+		let lost_nz01 = msb_to_lsb01(b, b.bnot(lost_eq0));
+		sticky01 = b.bor(sticky01, b.band(lost_nz01, cond01));
+		let shifted = b.shr(v, 1);
+		v = b.select(cond, shifted, v);
 	}
 
 	(v, sticky01)
@@ -210,94 +177,94 @@ pub fn var_shr_with_sticky(
 ///
 /// # Returns
 /// The left-shifted value `x << (d & 63)`
-pub fn var_shl(builder: &CircuitBuilder, x: Wire, d: Wire) -> Wire {
-	let d_eff = builder.band(d, builder.add_constant_64(63));
+pub fn var_shl(b: &CircuitBuilder, x: Wire, d: Wire) -> Wire {
+	let d_eff = b.band(d, b.add_constant_64(63));
 	let mut v = x;
 
 	{
-		let cond = bit_msb(builder, d_eff, 5); // 32
-		let shifted = builder.shl(v, 32);
-		v = builder.select(cond, shifted, v);
+		let cond = bit_msb01(b, d_eff, 5); // 32
+		let shifted = b.shl(v, 32);
+		v = b.select(cond, shifted, v);
 	}
 	{
-		let cond = bit_msb(builder, d_eff, 4); // 16
-		let shifted = builder.shl(v, 16);
-		v = builder.select(cond, shifted, v);
+		let cond = bit_msb01(b, d_eff, 4); // 16
+		let shifted = b.shl(v, 16);
+		v = b.select(cond, shifted, v);
 	}
 	{
-		let cond = bit_msb(builder, d_eff, 3); // 8
-		let shifted = builder.shl(v, 8);
-		v = builder.select(cond, shifted, v);
+		let cond = bit_msb01(b, d_eff, 3); // 8
+		let shifted = b.shl(v, 8);
+		v = b.select(cond, shifted, v);
 	}
 	{
-		let cond = bit_msb(builder, d_eff, 2); // 4
-		let shifted = builder.shl(v, 4);
-		v = builder.select(cond, shifted, v);
+		let cond = bit_msb01(b, d_eff, 2); // 4
+		let shifted = b.shl(v, 4);
+		v = b.select(cond, shifted, v);
 	}
 	{
-		let cond = bit_msb(builder, d_eff, 1); // 2
-		let shifted = builder.shl(v, 2);
-		v = builder.select(cond, shifted, v);
+		let cond = bit_msb01(b, d_eff, 1); // 2
+		let shifted = b.shl(v, 2);
+		v = b.select(cond, shifted, v);
 	}
 	{
-		let cond = bit_msb(builder, d_eff, 0); // 1
-		let shifted = builder.shl(v, 1);
-		v = builder.select(cond, shifted, v);
+		let cond = bit_msb01(b, d_eff, 0); // 1
+		let shifted = b.shl(v, 1);
+		v = b.select(cond, shifted, v);
 	}
 
 	v
 }
 
 /// Count leading zeroes in `x`
-pub fn clz64(builder: &CircuitBuilder, x: Wire) -> Wire {
-	let mut n = zero(builder);
+pub fn clz64(b: &CircuitBuilder, x: Wire) -> Wire {
+	let mut n = zero(b);
 	let mut y = x;
 
 	// step(32)
 	{
-		let t = builder.shr(y, 32);
-		let z = builder.icmp_eq(t, zero(builder));
-		let add32 = builder.add_constant_64(32);
-		n = iadd(builder, n, builder.select(z, add32, zero(builder)));
-		y = builder.select(z, builder.shl(y, 32), y);
+		let t = b.shr(y, 32);
+		let z = b.icmp_eq(t, zero(b));
+		let add32 = b.add_constant_64(32);
+		n = iadd(b, n, b.select(z, add32, zero(b)));
+		y = b.select(z, b.shl(y, 32), y);
 	}
 	// step(16)
 	{
-		let t = builder.shr(y, 48);
-		let z = builder.icmp_eq(t, zero(builder));
-		let add16 = builder.add_constant_64(16);
-		n = iadd(builder, n, builder.select(z, add16, zero(builder)));
-		y = builder.select(z, builder.shl(y, 16), y);
+		let t = b.shr(y, 48);
+		let z = b.icmp_eq(t, zero(b));
+		let add16 = b.add_constant_64(16);
+		n = iadd(b, n, b.select(z, add16, zero(b)));
+		y = b.select(z, b.shl(y, 16), y);
 	}
 	// step(8)
 	{
-		let t = builder.shr(y, 56);
-		let z = builder.icmp_eq(t, zero(builder));
-		let add8 = builder.add_constant_64(8);
-		n = iadd(builder, n, builder.select(z, add8, zero(builder)));
-		y = builder.select(z, builder.shl(y, 8), y);
+		let t = b.shr(y, 56);
+		let z = b.icmp_eq(t, zero(b));
+		let add8 = b.add_constant_64(8);
+		n = iadd(b, n, b.select(z, add8, zero(b)));
+		y = b.select(z, b.shl(y, 8), y);
 	}
 	// step(4)
 	{
-		let t = builder.shr(y, 60);
-		let z = builder.icmp_eq(t, zero(builder));
-		let add4 = builder.add_constant_64(4);
-		n = iadd(builder, n, builder.select(z, add4, zero(builder)));
-		y = builder.select(z, builder.shl(y, 4), y);
+		let t = b.shr(y, 60);
+		let z = b.icmp_eq(t, zero(b));
+		let add4 = b.add_constant_64(4);
+		n = iadd(b, n, b.select(z, add4, zero(b)));
+		y = b.select(z, b.shl(y, 4), y);
 	}
 	// step(2)
 	{
-		let t = builder.shr(y, 62);
-		let z = builder.icmp_eq(t, zero(builder));
-		let add2 = builder.add_constant_64(2);
-		n = iadd(builder, n, builder.select(z, add2, zero(builder)));
-		y = builder.select(z, builder.shl(y, 2), y);
+		let t = b.shr(y, 62);
+		let z = b.icmp_eq(t, zero(b));
+		let add2 = b.add_constant_64(2);
+		n = iadd(b, n, b.select(z, add2, zero(b)));
+		y = b.select(z, b.shl(y, 2), y);
 	}
 	// step(1)
 	{
-		let t = builder.shr(y, 63);
-		let z = builder.icmp_eq(t, zero(builder));
-		n = iadd(builder, n, builder.select(z, one(builder), zero(builder)));
+		let t = b.shr(y, 63);
+		let z = b.icmp_eq(t, zero(b));
+		n = iadd(b, n, b.select(z, one(b), zero(b)));
 	}
 	n
 }
@@ -315,11 +282,11 @@ pub fn clz64(builder: &CircuitBuilder, x: Wire) -> Wire {
 ///
 /// # Returns
 /// - `(sig53, exp_eff)`: 53-bit significand and effective exponent
-pub fn fp64_sig53_and_exp(builder: &CircuitBuilder, p: &Fp64Parts) -> (Wire, Wire) {
-	let one52 = builder.add_constant_64(1u64 << 52);
-	let sig_norm = builder.bor(one52, p.frac);
-	let sig = builder.select(p.is_norm, sig_norm, p.frac);
-	let exp_eff = builder.select(p.is_norm, p.exp, one(builder)); // subnormals use exp=1
+pub fn fp64_sig53_and_exp(b: &CircuitBuilder, p: &Fp64Parts) -> (Wire, Wire) {
+	let one52 = b.add_constant_64(1u64 << 52);
+	let sig_norm = b.bor(one52, p.frac);
+	let sig = b.select(p.is_norm, sig_norm, p.frac);
+	let exp_eff = b.select(p.is_norm, p.exp, one(b)); // subnormals use exp=1
 	(sig, exp_eff)
 }
 
@@ -335,11 +302,11 @@ pub fn fp64_sig53_and_exp(builder: &CircuitBuilder, p: &Fp64Parts) -> (Wire, Wir
 /// # Returns
 /// Low 64 bits of the right-shifted result
 #[inline]
-pub fn shr128_to_u64_const(builder: &CircuitBuilder, hi: Wire, lo: Wire, s: u32) -> Wire {
+pub fn shr128_to_u64_const(b: &CircuitBuilder, hi: Wire, lo: Wire, s: u32) -> Wire {
 	debug_assert!(s > 0 && s < 64);
-	let lo_part = builder.shr(lo, s);
-	let hi_part = builder.shl(hi, 64 - s);
-	builder.bor(lo_part, hi_part)
+	let lo_part = b.shr(lo, s);
+	let hi_part = b.shl(hi, 64 - s);
+	b.bor(lo_part, hi_part)
 }
 
 /// Extract sticky bit from the k least-significant bits of a value.
@@ -354,11 +321,11 @@ pub fn shr128_to_u64_const(builder: &CircuitBuilder, hi: Wire, lo: Wire, s: u32)
 /// # Returns
 /// 0/1 value: 1 if any of k LSBs are set, 0 otherwise
 #[inline]
-pub fn sticky_from_low_k(builder: &CircuitBuilder, lo: Wire, k: u32) -> Wire {
+pub fn sticky_from_low_k(b: &CircuitBuilder, lo: Wire, k: u32) -> Wire {
 	debug_assert!(k < 64);
-	let mask = builder.add_constant_64((1u64 << k) - 1);
-	let eq0 = builder.icmp_eq(builder.band(lo, mask), zero(builder));
-	msb_to_lsb01(builder, bool_not(builder, eq0))
+	let mask = b.add_constant_64((1u64 << k) - 1);
+	let eq0 = b.icmp_eq(b.band(lo, mask), zero(b));
+	msb_to_lsb01(b, b.bnot(eq0))
 }
 
 /// Unpack and classify a binary64 word.
@@ -378,23 +345,23 @@ pub fn sticky_from_low_k(builder: &CircuitBuilder, lo: Wire, k: u32) -> Wire {
 ///   - `is_norm`: exp!=0 && exp!=0x7FF
 ///
 /// All booleans are 64-bit masks (all-1/all-0), suitable for `select`.
-pub fn fp64_unpack(cb: &CircuitBuilder, x: Wire) -> Fp64Parts {
-	let exp_m = cb.add_constant_64(0x7FF);
-	let frac_m = cb.add_constant_64((1u64 << 52) - 1);
+pub fn fp64_unpack(b: &CircuitBuilder, x: Wire) -> Fp64Parts {
+	let exp_m = b.add_constant_64(0x7FF);
+	let frac_m = b.add_constant_64((1u64 << 52) - 1);
 
-	let sign = cb.shr(x, 63);
-	let exp = cb.band(cb.shr(x, 52), exp_m);
-	let frac = cb.band(x, frac_m);
+	let sign = b.shr(x, 63);
+	let exp = b.band(b.shr(x, 52), exp_m);
+	let frac = b.band(x, frac_m);
 
-	let exp_is_max = cb.icmp_eq(exp, exp_m); // MSB-bool
-	let exp_is_zero = cb.icmp_eq(exp, zero(cb)); // MSB-bool
-	let frac_is_zero = cb.icmp_eq(frac, zero(cb)); // MSB-bool
+	let exp_is_max = b.icmp_eq(exp, exp_m); // MSB-bool
+	let exp_is_zero = b.icmp_eq(exp, zero(b)); // MSB-bool
+	let frac_is_zero = b.icmp_eq(frac, zero(b)); // MSB-bool
 
-	let is_nan = bool_canonical(cb, bool_and(cb, exp_is_max, bool_not(cb, frac_is_zero)));
-	let is_inf = bool_canonical(cb, bool_and(cb, exp_is_max, frac_is_zero));
-	let is_zero = bool_canonical(cb, bool_and(cb, exp_is_zero, frac_is_zero));
-	let is_sub = bool_canonical(cb, bool_and(cb, exp_is_zero, bool_not(cb, frac_is_zero)));
-	let is_norm = bool_canonical(cb, bool_not(cb, bool_or(cb, exp_is_max, exp_is_zero)));
+	let is_nan = b.band(exp_is_max, b.bnot(frac_is_zero));
+	let is_inf = b.band(exp_is_max, frac_is_zero);
+	let is_zero = b.band(exp_is_zero, frac_is_zero);
+	let is_sub = b.band(exp_is_zero, b.bnot(frac_is_zero));
+	let is_norm = b.bnot(b.bor(exp_is_max, exp_is_zero));
 
 	Fp64Parts {
 		sign,
@@ -416,23 +383,23 @@ pub fn fp64_unpack(cb: &CircuitBuilder, x: Wire) -> Fp64Parts {
 /// Output:
 /// - `(sig_round_base, exp_round_base, exp_lt_1_mask)` where `exp_round_base = (exp<=0 ? 1 : exp)`.
 pub fn fp64_underflow_shift(
-	cb: &CircuitBuilder,
+	b: &CircuitBuilder,
 	res_sig: Wire,
 	res_exp: Wire,
 ) -> (Wire, Wire, Wire) {
-	let c1 = one(cb);
-	let keep = cb.bnot(c1);
+	let c1 = one(b);
+	let keep = b.bnot(c1);
 
-	let exp_lt_1 = bool_canonical(cb, cb.icmp_ult(res_exp, c1));
-	let k = isub(cb, c1, res_exp); // 1 - exp
-	let k_use = cb.select(exp_lt_1, k, zero(cb));
+	let exp_lt_1 = b.icmp_ult(res_exp, c1);
+	let k = isub(b, c1, res_exp); // 1 - exp
+	let k_use = b.select(exp_lt_1, k, zero(b));
 
-	let (mut sig_u, st) = var_shr_with_sticky(cb, res_sig, k_use, true);
-	let bit0 = cb.bor(cb.band(sig_u, c1), cb.band(st, c1));
-	sig_u = cb.bor(cb.band(sig_u, keep), bit0);
+	let (mut sig_u, st) = var_shr_with_sticky(b, res_sig, k_use, true);
+	let bit0 = b.bor(b.band(sig_u, c1), b.band(st, c1));
+	sig_u = b.bor(b.band(sig_u, keep), bit0);
 
-	let sig_round_base = cb.select(exp_lt_1, sig_u, res_sig);
-	let exp_round_base = cb.select(exp_lt_1, c1, res_exp);
+	let sig_round_base = b.select(exp_lt_1, sig_u, res_sig);
+	let exp_round_base = b.select(exp_lt_1, c1, res_exp);
 	(sig_round_base, exp_round_base, exp_lt_1)
 }
 
@@ -449,22 +416,22 @@ pub fn fp64_underflow_shift(
 /// - `(mant_final_53, exp_after_round, mant_overflow_mask)`
 ///   - `mant_final_53` is a 53-bit value (includes hidden 1 for normals)
 ///   - If mant overflowed to 54 bits, we shift right 1 and increment exponent.
-pub fn fp64_round_rne(cb: &CircuitBuilder, sig_base: Wire, exp_base: Wire) -> (Wire, Wire, Wire) {
-	let lsb = bit_lsb(cb, sig_base, 11);
-	let g = bit_lsb(cb, sig_base, 10);
-	let r = bit_lsb(cb, sig_base, 9);
-	let s = cb.band(sig_base, one(cb));
-	let r_or_s = cb.bor(r, s);
-	let tie_or_gt = cb.bor(r_or_s, lsb);
-	let round_up01 = cb.band(g, tie_or_gt); // 0/1
+pub fn fp64_round_rne(b: &CircuitBuilder, sig_base: Wire, exp_base: Wire) -> (Wire, Wire, Wire) {
+	let lsb = bit_lsb(b, sig_base, 11);
+	let g: Wire = bit_lsb(b, sig_base, 10);
+	let r = bit_lsb(b, sig_base, 9);
+	let s = b.band(sig_base, one(b));
+	let r_or_s = b.bor(r, s);
+	let tie_or_gt = b.bor(r_or_s, lsb);
+	let round_up01 = b.band(g, tie_or_gt); // 0/1
 
-	let mant_trunc = cb.shr(sig_base, 11);
-	let mant_rounded = iadd(cb, mant_trunc, round_up01);
+	let mant_trunc = b.shr(sig_base, 11);
+	let mant_rounded = iadd(b, mant_trunc, round_up01);
 
-	let overflow01 = bit_lsb(cb, mant_rounded, 53); // 0/1
-	let overflow_msb = bit_msb(cb, mant_rounded, 53);
-	let mant_final_53 = cb.select(overflow_msb, cb.shr(mant_rounded, 1), mant_rounded);
-	let exp_after = iadd(cb, exp_base, overflow01);
+	let overflow01 = bit_lsb(b, mant_rounded, 53); // 0/1
+	let overflow_msb = bit_msb01(b, mant_rounded, 53);
+	let mant_final_53 = b.select(overflow_msb, b.shr(mant_rounded, 1), mant_rounded);
+	let exp_after = iadd(b, exp_base, overflow01);
 
 	(mant_final_53, exp_after, overflow_msb)
 }
@@ -478,42 +445,43 @@ pub fn fp64_round_rne(cb: &CircuitBuilder, sig_base: Wire, exp_base: Wire) -> (W
 /// Output:
 /// - `finite_or_inf`: packed 64-bit result (finite or +/−Inf on overflow)
 pub fn fp64_pack_finite_or_inf(
-	cb: &CircuitBuilder,
+	b: &CircuitBuilder,
 	sign: Wire,
 	mant_final_53: Wire,
 	exp_after_round: Wire,
 	stayed_sub_mask: Wire,
 ) -> Wire {
-	let frac_m = cb.add_constant_64((1u64 << 52) - 1);
-	let exp_2047 = cb.add_constant_64(0x7FF);
-	let sign_hi = cb.shl(sign, 63);
+	let frac_m = b.add_constant_64((1u64 << 52) - 1);
+	let exp_2047 = b.add_constant_64(0x7FF);
+	let sign_hi = b.shl(sign, 63);
 
-	let frac = cb.band(mant_final_53, frac_m);
-	let packed_sub = cb.bor(sign_hi, frac);
+	let frac = b.band(mant_final_53, frac_m);
+	let packed_sub = b.bor(sign_hi, frac);
 
-	let exp_sh = cb.shl(exp_after_round, 52);
-	let packed_norm = cb.bor(cb.bor(sign_hi, exp_sh), frac);
+	let exp_sh = b.shl(exp_after_round, 52);
+	let packed_norm = b.bor(b.bor(sign_hi, exp_sh), frac);
 
-	let finite_packed = cb.select(stayed_sub_mask, packed_sub, packed_norm);
+	let finite_packed = b.select(stayed_sub_mask, packed_sub, packed_norm);
 
 	// If mantissa is zero, the result is a signed zero regardless of exp_after_round.
-	let mant_is_zero = cb.icmp_eq(mant_final_53, zero(cb));
+	let mant_is_zero = b.icmp_eq(mant_final_53, zero(b));
 	let packed_zero = sign_hi; // exp=0, frac=0
-	let finite_or_zero = cb.select(mant_is_zero, packed_zero, finite_packed);
+	let finite_or_zero = b.select(mant_is_zero, packed_zero, finite_packed);
 
 	// overflow_to_inf when exp_after_round >= 2047
-	let exp_eq_2047 = cb.icmp_eq(exp_after_round, exp_2047);
-	let exp_gt_2047 = cb.icmp_ult(exp_2047, exp_after_round);
-	let overflow_to_inf = bool_or(cb, exp_eq_2047, exp_gt_2047);
-	let inf_payload = cb.shl(exp_2047, 52);
-	let packed_inf = cb.bor(sign_hi, inf_payload);
+	let exp_eq_2047 = b.icmp_eq(exp_after_round, exp_2047);
+	let exp_gt_2047 = b.icmp_ult(exp_2047, exp_after_round);
+	let overflow_to_inf = b.bor(exp_eq_2047, exp_gt_2047);
+	let inf_payload = b.shl(exp_2047, 52);
+	let packed_inf = b.bor(sign_hi, inf_payload);
 
-	cb.select(overflow_to_inf, packed_inf, finite_or_zero)
+	b.select(overflow_to_inf, packed_inf, finite_or_zero)
 }
 
 #[cfg(test)]
 pub mod tests {
 	use binius_core::word::Word;
+	use proptest::bool;
 
 	use super::*;
 	use crate::constraint_verifier::verify_constraints;
@@ -905,13 +873,14 @@ pub mod tests {
 			let expected_is_nan = builder.add_inout();
 			let expected_is_inf = builder.add_inout();
 			let expected_is_norm = builder.add_inout();
+			let bool_mask = builder.add_constant(Word::MSB_ONE);
 
 			builder.assert_eq("sign", result.sign, expected_sign);
 			builder.assert_eq("exp", result.exp, expected_exp);
 			builder.assert_eq("frac", result.frac, expected_frac);
-			builder.assert_eq("is_nan", result.is_nan, expected_is_nan);
-			builder.assert_eq("is_inf", result.is_inf, expected_is_inf);
-			builder.assert_eq("is_norm", result.is_norm, expected_is_norm);
+			builder.assert_eq("is_nan", builder.band(result.is_nan, bool_mask), expected_is_nan);
+			builder.assert_eq("is_inf", builder.band(result.is_inf, bool_mask), expected_is_inf);
+			builder.assert_eq("is_norm", builder.band(result.is_norm, bool_mask), expected_is_norm);
 
 			let circuit = builder.build();
 			let mut w = circuit.new_witness_filler();
@@ -953,10 +922,11 @@ pub mod tests {
 			let expected_sig = builder.add_inout();
 			let expected_exp = builder.add_inout();
 			let expected_lt1 = builder.add_inout();
+			let bool_mask = builder.add_constant(Word::MSB_ONE);
 
 			builder.assert_eq("sig_round_base", sig_round_base, expected_sig);
 			builder.assert_eq("exp_round_base", exp_round_base, expected_exp);
-			builder.assert_eq("exp_lt_1", exp_lt_1, expected_lt1);
+			builder.assert_eq("exp_lt_1", builder.band(exp_lt_1, bool_mask), expected_lt1);
 
 			let circuit = builder.build();
 			let mut w = circuit.new_witness_filler();

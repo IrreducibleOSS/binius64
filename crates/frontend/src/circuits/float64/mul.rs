@@ -16,22 +16,22 @@ use crate::compiler::{CircuitBuilder, Wire};
 ///   - `exp_pre`: Base exponent before normalization adjustment
 ///   - `sign`: Result sign (0 or 1)
 pub fn fp64_mul_prepare(
-	cb: &CircuitBuilder,
+	b: &CircuitBuilder,
 	pa: &Fp64Parts,
 	pb: &Fp64Parts,
 ) -> (Wire, Wire, Wire, Wire) {
-	let bias = cb.add_constant_64(1023);
+	let bias = b.add_constant_64(1023);
 
 	// 53-bit integers (normals include the hidden 1)
-	let (m_a, exp_eff_a) = fp64_sig53_and_exp(cb, pa);
-	let (m_b, exp_eff_b) = fp64_sig53_and_exp(cb, pb);
+	let (m_a, exp_eff_a) = fp64_sig53_and_exp(b, pa);
+	let (m_b, exp_eff_b) = fp64_sig53_and_exp(b, pb);
 
 	// exp_pre = exp_eff_a + exp_eff_b - bias
-	let exp_sum = iadd(cb, exp_eff_a, exp_eff_b);
-	let exp_pre = isub(cb, exp_sum, bias);
+	let exp_sum = iadd(b, exp_eff_a, exp_eff_b);
+	let exp_pre = isub(b, exp_sum, bias);
 
 	// sign = sign_a XOR sign_b
-	let sign = cb.bxor(pa.sign, pb.sign);
+	let sign = b.bxor(pa.sign, pb.sign);
 
 	(m_a, m_b, exp_pre, sign)
 }
@@ -55,30 +55,30 @@ pub fn fp64_mul_prepare(
 /// - `(sig_round_base, norm_shift1_bit01)` where:
 ///   - `sig_round_base`: 64-bit value with round-base geometry
 ///   - `norm_shift1_bit01`: 0/1 indicating whether normalization shift occurred (s==42)
-pub fn fp64_mul_make_round_base(cb: &CircuitBuilder, m_a: Wire, m_b: Wire) -> (Wire, Wire) {
-	let (hi, lo) = cb.imul(m_a, m_b); // 64x64 -> 128
+pub fn fp64_mul_make_round_base(b: &CircuitBuilder, m_a: Wire, m_b: Wire) -> (Wire, Wire) {
+	let (hi, lo) = b.imul(m_a, m_b); // 64x64 -> 128
 
 	// Top bit (bit 105 of p) is bit 41 of `hi`
-	let top105_bit01 = bit_lsb(cb, hi, 41); // 0/1
-	let top105_sel = bit_msb(cb, hi, 41); // same bit as top105_bit01 but as MSB-bool
+	let top105_bit01 = bit_lsb(b, hi, 41); // 0/1
+	let top105_sel = bit_msb01(b, hi, 41); // same bit as top105_bit01 but as MSB-bool
 
 	// Precompute both shifts and stickies:
 	// s = 41
-	let y41 = shr128_to_u64_const(cb, hi, lo, 41);
-	let sticky41 = sticky_from_low_k(cb, lo, 41);
+	let y41 = shr128_to_u64_const(b, hi, lo, 41);
+	let sticky41 = sticky_from_low_k(b, lo, 41);
 	// s = 42
-	let y42 = shr128_to_u64_const(cb, hi, lo, 42);
-	let sticky42 = sticky_from_low_k(cb, lo, 42);
+	let y42 = shr128_to_u64_const(b, hi, lo, 42);
+	let sticky42 = sticky_from_low_k(b, lo, 42);
 
 	// Select by normalization decision
-	let y = cb.select(top105_sel, y42, y41);
-	let sticky01 = cb.select(top105_sel, sticky42, sticky41);
+	let y = b.select(top105_sel, y42, y41);
+	let sticky01 = b.select(top105_sel, sticky42, sticky41);
 
 	// Fold sticky into bit 0: new_bit0 = (y&1) | sticky01
-	let one_const = one(cb);
-	let keep = cb.bnot(one_const); // clear bit0
-	let new_b0 = cb.bor(cb.band(y, one_const), sticky01);
-	let sig_round_base = cb.bor(cb.band(y, keep), new_b0);
+	let one_const = one(b);
+	let keep = b.bnot(one_const); // clear bit0
+	let new_b0 = b.bor(b.band(y, one_const), sticky01);
+	let sig_round_base = b.bor(b.band(y, keep), new_b0);
 
 	(sig_round_base, top105_bit01) // the bit is 0/1 for exponent bump
 }
@@ -99,32 +99,31 @@ pub fn fp64_mul_make_round_base(cb: &CircuitBuilder, m_a: Wire, m_b: Wire) -> (W
 /// # Returns
 /// - Final 64-bit IEEE-754 result with special cases handled
 pub fn fp64_mul_finish_specials(
-	cb: &CircuitBuilder,
+	b: &CircuitBuilder,
 	pa: &Fp64Parts,
 	pb: &Fp64Parts,
 	sign_xor: Wire,
 	finite_result: Wire,
 ) -> Wire {
-	let qnan = cb.add_constant_64(0x7FF8_0000_0000_0000);
-	let exp_2047 = cb.add_constant_64(0x7FF);
-	let inf_payload = cb.shl(exp_2047, 52);
-	let sign_hi = cb.shl(sign_xor, 63);
+	let qnan = b.add_constant_64(0x7FF8_0000_0000_0000);
+	let exp_2047 = b.add_constant_64(0x7FF);
+	let inf_payload = b.shl(exp_2047, 52);
+	let sign_hi = b.shl(sign_xor, 63);
 
-	let any_nan = bool_canonical(cb, cb.bor(pa.is_nan, pb.is_nan));
-	let any_inf = bool_canonical(cb, cb.bor(pa.is_inf, pb.is_inf));
-	let any_zero = bool_canonical(cb, cb.bor(pa.is_zero, pb.is_zero));
-	let inf_times_zero =
-		bool_canonical(cb, cb.bor(cb.band(pa.is_inf, pb.is_zero), cb.band(pb.is_inf, pa.is_zero)));
+	let any_nan = b.bor(pa.is_nan, pb.is_nan);
+	let any_inf = b.bor(pa.is_inf, pb.is_inf);
+	let any_zero = b.bor(pa.is_zero, pb.is_zero);
+	let inf_times_zero = b.bor(b.band(pa.is_inf, pb.is_zero), b.band(pb.is_inf, pa.is_zero));
 
-	let nan_mask = cb.bor(any_nan, inf_times_zero);
+	let nan_mask = b.bor(any_nan, inf_times_zero);
 
-	let packed_inf = cb.bor(sign_hi, inf_payload);
+	let packed_inf = b.bor(sign_hi, inf_payload);
 	let packed_zero = sign_hi; // exp=0, frac=0
 
 	// Layered precedence: start with finite, then Zero, then Inf, then NaN
-	let with_zero = cb.select(any_zero, packed_zero, finite_result);
-	let with_inf = cb.select(any_inf, packed_inf, with_zero);
-	cb.select(nan_mask, qnan, with_inf)
+	let with_zero = b.select(any_zero, packed_zero, finite_result);
+	let with_inf = b.select(any_inf, packed_inf, with_zero);
+	b.select(nan_mask, qnan, with_inf)
 }
 
 /// IEEE-754 double (binary64) multiplication circuit builder.
@@ -140,35 +139,35 @@ pub fn fp64_mul_finish_specials(
 ///
 /// # Returns
 /// - 64-bit IEEE-754 binary64 result of `a * b`
-pub fn float64_mul(cb: &CircuitBuilder, a: Wire, b: Wire) -> Wire {
+pub fn float64_mul(b: &CircuitBuilder, a: Wire, b_: Wire) -> Wire {
 	// Unpack & classify (reuse addition helper)
-	let pa = fp64_unpack(cb, a);
-	let pb = fp64_unpack(cb, b);
+	let pa = fp64_unpack(b, a);
+	let pb = fp64_unpack(b, b_);
 
 	// Early combine: multiplicands & base exponent/sign
-	let (m_a, m_b, exp_pre, sign_xor) = fp64_mul_prepare(cb, &pa, &pb);
+	let (m_a, m_b, exp_pre, sign_xor) = fp64_mul_prepare(b, &pa, &pb);
 
 	// 106-bit product -> round-base 64-bit (integer at bit63) + norm adjust bit
-	let (sig_round_base_uncut, norm_shift1_bit01) = fp64_mul_make_round_base(cb, m_a, m_b);
+	let (sig_round_base_uncut, norm_shift1_bit01) = fp64_mul_make_round_base(b, m_a, m_b);
 
 	// Exponent bump for normalization: exp_round_base = exp_pre + (norm_shift1?1:0)
-	let exp_round_base = iadd(cb, exp_pre, norm_shift1_bit01);
+	let exp_round_base = iadd(b, exp_pre, norm_shift1_bit01);
 
 	// Pre-round underflow to subnormal domain if needed (same as addition block)
 	let (sig_round_base, exp_for_round, exp_lt_1) =
-		fp64_underflow_shift(cb, sig_round_base_uncut, exp_round_base);
+		fp64_underflow_shift(b, sig_round_base_uncut, exp_round_base);
 
 	// Round to nearest-even
 	let (mant_final_53, exp_after_round, mant_overflow_mask) =
-		fp64_round_rne(cb, sig_round_base, exp_for_round);
+		fp64_round_rne(b, sig_round_base, exp_for_round);
 
 	// Pack finite or overflow to ±Inf
-	let stayed_sub_mask = cb.band(exp_lt_1, cb.bnot(mant_overflow_mask));
+	let stayed_sub_mask = b.band(exp_lt_1, b.bnot(mant_overflow_mask));
 	let finite_or_inf =
-		fp64_pack_finite_or_inf(cb, sign_xor, mant_final_53, exp_after_round, stayed_sub_mask);
+		fp64_pack_finite_or_inf(b, sign_xor, mant_final_53, exp_after_round, stayed_sub_mask);
 
 	// Multiplication-specific specials overlay (NaN / Inf*0 / ±Inf / ±0)
-	fp64_mul_finish_specials(cb, &pa, &pb, sign_xor, finite_or_inf)
+	fp64_mul_finish_specials(b, &pa, &pb, sign_xor, finite_or_inf)
 }
 
 #[cfg(test)]
