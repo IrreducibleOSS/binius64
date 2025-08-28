@@ -1,0 +1,21 @@
+[package]
+name = "binius-prover-interface"
+version = "0.1.0"
+edition = "2021"
+authors = ["Irreducible Team <opensource@irreducible.com>"]
+description = "Open-source interface to the Binius ZK prover"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+thiserror = "2.0"
+serde = { version = "1.0", features = ["derive"], optional = true }
+
+[dev-dependencies]
+# For testing without the closed-source binary
+
+[features]
+default = []
+# Enable serialization support
+serde = ["dep:serde"]
+# Link to closed-source prover when available
+closed-source = []
