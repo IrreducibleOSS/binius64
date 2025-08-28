@@ -3,7 +3,9 @@
 pub mod compress;
 mod serialization;
 
-pub mod vision;
+// Vision permutations with states of 4 and 6 Ghash elements
+pub mod vision_4;
+pub mod vision_6;
 
 pub use compress::{CompressionFunction, PseudoCompressionFunction};
 pub use serialization::*;
