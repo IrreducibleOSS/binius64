@@ -1,6 +1,7 @@
 //! Unsigned less-than test returning a mask.
 //!
-//! Returns `out_mask = all-1` if `x < y`, `all-0` otherwise.
+//! Returns a wire whose value as an MSB-bool is true if `x < y`, and false otherwise.
+//! It is undefined what the NON-most-significant bits of the output wire will be.
 //!
 //! # Algorithm
 //!
@@ -12,18 +13,16 @@
 //! 2. The MSB of `bout` indicates the comparison result:
 //!    - MSB = 1: carry out occurred, meaning `x < y`
 //!    - MSB = 0: no carry out, meaning `x ≥ y`
-//! 3. Broadcast the MSB to all bits: `out_mask = bout SRA 63`
 //!
 //! # Constraints
 //!
-//! The gate generates 2 AND constraints:
+//! The gate generates 1 AND constraint:
 //! 1. Borrow propagation: `(¬x ⊕ bin) ∧ (y ⊕ bin) = bin ⊕ bout`
-//! 2. Mask generation: `out_mask = bout SRA 63`
 
 use binius_core::word::Word;
 
 use crate::compiler::{
-	constraint_builder::{ConstraintBuilder, empty, sar, sll, xor2, xor3},
+	constraint_builder::{ConstraintBuilder, sll, xor2, xor3},
 	gate::opcode::OpcodeShape,
 	gate_graph::{Gate, GateData, GateParam, Wire},
 };
@@ -33,7 +32,7 @@ pub fn shape() -> OpcodeShape {
 		const_in: &[Word::ALL_ONE, Word::ZERO], // Need all_1 and zero constants
 		n_in: 2,
 		n_out: 1,
-		n_aux: 1,
+		n_aux: 0,
 		n_scratch: 2, // Need 2 scratch registers for intermediate computations
 		n_imm: 0,
 	}
@@ -43,7 +42,6 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 	let GateParam {
 		inputs,
 		outputs,
-		aux,
 		constants,
 		..
 	} = data.gate_param();
@@ -51,8 +49,7 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 		unreachable!()
 	};
 	let [x, y] = inputs else { unreachable!() };
-	let [out_mask] = outputs else { unreachable!() };
-	let [bout] = aux else { unreachable!() };
+	let [bout] = outputs else { unreachable!() };
 
 	// Constraint 1: Carry propagation for comparison
 	// ((x ⊕ all-1) ⊕ (bout << 1)) ∧ (y ⊕ (bout << 1)) = bout ⊕ (bout << 1)
@@ -61,15 +58,6 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 		.a(xor3(*x, *all_1, sll(*bout, 1)))
 		.b(xor2(*y, sll(*bout, 1)))
 		.c(xor2(*bout, sll(*bout, 1)))
-		.build();
-
-	// Constraint 2: MSB broadcast
-	// ((bout >> 63) ⊕ out_mask) ∧ all-1 = 0
-	builder
-		.and()
-		.a(xor2(sar(*bout, 63), *out_mask))
-		.b(*all_1)
-		.c(empty())
 		.build();
 }
 
@@ -83,7 +71,6 @@ pub fn emit_eval_bytecode(
 		constants,
 		inputs,
 		outputs,
-		aux,
 		scratch,
 		..
 	} = data.gate_param();
@@ -91,8 +78,7 @@ pub fn emit_eval_bytecode(
 		unreachable!()
 	};
 	let [x, y] = inputs else { unreachable!() };
-	let [out_mask] = outputs else { unreachable!() };
-	let [bout] = aux else { unreachable!() };
+	let [bout] = outputs else { unreachable!() };
 	let [scratch_nx, scratch_sum_unused] = scratch else {
 		unreachable!()
 	};
@@ -108,7 +94,4 @@ pub fn emit_eval_bytecode(
 		wire_to_reg(*y),                  // y
 		wire_to_reg(*zero),               // cin = 0
 	);
-
-	// Broadcast MSB: out_mask = bout >> 63 (arithmetic)
-	builder.emit_sar(wire_to_reg(*out_mask), wire_to_reg(*bout), 63);
 }

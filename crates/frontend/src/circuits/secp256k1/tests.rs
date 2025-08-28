@@ -29,9 +29,9 @@ fn test_secp256k1_group_order() {
 
 	let cs = builder.build();
 	let mut w = cs.new_witness_filler();
-	assert!(cs.populate_wire_witness(&mut w).is_ok());
+	cs.populate_wire_witness(&mut w).unwrap();
 
-	assert_eq!(w[acc.is_point_at_infinity], Word::ALL_ONE);
+	assert_eq!(w[acc.is_point_at_infinity] >> 63, Word::ONE);
 }
 
 #[test]
@@ -51,7 +51,7 @@ fn test_secp256k1_pow2pow137() {
 
 	let cs = builder.build();
 	let mut w = cs.new_witness_filler();
-	assert!(cs.populate_wire_witness(&mut w).is_ok());
+	cs.populate_wire_witness(&mut w).unwrap();
 
 	// 0xede2ae24a4f24f0e70e764555e24170cebf045931e5bff973caff9355246e643
 	assert_eq!(w[acc.x.limbs[0]], Word(0x3caff9355246e643));
@@ -78,7 +78,7 @@ fn test_secp256k1_generator_double_and_add() {
 
 	let cs = builder.build();
 	let mut w = cs.new_witness_filler();
-	assert!(cs.populate_wire_witness(&mut w).is_ok());
+	cs.populate_wire_witness(&mut w).unwrap();
 
 	// 0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
 	assert_eq!(w[generator.x.limbs[0]], Word(0x59f2815b16f81798));

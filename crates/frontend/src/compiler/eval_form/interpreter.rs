@@ -130,6 +130,8 @@ impl<'a> Interpreter<'a> {
 				0x60 => self.exec_assert_eq(ctx),
 				0x61 => self.exec_assert_zero(ctx),
 				0x62 => self.exec_assert_cond(ctx),
+				0x63 => self.exec_assert_false(ctx),
+				0x64 => self.exec_assert_true(ctx),
 
 				// Hint calls
 				0x80 => self.exec_hint(ctx),
@@ -402,6 +404,28 @@ impl<'a> Interpreter<'a> {
 					format!("conditional assert: {val1:?} != {val2:?}"),
 				);
 			}
+		}
+	}
+
+	fn exec_assert_false(&mut self, ctx: &mut ExecutionContext<'_>) {
+		let src = self.read_reg();
+		let error_id = self.read_u32();
+
+		let val = self.load(ctx, src);
+
+		if val & Word::MSB_ONE != Word::ZERO {
+			ctx.note_assertion_failure(error_id, format!("{val:?} & MSB_ONE != 0"));
+		}
+	}
+
+	fn exec_assert_true(&mut self, ctx: &mut ExecutionContext<'_>) {
+		let src = self.read_reg();
+		let error_id = self.read_u32();
+
+		let val = self.load(ctx, src);
+
+		if val & Word::MSB_ONE != Word::MSB_ONE {
+			ctx.note_assertion_failure(error_id, format!("{val:?} & MSB_ONE != MSB_ONE"));
 		}
 	}
 

@@ -35,7 +35,7 @@ pub fn float64_add(cb: &CircuitBuilder, a: Wire, b: Wire) -> Wire {
 	let s_b = fp64_align_with_sticky(cb, sig_b_ordered, d);
 
 	// same/different sign split
-	let same_sign = cb.icmp_eq(sign_a_ordered, sign_b_ordered);
+	let same_sign = bool_canonical(cb, cb.icmp_eq(sign_a_ordered, sign_b_ordered));
 
 	// add path
 	let (sum_norm, exp_add) = fp64_add_path(cb, sig_a_ordered, s_b, exp_a_ordered);
@@ -69,10 +69,11 @@ pub fn float64_add(cb: &CircuitBuilder, a: Wire, b: Wire) -> Wire {
 	//   - we were below 1 (exp_lt_1), OR
 	//   - base exponent == 1 and the integer bit (bit 63) is 0 (no hidden 1)
 	let msb01 = bit_lsb(cb, sig_round_base, 63); // 0/1
-	let msb_is_zero_mask = cb.bnot(to_mask01(cb, msb01));
-	let base_is_one_mask = cb.icmp_eq(exp_round_base, one(cb));
-	let in_sub_regime = cb.bor(exp_lt_1, cb.band(base_is_one_mask, msb_is_zero_mask));
-	let stayed_sub_mask = cb.band(in_sub_regime, cb.bnot(mant_overflow_mask));
+	let msb_is_zero = bool_canonical(cb, cb.icmp_eq(msb01, zero(cb))); // MSB-bool
+	let base_is_one = bool_canonical(cb, cb.icmp_eq(exp_round_base, one(cb)));
+	let in_sub_regime = bool_canonical(cb, cb.bor(exp_lt_1, cb.band(base_is_one, msb_is_zero)));
+	let stayed_sub_mask =
+		bool_canonical(cb, cb.band(in_sub_regime, bool_not(cb, mant_overflow_mask)));
 	let finite_or_inf =
 		fp64_pack_finite_or_inf(cb, res_sign, mant_final_53, exp_after_round, stayed_sub_mask);
 
@@ -122,7 +123,7 @@ fn fp64_order_by_exp(
 	exp_b: Wire,
 	sign_b: Wire,
 ) -> (Wire, Wire, Wire, Wire, Wire, Wire, Wire) {
-	let a_lt_b = cb.icmp_ult(exp_a, exp_b);
+	let a_lt_b = bool_canonical(cb, cb.icmp_ult(exp_a, exp_b));
 
 	let exp_a_ordered = cb.select(a_lt_b, exp_b, exp_a);
 	let exp_b_ordered = cb.select(a_lt_b, exp_a, exp_b);
@@ -174,7 +175,7 @@ fn fp64_add_path(cb: &CircuitBuilder, sig_a: Wire, s_b: Wire, exp_a: Wire) -> (W
 
 	// Detect final carry-out (bit63 of carry mask) as 0/1 and as a select mask
 	let carry_bit01 = bit_lsb(cb, carry_mask, 63); // 0/1
-	let carry_sel_mask = to_mask01(cb, carry_bit01); // all-ones or zero
+	let carry_sel_mask = bit_msb(cb, carry_mask, 63); // use carry's MSB directly as MSB-bool
 
 	// if carry: shift 1 and update sticky := old R | old S
 	let sum_shift1 = cb.shr(sum_raw, 1);
@@ -215,12 +216,12 @@ fn fp64_sub_path(
 	sign_a: Wire,
 	sign_b: Wire,
 ) -> (Wire, Wire, Wire, Wire) {
-	let a_lt_b = cb.icmp_ult(sig_a, s_b);
+	let a_lt_b = bool_canonical(cb, cb.icmp_ult(sig_a, s_b));
 	let big = cb.select(a_lt_b, s_b, sig_a);
 	let small = cb.select(a_lt_b, sig_a, s_b);
 	let diff_raw = isub(cb, big, small);
 	let sign_sub = cb.select(a_lt_b, sign_b, sign_a);
-	let mags_eq = cb.icmp_eq(sig_a, s_b);
+	let mags_eq = bool_canonical(cb, cb.icmp_eq(sig_a, s_b));
 
 	let lz = clz64(cb, diff_raw);
 	let c64 = cb.add_constant_64(64);
@@ -264,7 +265,7 @@ fn fp64_merge_and_cancel(
 	let res_sign_pre = cb.select(same_sign, sign_a, sign_sub);
 
 	// different signs and equal magnitudes => +0
-	let cancel = cb.band(cb.bnot(same_sign), mags_equal);
+	let cancel = bool_canonical(cb, cb.band(bool_not(cb, same_sign), mags_equal));
 
 	let res_sig = cb.select(cancel, zero(cb), res_sig_pre);
 	let res_exp = cb.select(cancel, zero(cb), res_exp_pre); // exp ignored for zero
@@ -296,10 +297,11 @@ fn fp64_finish_specials(
 	let exp_2047 = cb.add_constant_64(0x7FF);
 	let inf_payload = cb.shl(exp_2047, 52);
 
-	let same_sign = cb.icmp_eq(pa.sign, pb.sign);
-	let opp_inf_nan = cb.band(cb.band(pa.is_inf, pb.is_inf), cb.bnot(same_sign));
-	let any_nan = cb.bor(pa.is_nan, pb.is_nan);
-	let nan_mask = cb.bor(any_nan, opp_inf_nan);
+	let same_sign = bool_canonical(cb, cb.icmp_eq(pa.sign, pb.sign));
+	let opp_inf_nan =
+		bool_canonical(cb, cb.band(cb.band(pa.is_inf, pb.is_inf), bool_not(cb, same_sign)));
+	let any_nan = bool_canonical(cb, cb.bor(pa.is_nan, pb.is_nan));
+	let nan_mask = bool_canonical(cb, cb.bor(any_nan, opp_inf_nan));
 
 	// If any operand is infinity (with either same signs or only one inf), pick its sign.
 	let any_inf = cb.bor(pa.is_inf, pb.is_inf);
@@ -325,13 +327,13 @@ mod tests {
 	};
 
 	fn ref_fp64_ext_sig_and_exp(_sign: u64, exp: u64, frac: u64, is_norm: u64) -> (u64, u64) {
-		let sig = if is_norm == u64::MAX {
+		let sig = if is_norm != 0 {
 			((1u64 << 52) | frac) << 11
 		} else {
 			frac << 11
 		};
 
-		let exp_eff = if is_norm == u64::MAX { exp } else { 1 };
+		let exp_eff = if is_norm != 0 { exp } else { 1 };
 
 		(sig, exp_eff)
 	}
@@ -345,7 +347,7 @@ mod tests {
 		sign_b: u64,
 	) -> (u64, u64, u64, u64, u64, u64, u64) {
 		if exp_a < exp_b {
-			(sig_b, exp_b, sign_b, sig_a, exp_a, sign_a, u64::MAX)
+			(sig_b, exp_b, sign_b, sig_a, exp_a, sign_a, 1u64 << 63)
 		} else {
 			(sig_a, exp_a, sign_a, sig_b, exp_b, sign_b, 0)
 		}
@@ -409,12 +411,12 @@ mod tests {
 		sign_b: u64,
 	) -> (u64, u64, u64, u64) {
 		// Match the circuit logic exactly
-		let a_lt_b = if sig_a < s_b { u64::MAX } else { 0 };
-		let big = if a_lt_b == u64::MAX { s_b } else { sig_a };
-		let small = if a_lt_b == u64::MAX { sig_a } else { s_b };
+		let a_lt_b = if sig_a < s_b { 1u64 << 63 } else { 0 };
+		let big = if a_lt_b != 0 { s_b } else { sig_a };
+		let small = if a_lt_b != 0 { sig_a } else { s_b };
 		let diff_raw = big.wrapping_sub(small);
-		let sign_sub = if a_lt_b == u64::MAX { sign_b } else { sign_a };
-		let mags_eq = if sig_a == s_b { u64::MAX } else { 0 };
+		let sign_sub = if a_lt_b != 0 { sign_b } else { sign_a };
+		let mags_eq = if sig_a == s_b { 1u64 << 63 } else { 0 };
 
 		// Use clz64 reference implementation
 		let lz = if diff_raw == 0 {
@@ -424,12 +426,12 @@ mod tests {
 		};
 		let c64 = 64;
 		let c63 = 63;
-		let lt64 = if lz < c64 { u64::MAX } else { 0 };
-		let lz_clamped = if lt64 == u64::MAX { lz } else { c63 };
+		let lt64 = if lz < c64 { 1u64 << 63 } else { 0 };
+		let lz_clamped = if lt64 != 0 { lz } else { c63 };
 
 		let exp_a_m1 = exp_a.wrapping_sub(1);
-		let lz_lt_expm1 = if lz_clamped < exp_a_m1 { u64::MAX } else { 0 };
-		let sh = if lz_lt_expm1 == u64::MAX {
+		let lz_lt_expm1 = if lz_clamped < exp_a_m1 { 1u64 << 63 } else { 0 };
+		let sh = if lz_lt_expm1 != 0 {
 			lz_clamped
 		} else {
 			exp_a_m1
@@ -454,22 +456,22 @@ mod tests {
 		sign_sub: u64,
 		mags_equal: u64,
 	) -> (u64, u64, u64) {
-		let (res_sig_pre, res_exp_pre, res_sign_pre) = if same_sign == u64::MAX {
+		let (res_sig_pre, res_exp_pre, res_sign_pre) = if same_sign != 0 {
 			(sum_norm, exp_add, sign_a)
 		} else {
 			(diff_norm, exp_sub, sign_sub)
 		};
 
 		// Handle exact cancellation -> +0
-		let cancel = if same_sign == 0 && mags_equal == u64::MAX {
-			u64::MAX
+		let cancel = if same_sign == 0 && mags_equal != 0 {
+			1u64 << 63
 		} else {
 			0
 		};
 
-		let res_sig = if cancel == u64::MAX { 0 } else { res_sig_pre };
-		let res_exp = if cancel == u64::MAX { 0 } else { res_exp_pre };
-		let res_sign = if cancel == u64::MAX { 0 } else { res_sign_pre };
+		let res_sig = if cancel != 0 { 0 } else { res_sig_pre };
+		let res_exp = if cancel != 0 { 0 } else { res_exp_pre };
+		let res_sign = if cancel != 0 { 0 } else { res_sign_pre };
 
 		(res_sig, res_exp, res_sign)
 	}
@@ -522,8 +524,8 @@ mod tests {
 		let d = exp_a.wrapping_sub(exp_b);
 		let s_b_align = ref_fp64_align_with_sticky(sig_b, d);
 
-		// Choose path by sign
-		let same_sign = if sign_a == sign_b { u64::MAX } else { 0 };
+		// Choose path by sign (MSB-bool)
+		let same_sign = if sign_a == sign_b { 1u64 << 63 } else { 0 };
 		let (sum_norm, exp_add) = ref_fp64_add_path(sig_a, s_b_align, exp_a);
 		let (diff_norm, exp_sub, sign_sub, mags_equal) =
 			ref_fp64_sub_path(sig_a, s_b_align, exp_a, sign_a, sign_b);
@@ -548,7 +550,7 @@ mod tests {
 		let base_is_one = exp_round_base == 1;
 		let in_sub_regime = (exp_lt_1 != 0) || (base_is_one && msb == 0);
 		let stayed_sub_mask = if in_sub_regime && mant_overflow_mask == 0 {
-			u64::MAX
+			1u64 << 63
 		} else {
 			0
 		};
@@ -712,11 +714,11 @@ mod tests {
 	fn test_fp64_merge_and_cancel() {
 		let test_cases = [
 			// (same_sign, sum_norm, exp_add, sign_a, diff_norm, exp_sub, sign_sub, mags_equal)
-			(u64::MAX, 0x8000000000000000u64, 1024, 0, 0x4000000000000000u64, 1020, 1, 0), /* Same sign - use add path */
-			(0, 0x8000000000000000u64, 1024, 0, 0x4000000000000000u64, 1020, 1, 0),        /* Different
-			                                                                                * sign - use
-			                                                                                * sub path */
-			(0, 0x8000000000000000u64, 1024, 0, 0x4000000000000000u64, 1020, 1, u64::MAX), /* Exact cancellation */
+			(1u64 << 63, 0x8000000000000000u64, 1024, 0, 0x4000000000000000u64, 1020, 1, 0), /* Same sign - use add path */
+			(0, 0x8000000000000000u64, 1024, 0, 0x4000000000000000u64, 1020, 1, 0),          /* Different
+			                                                                                  * sign - use
+			                                                                                  * sub path */
+			(0, 0x8000000000000000u64, 1024, 0, 0x4000000000000000u64, 1020, 1, 1u64 << 63), /* Exact cancellation */
 		];
 
 		for (same_sign, sum_norm, exp_add, sign_a, diff_norm, exp_sub, sign_sub, mags_equal) in
@@ -782,7 +784,7 @@ mod tests {
 			// (sign, mant_final_53, exp_after_round, stayed_sub_mask)
 			(0, 0x1000000000000000u64, 1023, 0), // Normal positive number
 			(1, 0x1800000000000000u64, 1000, 0), // Normal negative number
-			(0, 0x0000000000001000u64, 1, u64::MAX), // Subnormal positive
+			(0, 0x0000000000001000u64, 1, 1u64 << 63), // Subnormal positive
 			(0, 0x1000000000000000u64, 0x7FF, 0), // Overflow to infinity
 		];
 
@@ -821,11 +823,11 @@ mod tests {
 		let test_cases = [
 			// (pa_is_nan, pa_is_inf, pa_sign, pb_is_nan, pb_is_inf, pb_sign, finite_or_inf)
 			(0, 0, 0, 0, 0, 0, 0x3FF0000000000000u64), // Normal case
-			(u64::MAX, 0, 0, 0, 0, 0, 0x4000000000000000u64), // A is NaN
-			(0, 0, 0, u64::MAX, 0, 1, 0x4000000000000000u64), // B is NaN
-			(0, u64::MAX, 0, 0, 0, 1, 0x4000000000000000u64), // A is +inf
-			(0, 0, 1, 0, u64::MAX, 1, 0x4000000000000000u64), // B is -inf
-			(0, u64::MAX, 0, 0, u64::MAX, 1, 0x4000000000000000u64), // +inf + (-inf) = NaN
+			(1u64 << 63, 0, 0, 0, 0, 0, 0x4000000000000000u64), // A is NaN
+			(0, 0, 0, 1u64 << 63, 0, 1, 0x4000000000000000u64), // B is NaN
+			(0, 1u64 << 63, 0, 0, 0, 1, 0x4000000000000000u64), // A is +inf
+			(0, 0, 1, 0, 1u64 << 63, 1, 0x4000000000000000u64), // B is -inf
+			(0, 1u64 << 63, 0, 0, 1u64 << 63, 1, 0x4000000000000000u64), // +inf + (-inf) = NaN
 		];
 
 		for (pa_is_nan, pa_is_inf, pa_sign, pb_is_nan, pb_is_inf, pb_sign, finite_or_inf) in

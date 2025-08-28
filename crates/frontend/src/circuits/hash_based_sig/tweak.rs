@@ -76,60 +76,45 @@ impl ChainTweak {
 		let message_le: Vec<Wire> = (0..n_message_words)
 			.map(|_| builder.add_witness())
 			.collect();
-		let len = builder.add_witness();
+		let len_bytes = builder.add_witness();
 
-		// Keccak digest is 25 words (full state), but we only use first 4 for 256-bit output
-		let keccak_digest: [Wire; 25] = std::array::from_fn(|i| {
-			if i < 4 {
-				digest[i]
-			} else {
-				builder.add_witness()
-			}
-		});
-
-		let keccak = Keccak::new(builder, message_len, len, keccak_digest, message_le.clone());
+		let keccak = Keccak::new(builder, len_bytes, digest, message_le.clone());
 
 		let mut terms = Vec::new();
 
 		let param_term = Term {
-			len: builder.add_constant_64(param_len as u64),
+			len_bytes: builder.add_constant_64(param_len as u64),
 			data: param_wires.clone(),
-			max_len: param_wires.len() * 8,
 		};
 		terms.push(param_term);
 
 		let tweak_term = Term {
-			len: builder.add_constant_64(1),
+			len_bytes: builder.add_constant_64(1),
 			data: vec![tweak_byte],
-			max_len: 8,
 		};
 		terms.push(tweak_term);
 
 		let hash_term = Term {
-			len: builder.add_constant_64(32),
+			len_bytes: builder.add_constant_64(32),
 			data: hash.to_vec(),
-			max_len: 32,
 		};
 		terms.push(hash_term);
 
 		let chain_index_term = Term {
-			len: builder.add_constant_64(8),
+			len_bytes: builder.add_constant_64(8),
 			data: vec![chain_index],
-			max_len: 8,
 		};
 		terms.push(chain_index_term);
 
 		let position_term = Term {
-			len: builder.add_constant_64(8),
+			len_bytes: builder.add_constant_64(8),
 			data: vec![position],
-			max_len: 8,
 		};
 		terms.push(position_term);
 
 		// Create the concatenation circuit to verify message structure
 		// message = param || tweak_byte || hash || chain_index || position
-		let _message_structure_verifier =
-			Concat::new(builder, message_len.next_multiple_of(8), len, message_le, terms);
+		let _message_structure_verifier = Concat::new(builder, len_bytes, message_le, terms);
 
 		ChainTweak {
 			keccak,
@@ -173,19 +158,19 @@ impl ChainTweak {
 	}
 
 	/// Populate the message wires with the complete concatenated message.
-	pub fn populate_message(&self, w: &mut WitnessFiller, message: &[u8]) {
-		let expected_len = self.param_len + FIXED_MESSAGE_OVERHEAD;
+	pub fn populate_message(&self, w: &mut WitnessFiller, message_bytes: &[u8]) {
+		let expected_len_bytes = self.param_len + FIXED_MESSAGE_OVERHEAD;
 		assert_eq!(
-			message.len(),
-			expected_len,
+			message_bytes.len(),
+			expected_len_bytes,
 			"Message length {} doesn't match expected length {}",
-			message.len(),
-			expected_len
+			message_bytes.len(),
+			expected_len_bytes
 		);
 		// this populates both the message wires (shared with Concat) and the
 		// padded_message wires (Keccak-specific padding)
-		self.keccak.populate_message(w, message);
-		self.keccak.populate_len(w, expected_len);
+		self.keccak.populate_message(w, message_bytes);
+		self.keccak.populate_len_bytes(w, expected_len_bytes);
 	}
 
 	/// Populate the digest wires.

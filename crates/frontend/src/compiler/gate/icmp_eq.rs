@@ -1,6 +1,7 @@
-//! 64-bit equality test that returns all-1 if equal, all-0 if not equal.
+//! 64-bit equality test that returns an MSB-bool indicating equality.
 //!
-//! Returns `out_mask = all-1` if `x == y`, `all-0` otherwise.
+//! Returns a wire whose value, as an MSB-bool, is true if `x == y` and false otherwise.
+//! It is undefined what the NON-most-significant bits of the output wire will be.
 //!
 //! # Algorithm
 //!
@@ -14,47 +15,56 @@
 //! 3. The MSB of `cout` indicates the comparison result:
 //!    - MSB = 0: no carry out, meaning `diff = 0`, so `x == y`
 //!    - MSB = 1: carry out occurred, meaning `diff ≠ 0`, so `x ≠ y`
-//! 4. Invert and broadcast the MSB: `out_mask = ¬(cout SRA 63)`
+//! 4. Negate the MSB: `out_wire ≔ cout ⊕ 0x8000000000000000`.
+//!
+//! we do this in a slightly more roundabout way, in order to make things work with the builder.
+//! since `out_wire` and `cout` will differ only in their MSB, it's valid to take
+//! `cin ≔ out_wire << 1`, instead of `cin ≔ cout << 1`. thus, we never materialize cout.
+//! in the one place we need it, we inline the expression `out_wire ⊕ 0x8000000000000000` instead.
+//!
+//! of course, in theory, we could have instead done out_wire ≔ cout ⊕ 0xFFFFFFFFFFFFFFFF.
+//! this still would have been correct, as far as the MSB of `out_wire` was concerned.
+//! the problem with doing that is that we then would have had to put `cin ≔ ¬out-wire << 1`.
+//! doubling up on the negation and the shift caused a problem, so this works out quite nicely.
 //!
 //! # Constraints
 //!
-//! The gate generates two AND constraints:
+//! The gate generates one AND constraint:
 //! 1. Carry propagation: `(x ⊕ y ⊕ cin) ∧ (all-1 ⊕ cin) = cin ⊕ cout`
-//! 2. Mask generation: `out_mask = (cout SRA 63) ⊕ all-1`
 
 use binius_core::word::Word;
 
 use crate::compiler::{
-	constraint_builder::{ConstraintBuilder, empty, sar, sll, xor2, xor3},
+	constraint_builder::{ConstraintBuilder, sll, xor2, xor3},
 	gate::opcode::OpcodeShape,
 	gate_graph::{Gate, GateData, GateParam, Wire},
 };
 
 pub fn shape() -> OpcodeShape {
 	OpcodeShape {
-		const_in: &[Word::ZERO], // Need zero constant for cin
-		n_in: 3,
+		const_in: &[Word::ALL_ONE, Word::MSB_ONE, Word::ZERO], // Need zero constant for cin
+		n_in: 2,
 		n_out: 1,
-		n_aux: 1,
-		n_scratch: 3, // Need 3 scratch registers for intermediate computations
+		n_aux: 1,     // carry-out register used in eval bytecode
+		n_scratch: 2, // Need 2 scratch registers for intermediate computations
 		n_imm: 0,
 	}
 }
 
 pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) {
 	let GateParam {
+		constants,
 		inputs,
 		outputs,
-		aux,
 		..
 	} = data.gate_param();
-	let [x, y, all_1] = inputs else {
+	let [all_1, msb_1, _zero] = constants else {
 		unreachable!()
 	};
-	let [out_mask] = outputs else { unreachable!() };
-	let [cout] = aux else { unreachable!() };
+	let [x, y] = inputs else { unreachable!() };
+	let [out_wire] = outputs else { unreachable!() };
 
-	let cin = sll(*cout, 1);
+	let cin = sll(*out_wire, 1);
 
 	// Constraint 1: Constrain carry-out
 	// (x ⊕ y ⊕ cin) ∧ (all-1 ⊕ cin) = cin ⊕ cout
@@ -62,16 +72,7 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 		.and()
 		.a(xor3(*x, *y, cin))
 		.b(xor2(*all_1, cin))
-		.c(xor2(cin, *cout))
-		.build();
-
-	// Constraint 2: MSB propagation for equality mask
-	// ((cout >> 63) ⊕ all-1 ⊕ out_mask) ∧ all-1 = 0
-	builder
-		.and()
-		.a(xor3(sar(*cout, 63), *all_1, *out_mask))
-		.b(*all_1)
-		.c(empty())
+		.c(xor3(cin, *out_wire, *msb_1))
 		.build();
 }
 
@@ -89,13 +90,13 @@ pub fn emit_eval_bytecode(
 		scratch,
 		..
 	} = data.gate_param();
-	let [zero] = constants else { unreachable!() };
-	let [x, y, all_1] = inputs else {
+	let [all_1, msb_1, zero] = constants else {
 		unreachable!()
 	};
-	let [out_mask] = outputs else { unreachable!() };
+	let [x, y] = inputs else { unreachable!() };
+	let [out_wire] = outputs else { unreachable!() };
 	let [cout] = aux else { unreachable!() };
-	let [scratch_diff, scratch_sum_unused, scratch_sar] = scratch else {
+	let [scratch_diff, scratch_sum_unused] = scratch else {
 		unreachable!()
 	};
 
@@ -111,9 +112,6 @@ pub fn emit_eval_bytecode(
 		wire_to_reg(*zero),               // cin = 0
 	);
 
-	// Broadcast MSB: scratch_sar = cout >> 63 (arithmetic)
-	builder.emit_sar(wire_to_reg(*scratch_sar), wire_to_reg(*cout), 63);
-
-	// Invert: out_mask = scratch_sar ^ all_1
-	builder.emit_bxor(wire_to_reg(*out_mask), wire_to_reg(*scratch_sar), wire_to_reg(*all_1));
+	// Invert: out_wire = out_wire ^ msb_1
+	builder.emit_bxor(wire_to_reg(*out_wire), wire_to_reg(*cout), wire_to_reg(*msb_1));
 }

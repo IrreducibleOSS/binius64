@@ -70,7 +70,8 @@ impl ExampleCircuit for Sha512Example {
 		let digest = sha2::Sha512::digest(&message_bytes);
 
 		// Populate the input message for the hash function.
-		self.sha512_gadget.populate_len(w, message_bytes.len());
+		self.sha512_gadget
+			.populate_len_bytes(w, message_bytes.len());
 		self.sha512_gadget.populate_message(w, &message_bytes);
 		self.sha512_gadget.populate_digest(w, digest.into());
 

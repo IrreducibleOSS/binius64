@@ -1,4 +1,4 @@
-use binius_core::consts::WORD_SIZE_BITS;
+use binius_core::{consts::WORD_SIZE_BITS, word::Word};
 
 use crate::{
 	compiler::{CircuitBuilder, Wire},
@@ -81,7 +81,9 @@ pub fn multi_wire_multiplex(b: &CircuitBuilder, inputs: &[&[Wire]], sel: Wire) -
 /// * If inputs.len() is 0
 pub fn single_wire_multiplex(b: &CircuitBuilder, inputs: &[Wire], sel: Wire) -> Wire {
 	let n = inputs.len();
-	assert!(n > 0, "Input vector must not be empty");
+	if n == 0 {
+		return b.add_constant(Word::ZERO);
+	}
 
 	// Calculate number of selector bits needed
 	let num_sel_bits = log2_ceil_usize(n);

@@ -123,7 +123,7 @@ impl Sha512 {
 
 		// Assert that len_bytes <= max_len_bytes by checking that !(max_len_bytes < len_bytes)
 		let too_long = builder.icmp_ult(builder.add_constant_64(max_len_bytes as u64), len_bytes);
-		builder.assert_0("1.len_check", too_long);
+		builder.assert_false("1.len_check", too_long);
 
 		// ---- 2. Message padding and compression setup
 		//
@@ -171,12 +171,12 @@ impl Sha512 {
 		let w_bd = builder.shr(len_bytes, 3);
 		let len_mod_8 = builder.band(len_bytes, builder.add_constant_zx_8(7));
 		let bitlen = builder.shl(len_bytes, 3);
-		// For SHA-512, the length field is 128 bits. We only support messages < 2^32 bits,
+		// For SHA-512, the length field is 128 bits. We only support messages < 2^64 bits,
 		// so the high 64 bits are zero. We keep `bitlen` as the low 64-bit portion.
 
 		// end_block_index = floor((len + 16) / 128) using 64-bit add
-		let end_block_index =
-			builder.shr(builder.iadd_32(len_bytes, builder.add_constant_64(16)), 7);
+		let (sum, _carry) = builder.iadd_cin_cout(len_bytes, builder.add_constant_64(16), zero);
+		let end_block_index = builder.shr(sum, 7);
 		let delim: Wire = builder.add_constant_zx_8(0x80);
 		// ---- 2b. Final digest selection
 		//
@@ -221,14 +221,12 @@ impl Sha512 {
 		// 3. zero byte. Placed after the delimiter byte.
 
 		let boundary_padded_word = single_wire_multiplex(builder, &padded_message, w_bd);
-		let boundary_message_word =
-			single_wire_multiplex(builder, &([message.as_slice(), &[zero]].concat()), w_bd);
+		let boundary_message_word = single_wire_multiplex(builder, &message, w_bd);
 		// for the multiplexer above to be sound, we need `sel < inputs.len()` to be true.
 		// since we constrained `len_bytes ≤ max_len_bytes ≔ message.len() << 3`, above,
 		// we necessarily have `w_bd ≔ len_bytes >> 3 ≤ max_len_bytes >> 3 == message.len()`.
-		// thus we have w_bd ≤ message.len() < message.concat(zero).len(), so it's strict.
-		// in the exceptional case w_bd ≔ len_bytes >> 3 == max_len_bytes >> 3 == message.len(),
-		// `boundary_message_word` will be `zero`, but that's fine, as I now explain. indeed:
+		// in the exceptional case w_bd ≔ len_bytes >> 3 == max_len_bytes >> 3 == message.len().
+		// this case can indeed happen. but i claim that we will still get soundness in this case.
 		// the only way w_bd = message.len() and len_bytes ≤ max_len_bytes can both be true is if
 		// len_bytes = max_len_bytes. in this case, len_bytes is a multiple of 8, so len_mod_8 = 0.
 		// in this case, `data_b` will thus be false for each j ∈ {0, … , 7}, ergo, "3b.1" will be
@@ -345,7 +343,7 @@ impl Sha512 {
 	///
 	/// # Panics
 	/// The method panics if `len_bytes` exceeds `max_len_bytes`.
-	pub fn populate_len(&self, w: &mut WitnessFiller<'_>, len_bytes: usize) {
+	pub fn populate_len_bytes(&self, w: &mut WitnessFiller<'_>, len_bytes: usize) {
 		assert!(len_bytes <= self.max_len_bytes());
 		w[self.len_bytes] = Word(len_bytes as u64);
 	}
@@ -527,7 +525,7 @@ mod tests {
 		let c = mk_circuit(&mut b, 256);
 		let circuit = b.build();
 		let mut w = circuit.new_witness_filler();
-		c.populate_len(&mut w, 3);
+		c.populate_len_bytes(&mut w, 3);
 		c.populate_message(&mut w, b"abc");
 		c.populate_digest(
 			&mut w,
@@ -544,7 +542,7 @@ mod tests {
 		let mut w = circuit.new_witness_filler();
 
 		let message_bytes = b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopqabcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
-		c.populate_len(&mut w, message_bytes.len());
+		c.populate_len_bytes(&mut w, message_bytes.len());
 		c.populate_message(&mut w, message_bytes);
 		c.populate_digest(
 			&mut w,
@@ -561,7 +559,7 @@ mod tests {
 		let cs = circuit.constraint_system();
 		let mut w = circuit.new_witness_filler();
 
-		c.populate_len(&mut w, message_bytes.len());
+		c.populate_len_bytes(&mut w, message_bytes.len());
 		c.populate_message(&mut w, message_bytes);
 		c.populate_digest(&mut w, expected_digest);
 
@@ -779,7 +777,7 @@ mod tests {
 
 		let message = b"abc";
 		// Populate with wrong length (should be 3, but we'll use 5)
-		c.populate_len(&mut w, 5);
+		c.populate_len_bytes(&mut w, 5);
 		c.populate_message(&mut w, message);
 		c.populate_digest(
 			&mut w,
@@ -823,7 +821,7 @@ mod tests {
 		let mut w = circuit.new_witness_filler();
 
 		let message_bytes = b"abc";
-		c.populate_len(&mut w, message_bytes.len());
+		c.populate_len_bytes(&mut w, message_bytes.len());
 		c.populate_message(&mut w, message_bytes);
 		// Provide wrong digest (all zeros instead of correct hash)
 		c.populate_digest(&mut w, [0u8; 64]);
@@ -842,7 +840,7 @@ mod tests {
 		let mut w = circuit.new_witness_filler();
 
 		// Populate with "abc" message but "def" digest
-		c.populate_len(&mut w, 3);
+		c.populate_len_bytes(&mut w, 3);
 		c.populate_message(&mut w, b"abc");
 		// This is the digest for "def", not "abc"
 		c.populate_digest(
@@ -888,7 +886,7 @@ mod tests {
 
 			// Test with a simple case: empty message
 			let mut w = circuit.new_witness_filler();
-			c.populate_len(&mut w, 0);
+			c.populate_len_bytes(&mut w, 0);
 			c.populate_message(&mut w, b"");
 			// SHA512 of empty string
 			c.populate_digest(
@@ -920,7 +918,7 @@ mod tests {
 			"ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f"
 		);
 
-		c.populate_len(&mut w, message.len());
+		c.populate_len_bytes(&mut w, message.len());
 		c.populate_message(&mut w, message);
 		c.populate_digest(&mut w, hash);
 		circuit.populate_wire_witness(&mut w).unwrap();
@@ -953,7 +951,7 @@ mod tests {
 			"a3a8c81bc97c2560010d7389bc88aac974a104e0e2381220c6e084c4dccd1d2d17d4f86db31c2a851dc80e6681d74733c55dcd03dd96f6062cdda12a291ae6ce"
 		);
 
-		c.populate_len(&mut w, message.len());
+		c.populate_len_bytes(&mut w, message.len());
 		c.populate_message(&mut w, message);
 		c.populate_digest(&mut w, hash);
 		circuit.populate_wire_witness(&mut w).unwrap();

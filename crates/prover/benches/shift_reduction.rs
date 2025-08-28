@@ -40,7 +40,7 @@ pub fn create_sha256_cs_with_witness(
 	// Generate random message bytes of specified length
 	let mut message_bytes = vec![0u8; message_len_bytes];
 	rng.fill_bytes(&mut message_bytes);
-	sha256.populate_len(&mut witness_filler, message_bytes.len());
+	sha256.populate_len_bytes(&mut witness_filler, message_bytes.len());
 	sha256.populate_message(&mut witness_filler, &message_bytes);
 
 	// Calculate SHA256 digest of the message dynamically
