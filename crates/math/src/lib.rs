@@ -10,6 +10,7 @@
 //! * Additive number-theoretic transform
 //! * Error-correcting codes
 
+pub mod batch_invert;
 pub mod binary_subspace;
 mod error;
 pub mod field_buffer;
