@@ -2,7 +2,7 @@
 
 use binius_field::BinaryField128bGhash as Ghash;
 
-pub const M: usize = 4;
+pub const M: usize = 6;
 
 pub const BYTES_PER_GHASH: usize = 16;
 
@@ -147,108 +147,142 @@ pub static B_INV_COEFFS: [Ghash; 1 + 128] = [
 	Ghash::new(0xd9bc6edaf1b4a689ba169b5554228af8),
 ];
 
-pub static ROUND_CONSTANTS: [[Ghash; 4]; 1 + 2 * 8] = [
+pub const ROUND_CONSTANTS: [[Ghash; M]; 1 + 2 * NUM_ROUNDS] = [
 	[
 		Ghash::new(0xd0e015190f5e0795f4a1d28234ffdf87),
 		Ghash::new(0x6111731acd9a89f6b93ec3a23ec7681b),
 		Ghash::new(0x15da8de707ee3f3918a34a96728b8d29),
 		Ghash::new(0x2ea920e89fbb13a1ed2a216b1d232bfb),
+		Ghash::new(0x1cac9af051191d2c8ef96344bc8cbd0f),
+		Ghash::new(0x3ceb350e8c2d2f4d4750ab0a854c3a4d),
 	],
 	[
-		Ghash::new(0x52c94b04b178f80fa586c37c798171a3),
-		Ghash::new(0xf0e02cc3459757dc8ec9259341831bcb),
-		Ghash::new(0x025c53bf6d6dee09307a55c008868354),
-		Ghash::new(0x54258ece50ceb1e9b5a8e38e7bbcaa3d),
+		Ghash::new(0xe8e46b76a404c4b9fb9ccc257eebb52c),
+		Ghash::new(0xe12be62f399ab7f6f0d391aa43d111f),
+		Ghash::new(0x8cd24d620049a85e9fca7f1a82b24575),
+		Ghash::new(0x9134196e2a4f6643d720e7e17d5d6155),
+		Ghash::new(0x801a72226c1bb12fc5fa2ca648ab4389),
+		Ghash::new(0xcc930a049d59a9f159eed487b2b1db41),
 	],
 	[
-		Ghash::new(0x77c332c3ebbfbaa73bffaec318055661),
-		Ghash::new(0x5abbaeac51c6925d2aff59f11d164328),
-		Ghash::new(0x9f8daadefaebb59d77ad096fb56e6462),
-		Ghash::new(0x322de9fd29fb135d569895b07925cacf),
+		Ghash::new(0x377785252c619dafa7c6f70050db5eba),
+		Ghash::new(0xd8c470279b2f60e703297d3a48f34781),
+		Ghash::new(0x6d07ea9a9e22d6ca035c6f84c216797),
+		Ghash::new(0xc41bfc3f4b22043bca9a33cc6a6aae00),
+		Ghash::new(0x55dcc5f6e50336ed4bcdad6a23bc4a5d),
+		Ghash::new(0xd9642daf0fbb53ee0976778ee009e681),
 	],
 	[
-		Ghash::new(0x95c521abe74b013381778cf1b46e6cbd),
-		Ghash::new(0x85fcfe5a641b67ada8700b95fd906f70),
-		Ghash::new(0x5d61e0714a000a6d491d8e0db8835a16),
-		Ghash::new(0x3bea1f3ff2c984d47f91ec35358f1e16),
+		Ghash::new(0xa13280fd8c7d7e2150894cb4a0a0dd96),
+		Ghash::new(0xa4b51297ac45514d432a00dc34c2a8cc),
+		Ghash::new(0x1e45b8cb510bc51faa3dc225cc36dba6),
+		Ghash::new(0x1979585fb152fd8fc6967e9422868fd2),
+		Ghash::new(0x2e04baf1b1566acadc9b1d5b2942c2c8),
+		Ghash::new(0xffd35b46d1c35c53b28522b43b660159),
 	],
 	[
-		Ghash::new(0x66b6cd1b70d97c63163197d429553ad3),
-		Ghash::new(0xd1be1516a276fb5f590b628b4f8db8b9),
-		Ghash::new(0x60f3fccd56bfad8cb506e2f1adce50af),
-		Ghash::new(0x205a1e29bd8a90dac5f776c450e88d10),
+		Ghash::new(0xb02df026790e55cc69b823a2b7dfd3ba),
+		Ghash::new(0xec66a8fac8862b2c45843a2b7a9b29af),
+		Ghash::new(0xa9e560ef4d3c0076cf8d6b94bdfb0898),
+		Ghash::new(0xc56e1ed6dea993ece4f564b4ec5a434),
+		Ghash::new(0x60e546921e56307c250f8a0735064af6),
+		Ghash::new(0x85cc8b97f2d3f384866096f91bd627b5),
 	],
 	[
-		Ghash::new(0x2a02ee3e61560ba34c286e943b3d169f),
-		Ghash::new(0x73e4bfe44495bfbb54f6fd20adedcf8b),
-		Ghash::new(0x23e8322b8a8cf1d3b681c1b577cee348),
-		Ghash::new(0x0d892aeb52c9b2d7096f9698ef0951df),
+		Ghash::new(0x2f936e61dcf44a719ce2d4997752c552),
+		Ghash::new(0xea100b89ea4dbea306104f6cbcaf7730),
+		Ghash::new(0x78ee9d4dde1866f1be20fc5d3225a471),
+		Ghash::new(0xed9364d3d4072597d49449ccdd74196b),
+		Ghash::new(0xc0c48365b28688406b77f700ee0a7a15),
+		Ghash::new(0x3bf2f14a632d1dbc83779737f7f4ca43),
 	],
 	[
-		Ghash::new(0x8571aa085a872bfcd96c3a1ebbe26682),
-		Ghash::new(0x3ae1e8efdff55ee0cb6d91af315d614b),
-		Ghash::new(0xdcf3ec9dd466e76de5f9f9e9fd5dbdba),
-		Ghash::new(0x5242d748a66f9abe17d4ca014c92081f),
+		Ghash::new(0xf8f790e955a2e979c6268179afd19a9b),
+		Ghash::new(0x2224b54c57b488fcd7a43440a4cbbe97),
+		Ghash::new(0x3b8e1338408771be189ac7c8cbf21463),
+		Ghash::new(0x6547c511c5a77ad2ea728ee6204ac283),
+		Ghash::new(0x753e6ed7ce73c0f1697db0399d9b0973),
+		Ghash::new(0xa99266d737016f4fd16b0f23a838050b),
 	],
 	[
-		Ghash::new(0x38176034b37ed0b51ea51bade772fd64),
-		Ghash::new(0xdc10902a22159fdc02bc8fc3c43ee732),
-		Ghash::new(0x54eafeed45ab9f55c2a668054e1433f2),
-		Ghash::new(0x18c196024042197b29bba5779e6b4419),
+		Ghash::new(0xe6ff2ec311c6722e3f60fd9efe1fb28a),
+		Ghash::new(0x28dad9ef1797cd06c15e4e8a1cf0bcdc),
+		Ghash::new(0x44444b925bea2192fe04f2d8854cde64),
+		Ghash::new(0xc53dec23ad61e0db3c2af60fc4f47e7e),
+		Ghash::new(0x484cc2cb23ddfbccd8e90f3143d132d2),
+		Ghash::new(0xf717e5e43240cea2f506653013c41123),
 	],
 	[
-		Ghash::new(0xeeee77f02774996aff2fbdee3cafd5c6),
-		Ghash::new(0xc09b024ff9e932be0fc9d294001fa6a7),
-		Ghash::new(0x62c063613d99b026579fa6bf82e24cdb),
-		Ghash::new(0x87df42121a98610c661fb711f68ee06e),
+		Ghash::new(0xd25ab18ab153ac32527e793a74aafa07),
+		Ghash::new(0x8a3ec34a5ef348b7686caffae59ffc9d),
+		Ghash::new(0xc560c870b90f45d21d4607f56ebd7721),
+		Ghash::new(0xe39414d28ca4b425ccf80c31abd8ae2d),
+		Ghash::new(0x9c2a85dcc4048127b435c0199b3b29ff),
+		Ghash::new(0xadaa409205e183e1ac95e6f92f1d43d0),
 	],
 	[
-		Ghash::new(0x40405fdefe20704cda9bccfaa1189228),
-		Ghash::new(0xb683ec6a7ff2f49ae429c9f0e0e3f518),
-		Ghash::new(0xa8e472626f047ffe07759441d3d2547f),
-		Ghash::new(0x8c89cca408b7c95407db5cb1cc572a63),
+		Ghash::new(0xa53431abb1c8ebdad01e00eda12c466b),
+		Ghash::new(0xa66273bde8debca0e822591ab1496b5),
+		Ghash::new(0x72b8bba8b48f2485ac98313e10212a73),
+		Ghash::new(0x48fd620807602baea745b3bd12feca1c),
+		Ghash::new(0xcf4a6a04386ee4222dc8ffc3a4d562e6),
+		Ghash::new(0x96dc648bb3119c91f113d51194a85820),
 	],
 	[
-		Ghash::new(0xcaf9fccf7c70d8a7c2ec4142b9d5397e),
-		Ghash::new(0x414420fface1c14f77cf760b5f7f980f),
-		Ghash::new(0x0c8811f0d2dfb0dfe515f581db7c4d9d),
-		Ghash::new(0x6303211a8c2a68f6103e2f03f7957ca4),
+		Ghash::new(0x66c470d06e5f7211f98a9c68c1fa17c),
+		Ghash::new(0xc7614b3d5a97fa5f7879a309878a9dd8),
+		Ghash::new(0x53e1050f5bdf4b7eae0195ad35dbaeaa),
+		Ghash::new(0x8385c9ec48e14fd5ec230e8974ab0c65),
+		Ghash::new(0xa977ac08c7e6b5b3e6948d24d81da15),
+		Ghash::new(0x29253ebc78e9261c58cc3140c7581355),
 	],
 	[
-		Ghash::new(0x10c51b39a067af1e593e9c46a1b77d37),
-		Ghash::new(0x2319f7d203bbf1d50fe342d17066c9d3),
-		Ghash::new(0x3dd51ba31a2018b8da50ec10ed923e6e),
-		Ghash::new(0x676c6481332d0803cdea11539da55247),
+		Ghash::new(0x5f31289e38eef8ff80e98d29e000ea37),
+		Ghash::new(0x4f8c759141e50d8438f488de2679f820),
+		Ghash::new(0xf4dc8a27ea07f3d4feb34a32e61eaaf2),
+		Ghash::new(0xc8b283172ea7de37ee97b4112ec8e22f),
+		Ghash::new(0xcb13d7b37ba1c466f6094884d3469da2),
+		Ghash::new(0x4bae7acd67ba3de4e5f6b6ea6d4c6bac),
 	],
 	[
-		Ghash::new(0xcd06f2d74ae291550c7cd3e34c3ca94d),
-		Ghash::new(0x2aaea85e1163205f340a28bf015b3488),
-		Ghash::new(0x48e0f19b5886ca1e9ce659ddf1dece57),
-		Ghash::new(0x4b2ea0d6191010f82491ac06b6cbf7ad),
+		Ghash::new(0x3f47078acec655bc33272905c9d750f4),
+		Ghash::new(0xa58fef1654a01bcf630804c8c27910e1),
+		Ghash::new(0x923c97fc1029185b06a109e1be6924c5),
+		Ghash::new(0x2eedb745d45085a746a15c1fb5e2ae1e),
+		Ghash::new(0x144e4497996ff1c99d7a03410a443422),
+		Ghash::new(0x40ec3d5a6112778c8997de4ae7f7d82e),
 	],
 	[
-		Ghash::new(0xb73fb2fc3f8a413ee8806392998452aa),
-		Ghash::new(0x470372c4c732a0a7e61f858edaaa7f97),
-		Ghash::new(0x647c2b2751c258135ccd956db51e7ffa),
-		Ghash::new(0x079e5c6d2ec255a3206f1d231109247b),
+		Ghash::new(0x4577e50a3e827e9f3e73893b21e58ced),
+		Ghash::new(0x7a370d0173a2c0541593ed813c4174f8),
+		Ghash::new(0x87394d70d4ae0f6828e7a93875a68b92),
+		Ghash::new(0xc1560cbda08dd31b936373127702c481),
+		Ghash::new(0xf5fee9656ca1bc3c2b813e558d15e83a),
+		Ghash::new(0xeec0f749f981c7f621dceee24b4c0db8),
 	],
 	[
-		Ghash::new(0x367538f6742ae83251d22a8112bf6fa1),
-		Ghash::new(0x08539d5a297209d419a8906fee11e0a3),
-		Ghash::new(0x3de8eec08b29b79911eb2420e4336284),
-		Ghash::new(0x2fc0e3b4d3ea4de849486e07be859117),
+		Ghash::new(0x4180e8ff79cda2b4ccb01a124d07a773),
+		Ghash::new(0x6db908873ac7627985498d9d64418458),
+		Ghash::new(0x734a0331ccc7b06a54dc33cb191ff5a6),
+		Ghash::new(0x578e478c6b4d4625d8d5a1a7e99c8a98),
+		Ghash::new(0x1f01a86286bd8078d9143ef0e1bfd6d2),
+		Ghash::new(0x8f831a4d9a0e5685ed3a2ab4ec1492dd),
 	],
 	[
-		Ghash::new(0xe25e1dbbcabb7885ae28db51bacbee5e),
-		Ghash::new(0x9916b64185652326fda0575231b69ed2),
-		Ghash::new(0x1ff4e4155cbf886110f5545da1f8722d),
-		Ghash::new(0x4dcd1260ab92fbe0cec3b014367f626e),
+		Ghash::new(0x5c3f7446fd05199857a7061949601cae),
+		Ghash::new(0x3c62d0ca7faef4745a8646a4497084d2),
+		Ghash::new(0x5fe18dbc6e5f7ae8bae52881bc87b32b),
+		Ghash::new(0x836cc41840685efc5f821768fa5a7a0b),
+		Ghash::new(0x9fa4c5dca8677c17b3cc1aa5bf35831f),
+		Ghash::new(0x32b3cb0dd6c40e007188d1544c941d02),
 	],
 	[
-		Ghash::new(0x40ae8c84f958d259141595fed91e09cd),
-		Ghash::new(0xf8222584576d0b5fa41584b91cf5f526),
-		Ghash::new(0x5c021db63b4a3a27de7d38be3b26c52f),
-		Ghash::new(0x509c5cb38660fee6ccc20b9abda1189b),
+		Ghash::new(0x9ff1ff4417b1c815f9dbff4f62d07ebd),
+		Ghash::new(0x7f0b5b1123fc8a30c3fab6efe18d2f0a),
+		Ghash::new(0xe6f9119237bea8838e7553928d5cbe51),
+		Ghash::new(0x2ed980b39d9ee4af6bda8599ee17f39c),
+		Ghash::new(0x79ee6ad7ccca965879b31429e31f3689),
+		Ghash::new(0x286668e58f3dc1de9369fb0ff898ed83),
 	],
 ];
 
@@ -279,16 +313,16 @@ pub mod tests {
 		})
 	}
 
-	pub static INITIAL_CONSTANT: [Ghash; 4] = [
+	pub static INITIAL_CONSTANT: [Ghash; M] = [
 		Ghash::new(0xd0e015190f5e0795f4a1d28234ffdf87),
 		Ghash::new(0x6111731acd9a89f6b93ec3a23ec7681b),
 		Ghash::new(0x15da8de707ee3f3918a34a96728b8d29),
 		Ghash::new(0x2ea920e89fbb13a1ed2a216b1d232bfb),
-	];
-
-	pub static CONSTANTS_MATRIX: [Ghash; 16] = [
 		Ghash::new(0x1cac9af051191d2c8ef96344bc8cbd0f),
 		Ghash::new(0x3ceb350e8c2d2f4d4750ab0a854c3a4d),
+	];
+
+	pub static CONSTANTS_MATRIX: [Ghash; M * M] = [
 		Ghash::new(0x09cc78f7eafef94d8e092e899156946b),
 		Ghash::new(0x1d1ad17c8c7ee715a3d58f7eedb30dbb),
 		Ghash::new(0x06bee572113950b3dd0cdae9dff5dfc5),
@@ -303,13 +337,37 @@ pub mod tests {
 		Ghash::new(0x3efa34e48e3b218395efe6255339375b),
 		Ghash::new(0x79bf44bae0d2379397d0812db56c5eff),
 		Ghash::new(0x7fb3b7fce84776e39e538151daddae85),
-	];
-
-	pub static CONSTANTS_CONSTANT: [Ghash; 4] = [
 		Ghash::new(0x0d42981a71a7c2e493ca17e6bb10203f),
 		Ghash::new(0x9ceed672ccb7030fca17ed48e18717b9),
 		Ghash::new(0x0cec5c463024f2ba95c6ecdb4a349d15),
 		Ghash::new(0xa46023576301b995990418f3a23e3c99),
+		Ghash::new(0x6227628fea1dc5465d33ae5d97eb83af),
+		Ghash::new(0x2ef550b7cda1e2856d94bf331473f6f1),
+		Ghash::new(0x375f4232fa7ca41a698bc6ae2e3a8499),
+		Ghash::new(0x2d2f859caba39ed7012b9ab22c303529),
+		Ghash::new(0x5672a0afa29cac300d0bf7b6399257b7),
+		Ghash::new(0xebd30b6903f1fe11f3ae1aee7aa41593),
+		Ghash::new(0x39c54aa0738c373a6f66f0ef2f18bd8d),
+		Ghash::new(0x083a52acda7952eab89afcd0d6a1a9f9),
+		Ghash::new(0x07c782c6beef83babafc31f177df4359),
+		Ghash::new(0x1ed204d4affa05b8e5ca6278e76adc93),
+		Ghash::new(0x5ce4a5c3be5e0bc5a543ee1ec99323cb),
+		Ghash::new(0xd54d1bf8ea15dafe5f49f51af3c2df7),
+		Ghash::new(0x22510fa8fffa288adc4e99bc400b9fa9),
+		Ghash::new(0x78ca292f525f6a68f8135f4f4b2b4491),
+		Ghash::new(0x0ef5f99b1b4a36e979afa9e365bfa159),
+		Ghash::new(0x7a999d6e5f0b133d3a2f3f77630cffa1),
+		Ghash::new(0xb1ae2573d4a15bb6d21d9ad73aef8469),
+		Ghash::new(0x9c348d3213f5a0782535d2146c4869e1),
+	];
+
+	pub static CONSTANTS_CONSTANT: [Ghash; M] = [
+		Ghash::new(0xabd5e3e6c590952db4ee8dd307ef621f),
+		Ghash::new(0x22681ba7c4bf168c2cf0fc6f51bedceb),
+		Ghash::new(0x41baa8130ac4ddf61a74f42c784257a1),
+		Ghash::new(0x26f2ab43dac65cb011ac77cfb11d7ccd),
+		Ghash::new(0x29218b482b8935fa1552b09907e977e3),
+		Ghash::new(0x1cb764573d0acdfe818a702d07fb9d),
 	];
 
 	fn compute_round_constants() -> [[Ghash; M]; 1 + 2 * NUM_ROUNDS] {
@@ -320,12 +378,13 @@ pub mod tests {
 		let mut key_injection = INITIAL_CONSTANT;
 
 		let mut round_key_index = 1;
+		let scratchpad = &mut [Ghash::ZERO; { 2 * M }];
 		for _ in 0..NUM_ROUNDS {
 			for transform in [b_inv_transform, b_fwd_transform] {
 				key_injection = matrix_mul(&CONSTANTS_MATRIX, &key_injection);
 				constants_add(&mut key_injection, &CONSTANTS_CONSTANT);
 
-				sbox(&mut key_state, transform);
+				sbox(&mut key_state, transform, scratchpad);
 				mds_mul(&mut key_state);
 				constants_add(&mut key_state, &key_injection);
 

@@ -4,6 +4,7 @@ use binius_field::{BinaryField128bGhash as Ghash, Field};
 use binius_utils::{DeserializeBytes, SerializeBytes};
 use digest::{
 	FixedOutput, FixedOutputReset, HashMarker, OutputSizeUser, Reset, Update, consts::U32,
+	core_api::BlockSizeUser,
 };
 
 use super::{constants::M, permutation::permutation};
@@ -108,6 +109,10 @@ impl Update for VisionHasherDigest {
 
 impl OutputSizeUser for VisionHasherDigest {
 	type OutputSize = U32;
+}
+
+impl BlockSizeUser for VisionHasherDigest {
+	type BlockSize = U32;
 }
 
 impl FixedOutput for VisionHasherDigest {
