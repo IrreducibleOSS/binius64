@@ -12,6 +12,12 @@ pub fn mul_x<P: PackedField<Scalar = BinaryField128bGhash>>(x: P) -> P {
 	P::from_scalars(x.iter().map(|scalar| scalar.mul_x()))
 }
 
+// TODO: move to PackedField for an optimized SIMD version
+#[inline]
+pub fn mul_inv_x<P: PackedField<Scalar = BinaryField128bGhash>>(x: P) -> P {
+	P::from_scalars(x.iter().map(|scalar| scalar.mul_inv_x()))
+}
+
 #[cfg(test)]
 mod test_utils {
 	/// Test if `mult_func` operation is a valid multiply operation on the given values for
