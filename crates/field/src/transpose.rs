@@ -78,7 +78,7 @@ pub fn square_transforms_extension_field<F: Field, FE: ExtensionField<F> + Packe
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::{PackedBinaryField64x2b, PackedBinaryField128x1b};
+	use crate::PackedBinaryField128x1b;
 
 	#[test]
 	fn test_square_transpose_128x1b() {
@@ -131,34 +131,6 @@ mod tests {
 			PackedBinaryField128x1b::from(0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaau128),
 			PackedBinaryField128x1b::from(0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaau128),
 		];
-		assert_eq!(elems, expected);
-	}
-
-	#[test]
-	fn test_square_transpose_64x2b() {
-		let mut elems = [
-			PackedBinaryField64x2b::from(0x00000000000000000000000000000000u128),
-			PackedBinaryField64x2b::from(0x00000000000000000000000000000000u128),
-			PackedBinaryField64x2b::from(0x00000000000000000000000000000000u128),
-			PackedBinaryField64x2b::from(0x00000000000000000000000000000000u128),
-			PackedBinaryField64x2b::from(0xffffffffffffffffffffffffffffffffu128),
-			PackedBinaryField64x2b::from(0xffffffffffffffffffffffffffffffffu128),
-			PackedBinaryField64x2b::from(0xffffffffffffffffffffffffffffffffu128),
-			PackedBinaryField64x2b::from(0xffffffffffffffffffffffffffffffffu128),
-		];
-		square_transpose(3, &mut elems).unwrap();
-
-		let expected = [
-			0xff00ff00ff00ff00ff00ff00ff00ff00u128,
-			0xff00ff00ff00ff00ff00ff00ff00ff00u128,
-			0xff00ff00ff00ff00ff00ff00ff00ff00u128,
-			0xff00ff00ff00ff00ff00ff00ff00ff00u128,
-			0xff00ff00ff00ff00ff00ff00ff00ff00u128,
-			0xff00ff00ff00ff00ff00ff00ff00ff00u128,
-			0xff00ff00ff00ff00ff00ff00ff00ff00u128,
-			0xff00ff00ff00ff00ff00ff00ff00ff00u128,
-		]
-		.map(PackedBinaryField64x2b::from);
 		assert_eq!(elems, expected);
 	}
 }

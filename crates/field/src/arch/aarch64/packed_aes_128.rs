@@ -6,11 +6,9 @@ use super::{
 	m128::M128,
 	simd_arithmetic::{
 		packed_aes_16x8b_invert_or_zero, packed_aes_16x8b_mul_alpha, packed_aes_16x8b_multiply,
-		packed_tower_16x8b_into_aes,
 	},
 };
 use crate::{
-	PackedBinaryField16x8b,
 	aes_field::AESTowerField8b,
 	arch::portable::{packed::PackedPrimitiveType, packed_arithmetic::impl_tower_constants},
 	arithmetic_traits::{InvertOrZero, MulAlpha, Square, impl_transformation_with_strategy},
@@ -46,8 +44,3 @@ impl MulAlpha for PackedAESBinaryField16x8b {
 	}
 }
 impl_transformation_with_strategy!(PackedAESBinaryField16x8b, crate::arch::PackedStrategy);
-impl From<PackedBinaryField16x8b> for PackedAESBinaryField16x8b {
-	fn from(value: PackedBinaryField16x8b) -> Self {
-		Self::from_underlier(packed_tower_16x8b_into_aes(value.to_underlier()))
-	}
-}

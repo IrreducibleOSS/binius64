@@ -584,34 +584,3 @@ where
 	PT: WithUnderlier<Underlier = U>,
 {
 }
-
-#[cfg(test)]
-mod tests {
-	use binius_utils::{SerializeBytes, bytes::BytesMut};
-	use rand::{Rng, SeedableRng, rngs::StdRng};
-
-	use super::ScaledPackedField;
-	use crate::{PackedBinaryField2x4b, PackedBinaryField4x4b};
-
-	#[test]
-	fn test_equivalent_serialization_between_packed_representations() {
-		let mut rng = StdRng::seed_from_u64(0);
-
-		let byte_low: u8 = rng.random();
-		let byte_high: u8 = rng.random();
-
-		let combined_underlier = ((byte_high as u16) << 8) | (byte_low as u16);
-
-		let packed = PackedBinaryField4x4b::from_underlier(combined_underlier);
-		let packed_equivalent =
-			ScaledPackedField::<PackedBinaryField2x4b, 2>::from([byte_low, byte_high]);
-
-		let mut buffer_packed = BytesMut::new();
-		let mut buffer_equivalent = BytesMut::new();
-
-		packed.serialize(&mut buffer_packed).unwrap();
-		packed_equivalent.serialize(&mut buffer_equivalent).unwrap();
-
-		assert_eq!(buffer_packed, buffer_equivalent);
-	}
-}

@@ -2,7 +2,7 @@
 
 use std::iter::repeat_with;
 
-use binius_field::{BinaryField1b, BinaryField32b, BinaryField128b, ExtensionField, PackedField};
+use binius_field::{BinaryField1b, BinaryField128bGhash, ExtensionField, PackedField};
 use criterion::{
 	BenchmarkGroup, Criterion, criterion_group, criterion_main, measurement::WallTime,
 };
@@ -33,19 +33,9 @@ pub fn bench_inner_product_par<FX, PX, PY>(
 fn inner_product_par(c: &mut Criterion) {
 	let mut group = c.benchmark_group("inner_product_par");
 	let counts = [128usize, 512, 1024, 8192, 1 << 20];
-	bench_inner_product_par::<_, BinaryField128b, BinaryField1b>(
+	bench_inner_product_par::<_, BinaryField128bGhash, BinaryField1b>(
 		&mut group,
 		"128bx1b",
-		counts.iter().copied(),
-	);
-	bench_inner_product_par::<_, BinaryField128b, BinaryField32b>(
-		&mut group,
-		"128bx32b",
-		counts.iter().copied(),
-	);
-	bench_inner_product_par::<_, BinaryField128b, BinaryField128b>(
-		&mut group,
-		"128bx128b",
 		counts.iter().copied(),
 	);
 }

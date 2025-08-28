@@ -77,10 +77,10 @@ pub fn powers<F: Field>(val: F) -> impl Iterator<Item = F> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::PackedBinaryField4x32b;
+	use crate::{BinaryField128bGhash, PackedBinaryGhash4x128b};
 
-	type P = PackedBinaryField4x32b;
-	type F = <P as PackedField>::Scalar;
+	type P = PackedBinaryGhash4x128b;
+	type F = BinaryField128bGhash;
 
 	#[test]
 	fn test_inner_product_par_equal_length() {
@@ -117,15 +117,17 @@ mod tests {
 	fn test_inner_product_par_large_input_single_threaded() {
 		// Large input but not enough to trigger parallel execution
 		let size = 256;
-		let xs: Vec<P> = (0..size).map(|i| P::set_single(F::new(i as u32))).collect();
+		let xs: Vec<P> = (0..size)
+			.map(|i| P::set_single(F::new(i as u128)))
+			.collect();
 		let ys: Vec<P> = (0..size)
-			.map(|i| P::set_single(F::new((i + 1) as u32)))
+			.map(|i| P::set_single(F::new((i + 1) as u128)))
 			.collect();
 
 		let result = inner_product_par::<F, P, P>(&xs, &ys);
 
 		let expected = (0..size)
-			.map(|i| F::new(i as u32) * F::new((i + 1) as u32))
+			.map(|i| F::new(i as u128) * F::new((i + 1) as u128))
 			.sum::<F>();
 
 		assert_eq!(result, expected);
@@ -135,15 +137,17 @@ mod tests {
 	fn test_inner_product_par_large_input_par() {
 		// Large input to test parallel execution
 		let size = 2000;
-		let xs: Vec<P> = (0..size).map(|i| P::set_single(F::new(i as u32))).collect();
+		let xs: Vec<P> = (0..size)
+			.map(|i| P::set_single(F::new(i as u128)))
+			.collect();
 		let ys: Vec<P> = (0..size)
-			.map(|i| P::set_single(F::new((i + 1) as u32)))
+			.map(|i| P::set_single(F::new((i + 1) as u128)))
 			.collect();
 
 		let result = inner_product_par::<F, P, P>(&xs, &ys);
 
 		let expected = (0..size)
-			.map(|i| F::new(i as u32) * F::new((i + 1) as u32))
+			.map(|i| F::new(i as u128) * F::new((i + 1) as u128))
 			.sum::<F>();
 
 		assert_eq!(result, expected);

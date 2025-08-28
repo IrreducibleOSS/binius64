@@ -23,7 +23,7 @@ use super::{
 };
 use crate::{
 	BinaryField, Field, PackedExtension, arithmetic_traits::InvertOrZero,
-	is_packed_field_indexable, underlier::WithUnderlier, unpack_if_possible_mut,
+	is_packed_field_indexable, underlier::WithUnderlier,
 };
 
 /// A packed field represents a vector of underlying field elements.
@@ -447,32 +447,6 @@ pub fn pack_slice<P: PackedField>(scalars: &[P::Scalar]) -> Vec<P> {
 		.collect()
 }
 
-/// Copy scalar elements to a vector of packed field elements.
-pub fn copy_packed_from_scalars_slice<P: PackedField>(src: &[P::Scalar], dst: &mut [P]) {
-	unpack_if_possible_mut(
-		dst,
-		|scalars| {
-			scalars[0..src.len()].copy_from_slice(src);
-		},
-		|packed| {
-			let chunks = src.chunks_exact(P::WIDTH);
-			let remainder = chunks.remainder();
-			for (chunk, packed) in chunks.zip(packed.iter_mut()) {
-				*packed = P::from_scalars(chunk.iter().copied());
-			}
-
-			if !remainder.is_empty() {
-				let offset = (src.len() >> P::LOG_WIDTH) << P::LOG_WIDTH;
-				let packed = &mut packed[offset];
-				for (i, scalar) in remainder.iter().enumerate() {
-					// Safety: `i` is guaranteed to be less than `P::WIDTH`
-					unsafe { packed.set_unchecked(i, *scalar) };
-				}
-			}
-		},
-	);
-}
-
 /// A slice of packed field elements as a collection of scalars.
 #[derive(Clone)]
 pub struct PackedSlice<'a, P: PackedField> {
@@ -648,9 +622,8 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		AESTowerField8b, BinaryField1b, BinaryField2b, BinaryField4b, BinaryField8b,
-		BinaryField16b, BinaryField32b, BinaryField64b, BinaryField128b, BinaryField128bPolyval,
-		PackedField,
+		AESTowerField8b, BinaryField1b, BinaryField128bGhash, BinaryField128bPolyval,
+		PackedBinaryGhash1x128b, PackedBinaryGhash2x128b, PackedBinaryGhash4x128b, PackedField,
 		arch::{
 			packed_1::*, packed_2::*, packed_4::*, packed_8::*, packed_16::*, packed_32::*,
 			packed_64::*, packed_128::*, packed_256::*, packed_512::*, packed_aes_8::*,
@@ -666,74 +639,21 @@ mod tests {
 
 	/// Run the test for all the packed fields defined in this crate.
 	fn run_for_all_packed_fields(test: &impl PackedFieldTest) {
-		// canonical tower
+		// B1
 		test.run::<BinaryField1b>();
-		test.run::<BinaryField2b>();
-		test.run::<BinaryField4b>();
-		test.run::<BinaryField8b>();
-		test.run::<BinaryField16b>();
-		test.run::<BinaryField32b>();
-		test.run::<BinaryField64b>();
-		test.run::<BinaryField128b>();
-
-		// packed canonical tower
 		test.run::<PackedBinaryField1x1b>();
 		test.run::<PackedBinaryField2x1b>();
-		test.run::<PackedBinaryField1x2b>();
 		test.run::<PackedBinaryField4x1b>();
-		test.run::<PackedBinaryField2x2b>();
-		test.run::<PackedBinaryField1x4b>();
 		test.run::<PackedBinaryField8x1b>();
-		test.run::<PackedBinaryField4x2b>();
-		test.run::<PackedBinaryField2x4b>();
-		test.run::<PackedBinaryField1x8b>();
 		test.run::<PackedBinaryField16x1b>();
-		test.run::<PackedBinaryField8x2b>();
-		test.run::<PackedBinaryField4x4b>();
-		test.run::<PackedBinaryField2x8b>();
-		test.run::<PackedBinaryField1x16b>();
 		test.run::<PackedBinaryField32x1b>();
-		test.run::<PackedBinaryField16x2b>();
-		test.run::<PackedBinaryField8x4b>();
-		test.run::<PackedBinaryField4x8b>();
-		test.run::<PackedBinaryField2x16b>();
-		test.run::<PackedBinaryField1x32b>();
 		test.run::<PackedBinaryField64x1b>();
-		test.run::<PackedBinaryField32x2b>();
-		test.run::<PackedBinaryField16x4b>();
-		test.run::<PackedBinaryField8x8b>();
-		test.run::<PackedBinaryField4x16b>();
-		test.run::<PackedBinaryField2x32b>();
-		test.run::<PackedBinaryField1x64b>();
 		test.run::<PackedBinaryField128x1b>();
-		test.run::<PackedBinaryField64x2b>();
-		test.run::<PackedBinaryField32x4b>();
-		test.run::<PackedBinaryField16x8b>();
-		test.run::<PackedBinaryField8x16b>();
-		test.run::<PackedBinaryField4x32b>();
-		test.run::<PackedBinaryField2x64b>();
-		test.run::<PackedBinaryField1x128b>();
 		test.run::<PackedBinaryField256x1b>();
-		test.run::<PackedBinaryField128x2b>();
-		test.run::<PackedBinaryField64x4b>();
-		test.run::<PackedBinaryField32x8b>();
-		test.run::<PackedBinaryField16x16b>();
-		test.run::<PackedBinaryField8x32b>();
-		test.run::<PackedBinaryField4x64b>();
-		test.run::<PackedBinaryField2x128b>();
 		test.run::<PackedBinaryField512x1b>();
-		test.run::<PackedBinaryField256x2b>();
-		test.run::<PackedBinaryField128x4b>();
-		test.run::<PackedBinaryField64x8b>();
-		test.run::<PackedBinaryField32x16b>();
-		test.run::<PackedBinaryField16x32b>();
-		test.run::<PackedBinaryField8x64b>();
-		test.run::<PackedBinaryField4x128b>();
 
-		// AES tower
+		// AES
 		test.run::<AESTowerField8b>();
-
-		// packed AES tower
 		test.run::<PackedAESBinaryField1x8b>();
 		test.run::<PackedAESBinaryField2x8b>();
 		test.run::<PackedAESBinaryField4x8b>();
@@ -742,13 +662,17 @@ mod tests {
 		test.run::<PackedAESBinaryField32x8b>();
 		test.run::<PackedAESBinaryField64x8b>();
 
-		// polyval tower
+		// POLYVAL
 		test.run::<BinaryField128bPolyval>();
-
-		// packed polyval tower
 		test.run::<PackedBinaryPolyval1x128b>();
 		test.run::<PackedBinaryPolyval2x128b>();
 		test.run::<PackedBinaryPolyval4x128b>();
+
+		// GHASH
+		test.run::<BinaryField128bGhash>();
+		test.run::<PackedBinaryGhash1x128b>();
+		test.run::<PackedBinaryGhash2x128b>();
+		test.run::<PackedBinaryGhash4x128b>();
 	}
 
 	fn check_value_iteration<P: PackedField>(mut rng: impl RngCore) {
@@ -810,33 +734,6 @@ mod tests {
 		run_for_all_packed_fields(&PackedFieldIterationTest);
 	}
 
-	fn check_copy_from_scalars<P: PackedField>(mut rng: impl RngCore) {
-		let scalars = (0..100)
-			.map(|_| <<P as PackedField>::Scalar as Random>::random(&mut rng))
-			.collect::<Vec<_>>();
-
-		let mut packed_copy = vec![P::zero(); 100];
-
-		for len in [0, 2, 4, 8, 12, 16] {
-			copy_packed_from_scalars_slice(&scalars[0..len], &mut packed_copy);
-
-			for (i, &scalar) in scalars[0..len].iter().enumerate() {
-				assert_eq!(get_packed_slice(&packed_copy, i), scalar);
-			}
-			for i in len..100 {
-				assert_eq!(get_packed_slice(&packed_copy, i), P::Scalar::ZERO);
-			}
-		}
-	}
-
-	#[test]
-	fn test_copy_from_scalars() {
-		let mut rng = StdRng::seed_from_u64(0);
-
-		check_copy_from_scalars::<PackedBinaryField16x8b>(&mut rng);
-		check_copy_from_scalars::<PackedBinaryField32x4b>(&mut rng);
-	}
-
 	fn check_collection<F: Field>(collection: &impl RandomAccessSequence<F>, expected: &[F]) {
 		assert_eq!(collection.len(), expected.len());
 
@@ -860,16 +757,16 @@ mod tests {
 
 	#[test]
 	fn check_packed_slice() {
-		let slice: &[PackedBinaryField16x8b] = &[];
+		let slice: &[PackedAESBinaryField16x8b] = &[];
 		let packed_slice = PackedSlice::new(slice);
 		check_collection(&packed_slice, &[]);
 		let packed_slice = PackedSlice::new_with_len(slice, 0);
 		check_collection(&packed_slice, &[]);
 
 		let mut rng = StdRng::seed_from_u64(0);
-		let slice: &[PackedBinaryField16x8b] = &[
-			PackedBinaryField16x8b::random(&mut rng),
-			PackedBinaryField16x8b::random(&mut rng),
+		let slice: &[PackedAESBinaryField16x8b] = &[
+			PackedAESBinaryField16x8b::random(&mut rng),
+			PackedAESBinaryField16x8b::random(&mut rng),
 		];
 		let packed_slice = PackedSlice::new(slice);
 		check_collection(&packed_slice, &PackedField::iter_slice(slice).collect_vec());
@@ -881,18 +778,18 @@ mod tests {
 	#[test]
 	fn check_packed_slice_mut() {
 		let mut rng = StdRng::seed_from_u64(0);
-		let mut random = || BinaryField8b::random(&mut rng);
+		let mut random = || AESTowerField8b::random(&mut rng);
 
-		let slice: &mut [PackedBinaryField16x8b] = &mut [];
+		let slice: &mut [PackedAESBinaryField16x8b] = &mut [];
 		let packed_slice = PackedSliceMut::new(slice);
 		check_collection(&packed_slice, &[]);
 		let packed_slice = PackedSliceMut::new_with_len(slice, 0);
 		check_collection(&packed_slice, &[]);
 
 		let mut rng = StdRng::seed_from_u64(0);
-		let slice: &mut [PackedBinaryField16x8b] = &mut [
-			PackedBinaryField16x8b::random(&mut rng),
-			PackedBinaryField16x8b::random(&mut rng),
+		let slice: &mut [PackedAESBinaryField16x8b] = &mut [
+			PackedAESBinaryField16x8b::random(&mut rng),
+			PackedAESBinaryField16x8b::random(&mut rng),
 		];
 		let values = PackedField::iter_slice(slice).collect_vec();
 		let mut packed_slice = PackedSliceMut::new(slice);

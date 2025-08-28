@@ -83,9 +83,7 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::test_utils::{
-		define_invert_tests, define_mul_alpha_tests, define_multiply_tests, define_square_tests,
-	};
+	use crate::test_utils::{define_invert_tests, define_multiply_tests, define_square_tests};
 
 	define_multiply_tests!(
 		TaggedMul<PairwiseRecursiveStrategy>::mul,
@@ -100,10 +98,5 @@ mod tests {
 	define_invert_tests!(
 		TaggedInvertOrZero<PairwiseRecursiveStrategy>::invert_or_zero,
 		TaggedInvertOrZero<PairwiseRecursiveStrategy>
-	);
-
-	define_mul_alpha_tests!(
-		TaggedMulAlpha<PairwiseRecursiveStrategy>::mul_alpha,
-		TaggedMulAlpha<PairwiseRecursiveStrategy>
 	);
 }

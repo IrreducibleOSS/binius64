@@ -409,17 +409,8 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		BinaryField1b, BinaryField2b, BinaryField4b, BinaryField8b, BinaryField16b, BinaryField32b,
-		BinaryField64b,
-		arch::portable::packed_128::{
-			PackedBinaryField1x128b, PackedBinaryField2x64b, PackedBinaryField4x32b,
-			PackedBinaryField8x16b, PackedBinaryField16x8b, PackedBinaryField32x4b,
-			PackedBinaryField64x2b,
-		},
-		test_utils::{
-			define_invert_tests, define_mul_alpha_tests, define_multiply_tests,
-			define_square_tests, define_transformation_tests,
-		},
+		BinaryField1b,
+		test_utils::{define_invert_tests, define_multiply_tests, define_square_tests},
 	};
 
 	const NUM_TESTS: u64 = 100;
@@ -436,48 +427,6 @@ mod tests {
 			0xFFFFFFFFFFFFFFFF0000000000000000,
 			0xAAAAAAAAAAAAAAAA5555555555555555,
 			0xAAAAAAAAAAAAAAAA5555555555555555,
-		);
-
-		check_interleave::<BinaryField2b>(
-			0x0000000000000000FFFFFFFFFFFFFFFF,
-			0xFFFFFFFFFFFFFFFF0000000000000000,
-			0xCCCCCCCCCCCCCCCC3333333333333333,
-			0xCCCCCCCCCCCCCCCC3333333333333333,
-		);
-
-		check_interleave::<BinaryField4b>(
-			0x0000000000000000FFFFFFFFFFFFFFFF,
-			0xFFFFFFFFFFFFFFFF0000000000000000,
-			0xF0F0F0F0F0F0F0F00F0F0F0F0F0F0F0F,
-			0xF0F0F0F0F0F0F0F00F0F0F0F0F0F0F0F,
-		);
-
-		check_interleave::<BinaryField8b>(
-			0x0F0E0D0C0B0A09080706050403020100,
-			0x1F1E1D1C1B1A19181716151413121110,
-			0x1E0E1C0C1A0A18081606140412021000,
-			0x1F0F1D0D1B0B19091707150513031101,
-		);
-
-		check_interleave::<BinaryField16b>(
-			0x0F0E0D0C0B0A09080706050403020100,
-			0x1F1E1D1C1B1A19181716151413121110,
-			0x1D1C0D0C191809081514050411100100,
-			0x1F1E0F0E1B1A0B0A1716070613120302,
-		);
-
-		check_interleave::<BinaryField32b>(
-			0x0F0E0D0C0B0A09080706050403020100,
-			0x1F1E1D1C1B1A19181716151413121110,
-			0x1B1A19180B0A09081312111003020100,
-			0x1F1E1D1C0F0E0D0C1716151407060504,
-		);
-
-		check_interleave::<BinaryField64b>(
-			0x0F0E0D0C0B0A09080706050403020100,
-			0x1F1E1D1C1B1A19181716151413121110,
-			0x17161514131211100706050403020100,
-			0x1F1E1D1C1B1A19180F0E0D0C0B0A0908,
 		);
 	}
 
@@ -498,17 +447,6 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_multiply_alpha() {
-		test_packed_multiply_alpha::<PackedBinaryField64x2b>();
-		test_packed_multiply_alpha::<PackedBinaryField32x4b>();
-		test_packed_multiply_alpha::<PackedBinaryField16x8b>();
-		test_packed_multiply_alpha::<PackedBinaryField8x16b>();
-		test_packed_multiply_alpha::<PackedBinaryField4x32b>();
-		test_packed_multiply_alpha::<PackedBinaryField2x64b>();
-		test_packed_multiply_alpha::<PackedBinaryField1x128b>();
-	}
-
 	define_multiply_tests!(TaggedMul<PackedStrategy>::mul, TaggedMul<PackedStrategy>);
 
 	define_square_tests!(TaggedSquare<PackedStrategy>::square, TaggedSquare<PackedStrategy>);
@@ -517,22 +455,4 @@ mod tests {
 		TaggedInvertOrZero<PackedStrategy>::invert_or_zero,
 		TaggedInvertOrZero<PackedStrategy>
 	);
-
-	define_mul_alpha_tests!(
-		TaggedMulAlpha<PackedStrategy>::mul_alpha,
-		TaggedMulAlpha<PackedStrategy>
-	);
-
-	#[allow(unused)]
-	trait SelfPackedTransformationFactory:
-		TaggedPackedTransformationFactory<PackedStrategy, Self>
-	{
-	}
-
-	impl<T: TaggedPackedTransformationFactory<PackedStrategy, Self>> SelfPackedTransformationFactory
-		for T
-	{
-	}
-
-	define_transformation_tests!(SelfPackedTransformationFactory);
 }

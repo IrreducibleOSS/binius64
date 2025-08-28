@@ -59,44 +59,6 @@ pub fn is_packed_field_indexable<P: PackedField>() -> bool {
 	!cloned[0].cloned
 }
 
-#[inline(always)]
-pub fn unpack_if_possible<P: PackedField, R>(
-	slice: &[P],
-	unpacked_fn: impl FnOnce(&[P::Scalar]) -> R,
-	fallback_fn: impl FnOnce(&[P]) -> R,
-) -> R {
-	if is_packed_field_indexable::<P>() {
-		let unpacked = unsafe {
-			std::slice::from_raw_parts(
-				slice.as_ptr() as *const P::Scalar,
-				slice.len() << P::LOG_WIDTH,
-			)
-		};
-		unpacked_fn(unpacked)
-	} else {
-		fallback_fn(slice)
-	}
-}
-
-#[inline(always)]
-pub fn unpack_if_possible_mut<P: PackedField, R>(
-	slice: &mut [P],
-	unpacked_fn: impl FnOnce(&mut [P::Scalar]) -> R,
-	fallback_fn: impl FnOnce(&mut [P]) -> R,
-) -> R {
-	if is_packed_field_indexable::<P>() {
-		let unpacked = unsafe {
-			std::slice::from_raw_parts_mut(
-				slice.as_mut_ptr() as *mut P::Scalar,
-				slice.len() << P::LOG_WIDTH,
-			)
-		};
-		unpacked_fn(unpacked)
-	} else {
-		fallback_fn(slice)
-	}
-}
-
 /// Trait represents a relationship between a packed struct of field elements and a packed struct
 /// of elements from an extension field.
 ///
@@ -315,34 +277,4 @@ where
 	PT2: PackedField + WithUnderlier,
 	PT1: PackedField<Scalar = PT2::Scalar> + WithUnderlier<Underlier: Divisible<PT2::Underlier>>,
 {
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-	use crate::{PackedBinaryField2x8b, PackedBinaryField8x2b};
-
-	#[test]
-	fn test_unpack_if_possible() {
-		let slice = [PackedBinaryField2x8b::zero(); 4];
-
-		let len = unpack_if_possible(&slice, |slice| slice.len(), |slice| slice.len());
-		assert_eq!(len, 8);
-
-		let slice = [PackedBinaryField8x2b::zero(); 4];
-		let len = unpack_if_possible(&slice, |slice| slice.len(), |slice| slice.len());
-		assert_eq!(len, 4);
-	}
-
-	#[test]
-	fn test_unpack_if_possible_mut() {
-		let mut slice = [PackedBinaryField2x8b::zero(); 4];
-
-		let len = unpack_if_possible_mut(&mut slice, |slice| slice.len(), |slice| slice.len());
-		assert_eq!(len, 8);
-
-		let mut slice = [PackedBinaryField8x2b::zero(); 4];
-		let len = unpack_if_possible_mut(&mut slice, |slice| slice.len(), |slice| slice.len());
-		assert_eq!(len, 4);
-	}
 }

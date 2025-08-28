@@ -12,8 +12,9 @@ use cfg_if::cfg_if;
 
 use super::{super::portable::packed::PackedPrimitiveType, m256::M256};
 use crate::{
-	BinaryField128bGhash, arithmetic_traits::InvertOrZero, packed::PackedField,
-	underlier::UnderlierWithBitOps,
+	BinaryField128bGhash,
+	arch::portable::packed_macros::impl_serialize_deserialize_for_packed_binary_field,
+	arithmetic_traits::InvertOrZero, packed::PackedField, underlier::UnderlierWithBitOps,
 };
 
 #[cfg(all(target_feature = "vpclmulqdq", target_feature = "avx2"))]
@@ -138,3 +139,6 @@ cfg_if! {
 		);
 	}
 }
+
+// Define (de)serialize
+impl_serialize_deserialize_for_packed_binary_field!(PackedBinaryGhash2x128b);

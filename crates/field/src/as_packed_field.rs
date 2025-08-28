@@ -1,13 +1,9 @@
 // Copyright 2024-2025 Irreducible Inc.
 
 use crate::{
-	ExtensionField, Field, PackedField,
+	BinaryField128bGhash, ExtensionField, Field, PackedBinaryGhash1x128b, PackedField,
 	aes_field::*,
-	arch::{
-		packed_1::*, packed_2::*, packed_4::*, packed_8::*, packed_16::*, packed_32::*,
-		packed_64::*, packed_128::*, packed_aes_8::*,
-		packed_polyval_128::PackedBinaryPolyval1x128b,
-	},
+	arch::{packed_1::*, packed_aes_8::*, packed_polyval_128::PackedBinaryPolyval1x128b},
 	binary_field::*,
 	polyval::BinaryField128bPolyval,
 	underlier::{UnderlierType, WithUnderlier},
@@ -46,17 +42,9 @@ macro_rules! impl_as_single_packed_field {
 }
 
 impl_as_single_packed_field!(BinaryField1b, PackedBinaryField1x1b);
-impl_as_single_packed_field!(BinaryField2b, PackedBinaryField1x2b);
-impl_as_single_packed_field!(BinaryField4b, PackedBinaryField1x4b);
-impl_as_single_packed_field!(BinaryField8b, PackedBinaryField1x8b);
-impl_as_single_packed_field!(BinaryField16b, PackedBinaryField1x16b);
-impl_as_single_packed_field!(BinaryField32b, PackedBinaryField1x32b);
-impl_as_single_packed_field!(BinaryField64b, PackedBinaryField1x64b);
-impl_as_single_packed_field!(BinaryField128b, PackedBinaryField1x128b);
-
 impl_as_single_packed_field!(AESTowerField8b, PackedAESBinaryField1x8b);
-
 impl_as_single_packed_field!(BinaryField128bPolyval, PackedBinaryPolyval1x128b);
+impl_as_single_packed_field!(BinaryField128bGhash, PackedBinaryGhash1x128b);
 
 /// This trait represents correspondence (UnderlierType, Field) -> PackedField.
 /// For example (u64, BinaryField16b) -> PackedBinaryField4x16b.
@@ -74,14 +62,6 @@ where
 {
 	type Packed: PackedField<Scalar = Scalar>
 		+ WithUnderlier<Underlier: From<Self::Underlier> + Into<Self::Underlier>>;
-
-	fn to_packed(self) -> Self::Packed {
-		Self::Packed::from_underlier(self.to_underlier().into())
-	}
-
-	fn from_packed(value: Self::Packed) -> Self {
-		Self::from_underlier(value.to_underlier().into())
-	}
 }
 
 impl<Scalar, F> AsPackedField<Scalar> for F

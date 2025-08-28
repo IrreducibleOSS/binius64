@@ -194,38 +194,22 @@ macro_rules! benchmark_packed_operation {
 			bench_type @ $benchmark_type,
 			strategies @ $strategies,
 			packed_fields @ [
-				// 128-bit binary tower
-				PackedBinaryField16x8b
-				PackedBinaryField8x16b
-				PackedBinaryField4x32b
-				PackedBinaryField2x64b
-				PackedBinaryField1x128b
+				// B1
+				PackedBinaryField128x1b
+				PackedBinaryField256x1b
+				PackedBinaryField512x1b
 
-				// 256-bit binary tower
-				PackedBinaryField32x8b
-				PackedBinaryField16x16b
-				PackedBinaryField8x32b
-				PackedBinaryField4x64b
-				PackedBinaryField2x128b
-
-				// 512-bit binary tower
-				PackedBinaryField64x8b
-				PackedBinaryField32x16b
-				PackedBinaryField16x32b
-				PackedBinaryField8x64b
-				PackedBinaryField4x128b
-
-				// Packed AES
+				// AES
 				PackedAESBinaryField16x8b
 				PackedAESBinaryField32x8b
 				PackedAESBinaryField64x8b
 
-				// Packed polyval fields
+				// POLYVAL
 				PackedBinaryPolyval1x128b
 				PackedBinaryPolyval2x128b
 				PackedBinaryPolyval4x128b
 
-				// Packed GHASH fields
+				// GHASH
 				PackedBinaryGhash1x128b
 				PackedBinaryGhash2x128b
 				PackedBinaryGhash4x128b

@@ -4,8 +4,7 @@ use binius_utils::random_access_sequence::RandomAccessSequence;
 use bytemuck::{Pod, zeroed_vec};
 
 use crate::{
-	AESTowerField8b, BinaryField8b, BinaryField16b, BinaryField32b, BinaryField64b,
-	BinaryField128b, BinaryField128bGhash, BinaryField128bPolyval, PackedBinaryGhash1x128b,
+	AESTowerField8b, BinaryField128bGhash, BinaryField128bPolyval, PackedBinaryGhash1x128b,
 	PackedBinaryGhash2x128b, PackedBinaryGhash4x128b, PackedField,
 	arch::{
 		packed_8::*, packed_16::*, packed_32::*, packed_64::*, packed_128::*, packed_256::*,
@@ -25,12 +24,6 @@ use crate::{
 #[allow(unused)]
 unsafe trait SequentialBytes: Pod {}
 
-unsafe impl SequentialBytes for BinaryField8b {}
-unsafe impl SequentialBytes for BinaryField16b {}
-unsafe impl SequentialBytes for BinaryField32b {}
-unsafe impl SequentialBytes for BinaryField64b {}
-unsafe impl SequentialBytes for BinaryField128b {}
-
 unsafe impl SequentialBytes for PackedBinaryField8x1b {}
 unsafe impl SequentialBytes for PackedBinaryField16x1b {}
 unsafe impl SequentialBytes for PackedBinaryField32x1b {}
@@ -38,52 +31,6 @@ unsafe impl SequentialBytes for PackedBinaryField64x1b {}
 unsafe impl SequentialBytes for PackedBinaryField128x1b {}
 unsafe impl SequentialBytes for PackedBinaryField256x1b {}
 unsafe impl SequentialBytes for PackedBinaryField512x1b {}
-
-unsafe impl SequentialBytes for PackedBinaryField4x2b {}
-unsafe impl SequentialBytes for PackedBinaryField8x2b {}
-unsafe impl SequentialBytes for PackedBinaryField16x2b {}
-unsafe impl SequentialBytes for PackedBinaryField32x2b {}
-unsafe impl SequentialBytes for PackedBinaryField64x2b {}
-unsafe impl SequentialBytes for PackedBinaryField128x2b {}
-unsafe impl SequentialBytes for PackedBinaryField256x2b {}
-
-unsafe impl SequentialBytes for PackedBinaryField2x4b {}
-unsafe impl SequentialBytes for PackedBinaryField4x4b {}
-unsafe impl SequentialBytes for PackedBinaryField8x4b {}
-unsafe impl SequentialBytes for PackedBinaryField16x4b {}
-unsafe impl SequentialBytes for PackedBinaryField32x4b {}
-unsafe impl SequentialBytes for PackedBinaryField64x4b {}
-unsafe impl SequentialBytes for PackedBinaryField128x4b {}
-
-unsafe impl SequentialBytes for PackedBinaryField1x8b {}
-unsafe impl SequentialBytes for PackedBinaryField2x8b {}
-unsafe impl SequentialBytes for PackedBinaryField4x8b {}
-unsafe impl SequentialBytes for PackedBinaryField8x8b {}
-unsafe impl SequentialBytes for PackedBinaryField16x8b {}
-unsafe impl SequentialBytes for PackedBinaryField32x8b {}
-unsafe impl SequentialBytes for PackedBinaryField64x8b {}
-
-unsafe impl SequentialBytes for PackedBinaryField1x16b {}
-unsafe impl SequentialBytes for PackedBinaryField2x16b {}
-unsafe impl SequentialBytes for PackedBinaryField4x16b {}
-unsafe impl SequentialBytes for PackedBinaryField8x16b {}
-unsafe impl SequentialBytes for PackedBinaryField16x16b {}
-unsafe impl SequentialBytes for PackedBinaryField32x16b {}
-
-unsafe impl SequentialBytes for PackedBinaryField1x32b {}
-unsafe impl SequentialBytes for PackedBinaryField2x32b {}
-unsafe impl SequentialBytes for PackedBinaryField4x32b {}
-unsafe impl SequentialBytes for PackedBinaryField8x32b {}
-unsafe impl SequentialBytes for PackedBinaryField16x32b {}
-
-unsafe impl SequentialBytes for PackedBinaryField1x64b {}
-unsafe impl SequentialBytes for PackedBinaryField2x64b {}
-unsafe impl SequentialBytes for PackedBinaryField4x64b {}
-unsafe impl SequentialBytes for PackedBinaryField8x64b {}
-
-unsafe impl SequentialBytes for PackedBinaryField1x128b {}
-unsafe impl SequentialBytes for PackedBinaryField2x128b {}
-unsafe impl SequentialBytes for PackedBinaryField4x128b {}
 
 unsafe impl SequentialBytes for AESTowerField8b {}
 
@@ -199,12 +146,6 @@ mod tests {
 
 	#[test]
 	fn test_sequential_bits() {
-		assert!(is_sequential_bytes::<BinaryField8b>());
-		assert!(is_sequential_bytes::<BinaryField16b>());
-		assert!(is_sequential_bytes::<BinaryField32b>());
-		assert!(is_sequential_bytes::<BinaryField64b>());
-		assert!(is_sequential_bytes::<BinaryField128b>());
-
 		assert!(is_sequential_bytes::<PackedBinaryField8x1b>());
 		assert!(is_sequential_bytes::<PackedBinaryField16x1b>());
 		assert!(is_sequential_bytes::<PackedBinaryField32x1b>());
@@ -213,54 +154,7 @@ mod tests {
 		assert!(is_sequential_bytes::<PackedBinaryField256x1b>());
 		assert!(is_sequential_bytes::<PackedBinaryField512x1b>());
 
-		assert!(is_sequential_bytes::<PackedBinaryField4x2b>());
-		assert!(is_sequential_bytes::<PackedBinaryField8x2b>());
-		assert!(is_sequential_bytes::<PackedBinaryField16x2b>());
-		assert!(is_sequential_bytes::<PackedBinaryField32x2b>());
-		assert!(is_sequential_bytes::<PackedBinaryField64x2b>());
-		assert!(is_sequential_bytes::<PackedBinaryField128x2b>());
-		assert!(is_sequential_bytes::<PackedBinaryField256x2b>());
-
-		assert!(is_sequential_bytes::<PackedBinaryField2x4b>());
-		assert!(is_sequential_bytes::<PackedBinaryField4x4b>());
-		assert!(is_sequential_bytes::<PackedBinaryField8x4b>());
-		assert!(is_sequential_bytes::<PackedBinaryField16x4b>());
-		assert!(is_sequential_bytes::<PackedBinaryField32x4b>());
-		assert!(is_sequential_bytes::<PackedBinaryField64x4b>());
-		assert!(is_sequential_bytes::<PackedBinaryField128x4b>());
-
-		assert!(is_sequential_bytes::<PackedBinaryField1x8b>());
-		assert!(is_sequential_bytes::<PackedBinaryField2x8b>());
-		assert!(is_sequential_bytes::<PackedBinaryField4x8b>());
-		assert!(is_sequential_bytes::<PackedBinaryField8x8b>());
-		assert!(is_sequential_bytes::<PackedBinaryField16x8b>());
-		assert!(is_sequential_bytes::<PackedBinaryField32x8b>());
-		assert!(is_sequential_bytes::<PackedBinaryField64x8b>());
-
-		assert!(is_sequential_bytes::<PackedBinaryField1x16b>());
-		assert!(is_sequential_bytes::<PackedBinaryField2x16b>());
-		assert!(is_sequential_bytes::<PackedBinaryField4x16b>());
-		assert!(is_sequential_bytes::<PackedBinaryField8x16b>());
-		assert!(is_sequential_bytes::<PackedBinaryField16x16b>());
-		assert!(is_sequential_bytes::<PackedBinaryField32x16b>());
-
-		assert!(is_sequential_bytes::<PackedBinaryField1x32b>());
-		assert!(is_sequential_bytes::<PackedBinaryField2x32b>());
-		assert!(is_sequential_bytes::<PackedBinaryField4x32b>());
-		assert!(is_sequential_bytes::<PackedBinaryField8x32b>());
-		assert!(is_sequential_bytes::<PackedBinaryField16x32b>());
-
-		assert!(is_sequential_bytes::<PackedBinaryField1x64b>());
-		assert!(is_sequential_bytes::<PackedBinaryField2x64b>());
-		assert!(is_sequential_bytes::<PackedBinaryField4x64b>());
-		assert!(is_sequential_bytes::<PackedBinaryField8x64b>());
-
-		assert!(is_sequential_bytes::<PackedBinaryField1x128b>());
-		assert!(is_sequential_bytes::<PackedBinaryField2x128b>());
-		assert!(is_sequential_bytes::<PackedBinaryField4x128b>());
-
 		assert!(is_sequential_bytes::<AESTowerField8b>());
-
 		assert!(is_sequential_bytes::<PackedAESBinaryField1x8b>());
 		assert!(is_sequential_bytes::<PackedAESBinaryField2x8b>());
 		assert!(is_sequential_bytes::<PackedAESBinaryField4x8b>());
@@ -269,11 +163,10 @@ mod tests {
 		assert!(is_sequential_bytes::<PackedAESBinaryField32x8b>());
 		assert!(is_sequential_bytes::<PackedAESBinaryField64x8b>());
 
-		assert!(is_sequential_bytes::<BinaryField128bPolyval>());
-
-		assert!(is_sequential_bytes::<PackedBinaryPolyval1x128b>());
-		assert!(is_sequential_bytes::<PackedBinaryPolyval2x128b>());
-		assert!(is_sequential_bytes::<PackedBinaryPolyval4x128b>());
+		assert!(is_sequential_bytes::<BinaryField128bGhash>());
+		assert!(is_sequential_bytes::<PackedBinaryGhash1x128b>());
+		assert!(is_sequential_bytes::<PackedBinaryGhash2x128b>());
+		assert!(is_sequential_bytes::<PackedBinaryGhash4x128b>());
 
 		assert!(!is_sequential_bytes::<PackedBinaryField1x1b>());
 		assert!(!is_sequential_bytes::<PackedBinaryField2x1b>());
@@ -282,14 +175,14 @@ mod tests {
 
 	#[test]
 	fn test_partial_sums_basic() {
-		let v1 = BinaryField32b::from(1);
-		let v2 = BinaryField32b::from(2);
-		let v3 = BinaryField32b::from(3);
-		let v4 = BinaryField32b::from(4);
-		let v5 = BinaryField32b::from(5);
-		let v6 = BinaryField32b::from(6);
-		let v7 = BinaryField32b::from(7);
-		let v8 = BinaryField32b::from(8);
+		let v1 = AESTowerField8b::from(1);
+		let v2 = AESTowerField8b::from(2);
+		let v3 = AESTowerField8b::from(3);
+		let v4 = AESTowerField8b::from(4);
+		let v5 = AESTowerField8b::from(5);
+		let v6 = AESTowerField8b::from(6);
+		let v7 = AESTowerField8b::from(7);
+		let v8 = AESTowerField8b::from(8);
 
 		let values = vec![v1, v2, v3, v4, v5, v6, v7, v8];
 
@@ -298,7 +191,7 @@ mod tests {
 		assert_eq!(lookup_table.len(), 256);
 
 		// Check specific precomputed sums
-		assert_eq!(lookup_table[0b0000_0000], BinaryField32b::from(0));
+		assert_eq!(lookup_table[0b0000_0000], AESTowerField8b::from(0));
 		assert_eq!(lookup_table[0b0000_0001], v1);
 		assert_eq!(lookup_table[0b0000_0011], v1 + v2);
 		assert_eq!(lookup_table[0b0000_0111], v1 + v2 + v3);
@@ -311,42 +204,42 @@ mod tests {
 
 	#[test]
 	fn test_partial_sums_all_zeros() {
-		let values = vec![BinaryField32b::from(0); 8];
+		let values = vec![AESTowerField8b::from(0); 8];
 		let lookup_table = create_partial_sums_lookup_tables(values.as_slice());
 
 		assert_eq!(lookup_table.len(), 256);
 
 		for &l in lookup_table.iter().take(256) {
-			assert_eq!(l, BinaryField32b::from(0));
+			assert_eq!(l, AESTowerField8b::from(0));
 		}
 	}
 
 	#[test]
 	fn test_partial_sums_single_element() {
-		let mut values = vec![BinaryField32b::from(0); 8];
+		let mut values = vec![AESTowerField8b::from(0); 8];
 		// Set only the fourth element (index 3)
-		values[3] = BinaryField32b::from(10);
+		values[3] = AESTowerField8b::from(10);
 
 		let lookup_table = create_partial_sums_lookup_tables(values.as_slice());
 
 		assert_eq!(lookup_table.len(), 256);
 
 		// Only cases where the 4th bit is set should have non-zero sums
-		assert_eq!(lookup_table[0b0000_0000], BinaryField32b::from(0));
-		assert_eq!(lookup_table[0b0000_1000], BinaryField32b::from(10));
-		assert_eq!(lookup_table[0b0000_1100], BinaryField32b::from(10));
-		assert_eq!(lookup_table[0b0001_1000], BinaryField32b::from(10));
-		assert_eq!(lookup_table[0b1111_1111], BinaryField32b::from(10));
+		assert_eq!(lookup_table[0b0000_0000], AESTowerField8b::from(0));
+		assert_eq!(lookup_table[0b0000_1000], AESTowerField8b::from(10));
+		assert_eq!(lookup_table[0b0000_1100], AESTowerField8b::from(10));
+		assert_eq!(lookup_table[0b0001_1000], AESTowerField8b::from(10));
+		assert_eq!(lookup_table[0b1111_1111], AESTowerField8b::from(10));
 	}
 
 	#[test]
 	fn test_partial_sums_alternating_values() {
-		let v1 = BinaryField32b::from(10);
-		let v2 = BinaryField32b::from(20);
-		let v3 = BinaryField32b::from(30);
-		let v4 = BinaryField32b::from(40);
+		let v1 = AESTowerField8b::from(10);
+		let v2 = AESTowerField8b::from(20);
+		let v3 = AESTowerField8b::from(30);
+		let v4 = AESTowerField8b::from(40);
 
-		let zero = BinaryField32b::from(0);
+		let zero = AESTowerField8b::from(0);
 
 		let values = vec![v1, zero, v2, zero, v3, zero, v4, zero];
 
