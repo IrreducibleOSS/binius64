@@ -1,0 +1,51 @@
+name: Documentation
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build-docs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Build Documentation
+        run: |
+          cargo doc --no-deps --all-features
+          # Create redirect to main crate (binius_core) - using relative path for GitHub Pages compatibility
+          echo '<html><head><meta http-equiv="refresh" content="0; url=binius_core/"></head><body>Redirecting to <a href="binius_core/">binius_core</a></body></html>' > target/doc/index.html
+        env:
+          RUSTFLAGS: "-C target-cpu=native"
+
+      - name: Upload Documentation Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: "target/doc"
+
+  deploy:
+    name: deploy-docs
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
