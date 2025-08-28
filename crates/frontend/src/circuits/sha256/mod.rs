@@ -398,7 +398,7 @@ impl Sha256 {
 	///
 	/// # Panics
 	/// The method panics if `len_bytes` exceeds `max_len_bytes`.
-	pub fn populate_len(&self, w: &mut WitnessFiller<'_>, len_bytes: usize) {
+	pub fn populate_len_bytes(&self, w: &mut WitnessFiller<'_>, len_bytes: usize) {
 		assert!(len_bytes <= self.max_len_bytes());
 		w[self.len_bytes] = Word(len_bytes as u64);
 	}
@@ -609,7 +609,7 @@ mod tests {
 		let c = mk_circuit(&mut b, 256);
 		let circuit = b.build();
 		let mut w = circuit.new_witness_filler();
-		c.populate_len(&mut w, 3);
+		c.populate_len_bytes(&mut w, 3);
 		c.populate_message(&mut w, b"abc");
 		c.populate_digest(
 			&mut w,
@@ -626,7 +626,7 @@ mod tests {
 		let mut w = circuit.new_witness_filler();
 
 		let message_bytes = b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
-		c.populate_len(&mut w, message_bytes.len());
+		c.populate_len_bytes(&mut w, message_bytes.len());
 		c.populate_message(&mut w, message_bytes);
 		c.populate_digest(
 			&mut w,
@@ -643,7 +643,7 @@ mod tests {
 		let cs = circuit.constraint_system();
 		let mut w = circuit.new_witness_filler();
 
-		c.populate_len(&mut w, message_bytes.len());
+		c.populate_len_bytes(&mut w, message_bytes.len());
 		c.populate_message(&mut w, message_bytes);
 		c.populate_digest(&mut w, expected_digest);
 
@@ -821,7 +821,7 @@ mod tests {
 
 		let message = b"abc";
 		// Populate with wrong length (should be 3, but we'll use 5)
-		c.populate_len(&mut w, 5);
+		c.populate_len_bytes(&mut w, 5);
 		c.populate_message(&mut w, message);
 		c.populate_digest(
 			&mut w,
@@ -865,7 +865,7 @@ mod tests {
 		let mut w = circuit.new_witness_filler();
 
 		let message = b"abc";
-		c.populate_len(&mut w, message.len());
+		c.populate_len_bytes(&mut w, message.len());
 		c.populate_message(&mut w, message);
 		// Provide wrong digest (all zeros instead of correct hash)
 		c.populate_digest(&mut w, [0u8; 32]);
@@ -884,7 +884,7 @@ mod tests {
 		let mut w = circuit.new_witness_filler();
 
 		// Populate with "abc" message but "def" digest
-		c.populate_len(&mut w, 3);
+		c.populate_len_bytes(&mut w, 3);
 		c.populate_message(&mut w, b"abc");
 		// This is the digest for "def", not "abc"
 		c.populate_digest(
@@ -929,7 +929,7 @@ mod tests {
 
 			// Test with a simple case: empty message
 			let mut w = circuit.new_witness_filler();
-			c.populate_len(&mut w, 0);
+			c.populate_len_bytes(&mut w, 0);
 			c.populate_message(&mut w, b"");
 			// SHA256 of empty string
 			c.populate_digest(
@@ -959,7 +959,7 @@ mod tests {
 		let message = b"abc";
 		let hash = hex!("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
 
-		c.populate_len(&mut w, message.len());
+		c.populate_len_bytes(&mut w, message.len());
 		c.populate_message(&mut w, message);
 		c.populate_digest(&mut w, hash);
 		circuit.populate_wire_witness(&mut w).unwrap();
@@ -990,7 +990,7 @@ mod tests {
 		let message = b"abcdefgh";
 		let hash = hex!("9c56cc51b374c3ba189210d5b6d4bf57790d351c96c47c02190ecf1e430635ab");
 
-		c.populate_len(&mut w, message.len());
+		c.populate_len_bytes(&mut w, message.len());
 		c.populate_message(&mut w, message);
 		c.populate_digest(&mut w, hash);
 		circuit.populate_wire_witness(&mut w).unwrap();

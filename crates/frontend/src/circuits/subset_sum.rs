@@ -59,7 +59,7 @@ impl SubsetSum {
 		for i in 0..len {
 			(sum, carry) = builder.iadd_cin_cout(sum, values_masked[i], carry);
 			// check that no overflow occurred
-			builder.assert_0("no overflow", builder.shr(carry, 63));
+			builder.assert_false("no overflow", carry);
 		}
 
 		// check that the sum matches the target

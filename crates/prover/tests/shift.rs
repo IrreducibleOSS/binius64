@@ -55,7 +55,7 @@ pub fn create_sha256_cs_with_witness() -> (ConstraintSystem, ValueVec) {
 
 	// Populate with concrete message: "abc"
 	let message_bytes = b"abc";
-	sha256.populate_len(&mut witness_filler, message_bytes.len());
+	sha256.populate_len_bytes(&mut witness_filler, message_bytes.len());
 	sha256.populate_message(&mut witness_filler, message_bytes);
 
 	// Calculate SHA256 digest of the message dynamically

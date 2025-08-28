@@ -186,15 +186,15 @@ impl ExampleCircuit for ZkLoginExample {
 
 		// Populate JWS signature verification data
 		let message_str = format!("{header_base64}.{payload_base64}");
-		let message = message_str.as_bytes();
-		let hash = Sha256::digest(message);
+		let message_bytes = message_str.as_bytes();
+		let hash = Sha256::digest(message_bytes);
 		self.zklogin.populate_rsa_modulus(w, &modulus_bytes);
 		self.zklogin
 			.jwt_signature_verify
-			.populate_message_len(w, message.len());
+			.populate_len_bytes(w, message_bytes.len());
 		self.zklogin
 			.jwt_signature_verify
-			.populate_message(w, message);
+			.populate_message(w, message_bytes);
 		self.zklogin
 			.jwt_signature_verify
 			.sha256

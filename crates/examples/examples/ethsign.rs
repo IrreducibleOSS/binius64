@@ -81,7 +81,7 @@ impl ExampleCircuit for EthSignExample {
 				);
 
 				// Check that public key is not a point-at-infinity
-				builder.assert_0("recovered_pk_not_pai", public_key.is_point_at_infinity);
+				builder.assert_false("recovered_pk_not_pai", public_key.is_point_at_infinity);
 
 				// Concatenate x & y in _big_ endian, hash the result to obtain the address
 				let mut public_key_limbs = Vec::with_capacity(8);
@@ -184,7 +184,7 @@ impl ExampleCircuit for EthSignExample {
 }
 
 fn assert_address_eq(b: &CircuitBuilder, digest: &[Wire], address: &[Wire]) {
-	assert_eq!(digest.len(), 25);
+	assert_eq!(digest.len(), 4);
 	assert_eq!(address.len(), 3);
 
 	let bytes_12_20 = b.bxor(b.shr(digest[1], 32), b.shl(digest[2], 32));

@@ -5,7 +5,7 @@ Number of evaluation instructions: 49995
 Number of AND constraints: 61753
 Number of MUL constraints: 0
 Length of value vec: 131072
-  Constants: 366
+  Constants: 365
   Inout: 264
   Witness: 273
-  Internal: 74121
+  Internal: 74122
