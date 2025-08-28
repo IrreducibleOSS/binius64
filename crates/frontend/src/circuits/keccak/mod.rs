@@ -127,10 +127,11 @@ impl Keccak {
 			.collect();
 
 		let zero = b.add_constant(Word::ZERO);
-		let msb_1 = b.add_constant(Word::MSB_ONE);
+		let msb_one = b.add_constant(Word::MSB_ONE);
 		let len_bytes_mod_8 = b.band(len_bytes, b.add_constant_64(7));
 		let expected_partial = single_wire_multiplex(b, &candidates, len_bytes_mod_8);
-		let with_possible_end = b.bxor(expected_partial, b.select(is_not_last_column, zero, msb_1));
+		let with_possible_end =
+			b.bxor(expected_partial, b.select(is_not_last_column, zero, msb_one));
 
 		b.assert_eq("expected partial", with_possible_end, boundary_padded_word);
 
@@ -156,7 +157,7 @@ impl Keccak {
 				if column_index == 16 {
 					// last word in the block
 					let must_check_delimiter = b.band(is_end_block, is_not_last_column);
-					b.assert_eq_cond("delim", padded_word, msb_1, must_check_delimiter);
+					b.assert_eq_cond("delim", padded_word, msb_one, must_check_delimiter);
 					// if the word in which 0x01 must reside is NOT the last word in the block,
 					// then the presence of the 0x80 delimiter is NOT treated with the boundary word
 					// thus we must separately check that the ACTUAL last word in the block has it

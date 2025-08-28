@@ -29,7 +29,7 @@ use crate::compiler::{
 
 pub fn shape() -> OpcodeShape {
 	OpcodeShape {
-		const_in: &[Word::ALL_ONE, Word::ZERO], // Need all_1 and zero constants
+		const_in: &[Word::ALL_ONE, Word::ZERO], // Need all_one and zero constants
 		n_in: 2,
 		n_out: 1,
 		n_aux: 0,
@@ -45,7 +45,7 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 		constants,
 		..
 	} = data.gate_param();
-	let [all_1, _zero] = constants else {
+	let [all_one, _zero] = constants else {
 		unreachable!()
 	};
 	let [x, y] = inputs else { unreachable!() };
@@ -55,7 +55,7 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 	// ((x ⊕ all-1) ⊕ (bout << 1)) ∧ (y ⊕ (bout << 1)) = bout ⊕ (bout << 1)
 	builder
 		.and()
-		.a(xor3(*x, *all_1, sll(*bout, 1)))
+		.a(xor3(*x, *all_one, sll(*bout, 1)))
 		.b(xor2(*y, sll(*bout, 1)))
 		.c(xor2(*bout, sll(*bout, 1)))
 		.build();
@@ -74,7 +74,7 @@ pub fn emit_eval_bytecode(
 		scratch,
 		..
 	} = data.gate_param();
-	let [all_1, zero] = constants else {
+	let [all_one, zero] = constants else {
 		unreachable!()
 	};
 	let [x, y] = inputs else { unreachable!() };
@@ -83,8 +83,8 @@ pub fn emit_eval_bytecode(
 		unreachable!()
 	};
 
-	// Compute ¬x (x XOR all_1)
-	builder.emit_bxor(wire_to_reg(*scratch_nx), wire_to_reg(*x), wire_to_reg(*all_1));
+	// Compute ¬x (x XOR all_one)
+	builder.emit_bxor(wire_to_reg(*scratch_nx), wire_to_reg(*x), wire_to_reg(*all_one));
 
 	// Compute carry bits from ¬x + y
 	builder.emit_iadd_cin_cout(

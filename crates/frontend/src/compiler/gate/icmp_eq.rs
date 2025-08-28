@@ -58,7 +58,7 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 		outputs,
 		..
 	} = data.gate_param();
-	let [all_1, msb_1, _zero] = constants else {
+	let [all_one, msb_one, _zero] = constants else {
 		unreachable!()
 	};
 	let [x, y] = inputs else { unreachable!() };
@@ -71,8 +71,8 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 	builder
 		.and()
 		.a(xor3(*x, *y, cin))
-		.b(xor2(*all_1, cin))
-		.c(xor3(cin, *out_wire, *msb_1))
+		.b(xor2(*all_one, cin))
+		.c(xor3(cin, *out_wire, *msb_one))
 		.build();
 }
 
@@ -90,7 +90,7 @@ pub fn emit_eval_bytecode(
 		scratch,
 		..
 	} = data.gate_param();
-	let [all_1, msb_1, zero] = constants else {
+	let [all_one, msb_one, zero] = constants else {
 		unreachable!()
 	};
 	let [x, y] = inputs else { unreachable!() };
@@ -103,15 +103,15 @@ pub fn emit_eval_bytecode(
 	// Compute diff = x ^ y
 	builder.emit_bxor(wire_to_reg(*scratch_diff), wire_to_reg(*x), wire_to_reg(*y));
 
-	// Compute carry bits from all_1 + diff
+	// Compute carry bits from all_one + diff
 	builder.emit_iadd_cin_cout(
 		wire_to_reg(*scratch_sum_unused), // sum (unused)
 		wire_to_reg(*cout),               // cout
-		wire_to_reg(*all_1),              // all_1
+		wire_to_reg(*all_one),            // all_one
 		wire_to_reg(*scratch_diff),       // diff
 		wire_to_reg(*zero),               // cin = 0
 	);
 
-	// Invert: out_wire = out_wire ^ msb_1
-	builder.emit_bxor(wire_to_reg(*out_wire), wire_to_reg(*cout), wire_to_reg(*msb_1));
+	// Invert: out_wire = out_wire ^ msb_one
+	builder.emit_bxor(wire_to_reg(*out_wire), wire_to_reg(*cout), wire_to_reg(*msb_one));
 }

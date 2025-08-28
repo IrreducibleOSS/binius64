@@ -260,13 +260,13 @@ pub fn create_byte_mask(b: &CircuitBuilder, n_bytes: Wire) -> Wire {
 	// Handle values ≥ 8 by treating them as 8
 	let eight = b.add_constant(Word(8));
 	let is_lt_eight = b.icmp_ult(n_bytes, eight);
-	let all_ones = b.add_constant(Word::ALL_ONE);
+	let all_one = b.add_constant(Word::ALL_ONE);
 
 	let masks: Vec<Wire> = (0..8)
 		.map(|i| b.add_constant_64(0x00FFFFFFFFFFFFFF >> ((7 - i) << 3)))
 		.collect();
 	let in_range_mask = single_wire_multiplex(b, &masks, n_bytes);
-	b.select(is_lt_eight, in_range_mask, all_ones)
+	b.select(is_lt_eight, in_range_mask, all_one)
 }
 
 #[cfg(test)]

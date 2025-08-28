@@ -35,11 +35,11 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 	let GateParam {
 		constants, inputs, ..
 	} = data.gate_param();
-	let [all_1] = constants else { unreachable!() };
+	let [all_one] = constants else { unreachable!() };
 	let [x] = inputs else { unreachable!() };
 
 	// Constraint: x ∧ all-1 = 0
-	builder.and().a(*x).b(*all_1).c(empty()).build();
+	builder.and().a(*x).b(*all_one).c(empty()).build();
 }
 
 pub fn emit_eval_bytecode(

@@ -223,9 +223,7 @@ pub fn compress(
 	v[13] = builder.bxor(v[13], t_high);
 
 	// Conditionally invert v[14] for last block
-	let all_ones = builder.add_constant(Word::ALL_ONE);
-	let inverted = builder.bxor(v[14], all_ones);
-	v[14] = builder.select(last_block_flag, inverted, v[14]);
+	v[14] = builder.select(last_block_flag, builder.bnot(v[14]), v[14]);
 
 	// 12 rounds of mixing
 	for round in 0..ROUNDS {

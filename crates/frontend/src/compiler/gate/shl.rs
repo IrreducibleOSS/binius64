@@ -39,14 +39,14 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 		imm,
 		..
 	} = data.gate_param();
-	let [all_1] = constants else { unreachable!() };
+	let [all_one] = constants else { unreachable!() };
 	let [x] = inputs else { unreachable!() };
 	let [z] = outputs else { unreachable!() };
 	let [n] = imm else { unreachable!() };
 
 	// Constraint: Logical left shift
 	// (x << n) ∧ all-1 = z
-	builder.and().a(sll(*x, *n)).b(*all_1).c(*z).build();
+	builder.and().a(sll(*x, *n)).b(*all_one).c(*z).build();
 }
 
 pub fn emit_eval_bytecode(

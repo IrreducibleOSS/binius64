@@ -24,7 +24,7 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 		outputs,
 		..
 	} = data.gate_param();
-	let [all_1] = constants else { unreachable!() };
+	let [all_one] = constants else { unreachable!() };
 	let [a, b, bin] = inputs else { unreachable!() };
 	let [diff, bout] = outputs else {
 		unreachable!()
@@ -38,7 +38,7 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 	// (¬a ⊕ (bout << 1) ⊕ bin_msb) ∧ (b ⊕ (bout << 1) ⊕ bin_msb) = bout ⊕ (bout << 1) ⊕ bin_msb
 	builder
 		.and()
-		.a(xor4(*all_1, *a, bout_sll_1, bin_msb))
+		.a(xor4(*all_one, *a, bout_sll_1, bin_msb))
 		.b(xor3(*b, bout_sll_1, bin_msb))
 		.c(xor3(*bout, bout_sll_1, bin_msb))
 		.build();
@@ -49,7 +49,7 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 	builder
 		.and()
 		.a(xor4(*a, *b, bout_sll_1, bin_msb))
-		.b(*all_1)
+		.b(*all_one)
 		.c(*diff)
 		.build();
 }

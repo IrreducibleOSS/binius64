@@ -51,7 +51,7 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 		outputs,
 		..
 	} = data.gate_param();
-	let [all_1] = constants else { unreachable!() };
+	let [all_one] = constants else { unreachable!() };
 	let [x] = inputs else { unreachable!() };
 	let [cout] = outputs else { unreachable!() };
 
@@ -62,7 +62,7 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 	builder
 		.and()
 		.a(xor2(*x, cin))
-		.b(xor2(*all_1, cin))
+		.b(xor2(*all_one, cin))
 		.c(xor2(cin, *cout))
 		.build();
 }
@@ -81,7 +81,7 @@ pub fn emit_eval_bytecode(
 		scratch,
 		..
 	} = data.gate_param();
-	let [all_1, zero] = constants else {
+	let [all_one, zero] = constants else {
 		unreachable!()
 	};
 	let [x] = inputs else { unreachable!() };
@@ -90,11 +90,11 @@ pub fn emit_eval_bytecode(
 		unreachable!()
 	};
 
-	// Compute carry bits from all_1 + diff
+	// Compute carry bits from all_one + diff
 	builder.emit_iadd_cin_cout(
 		wire_to_reg(*scratch_sum_unused), // sum (unused)
 		wire_to_reg(*cout),               // cout
-		wire_to_reg(*all_1),              // all_1
+		wire_to_reg(*all_one),            // all_one
 		wire_to_reg(*x),                  // x
 		wire_to_reg(*zero),               // cin = 0
 	);
