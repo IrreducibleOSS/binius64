@@ -2,7 +2,7 @@ use binius_core::word::Word;
 
 use super::common::{coord_zero, coords_gen};
 use crate::{
-	circuits::bignum::BigUint,
+	circuits::bignum::{BigUint, select as select_biguint},
 	compiler::{CircuitBuilder, Wire},
 };
 
@@ -46,5 +46,31 @@ impl Secp256k1Affine {
 			y: self.y.clone(),
 			is_point_at_infinity,
 		}
+	}
+}
+
+/// Conditionally selects between two affine secp256k1 points.
+///
+/// # Arguments
+/// * `builder` - Circuit builder for constraint generation
+/// * `cond` - an MSB-boolean
+/// * `t` - Value to select when cond is true (MSB=1)
+/// * `f` - Value to select when cond is false (MSB=0)
+///
+/// # Return value
+/// Selects `t` if `cond` is true, otherwise selects `f`.
+pub fn select(
+	b: &CircuitBuilder,
+	cond: Wire,
+	pt: &Secp256k1Affine,
+	pf: &Secp256k1Affine,
+) -> Secp256k1Affine {
+	let x = select_biguint(b, cond, &pt.x, &pf.x);
+	let y = select_biguint(b, cond, &pt.y, &pf.y);
+	let is_point_at_infinity = b.select(cond, pt.is_point_at_infinity, pf.is_point_at_infinity);
+	Secp256k1Affine {
+		x,
+		y,
+		is_point_at_infinity,
 	}
 }

@@ -1,4 +1,4 @@
-use super::shamirs_trick::shamirs_trick;
+use super::shamirs_trick::shamirs_trick_endomorphism;
 use crate::{
 	circuits::{
 		bignum::{BigUint, biguint_lt},
@@ -31,6 +31,7 @@ pub fn ecrecover(
 	let curve = Secp256k1::new(b);
 
 	let nonce = curve.recover(b, r, recid_odd);
+	let nonce_not_pai = b.bnot(nonce.is_point_at_infinity);
 
 	let f_scalar = curve.f_scalar();
 	let valid_r = b.band(b.bnot(r.is_zero(b)), biguint_lt(b, r, f_scalar.modulus()));
@@ -40,6 +41,8 @@ pub fn ecrecover(
 	let u1 = f_scalar.sub(b, &coord_zero(b), &f_scalar.mul(b, z, &r_inverse));
 	let u2 = f_scalar.mul(b, s, &r_inverse);
 
-	let conditions = [valid_r, valid_s, b.bnot(nonce.is_point_at_infinity)];
-	shamirs_trick(b, &curve, 256, &u1, &u2, nonce).pai_unless(b, all_true(b, conditions))
+	let (recovered_pk, endo_ok) = shamirs_trick_endomorphism(b, &curve, &u1, &u2, nonce);
+
+	let conditions = [valid_r, valid_s, endo_ok, nonce_not_pai];
+	recovered_pk.pai_unless(b, all_true(b, conditions))
 }
