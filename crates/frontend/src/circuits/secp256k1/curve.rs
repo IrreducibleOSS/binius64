@@ -1,7 +1,7 @@
 use binius_core::consts::WORD_SIZE_BITS;
 
 use super::{
-	common::{coord_b, coord_field, coord_zero, pow_sqrt, scalar_field},
+	common::{coord_b, coord_beta, coord_field, coord_zero, pow_sqrt, scalar_field},
 	point::Secp256k1Affine,
 };
 use crate::{
@@ -84,6 +84,32 @@ impl Secp256k1 {
 		}
 	}
 
+	/// Negate the curve point `p` if MSB-bool `cond` is true.
+	pub fn negate_if(
+		&self,
+		b: &CircuitBuilder,
+		cond: Wire,
+		p: &Secp256k1Affine,
+	) -> Secp256k1Affine {
+		let neg_y = self.f_p.sub(b, &coord_zero(b), &p.y);
+		let y = select(b, cond, &neg_y, &p.y);
+		Secp256k1Affine {
+			x: p.x.clone(),
+			y,
+			is_point_at_infinity: p.is_point_at_infinity,
+		}
+	}
+
+	/// Compute the endomorphism `λ (x, y) = (βx, y)`.
+	pub fn endomorphism(&self, b: &CircuitBuilder, p: &Secp256k1Affine) -> Secp256k1Affine {
+		let x = self.f_p.mul(b, &coord_beta(b), &p.x);
+		Secp256k1Affine {
+			x,
+			y: p.y.clone(),
+			is_point_at_infinity: p.is_point_at_infinity,
+		}
+	}
+
 	/// Add two curve points.
 	///
 	/// Requires both `p1` and `p2` to be either valid curve points or points at infinities.
@@ -134,6 +160,7 @@ impl Secp256k1 {
 
 		let pai_1 = p1.is_point_at_infinity;
 		let pai_2 = p2.is_point_at_infinity;
+		let any_pai = b.bor(pai_1, pai_2);
 
 		let (add_x, add_y) = self.sloped_add(b, &slope, p1, p2);
 		let x = select(b, pai_1, &p2.x, &select(b, pai_2, &p1.x, &add_x));
@@ -142,7 +169,7 @@ impl Secp256k1 {
 		let pai_sum = b.band(x_diff_zero, b.bnot(y_diff_zero)); // adding negation
 		let is_point_at_infinity = b.select(pai_1, pai_2, b.select(pai_2, pai_1, pai_sum));
 
-		b.assert_false("not_doubling", b.band(x_diff_zero, y_diff_zero));
+		b.assert_false("not_doubling", b.band(b.bnot(any_pai), b.band(x_diff_zero, y_diff_zero)));
 
 		Secp256k1Affine {
 			x,

@@ -5,7 +5,7 @@ use crate::{
 	compiler::CircuitBuilder,
 };
 
-const N_LIMBS: usize = 4;
+pub const N_LIMBS: usize = 4;
 
 // Generator X coordinate, big endian.
 const GX_BE: [u8; 32] = hex!("79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798");
@@ -16,6 +16,12 @@ const GY_BE: [u8; 32] = hex!("483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C
 // ((2^256-2^32-977) + 1)/4 => exponent for finding quadratic residues.
 const POW_SQRT: [u8; 32] = hex!("3FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFBFFFFF0C");
 
+// The value `λ` of the endomorphism `λ (x, y) = (βx, y)`, big endian.
+const LAMBDA: [u8; 32] = hex!("5363ad4cc05c30e0a5261c028812645a122e22ea20816678df02967c1b23bd72");
+
+// The value `β` of the endomorphism `λ (x, y) = (βx, y)`, big endian.
+const BETA: [u8; 32] = hex!("7AE96A2B657C07106E64479EAC3434E99CF0497512F58995C1396C28719501EE");
+
 /// Padded zero.
 pub fn coord_zero(b: &CircuitBuilder) -> BigUint {
 	BigUint::new_constant(b, &num_bigint::BigUint::ZERO).zero_extend(b, N_LIMBS)
@@ -24,6 +30,16 @@ pub fn coord_zero(b: &CircuitBuilder) -> BigUint {
 /// Zero extended b = 7 constant.
 pub fn coord_b(b: &CircuitBuilder) -> BigUint {
 	BigUint::new_constant(b, &num_bigint::BigUint::from(7usize)).zero_extend(b, N_LIMBS)
+}
+
+/// The value `λ` of the endomorphism `λ (x, y) = (βx, y)`.
+pub fn coord_lambda(b: &CircuitBuilder) -> BigUint {
+	BigUint::new_constant(b, &num_bigint::BigUint::from_bytes_be(&LAMBDA))
+}
+
+/// The value `β` of the endomorphism `λ (x, y) = (βx, y)`.
+pub fn coord_beta(b: &CircuitBuilder) -> BigUint {
+	BigUint::new_constant(b, &num_bigint::BigUint::from_bytes_be(&BETA))
 }
 
 /// Quadratic residue exponent.

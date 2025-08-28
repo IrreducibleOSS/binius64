@@ -10,6 +10,6 @@ mod point;
 #[cfg(test)]
 mod tests;
 
-pub use common::coord_zero;
+pub use common::{N_LIMBS, coord_lambda, coord_zero};
 pub use curve::Secp256k1;
-pub use point::Secp256k1Affine;
+pub use point::{Secp256k1Affine, select};
