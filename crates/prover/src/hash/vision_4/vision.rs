@@ -4,15 +4,15 @@ use std::{array, mem::MaybeUninit};
 
 use binius_field::{BinaryField128bGhash as Ghash, Field};
 use binius_utils::{DeserializeBytes, SerializeBytes};
-use binius_verifier::hash::vision::{
+use binius_verifier::hash::vision_4::{
 	M,
 	digest::{PADDING_BLOCK, RATE_AS_U8, RATE_AS_U128, VisionHasherDigest, fill_padding},
 };
 use digest::Output;
 
-use super::{parallel_digest::MultiDigest, vision_parallel::flattened_parallel_permutation};
+use super::{super::parallel_digest::MultiDigest, parallel::parallel_permutation};
 
-/// A Vision hasher suited for parallelization.
+/// A Vision hasher with state size M=4 suited for parallelization.
 ///
 /// Without using packed fields, there is only one advantage of an explicit parallelized
 /// Vision hasher over invoking the Vision hasher multiple times in parallel:
@@ -62,7 +62,7 @@ impl<const N: usize, const MN: usize> VisionHasherMultiDigest<N, MN> {
 			}
 		}
 
-		flattened_parallel_permutation::<N, MN>(states, scratchpad);
+		parallel_permutation::<N, MN>(states, scratchpad);
 	}
 	fn finalize(&mut self, out: &mut [MaybeUninit<digest::Output<VisionHasherDigest>>; N]) {
 		if self.filled_bytes != 0 {
