@@ -121,17 +121,30 @@ where
 			});
 		}
 
-		let _scope = tracing::debug_span!(
-			"Prover::prove",
+		let _prove_guard = tracing::info_span!(
+			"prove",
+			operation = "prove",
+			perfetto_category = "operation",
 			n_witness_words = cs.value_vec_layout.total_len,
 			n_bitand = cs.and_constraints.len(),
 			n_intmul = cs.mul_constraints.len(),
 		)
 		.entered();
 
+		// [phase] Setup - initialization and constraint system setup
+		let setup_guard =
+			tracing::info_span!("[phase] Setup", phase = "setup", perfetto_category = "phase")
+				.entered();
 		let witness_packed = pack_witness::<P>(verifier.log_witness_elems(), &witness)?;
+		drop(setup_guard);
 
-		// Commit the witness.
+		// [phase] Witness Commit - witness generation and commitment
+		let witness_commit_guard = tracing::info_span!(
+			"[phase] Witness Commit",
+			phase = "witness_commit",
+			perfetto_category = "phase"
+		)
+		.entered();
 		let CommitOutput {
 			commitment: trace_commitment,
 			committed: trace_committed,
@@ -143,11 +156,16 @@ where
 			witness_packed.to_ref(),
 		)?;
 		transcript.message().write(&trace_commitment);
+		drop(witness_commit_guard);
 
-		// BitAnd reduction
-		let bitand_scope =
-			tracing::debug_span!("BitAnd reduction", n_constraints = cs.and_constraints.len())
-				.entered();
+		// [phase] BitAnd Reduction - AND constraint reduction
+		let bitand_guard = tracing::info_span!(
+			"[phase] BitAnd Reduction",
+			phase = "bitand_reduction",
+			perfetto_category = "phase",
+			n_constraints = cs.and_constraints.len()
+		)
+		.entered();
 		let bitand_claim = {
 			let bitand_witness =
 				build_bitand_witness(&cs.and_constraints, witness.combined_witness());
@@ -164,12 +182,16 @@ where
 				r_x_prime: eval_point,
 			}
 		};
-		drop(bitand_scope);
+		drop(bitand_guard);
 
-		// IntMul reduction
-		let intmul_scope =
-			tracing::debug_span!("IntMul reduction", n_constraints = cs.mul_constraints.len())
-				.entered();
+		// [phase] IntMul Reduction - multiplication constraint reduction
+		let intmul_guard = tracing::info_span!(
+			"[phase] IntMul Reduction",
+			phase = "intmul_reduction",
+			perfetto_category = "phase",
+			n_constraints = cs.mul_constraints.len()
+		)
+		.entered();
 		let intmul_claim = {
 			let mul_witness = build_intmul_witness(&cs.mul_constraints, witness.combined_witness());
 			let IntMulOutput {
@@ -195,10 +217,15 @@ where
 				r_x_prime: eval_point,
 			}
 		};
-		drop(intmul_scope);
+		drop(intmul_guard);
 
-		// Shift reduction
-		let shift_scope = tracing::debug_span!("Shift reduction").entered();
+		// [phase] Shift Reduction - shift operations
+		let shift_guard = tracing::info_span!(
+			"[phase] Shift Reduction",
+			phase = "shift_reduction",
+			perfetto_category = "phase"
+		)
+		.entered();
 		let SumcheckOutput {
 			challenges: eval_point,
 			eval: _,
@@ -210,10 +237,15 @@ where
 			intmul_claim,
 			transcript,
 		)?;
-		drop(shift_scope);
+		drop(shift_guard);
 
-		// PCS opening
-		let _scope = tracing::debug_span!("PCS open").entered();
+		// [phase] PCS Opening - polynomial commitment opening
+		let pcs_guard = tracing::info_span!(
+			"[phase] PCS Opening",
+			phase = "pcs_opening",
+			perfetto_category = "phase"
+		)
+		.entered();
 		let pcs_prover = OneBitPCSProver::new(witness_packed, eval_point);
 
 		pcs_prover.prove_with_transcript(
@@ -224,6 +256,7 @@ where
 			&trace_codeword,
 			&trace_committed,
 		)?;
+		drop(pcs_guard);
 
 		Ok(())
 	}

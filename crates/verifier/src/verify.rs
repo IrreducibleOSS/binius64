@@ -143,6 +143,10 @@ where
 		public: &[Word],
 		transcript: &mut VerifierTranscript<Challenger_>,
 	) -> Result<(), Error> {
+		let _verify_guard =
+			tracing::info_span!("verify", operation = "verify", perfetto_category = "operation")
+				.entered();
+
 		// Check that the public input length is correct
 		if public.len() != 1 << self.log_public_words() {
 			return Err(Error::IncorrectPublicInputLength {
@@ -154,7 +158,14 @@ where
 		// Receive the trace commitment.
 		let trace_commitment = transcript.message().read::<Output<MerkleHash>>()?;
 
-		// BitAnd reduction
+		// [phase] Verify BitAnd Reduction - AND constraint verification
+		let bitand_guard = tracing::info_span!(
+			"[phase] Verify BitAnd Reduction",
+			phase = "verify_bitand_reduction",
+			perfetto_category = "phase",
+			n_constraints = self.constraint_system.n_and_constraints()
+		)
+		.entered();
 		let bitand_claim = {
 			let log_n_constraints = checked_log_2(self.constraint_system.n_and_constraints());
 			let AndCheckOutput {
@@ -166,8 +177,16 @@ where
 			}: AndCheckOutput<B128> = verify_bitand_reduction(log_n_constraints, transcript)?;
 			OperatorData::new(z_challenge, eval_point, [a_eval, b_eval, c_eval])
 		};
+		drop(bitand_guard);
 
-		// IntMul reduction
+		// [phase] Verify IntMul Reduction - multiplication constraint verification
+		let intmul_guard = tracing::info_span!(
+			"[phase] Verify IntMul Reduction",
+			phase = "verify_intmul_reduction",
+			perfetto_category = "phase",
+			n_constraints = self.constraint_system.n_mul_constraints()
+		)
+		.entered();
 		let intmul_claim = {
 			let log_n_constraints = checked_log_2(self.constraint_system.n_mul_constraints());
 			let IntMulOutput {
@@ -194,22 +213,44 @@ where
 				],
 			)
 		};
+		drop(intmul_guard);
 
-		// Shift reduction
+		// [phase] Verify Shift Reduction - shift operations and constraint validation
+		let constraint_guard = tracing::info_span!(
+			"[phase] Verify Shift Reduction",
+			phase = "verify_shift_reduction",
+			perfetto_category = "phase"
+		)
+		.entered();
 		let VerifyOutput {
 			witness_eval,
 			public_eval,
 			eval_point,
 		} = verify_shift_reduction(self.constraint_system(), bitand_claim, intmul_claim, transcript)?;
+		drop(constraint_guard);
 
+		// [phase] Verify Public Input - public input verification
+		let public_guard = tracing::info_span!(
+			"[phase] Verify Public Input",
+			phase = "verify_public_input",
+			perfetto_category = "phase"
+		)
+		.entered();
 		let (z_challenge, y_challenge) = eval_point.split_at(LOG_WORD_SIZE_BITS);
 		let expected_public_eval =
 			evaluate_public_mle(public, z_challenge, &y_challenge[..self.log_public_words()]);
 		if public_eval != expected_public_eval {
 			return Err(VerificationError::PublicInputCheckFailed.into());
 		}
+		drop(public_guard);
 
-		// PCS opening
+		// [phase] Verify PCS Opening - polynomial commitment verification
+		let pcs_guard = tracing::info_span!(
+			"[phase] Verify PCS Opening",
+			phase = "verify_pcs_opening",
+			perfetto_category = "phase"
+		)
+		.entered();
 		pcs::verify_transcript(
 			transcript,
 			witness_eval,
@@ -218,6 +259,7 @@ where
 			&self.fri_params,
 			&self.merkle_scheme,
 		)?;
+		drop(pcs_guard);
 
 		Ok(())
 	}
