@@ -1,6 +1,9 @@
 use binius_core::word::Word;
 
-use crate::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
+use crate::{
+	circuits::slice::{create_byte_mask, extract_word},
+	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
+};
 
 /// A term in a concatenation - a variable-length byte string.
 ///
@@ -17,9 +20,9 @@ use crate::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
 ///
 /// For a term with max_len=24 (3 words) containing "hello" (5 bytes):
 /// - `len` = 5
-/// - `data[0]` = 0x6F6C6C6568 (bytes 0-7: "hello" + 3 zero bytes)
-/// - `data[1]` = 0x0000000000 (bytes 8-15: all zeros)
-/// - `data[2]` = 0x0000000000 (bytes 16-23: all zeros)
+/// - `data[0]` = 0x00006F6C6C6568 (bytes 0-7: "hello" + 3 zero bytes)
+/// - `data[1]` = 0x00000000000000 (bytes 8-15: all zeros)
+/// - `data[2]` = 0x00000000000000 (bytes 16-23: all zeros)
 ///
 /// # Requirements
 ///
@@ -31,7 +34,7 @@ pub struct Term {
 	///
 	/// This is a witness wire that will be populated with the true length
 	/// of the term's data. Must be ≤ max_len.
-	pub len: Wire,
+	pub len_bytes: Wire,
 	/// The term's data as bytes packed into 64-bit words.
 	///
 	/// Each Wire represents 8 bytes packed in little-endian order:
@@ -39,17 +42,13 @@ pub struct Term {
 	/// - Byte 1 goes in bits 8-15
 	/// - ...
 	/// - Byte 7 goes in bits 56-63 (MSB)
-	///
-	/// The vector length is exactly `max_len / 8`.
 	pub data: Vec<Wire>,
-	/// Maximum size of this term in bytes.
-	pub max_len: usize,
 }
 
 impl Term {
 	/// Populate the length wire with the actual term size in bytes.
-	pub fn populate_len(&self, w: &mut WitnessFiller, len: usize) {
-		w[self.len] = Word(len as u64);
+	pub fn populate_len_bytes(&self, w: &mut WitnessFiller, len_bytes: usize) {
+		w[self.len_bytes] = Word(len_bytes as u64);
 	}
 
 	/// Populate the term's data from a byte slice.
@@ -59,16 +58,16 @@ impl Term {
 	///
 	/// # Panics
 	/// Panics if `data.len()` > `self.max_len`
-	pub fn populate_data(&self, w: &mut WitnessFiller, data: &[u8]) {
+	pub fn populate_data(&self, w: &mut WitnessFiller, data_bytes: &[u8]) {
 		assert!(
-			data.len() <= self.max_len,
+			data_bytes.len() <= self.max_len_bytes(),
 			"term data length {} exceeds maximum {}",
-			data.len(),
-			self.max_len
+			data_bytes.len(),
+			self.max_len_bytes()
 		);
 
 		// Pack bytes into 64-bit words (little-endian)
-		for (i, chunk) in data.chunks(8).enumerate() {
+		for (i, chunk) in data_bytes.chunks(8).enumerate() {
 			if i < self.data.len() {
 				let mut word = 0u64;
 				for (j, &byte) in chunk.iter().enumerate() {
@@ -79,9 +78,13 @@ impl Term {
 		}
 
 		// Zero out any remaining words beyond the actual data
-		for i in data.len().div_ceil(8)..self.data.len() {
+		for i in data_bytes.len().div_ceil(8)..self.data.len() {
 			w[self.data[i]] = Word::ZERO;
 		}
+	}
+
+	pub fn max_len_bytes(&self) -> usize {
+		self.data.len() << 3
 	}
 }
 
@@ -93,11 +96,12 @@ pub struct Concat {
 	/// The actual length of the concatenated result in bytes.
 	///
 	/// This wire will be constrained to equal the sum of all term lengths.
-	pub len_joined: Wire,
+	pub len_joined_bytes: Wire,
 	/// The concatenated data packed as 64-bit words.
 	///
-	/// Each wire contains 8 bytes in little-endian order. The vector length
-	/// is `max_n_joined / 8` where max_n_joined is the maximum supported size.
+	/// Each wire contains 8 bytes in little-endian order.
+	/// The circuit will check / enforce whether the total length of the concatenated data
+	/// fits in `joined.len()` wires, i.e. `joined.len() << 3` bytes.
 	pub joined: Vec<Wire>,
 	/// The list of terms to be concatenated.
 	///
@@ -110,20 +114,12 @@ impl Concat {
 	///
 	/// # Arguments
 	/// * `b` - Circuit builder for constructing constraints
-	/// * `max_n_joined` - Maximum supported size of joined data in bytes (must be multiple of 8)
 	/// * `len_joined` - Wire containing the actual joined size in bytes
 	/// * `joined` - Joined array packed as 64-bit words (8 bytes per word)
 	/// * `terms` - Vector of terms that should concatenate to form `joined`
-	///
-	/// # Panics
-	/// * If `max_n_joined` is not a multiple of 8
-	/// * If any term's `max_len` is not a multiple of 8
-	/// * If `joined.len()` != `max_n_joined / 8`
-	/// * If any term's `data.len()` != `term.max_len / 8`
 	pub fn new(
 		b: &CircuitBuilder,
-		max_n_joined: usize,
-		len_joined: Wire,
+		len_joined_bytes: Wire,
 		joined: Vec<Wire>,
 		terms: Vec<Term>,
 	) -> Self {
@@ -131,17 +127,6 @@ impl Concat {
 		//
 		// Ensure all inputs meet the word-alignment requirements necessary for
 		// efficient word-level processing.
-		assert_eq!(max_n_joined % 8, 0, "max_n_joined must be multiple of 8");
-		assert_eq!(joined.len(), max_n_joined / 8, "joined.len() must equal max_n_joined / 8");
-
-		for (i, term) in terms.iter().enumerate() {
-			assert_eq!(term.max_len % 8, 0, "term[{i}].max_len must be multiple of 8");
-			assert_eq!(
-				term.data.len(),
-				term.max_len / 8,
-				"term[{i}].data.len() must equal term.max_len / 8"
-			);
-		}
 
 		// Algorithm overview
 		//
@@ -169,100 +154,81 @@ impl Concat {
 		for (i, term) in terms.iter().enumerate() {
 			let b = b.subcircuit(format!("term[{i}]"));
 
+			let too_long =
+				b.icmp_ult(b.add_constant(Word((term.data.len() << 3) as u64)), term.len_bytes);
+			b.assert_false("term_length_check", too_long);
+
 			// 2. Word-level verification for current term
 			//
 			// Process the term's data word by word (8 bytes at a time) for efficiency.
+			let word_offset = b.shr(offset, 3);
 			for (word_idx, &term_word) in term.data.iter().enumerate() {
 				let b = b.subcircuit(format!("word[{word_idx}]"));
 
 				// Calculate this word's byte position within the term
-				let word_byte_offset = word_idx * 8;
+				let word_byte_offset = word_idx << 3;
 				let word_byte_offset_wire = b.add_constant(Word(word_byte_offset as u64));
 
 				// 2a. Validity checks
 				//
 				// Determine if this word contains valid data based on the term's actual length.
 				// A word is:
-				// - Fully valid if all 8 bytes are within term.len
-				// - Partially valid if it contains the last byte of the term
-				// - Invalid if it's entirely beyond term.len
-				let word_start = word_byte_offset_wire;
-				let word_end = b.add_constant(Word((word_byte_offset + 8) as u64));
-				let word_fully_valid = b.icmp_ult(word_end, term.len);
-				let word_partially_valid = b.icmp_ult(word_start, term.len);
+				// - Partially valid if it at least one "meaningful" byte of the term.
+				// - not partially valid if it lives entirely after the point where the term ends.
+				let word_partially_valid = b.icmp_ult(word_byte_offset_wire, term.len_bytes);
 
 				// 2b. Global position calculation
 				//
 				// Calculate where this word should appear in the joined array.
 				// This is the current offset plus the word's position within the term.
-				let global_word_pos = b.iadd_32(offset, word_byte_offset_wire);
+				let input_word_idx = b.iadd_32(word_offset, b.add_constant(Word(word_idx as u64)));
+				let byte_offset = b.band(offset, b.add_constant(Word(7)));
 
 				// 2c. Extract corresponding data from joined array
 				//
 				// Extract the word from the joined array at the calculated position.
 				// This handles both aligned (byte position % 8 == 0) and unaligned cases.
-				let joined_data = extract_aligned_or_unaligned_word(&b, &joined, global_word_pos);
+				let joined_data = extract_word(&b, &joined, input_word_idx, byte_offset);
 
-				// 3. Word comparison with proper masking
-				if word_idx == term.data.len() - 1 {
-					// 3a. Last word special case
-					//
-					// The last word might be partially valid (e.g., term with 13 bytes has
-					// 5 valid bytes in its second word). We need to:
-					// 1. Calculate how many bytes are valid (term.len - word_byte_offset)
-					// 2. Create a mask for those bytes
-					// 3. Compare only the masked portions
-					//
-					// Calculate valid bytes: term.len - word_byte_offset
-					// Implement subtraction by adding the two's complement
-					let neg_offset = b.add_constant(Word((-(word_byte_offset as i64)) as u64));
-					let valid_bytes = b.iadd_32(term.len, neg_offset);
-					let mask = create_byte_mask(&b, valid_bytes);
-					let masked_term = b.band(term_word, mask);
-					let masked_joined = b.band(joined_data, mask);
-					b.assert_eq_cond(
-						format!("partial_word[{word_idx}]"),
-						masked_term,
-						masked_joined,
-						word_partially_valid,
-					);
-				} else {
-					// 3b. Full word comparison
-					//
-					// For words that aren't the last word, all 8 bytes should match
-					// if the word is within the term's actual length.
-					b.assert_eq_cond(
-						format!("full_word[{word_idx}]"),
-						term_word,
-						joined_data,
-						word_fully_valid,
-					);
-				}
+				let neg_start = b.add_constant(Word((-(word_byte_offset as i64)) as u64));
+				let bytes_remaining = b.iadd_32(term.len_bytes, neg_start);
+
+				// The mask will handle clamping to 8 bytes internally
+				let mask = create_byte_mask(&b, bytes_remaining);
+
+				b.assert_eq_cond(
+					format!("term[{word_idx}]"),
+					b.band(joined_data, mask),
+					b.band(term_word, mask),
+					word_partially_valid,
+				);
 			}
 
 			// 4. Update offset for next term
 			//
 			// After processing all words of the current term, advance the offset
 			// by the term's actual length to position for the next term.
-			offset = b.iadd_32(offset, term.len);
+			offset = b.iadd_32(offset, term.len_bytes);
 		}
 
 		// 5. Final length verification
 		//
 		// The sum of all term lengths must equal the total joined length.
-		// This ensures there's no extra data in the joined array.
-		b.assert_eq("concat_length", offset, len_joined);
+		b.assert_eq("concat_length", offset, len_joined_bytes);
+		let too_long =
+			b.icmp_ult(b.add_constant(Word((joined.len() << 3) as u64)), len_joined_bytes);
+		b.assert_false("concat_length_lt_joined_len", too_long);
 
 		Concat {
-			len_joined,
+			len_joined_bytes,
 			joined,
 			terms,
 		}
 	}
 
 	/// Populate the len_joined wire with the actual joined size in bytes.
-	pub fn populate_len_joined(&self, w: &mut WitnessFiller, len_joined: usize) {
-		w[self.len_joined] = Word(len_joined as u64);
+	pub fn populate_len_joined_bytes(&self, w: &mut WitnessFiller, len_joined_bytes: usize) {
+		w[self.len_joined_bytes] = Word(len_joined_bytes as u64);
 	}
 
 	/// Populate the joined array from a byte slice.
@@ -271,183 +237,32 @@ impl Concat {
 	/// any unused words are zeroed out.
 	///
 	/// # Panics
-	/// Panics if `joined.len()` > `max_n_joined` (the maximum size specified during construction)
-	pub fn populate_joined(&self, w: &mut WitnessFiller, joined: &[u8]) {
-		let max_n_joined = self.joined.len() * 8;
+	/// Panics if `joined_bytes.len()` > `max_joined_bytes()` (the maximum size possible)
+	pub fn populate_joined(&self, w: &mut WitnessFiller, joined_bytes: &[u8]) {
 		assert!(
-			joined.len() <= max_n_joined,
+			joined_bytes.len() <= self.max_joined_bytes(),
 			"joined length {} exceeds maximum {}",
-			joined.len(),
-			max_n_joined
+			joined_bytes.len(),
+			self.max_joined_bytes()
 		);
 
-		for (i, chunk) in joined.chunks(8).enumerate() {
-			if i < self.joined.len() {
-				let mut word = 0u64;
-				for (j, &byte) in chunk.iter().enumerate() {
-					word |= (byte as u64) << (j * 8);
-				}
-				w[self.joined[i]] = Word(word);
+		for (i, chunk) in joined_bytes.chunks(8).enumerate() {
+			let mut word = 0u64;
+			for (j, &byte) in chunk.iter().enumerate() {
+				word |= (byte as u64) << (j << 3);
 			}
+			w[self.joined[i]] = Word(word);
 		}
 
-		for i in joined.len().div_ceil(8)..self.joined.len() {
+		for i in joined_bytes.len().div_ceil(8)..self.joined.len() {
 			w[self.joined[i]] = Word::ZERO;
 		}
 	}
+
+	pub fn max_joined_bytes(&self) -> usize {
+		self.joined.len() << 3
+	}
 }
-
-/// Extract a word from joined array at a byte position (may be unaligned).
-///
-/// This function extracts 8 bytes from the joined array starting at any byte position,
-/// handling both aligned (position % 8 == 0) and unaligned cases.
-///
-/// # Circuit-Friendly Implementation
-///
-/// Since circuits don't support dynamic array indexing, we use multiplexer patterns:
-/// - Test each possible word index and combine results with masking
-/// - Handle all 8 possible byte offsets (0-7) explicitly
-///
-/// # Alignment Cases
-///
-/// ```text
-/// Aligned (byte_pos % 8 == 0):
-///   Word boundaries: |........|........|........|
-///   Byte position:    ^
-///   Result: One complete word
-///
-/// Unaligned (byte_pos % 8 != 0):
-///   Word boundaries: |........|........|........|
-///   Byte position:       ^
-///   Result: Last part of word N + first part of word N+1
-/// ```
-///
-/// # Algorithm
-///
-/// 1. Calculate word index: byte_pos / 8
-/// 2. Calculate byte offset within word: byte_pos % 8
-/// 3. If aligned (offset == 0): Select word at word_idx
-/// 4. If unaligned: Combine two adjacent words with appropriate shifts
-fn extract_aligned_or_unaligned_word(b: &CircuitBuilder, joined: &[Wire], byte_pos: Wire) -> Wire {
-	// Calculate which word contains the starting byte and the offset within that word
-	let word_idx = b.shr(byte_pos, 3); // byte_pos / 8
-	let byte_offset = b.band(byte_pos, b.add_constant(Word(7))); // byte_pos % 8
-
-	// Check if we're aligned to a word boundary
-	let is_aligned = b.icmp_eq(byte_offset, b.add_constant(Word::ZERO));
-
-	// Aligned case: directly select the word
-	//
-	// Use a multiplexer pattern to select the word at word_idx.
-	// For each word in joined, check if its index matches word_idx.
-	let mut aligned_word = b.add_constant(Word::ZERO);
-	for (i, &word) in joined.iter().enumerate() {
-		let i_wire = b.add_constant(Word(i as u64));
-		let is_this_word = b.icmp_eq(word_idx, i_wire);
-		// Multiplexer: if this is the target word, include it in the result
-		let masked = b.band(word, is_this_word);
-		aligned_word = b.bor(aligned_word, masked);
-	}
-
-	// Unaligned case: combine two adjacent words
-	//
-	// Example with offset=3:
-	// Low word:  [A B C D E F G H]  High word: [I J K L M N O P]
-	// We want:   [D E F G H I J K]
-	// This is:   (low >> 24) | (high << 40)
-	let next_word_idx = b.iadd_32(word_idx, b.add_constant(Word(1)));
-
-	// Extract the two words we need using multiplexer patterns
-	let mut low_word = b.add_constant(Word::ZERO);
-	let mut high_word = b.add_constant(Word::ZERO);
-
-	for (i, &word) in joined.iter().enumerate() {
-		let i_wire = b.add_constant(Word(i as u64));
-		let is_low = b.icmp_eq(word_idx, i_wire);
-		let is_high = b.icmp_eq(next_word_idx, i_wire);
-
-		let masked_low = b.band(word, is_low);
-		let masked_high = b.band(word, is_high);
-
-		low_word = b.bor(low_word, masked_low);
-		high_word = b.bor(high_word, masked_high);
-	}
-
-	// Handle each possible byte offset (1-7)
-	//
-	// Since we can't use variable shifts in circuits, we handle each
-	// offset explicitly and use a multiplexer to select the right one.
-	let mut unaligned_word = b.add_constant(Word::ZERO);
-
-	for offset in 1..8 {
-		let offset_wire = b.add_constant(Word(offset as u64));
-		let is_this_offset = b.icmp_eq(byte_offset, offset_wire);
-
-		// For offset bytes: take last (8-offset) bytes from low word
-		// and first offset bytes from high word
-		let shifted_low = b.shr(low_word, (offset * 8) as u32);
-		let shifted_high = b.shl(high_word, ((8 - offset) * 8) as u32);
-		let combined = b.bor(shifted_low, shifted_high);
-
-		// Include this combination in result if offset matches
-		let masked = b.band(combined, is_this_offset);
-		unaligned_word = b.bor(unaligned_word, masked);
-	}
-
-	// Final selection: aligned or unaligned result
-	//
-	// Circuit-friendly conditional: select(cond, a, b) = (a & cond) | (b & ~cond)
-	let aligned_masked = b.band(aligned_word, is_aligned);
-	let unaligned_masked = b.band(unaligned_word, b.bnot(is_aligned));
-	b.bor(aligned_masked, unaligned_masked)
-}
-
-/// Create a byte mask for the first `n_bytes` bytes of a word.
-///
-/// This function generates a mask with the first `n_bytes` bytes set to 0xFF
-/// and remaining bytes set to 0x00. Used for partial word comparisons.
-///
-/// # Examples
-///
-/// ```text
-/// n_bytes = 0: 0x0000000000000000
-/// n_bytes = 1: 0x00000000000000FF
-/// n_bytes = 2: 0x000000000000FFFF
-/// n_bytes = 3: 0x0000000000FFFFFF
-/// ...
-/// n_bytes = 8: 0xFFFFFFFFFFFFFFFF
-/// ```
-///
-/// # Circuit Implementation
-///
-/// Since we can't use dynamic bit shifting in circuits, we handle each possible
-/// value of n_bytes (0-8) explicitly and use a multiplexer to select the right mask.
-fn create_byte_mask(b: &CircuitBuilder, n_bytes: Wire) -> Wire {
-	let mut mask = b.add_constant(Word::ZERO);
-
-	// Handle each possible byte count explicitly
-	for i in 0..=8 {
-		let i_wire = b.add_constant(Word(i as u64));
-		let is_this_count = b.icmp_eq(n_bytes, i_wire);
-
-		// Calculate mask for i bytes
-		// Special cases: 0 bytes = no mask, 8 bytes = full mask
-		let mask_value = if i == 0 {
-			0u64
-		} else if i == 8 {
-			u64::MAX
-		} else {
-			(1u64 << (i * 8)) - 1 // Sets the low i*8 bits
-		};
-
-		// Include this mask in result if byte count matches
-		let this_mask = b.band(b.add_constant(Word(mask_value)), is_this_count);
-		mask = b.bor(mask, this_mask);
-	}
-
-	mask
-}
-
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -466,18 +281,17 @@ mod tests {
 		let b = CircuitBuilder::new();
 
 		let len_joined = b.add_inout();
-		let joined: Vec<Wire> = (0..max_n_joined / 8).map(|_| b.add_inout()).collect();
+		let joined: Vec<Wire> = (0..max_n_joined).map(|_| b.add_inout()).collect();
 
 		let terms: Vec<Term> = term_max_lens
 			.into_iter()
 			.map(|max_len| Term {
-				len: b.add_inout(),
-				data: (0..max_len / 8).map(|_| b.add_inout()).collect(),
-				max_len,
+				len_bytes: b.add_inout(),
+				data: (0..max_len).map(|_| b.add_inout()).collect(),
 			})
 			.collect();
 
-		let concat = Concat::new(&b, max_n_joined, len_joined, joined, terms);
+		let concat = Concat::new(&b, len_joined, joined, terms);
 
 		(b, concat)
 	}
@@ -497,13 +311,13 @@ mod tests {
 		let mut filler = circuit.new_witness_filler();
 
 		// Set the expected joined length
-		concat.populate_len_joined(&mut filler, expected_joined.len());
+		concat.populate_len_joined_bytes(&mut filler, expected_joined.len());
 		concat.populate_joined(&mut filler, expected_joined);
 
 		// Set up each term
-		for (i, data) in term_data.iter().enumerate() {
-			concat.terms[i].populate_len(&mut filler, data.len());
-			concat.terms[i].populate_data(&mut filler, data);
+		for (i, data_bytes) in term_data.iter().enumerate() {
+			concat.terms[i].populate_len_bytes(&mut filler, data_bytes.len());
+			concat.terms[i].populate_data(&mut filler, data_bytes);
 		}
 
 		circuit.populate_wire_witness(&mut filler)?;
@@ -520,19 +334,19 @@ mod tests {
 	#[test]
 	fn test_two_terms_concat() {
 		// Verify basic two-term concatenation works correctly
-		test_concat(16, vec![8, 8], b"helloworld", &[b"hello", b"world"]).unwrap();
+		test_concat(2, vec![1, 1], b"helloworld", &[b"hello", b"world"]).unwrap();
 	}
 
 	#[test]
 	fn test_three_terms_concat() {
 		// Verify three-term concatenation maintains correct order
-		test_concat(24, vec![8, 8, 8], b"foobarbaz", &[b"foo", b"bar", b"baz"]).unwrap();
+		test_concat(3, vec![1, 1, 1], b"foobarbaz", &[b"foo", b"bar", b"baz"]).unwrap();
 	}
 
 	#[test]
 	fn test_single_term() {
 		// Edge case: single term should equal the joined result
-		test_concat(8, vec![8], b"hello", &[b"hello"]).unwrap();
+		test_concat(1, vec![1], b"hello", &[b"hello"]).unwrap();
 	}
 
 	// Empty term handling tests
@@ -540,13 +354,13 @@ mod tests {
 	#[test]
 	fn test_empty_term() {
 		// Verify empty terms are handled correctly in the middle
-		test_concat(16, vec![8, 8, 8], b"helloworld", &[b"hello", b"", b"world"]).unwrap();
+		test_concat(2, vec![1, 1, 1], b"helloworld", &[b"hello", b"", b"world"]).unwrap();
 	}
 
 	#[test]
 	fn test_all_terms_empty() {
 		// Edge case: all empty terms should produce empty result
-		test_concat(8, vec![8, 8], b"", &[b"", b""]).unwrap();
+		test_concat(1, vec![1, 1], b"", &[b"", b""]).unwrap();
 	}
 
 	// Word alignment tests
@@ -555,13 +369,13 @@ mod tests {
 	fn test_unaligned_terms() {
 		// Test terms that don't align to word boundaries
 		// This exercises the unaligned word extraction logic
-		test_concat(24, vec![8, 16], b"hello12world456", &[b"hello12", b"world456"]).unwrap();
+		test_concat(3, vec![1, 2], b"hello12world456", &[b"hello12", b"world456"]).unwrap();
 	}
 
 	#[test]
 	fn test_single_byte_terms() {
 		// Test many small terms to verify offset tracking
-		test_concat(8, vec![8, 8, 8, 8, 8], b"abcde", &[b"a", b"b", b"c", b"d", b"e"]).unwrap();
+		test_concat(1, vec![1, 1, 1, 1, 1], b"abcde", &[b"a", b"b", b"c", b"d", b"e"]).unwrap();
 	}
 
 	// Real-world use case tests
@@ -570,8 +384,8 @@ mod tests {
 	fn test_domain_concat() {
 		// Realistic example: concatenating domain name parts
 		test_concat(
-			32,
-			vec![8, 8, 8, 8, 8],
+			4,
+			vec![1, 1, 1, 1, 1],
 			b"api.example.com",
 			&[b"api", b".", b"example", b".", b"com"],
 		)
@@ -584,17 +398,17 @@ mod tests {
 	fn test_length_mismatch() {
 		// Verify the circuit rejects incorrect length claims
 		// Test where claimed length doesn't match actual concatenation
-		let (b, concat) = create_concat_circuit(16, vec![8, 8]);
+		let (b, concat) = create_concat_circuit(2, vec![1, 1]);
 		let circuit = b.build();
 		let mut filler = circuit.new_witness_filler();
 
 		// Claim joined is 8 bytes but terms sum to 10
-		concat.populate_len_joined(&mut filler, 8);
+		concat.populate_len_joined_bytes(&mut filler, 8);
 		concat.populate_joined(&mut filler, b"helloworld");
 
-		concat.terms[0].populate_len(&mut filler, 5);
+		concat.terms[0].populate_len_bytes(&mut filler, 5);
 		concat.terms[0].populate_data(&mut filler, b"hello");
-		concat.terms[1].populate_len(&mut filler, 5);
+		concat.terms[1].populate_len_bytes(&mut filler, 5);
 		concat.terms[1].populate_data(&mut filler, b"world");
 
 		let result = circuit.populate_wire_witness(&mut filler);
@@ -611,16 +425,16 @@ mod tests {
 		assert_eq!(correct_data.len(), 16);
 		assert_eq!(wrong_data.len(), 16);
 
-		let (b, concat) = create_concat_circuit(16, vec![16]);
+		let (b, concat) = create_concat_circuit(2, vec![2]);
 		let circuit = b.build();
 		let mut filler = circuit.new_witness_filler();
 
 		// Populate with WRONG data in joined array
-		concat.populate_len_joined(&mut filler, 16);
+		concat.populate_len_joined_bytes(&mut filler, 16);
 		concat.populate_joined(&mut filler, wrong_data);
 
 		// But claim it matches the CORRECT data in the term
-		concat.terms[0].populate_len(&mut filler, 16);
+		concat.terms[0].populate_len_bytes(&mut filler, 16);
 		concat.terms[0].populate_data(&mut filler, correct_data);
 
 		// This should fail since the data doesn't match
@@ -634,13 +448,13 @@ mod tests {
 		let correct_data = b"0123456789ABCDEF0123456789ABCDEF";
 		let wrong_data = b"0123456789ABCDEF0123456789ABCDXX"; // Last word wrong
 
-		let (b, concat) = create_concat_circuit(32, vec![32]);
+		let (b, concat) = create_concat_circuit(4, vec![4]);
 		let circuit = b.build();
 		let mut filler = circuit.new_witness_filler();
 
-		concat.populate_len_joined(&mut filler, 32);
+		concat.populate_len_joined_bytes(&mut filler, 32);
 		concat.populate_joined(&mut filler, wrong_data);
-		concat.terms[0].populate_len(&mut filler, 32);
+		concat.terms[0].populate_len_bytes(&mut filler, 32);
 		concat.terms[0].populate_data(&mut filler, correct_data);
 
 		let result = circuit.populate_wire_witness(&mut filler);
@@ -655,21 +469,16 @@ mod tests {
 	fn test_different_term_max_lens() {
 		// Terms can have different maximum sizes
 		// This allows efficient circuits when term sizes vary significantly
-		test_concat(
-			32,
-			vec![8, 24],
-			b"shorta very long string",
-			&[b"short", b"a very long string"],
-		)
-		.unwrap();
+		test_concat(4, vec![1, 3], b"shorta very long string", &[b"short", b"a very long string"])
+			.unwrap();
 	}
 
 	#[test]
 	fn test_mixed_term_sizes() {
 		// Complex example with varied term sizes matching real-world usage
 		test_concat(
-			64,
-			vec![8, 8, 32, 8, 16],
+			6,
+			vec![1, 1, 4, 1, 2],
 			b"hi.this is a much longer term.bye",
 			&[b"hi", b".", b"this is a much longer term", b".", b"bye"],
 		)
@@ -717,16 +526,16 @@ mod tests {
 			joined_override: Option<Vec<u8>>,
 			should_succeed: bool,
 		) {
-			let expected_joined: Vec<u8> = if joined_override.is_none() {
+			let expected_joined_bytes: Vec<u8> = if joined_override.is_none() {
 				term_specs
 					.iter()
-					.flat_map(|(data, _)| data.clone())
+					.flat_map(|(data_bytes, _)| data_bytes.clone())
 					.collect()
 			} else {
 				joined_override.clone().unwrap()
 			};
 
-			let max_n_joined = (expected_joined.len().div_ceil(8) * 8).max(8);
+			let max_n_joined = expected_joined_bytes.len().div_ceil(8);
 			let term_max_lens: Vec<usize> =
 				term_specs.iter().map(|(_, max_len)| *max_len).collect();
 
@@ -734,12 +543,12 @@ mod tests {
 			let circuit = b.build();
 			let mut filler = circuit.new_witness_filler();
 
-			concat.populate_len_joined(&mut filler, expected_joined.len());
-			concat.populate_joined(&mut filler, &expected_joined);
+			concat.populate_len_joined_bytes(&mut filler, expected_joined_bytes.len());
+			concat.populate_joined(&mut filler, &expected_joined_bytes);
 
-			for (i, (data, _)) in term_specs.iter().enumerate() {
-				concat.terms[i].populate_len(&mut filler, data.len());
-				concat.terms[i].populate_data(&mut filler, data);
+			for (i, (data_bytes, _)) in term_specs.iter().enumerate() {
+				concat.terms[i].populate_len_bytes(&mut filler, data_bytes.len());
+				concat.terms[i].populate_data(&mut filler, data_bytes);
 			}
 
 			let result = circuit.populate_wire_witness(&mut filler);
@@ -758,10 +567,10 @@ mod tests {
 			}
 
 			#[test]
-			fn test_single_term_concatenation(data in term_data_strategy()) {
+			fn test_single_term_concatenation(data_bytes in term_data_strategy()) {
 				// Special case: single term should equal joined
-				let max_len = (data.len().div_ceil(8) * 8).max(8);
-				let term_specs = vec![(data, max_len)];
+				let max_len = data_bytes.len().div_ceil(8);
+				let term_specs = vec![(data_bytes, max_len)];
 				run_concat_test(term_specs, None, true);
 			}
 
@@ -802,7 +611,7 @@ mod tests {
 				prop_assume!(!term_specs.is_empty());
 
 				let correct_joined: Vec<u8> = term_specs.iter()
-					.flat_map(|(data, _)| data.clone())
+					.flat_map(|(data_bytes, _)| data_bytes.clone())
 					.collect();
 
 				prop_assume!(!correct_joined.is_empty());
@@ -821,7 +630,7 @@ mod tests {
 				prop_assume!(term_specs.len() >= 2);
 
 				let correct_joined: Vec<u8> = term_specs.iter()
-					.flat_map(|(data, _)| data.clone())
+					.flat_map(|(data_bytes, _)| data_bytes.clone())
 					.collect();
 
 				prop_assume!(!correct_joined.is_empty());
@@ -837,8 +646,8 @@ mod tests {
 				// Test that swapping terms is detected
 				prop_assume!(a != b && !a.is_empty() && !b.is_empty());
 
-				let max_len_a = (a.len().div_ceil(8) * 8).max(8);
-				let max_len_b = (b.len().div_ceil(8) * 8).max(8);
+				let max_len_a = a.len().div_ceil(8);
+				let max_len_b = b.len().div_ceil(8);
 
 				let term_specs = vec![(a.clone(), max_len_a), (b.clone(), max_len_b)];
 				let mut swapped_joined = b.clone();
@@ -853,7 +662,7 @@ mod tests {
 				prop_assume!(!term_specs.is_empty());
 
 				let mut joined_with_extra: Vec<u8> = term_specs.iter()
-					.flat_map(|(data, _)| data.clone())
+					.flat_map(|(data_bytes, _)| data_bytes.clone())
 					.collect();
 				joined_with_extra.push(42); // Add extra byte
 
@@ -867,7 +676,7 @@ mod tests {
 				for i in 0..n_terms {
 					let size = base_size + i * 10;
 					let data = vec![i as u8; size];
-					let max_len = (size.div_ceil(8) * 8).max(8);
+					let max_len = size.div_ceil(8);
 					term_specs.push((data, max_len));
 				}
 				run_concat_test(term_specs, None, true);
@@ -881,9 +690,9 @@ mod tests {
 				let term3 = vec![3u8; 16];
 
 				let term_specs = vec![
-					(term1, 8),
-					(term2, 8),
-					(term3, 16),
+					(term1, 1),
+					(term2, 1),
+					(term3, 2),
 				];
 
 				run_concat_test(term_specs, None, true);
@@ -897,13 +706,13 @@ mod tests {
 
 				// Build correct joined
 				let correct_joined: Vec<u8> = term_specs.iter()
-					.flat_map(|(data, _)| data.clone())
+					.flat_map(|(data_bytes, _)| data_bytes.clone())
 					.collect();
 
 				// But claim first term is shorter than it actually is
 				let mut modified_specs = term_specs.clone();
-				let shortened_len = modified_specs[0].0.len() - 1;
-				modified_specs[0].0.truncate(shortened_len);
+				let shortened_len_bytes = modified_specs[0].0.len() - 1;
+				modified_specs[0].0.truncate(shortened_len_bytes);
 
 				// This should fail because total length won't match
 				run_concat_test(modified_specs, Some(correct_joined), false);
@@ -913,14 +722,14 @@ mod tests {
 		#[test]
 		fn test_full_word_terms() {
 			// Test terms with lengths that are multiples of 8
-			let lengths = vec![8, 16, 24, 32, 40, 48];
+			let lengths = vec![1, 2, 3, 4, 5, 6];
 
 			for len in lengths {
-				let data = vec![0x55u8; len]; // Repeated pattern
-				let mut wrong_data = data.clone();
-				wrong_data[len - 1] = 0xAA; // Change last byte
+				let data_bytes = vec![0x55u8; len << 3]; // Repeated pattern
+				let mut wrong_data = data_bytes.clone();
+				wrong_data[(len << 3) - 1] = 0xAA; // Change last byte
 
-				let term_specs = vec![(data.clone(), len)];
+				let term_specs = vec![(data_bytes.clone(), len)];
 
 				// Should reject wrong data
 				run_concat_test(term_specs.clone(), Some(wrong_data.clone()), false);
@@ -932,21 +741,21 @@ mod tests {
 		fn test_maximum_terms() {
 			// Test with many terms to ensure no stack overflow or performance issues
 			let term_specs: Vec<(Vec<u8>, usize)> =
-				(0..50).map(|i| (vec![i as u8; 2], 8)).collect();
+				(0..50).map(|i| (vec![i as u8; 2], 1)).collect();
 			run_concat_test(term_specs, None, true);
 		}
 
 		#[test]
 		fn test_all_empty_terms() {
 			// Test edge case of all empty terms
-			let term_specs = vec![(vec![], 8), (vec![], 8), (vec![], 8)];
+			let term_specs = vec![(vec![], 1), (vec![], 1), (vec![], 1)];
 			run_concat_test(term_specs, None, true);
 		}
 
 		#[test]
 		fn test_zero_length_joined_mismatch() {
 			// Test when joined is empty but terms aren't
-			let term_specs = vec![(vec![1, 2, 3], 8)];
+			let term_specs = vec![(vec![1, 2, 3], 1)];
 			run_concat_test(term_specs, Some(vec![]), false);
 		}
 	}

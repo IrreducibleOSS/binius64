@@ -55,7 +55,7 @@ pub fn create_sha256_cs_with_witness() -> (ConstraintSystem, ValueVec) {
 
 	// Populate with concrete message: "abc"
 	let message_bytes = b"abc";
-	sha256.populate_len(&mut witness_filler, message_bytes.len());
+	sha256.populate_len_bytes(&mut witness_filler, message_bytes.len());
 	sha256.populate_message(&mut witness_filler, message_bytes);
 
 	// Calculate SHA256 digest of the message dynamically
@@ -83,24 +83,21 @@ pub fn create_concat_cs_with_witness() -> (ConstraintSystem, ValueVec) {
 	// Create terms: "Hello" + " " + "World!"
 	let terms = vec![
 		Term {
-			len: builder.add_witness(),
+			len_bytes: builder.add_witness(),
 			data: (0..1).map(|_| builder.add_witness()).collect(),
-			max_len: 8,
 		},
 		Term {
-			len: builder.add_witness(),
+			len_bytes: builder.add_witness(),
 			data: (0..1).map(|_| builder.add_witness()).collect(),
-			max_len: 8,
 		},
 		Term {
-			len: builder.add_witness(),
+			len_bytes: builder.add_witness(),
 			data: (0..1).map(|_| builder.add_witness()).collect(),
-			max_len: 8,
 		},
 	];
 
 	// Create the Concat circuit
-	let concat = Concat::new(&builder, max_n_joined, len_joined, joined, terms);
+	let concat = Concat::new(&builder, len_joined, joined, terms);
 
 	let circuit = builder.build();
 	let mut witness_filler = circuit.new_witness_filler();
@@ -112,17 +109,17 @@ pub fn create_concat_cs_with_witness() -> (ConstraintSystem, ValueVec) {
 	let joined_data = b"Hello World!";
 
 	// Populate terms
-	concat.terms[0].populate_len(&mut witness_filler, term1_data.len());
+	concat.terms[0].populate_len_bytes(&mut witness_filler, term1_data.len());
 	concat.terms[0].populate_data(&mut witness_filler, term1_data);
 
-	concat.terms[1].populate_len(&mut witness_filler, term2_data.len());
+	concat.terms[1].populate_len_bytes(&mut witness_filler, term2_data.len());
 	concat.terms[1].populate_data(&mut witness_filler, term2_data);
 
-	concat.terms[2].populate_len(&mut witness_filler, term3_data.len());
+	concat.terms[2].populate_len_bytes(&mut witness_filler, term3_data.len());
 	concat.terms[2].populate_data(&mut witness_filler, term3_data);
 
 	// Populate joined result
-	concat.populate_len_joined(&mut witness_filler, joined_data.len());
+	concat.populate_len_joined_bytes(&mut witness_filler, joined_data.len());
 	concat.populate_joined(&mut witness_filler, joined_data);
 
 	// Get the witness vector
@@ -135,23 +132,18 @@ pub fn create_slice_cs_with_witness() -> (ConstraintSystem, ValueVec) {
 	use binius_frontend::circuits::slice::Slice;
 
 	let builder = CircuitBuilder::new();
-	let max_n_input: usize = 32; // Maximum input size
-	let max_n_slice: usize = 16; // Maximum slice size
 
 	// Create wires for slice circuit
 	let len_input = builder.add_witness();
 	let len_slice = builder.add_witness();
-	let input: Vec<binius_frontend::compiler::Wire> = (0..max_n_input / 8)
-		.map(|_| builder.add_witness())
-		.collect();
-	let slice: Vec<binius_frontend::compiler::Wire> = (0..max_n_slice / 8)
-		.map(|_| builder.add_witness())
-		.collect();
+	let input: Vec<binius_frontend::compiler::Wire> =
+		(0..4).map(|_| builder.add_witness()).collect();
+	let slice: Vec<binius_frontend::compiler::Wire> =
+		(0..2).map(|_| builder.add_witness()).collect();
 	let offset = builder.add_witness();
 
 	// Create the Slice circuit
-	let slice_circuit =
-		Slice::new(&builder, max_n_input, max_n_slice, len_input, len_slice, input, slice, offset);
+	let slice_circuit = Slice::new(&builder, len_input, len_slice, input, slice, offset);
 
 	let circuit = builder.build();
 	let mut witness_filler = circuit.new_witness_filler();

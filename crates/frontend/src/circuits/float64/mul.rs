@@ -60,7 +60,7 @@ pub fn fp64_mul_make_round_base(cb: &CircuitBuilder, m_a: Wire, m_b: Wire) -> (W
 
 	// Top bit (bit 105 of p) is bit 41 of `hi`
 	let top105_bit01 = bit_lsb(cb, hi, 41); // 0/1
-	let top105_sel = to_mask01(cb, top105_bit01); // all-1/all-0
+	let top105_sel = bit_msb(cb, hi, 41); // same bit as top105_bit01 but as MSB-bool
 
 	// Precompute both shifts and stickies:
 	// s = 41
@@ -110,10 +110,11 @@ pub fn fp64_mul_finish_specials(
 	let inf_payload = cb.shl(exp_2047, 52);
 	let sign_hi = cb.shl(sign_xor, 63);
 
-	let any_nan = cb.bor(pa.is_nan, pb.is_nan);
-	let any_inf = cb.bor(pa.is_inf, pb.is_inf);
-	let any_zero = cb.bor(pa.is_zero, pb.is_zero);
-	let inf_times_zero = cb.bor(cb.band(pa.is_inf, pb.is_zero), cb.band(pb.is_inf, pa.is_zero));
+	let any_nan = bool_canonical(cb, cb.bor(pa.is_nan, pb.is_nan));
+	let any_inf = bool_canonical(cb, cb.bor(pa.is_inf, pb.is_inf));
+	let any_zero = bool_canonical(cb, cb.bor(pa.is_zero, pb.is_zero));
+	let inf_times_zero =
+		bool_canonical(cb, cb.bor(cb.band(pa.is_inf, pb.is_zero), cb.band(pb.is_inf, pa.is_zero)));
 
 	let nan_mask = cb.bor(any_nan, inf_times_zero);
 
@@ -483,14 +484,14 @@ mod tests {
 			// (pa_is_nan, pa_is_inf, pa_is_zero, pb_is_nan, pb_is_inf, pb_is_zero, sign_xor,
 			// finite_result)
 			(0, 0, 0, 0, 0, 0, 0, 0x4000000000000000u64), // Normal case -> finite_result
-			(u64::MAX, 0, 0, 0, 0, 0, 0, 0x4000000000000000u64), // A is NaN -> qNaN
-			(0, 0, 0, u64::MAX, 0, 0, 1, 0x4000000000000000u64), // B is NaN -> qNaN
-			(0, u64::MAX, 0, 0, 0, u64::MAX, 0, 0x4000000000000000u64), // Inf * 0 -> qNaN
-			(0, 0, u64::MAX, 0, u64::MAX, 0, 1, 0x4000000000000000u64), // 0 * Inf -> qNaN
-			(0, u64::MAX, 0, 0, 0, 0, 0, 0x4000000000000000u64), // +Inf * finite -> +Inf
-			(0, u64::MAX, 0, 0, 0, 0, 1, 0x4000000000000000u64), // Inf * finite with XOR sign -> -Inf
-			(0, 0, u64::MAX, 0, 0, 0, 0, 0x4000000000000000u64), // 0 * finite -> +0
-			(0, 0, u64::MAX, 0, 0, 0, 1, 0x4000000000000000u64), // 0 * finite with XOR sign -> -0
+			(1u64 << 63, 0, 0, 0, 0, 0, 0, 0x4000000000000000u64), // A is NaN -> qNaN
+			(0, 0, 0, 1u64 << 63, 0, 0, 1, 0x4000000000000000u64), // B is NaN -> qNaN
+			(0, 1u64 << 63, 0, 0, 0, 1u64 << 63, 0, 0x4000000000000000u64), // Inf * 0 -> qNaN
+			(0, 0, 1u64 << 63, 0, 1u64 << 63, 0, 1, 0x4000000000000000u64), // 0 * Inf -> qNaN
+			(0, 1u64 << 63, 0, 0, 0, 0, 0, 0x4000000000000000u64), // +Inf * finite -> +Inf
+			(0, 1u64 << 63, 0, 0, 0, 0, 1, 0x4000000000000000u64), // Inf * finite with XOR sign -> -Inf
+			(0, 0, 1u64 << 63, 0, 0, 0, 0, 0x4000000000000000u64), // 0 * finite -> +0
+			(0, 0, 1u64 << 63, 0, 0, 0, 1, 0x4000000000000000u64), // 0 * finite with XOR sign -> -0
 		];
 
 		for (

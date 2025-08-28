@@ -52,11 +52,11 @@ impl BigUint {
 		// TODO: it's more efficient to add all-1 BigUint and check carry out (jimpo)
 		//       do this once BigUint addition returning a Wire carry out exists
 		let zero = b.add_constant(Word::ZERO);
-		let all_one = b.add_constant(Word::ALL_ONE);
+		let msb_one = b.add_constant(Word::MSB_ONE);
 		self.limbs
 			.iter()
 			.map(|&limb| b.icmp_eq(limb, zero))
-			.fold(all_one, |lhs, rhs| b.band(lhs, rhs))
+			.fold(msb_one, |lhs, rhs| b.band(lhs, rhs))
 	}
 
 	/// Pads to given limb length with zeros.
@@ -133,7 +133,7 @@ pub fn assert_eq(builder: &CircuitBuilder, name: impl Into<String>, a: &BigUint,
 /// * `builder` - Circuit builder for constraint generation
 /// * `a` - First operand `BigUint`
 /// * `b` - Second operand `BigUint` (must have same number of limbs as `a`)
-/// * `mask` - a must equal b if mask is all-1, constraint is ignored if mask is all-0
+/// * `cond` - a must equal b if cond is msb-true; constraint is ignored if cond is msb-false
 ///
 /// # Panics
 /// Panics if `a` and `b` have different number of limbs.
@@ -142,7 +142,7 @@ pub fn assert_eq_cond(
 	name: impl Into<String>,
 	a: &BigUint,
 	b: &BigUint,
-	mask: Wire,
+	cond: Wire,
 ) {
 	assert_eq!(
 		a.limbs.len(),
@@ -151,7 +151,7 @@ pub fn assert_eq_cond(
 	);
 	let base_name = name.into();
 	for (i, (&a_l, &b_l)) in iter::zip(&a.limbs, &b.limbs).enumerate() {
-		builder.assert_eq_cond(format!("{base_name}[{i}]"), a_l, b_l, mask);
+		builder.assert_eq_cond(format!("{base_name}[{i}]"), a_l, b_l, cond);
 	}
 }
 

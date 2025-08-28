@@ -90,32 +90,36 @@ impl Rs256Verify {
 		modulus: FixedByteVec,
 	) -> Self {
 		assert!(
-			signature.max_len >= 256,
+			signature.data.len() >= 32,
 			"signature must have at least 256 bytes for 2048-bit RSA"
 		);
-		assert!(modulus.max_len >= 256, "modulus must have at least 256 bytes for 2048-bit RSA");
+		assert!(modulus.data.len() >= 32, "modulus must have at least 256 bytes for 2048-bit RSA");
 
 		// Truncate signature to exactly 256 bytes if it's larger
 		// This is needed because:
 		// 1. RSA signatures are always exactly 256 bytes for 2048-bit RSA
 		// 2. The input might be padded for other circuit requirements (e.g., Base64 alignment to
 		//    264 bytes)
-		let signature = if signature.max_len > 256 {
-			signature.truncate(builder, 256)
+		let signature = if signature.data.len() > 32 {
+			signature.truncate(builder, 32)
 		} else {
 			signature.clone()
 		};
 
 		let signature_bignum = fixedbytevec_le_to_biguint(builder, &signature);
-		builder.assert_eq("signature_bytes_len", signature.len, builder.add_constant_64(256));
+		builder.assert_eq("signature_bytes_len", signature.len_bytes, builder.add_constant_64(256));
 
 		let modulus_bignum = fixedbytevec_le_to_biguint(builder, &modulus);
-		builder.assert_eq("modulus_bytes_len", modulus.len, builder.add_constant_64(256));
+		builder.assert_eq("modulus_bytes_len", modulus.len_bytes, builder.add_constant_64(256));
 
 		let sha256_builder = builder.subcircuit("sha256");
 		let expected_hash_wires: [Wire; 4] = std::array::from_fn(|_| sha256_builder.add_witness());
-		let sha256 =
-			Sha256::new(&sha256_builder, message.len, expected_hash_wires, message.data.clone());
+		let sha256 = Sha256::new(
+			&sha256_builder,
+			message.len_bytes,
+			expected_hash_wires,
+			message.data.clone(),
+		);
 		let expected_hash = BigUint {
 			limbs: expected_hash_wires.to_vec(),
 		};
@@ -210,11 +214,8 @@ impl Rs256Verify {
 	}
 
 	/// Populate the message length
-	///
-	/// # Panics
-	/// Panics if message_len > message.len() * 8
-	pub fn populate_message_len(&self, w: &mut WitnessFiller, message_len: usize) {
-		self.sha256.populate_len(w, message_len);
+	pub fn populate_len_bytes(&self, w: &mut WitnessFiller, len_bytes: usize) {
+		self.sha256.populate_len_bytes(w, len_bytes);
 	}
 
 	/// Populate the RSA signature, modulus and intermediate computations
@@ -471,21 +472,23 @@ mod tests {
 	fn populate_circuit(
 		circuit: &Rs256Verify,
 		w: &mut WitnessFiller,
-		signature: &[u8],
-		message: &[u8],
-		modulus: &[u8],
+		signature_bytes: &[u8],
+		message_bytes: &[u8],
+		modulus_bytes: &[u8],
 	) {
-		let hash = Sha256::digest(message);
-		circuit.populate_rsa(w, signature, modulus);
-		circuit.populate_message_len(w, message.len());
-		circuit.populate_message(w, message);
+		let hash = Sha256::digest(message_bytes);
+		circuit.populate_rsa(w, signature_bytes, modulus_bytes);
+		circuit.populate_len_bytes(w, message_bytes.len());
+		circuit.populate_message(w, message_bytes);
 		circuit.sha256.populate_digest(w, hash.into());
 	}
 
-	fn setup_circuit(builder: &mut CircuitBuilder, max_message_len: usize) -> Rs256Verify {
-		let signature_bytes = FixedByteVec::new_inout(builder, 256);
-		let modulus_bytes = FixedByteVec::new_inout(builder, 256);
-		let message = FixedByteVec::new_witness(builder, max_message_len);
+	fn setup_circuit(builder: &mut CircuitBuilder, max_len: usize) -> Rs256Verify {
+		// max_len is now denominated in wires, not bytes.
+		// this is a consistent change made throughout the codebase.
+		let signature_bytes = FixedByteVec::new_inout(builder, 32);
+		let modulus_bytes = FixedByteVec::new_inout(builder, 32);
+		let message = FixedByteVec::new_witness(builder, max_len);
 
 		Rs256Verify::new(builder, message, signature_bytes, modulus_bytes)
 	}
@@ -493,24 +496,24 @@ mod tests {
 	#[test]
 	fn test_real_rsa_signature_verification_with_message() {
 		let mut builder = CircuitBuilder::new();
-		let circuit = setup_circuit(&mut builder, 2048);
+		let circuit = setup_circuit(&mut builder, 32);
 		let cs = builder.build();
 
 		let private_key = test_rsa_key();
 		let public_key = RsaPublicKey::from(&private_key);
 		let mut rng = StdRng::seed_from_u64(42);
-		let mut message = [0u8; 256];
-		rng.try_fill_bytes(&mut message).unwrap();
+		let mut message_bytes = [0u8; 256];
+		rng.try_fill_bytes(&mut message_bytes).unwrap();
 
 		// Sign with PKCS1v15 padding scheme
-		let digest = Sha256::digest(message);
+		let digest = Sha256::digest(message_bytes);
 		let signature_bytes = private_key
 			.sign(rsa::Pkcs1v15Sign::new::<Sha256>(), &digest)
 			.expect("failed to sign");
 		let modulus_bytes = public_key.n().to_bytes_be();
 
 		let mut w = cs.new_witness_filler();
-		populate_circuit(&circuit, &mut w, &signature_bytes, &message, &modulus_bytes);
+		populate_circuit(&circuit, &mut w, &signature_bytes, &message_bytes, &modulus_bytes);
 
 		cs.populate_wire_witness(&mut w).unwrap();
 		verify_constraints(cs.constraint_system(), &w.into_value_vec()).unwrap();

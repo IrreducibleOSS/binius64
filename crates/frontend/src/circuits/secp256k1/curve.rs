@@ -7,7 +7,6 @@ use super::{
 use crate::{
 	circuits::bignum::{BigUint, PseudoMersennePrimeField, assert_eq, biguint_eq, select},
 	compiler::{CircuitBuilder, Wire},
-	util::bool_to_mask,
 };
 
 /// Secp256k1 - a short Weierstrass elliptic curve of the form `y^2 = x^3 + 7` over
@@ -50,7 +49,7 @@ impl Secp256k1 {
 		let y_pow2 = f_p.square(b, &p.y);
 		assert_eq(b, "secp256k1_on_curve", &y_pow2, &f_p.add(b, &x_pow3, &self.b));
 
-		b.assert_0("not_point_at_infinity", p.is_point_at_infinity);
+		b.assert_false("not_point_at_infinity", p.is_point_at_infinity);
 	}
 
 	/// Recover the full affine point `(r, y)` by its x coordinate and y parity.
@@ -143,7 +142,7 @@ impl Secp256k1 {
 		let pai_sum = b.band(x_diff_zero, b.bnot(y_diff_zero)); // adding negation
 		let is_point_at_infinity = b.select(pai_1, pai_2, b.select(pai_2, pai_1, pai_sum));
 
-		b.assert_0("not_doubling", bool_to_mask(b, b.band(x_diff_zero, y_diff_zero)));
+		b.assert_false("not_doubling", b.band(x_diff_zero, y_diff_zero));
 
 		Secp256k1Affine {
 			x,

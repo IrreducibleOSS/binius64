@@ -553,6 +553,32 @@ impl CircuitBuilder {
 		graph.assertion_names[gate] = path_spec;
 	}
 
+	/// asserts that the given wire, interpreted as a MSB-bool, is false.
+	/// this is equivalent to asserting that x & 0x8000000000000000 == 0.
+	///
+	/// # Cost
+	///
+	/// 1 AND constraint.
+	pub fn assert_false(&self, name: impl Into<String>, x: Wire) {
+		let mut graph = self.graph_mut();
+		let gate = graph.emit_gate(self.current_path, Opcode::AssertFalse, [x], []);
+		let path_spec = graph.path_spec_tree.extend(self.current_path, name);
+		graph.assertion_names[gate] = path_spec;
+	}
+
+	/// asserts that the given wire, interpreted as a MSB-bool, is true.
+	/// this is equivalent to asserting that x & 0x8000000000000000 == 0x8000000000000000.
+	///
+	/// # Cost
+	///
+	/// 1 AND constraint.
+	pub fn assert_true(&self, name: impl Into<String>, x: Wire) {
+		let mut graph = self.graph_mut();
+		let gate = graph.emit_gate(self.current_path, Opcode::AssertTrue, [x], []);
+		let path_spec = graph.path_spec_tree.extend(self.current_path, name);
+		graph.assertion_names[gate] = path_spec;
+	}
+
 	/// 64-bit × 64-bit → 128-bit unsigned multiplication.
 	/// Returns (hi, lo) where result = (hi << 64) | lo
 	pub fn imul(&self, a: Wire, b: Wire) -> (Wire, Wire) {
@@ -575,21 +601,22 @@ impl CircuitBuilder {
 
 	/// Conditional equality assertion.
 	///
-	/// Asserts that two 64-bit wires are equal, but only when the mask is all-1.
-	/// When mask is all-0, the assertion is a no-op.
+	/// Asserts that two 64-bit wires are equal, but only when the MSB-bool value of `cond` is true.
+	/// When `cond` is MSB-bool-false, the assertion is a no-op.
+	/// the non-most-significant bits of `cond` are ignored / have no impact.
 	///
-	/// Takes wires a, b, and mask and enforces:
-	/// - If mask is all-1: a must equal b
-	/// - If mask is all-0: no constraint (assertion is ignored)
+	/// Takes wires a, b, and cond and enforces:
+	/// - If cond is MSB-bool-true: a must equal b
+	/// - If cond is MSB-bool-false: no constraint (assertion is ignored)
 	///
-	/// Pattern: AND((a ^ b), mask, 0)
+	/// Pattern: AND((a ^ b), (cond ~>> 63), 0)
 	///
 	/// # Cost
 	///
 	/// 1 AND constraint.
-	pub fn assert_eq_cond(&self, name: impl Into<String>, x: Wire, y: Wire, mask: Wire) {
+	pub fn assert_eq_cond(&self, name: impl Into<String>, x: Wire, y: Wire, cond: Wire) {
 		let mut graph = self.graph_mut();
-		let gate = graph.emit_gate(self.current_path, Opcode::AssertEqCond, [x, y, mask], []);
+		let gate = graph.emit_gate(self.current_path, Opcode::AssertEqCond, [x, y, cond], []);
 		let path_spec = graph.path_spec_tree.extend(self.current_path, name);
 		graph.assertion_names[gate] = path_spec;
 	}
@@ -599,17 +626,19 @@ impl CircuitBuilder {
 	/// Compares two 64-bit wires as unsigned integers.
 	///
 	/// Returns:
-	/// - all-1 if a < b
-	/// - all-0 if a >= b
+	/// - a wire whose MSB-bool value is true if a < b
+	/// - a wire whose MSB-bool value is false if a ≥ b
+	///
+	/// the non-most-significant bits of the output wire are undefined.
 	///
 	/// # Cost
 	///
 	/// 2 AND constraints.
 	pub fn icmp_ult(&self, x: Wire, y: Wire) -> Wire {
-		let out_mask = self.add_internal();
+		let out_wire = self.add_internal();
 		let mut graph = self.graph_mut();
-		graph.emit_gate(self.current_path, Opcode::IcmpUlt, [x, y], [out_mask]);
-		out_mask
+		graph.emit_gate(self.current_path, Opcode::IcmpUlt, [x, y], [out_wire]);
+		out_wire
 	}
 
 	/// Equality comparison.
@@ -617,18 +646,19 @@ impl CircuitBuilder {
 	/// Compares two 64-bit wires for equality.
 	///
 	/// Returns:
-	/// - all-1 if a == b
-	/// - all-0 if a != b
+	/// - a wire whose MSB-bool value is true if a == b
+	/// - a wire whose MSB-bool value is false if a != b
+	///
+	/// the non-most-significant bits of the output wire are undefined.
 	///
 	/// # Cost
 	///
-	/// 2 AND constraints.
+	/// 1 AND constraint.
 	pub fn icmp_eq(&self, x: Wire, y: Wire) -> Wire {
-		let out_mask = self.add_witness();
-		let all_1 = self.add_constant(Word::ALL_ONE);
+		let out_wire = self.add_internal();
 		let mut graph = self.graph_mut();
-		graph.emit_gate(self.current_path, Opcode::IcmpEq, [x, y, all_1], [out_mask]);
-		out_mask
+		graph.emit_gate(self.current_path, Opcode::IcmpEq, [x, y], [out_wire]);
+		out_wire
 	}
 
 	/// Byte extraction.

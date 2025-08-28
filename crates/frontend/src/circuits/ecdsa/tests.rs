@@ -37,9 +37,9 @@ pub fn test_bitcoin_ecdsa_test_vector() {
 
 	let cs = builder.build();
 	let mut w = cs.new_witness_filler();
-	assert!(cs.populate_wire_witness(&mut w).is_ok());
+	cs.populate_wire_witness(&mut w).unwrap();
 
-	assert_eq!(w[signature_valid], Word::ALL_ONE);
+	assert_eq!(w[signature_valid] >> 63, Word::ONE);
 }
 
 #[test]
