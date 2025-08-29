@@ -1,21 +1,21 @@
 repos:
-- repo: local
-  hooks:
-  - id: rustfmt
-    name: Run `rustfmt`
-    language: rust
-    types: [rust]
-    entry: cargo +nightly-2025-08-11 fmt --check
-    pass_filenames: false
-    stages: [pre-commit]
-  - id: clippy
-    name: Run cargo clippy
-    types: [rust]
-    language: rust
-    entry: cargo clippy --all --all-features --tests --benches --examples -- -D warnings
-    pass_filenames: false
-    stages: [pre-push]
-- repo: https://github.com/crate-ci/typos
-  rev: v1.32.0
-  hooks:
-  - id: typos
+    - repo: local
+      hooks:
+          - id: rustfmt
+            name: Run `rustfmt`
+            language: rust
+            types: [rust]
+            entry: cargo +nightly-2025-08-11 fmt --check
+            pass_filenames: false
+            stages: [pre-commit]
+          - id: clippy
+            name: Run cargo clippy
+            types: [rust]
+            language: rust
+            entry: cargo clippy --all --all-features --tests --benches --examples -- -D warnings
+            pass_filenames: false
+            stages: [pre-push]
+    - repo: https://github.com/crate-ci/typos
+      rev: v1.32.0
+      hooks:
+          - id: typos
