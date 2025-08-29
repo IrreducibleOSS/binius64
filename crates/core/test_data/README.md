@@ -5,6 +5,7 @@ This directory contains binary reference files used for testing serialization fo
 ## Files
 
 - `constraint_system_v1.bin`: Reference binary serialization of a `ConstraintSystem` using serialization version 1.
+- `public_witness_v1.bin`: Reference binary serialization of a `PublicWitness` using serialization version 1.
 
 ## Purpose
 
@@ -20,10 +21,20 @@ These binary files serve as regression tests to ensure that:
 
 If you make intentional breaking changes to the serialization format:
 
+### For ConstraintSystem
 1. Increment `ConstraintSystem::SERIALIZATION_VERSION` 
 2. Run the ignored test to regenerate the reference file:
    ```bash
    cargo test -p binius-core -- --ignored create_reference_binary
+   ```
+3. Rename the new file to include the new version number
+4. Update test paths to reference the new file
+
+### For PublicWitness
+1. Increment `PublicWitness::SERIALIZATION_VERSION`
+2. Run the ignored test to regenerate the reference file:
+   ```bash
+   cargo test -p binius-core -- --ignored create_public_witness_reference_binary
    ```
 3. Rename the new file to include the new version number
 4. Update test paths to reference the new file

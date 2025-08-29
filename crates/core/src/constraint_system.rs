@@ -1,4 +1,5 @@
 use std::{
+	borrow::Cow,
 	cmp,
 	ops::{Index, IndexMut},
 };
@@ -521,6 +522,124 @@ impl IndexMut<ValueIndex> for ValueVec {
 	}
 }
 
+/// Public witness data for zero-knowledge proofs.
+///
+/// This structure holds the public portion of witness data that needs to be shared
+/// with verifiers. It uses `Cow<[Word]>` to avoid unnecessary clones while supporting
+/// both borrowed and owned data.
+///
+/// The public witness consists of:
+/// - Constants: Fixed values defined in the constraint system
+/// - Inputs/Outputs: Public values that are part of the statement being proven
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PublicWitness<'a> {
+	data: Cow<'a, [Word]>,
+}
+
+impl<'a> PublicWitness<'a> {
+	/// Serialization format version for compatibility checking
+	pub const SERIALIZATION_VERSION: u32 = 1;
+
+	/// Create a new PublicWitness from borrowed data
+	pub fn borrowed(data: &'a [Word]) -> Self {
+		Self {
+			data: Cow::Borrowed(data),
+		}
+	}
+
+	/// Create a new PublicWitness from owned data
+	pub fn owned(data: Vec<Word>) -> Self {
+		Self {
+			data: Cow::Owned(data),
+		}
+	}
+
+	/// Get the public witness data as a slice
+	pub fn as_slice(&self) -> &[Word] {
+		&self.data
+	}
+
+	/// Get the number of words in the public witness
+	pub fn len(&self) -> usize {
+		self.data.len()
+	}
+
+	/// Check if the public witness is empty
+	pub fn is_empty(&self) -> bool {
+		self.data.is_empty()
+	}
+
+	/// Convert to owned data, consuming self
+	pub fn into_owned(self) -> Vec<Word> {
+		self.data.into_owned()
+	}
+
+	/// Convert to owned version of PublicWitness
+	pub fn to_owned(&self) -> PublicWitness<'static> {
+		PublicWitness {
+			data: Cow::Owned(self.data.to_vec()),
+		}
+	}
+}
+
+impl<'a> SerializeBytes for PublicWitness<'a> {
+	fn serialize(&self, mut write_buf: impl BufMut) -> Result<(), SerializationError> {
+		Self::SERIALIZATION_VERSION.serialize(&mut write_buf)?;
+
+		self.data.as_ref().serialize(write_buf)
+	}
+}
+
+impl DeserializeBytes for PublicWitness<'static> {
+	fn deserialize(mut read_buf: impl Buf) -> Result<Self, SerializationError>
+	where
+		Self: Sized,
+	{
+		let version = u32::deserialize(&mut read_buf)?;
+		if version != Self::SERIALIZATION_VERSION {
+			return Err(SerializationError::InvalidConstruction {
+				name: "PublicWitness::version",
+			});
+		}
+
+		let data = Vec::<Word>::deserialize(read_buf)?;
+
+		Ok(PublicWitness::owned(data))
+	}
+}
+
+impl<'a> From<&'a [Word]> for PublicWitness<'a> {
+	fn from(data: &'a [Word]) -> Self {
+		PublicWitness::borrowed(data)
+	}
+}
+
+impl From<Vec<Word>> for PublicWitness<'static> {
+	fn from(data: Vec<Word>) -> Self {
+		PublicWitness::owned(data)
+	}
+}
+
+impl<'a> From<&'a ValueVec> for PublicWitness<'a> {
+	fn from(value_vec: &'a ValueVec) -> Self {
+		PublicWitness::borrowed(value_vec.public())
+	}
+}
+
+impl<'a> AsRef<[Word]> for PublicWitness<'a> {
+	fn as_ref(&self) -> &[Word] {
+		self.as_slice()
+	}
+}
+
+impl<'a> std::ops::Deref for PublicWitness<'a> {
+	type Target = [Word];
+
+	fn deref(&self) -> &Self::Target {
+		self.as_slice()
+	}
+}
+
 #[cfg(test)]
 mod serialization_tests {
 	use rand::{RngCore, SeedableRng, rngs::StdRng};
@@ -853,27 +972,10 @@ mod serialization_tests {
 	fn test_deserialize_from_reference_binary_file() {
 		let test_data_path = std::path::Path::new("crates/core/test_data/constraint_system_v1.bin");
 
-		// If the reference file doesn't exist, create it first
-		if !test_data_path.exists() {
-			let constraint_system = create_test_constraint_system();
-			let mut buf = Vec::new();
-			constraint_system.serialize(&mut buf).unwrap();
-
-			// Create directory if it doesn't exist
-			if let Some(parent) = test_data_path.parent() {
-				std::fs::create_dir_all(parent).unwrap();
-			}
-
-			std::fs::write(test_data_path, &buf).unwrap();
-		}
-
-		// Read the reference binary file
 		let binary_data = std::fs::read(test_data_path).unwrap();
 
-		// Deserialize and verify it works
 		let deserialized = ConstraintSystem::deserialize(&mut binary_data.as_slice()).unwrap();
 
-		// Verify the deserialized data has expected structure
 		assert_eq!(deserialized.value_vec_layout.n_const, 3);
 		assert_eq!(deserialized.value_vec_layout.n_inout, 2);
 		assert_eq!(deserialized.value_vec_layout.n_witness, 10);
@@ -901,32 +1003,117 @@ mod serialization_tests {
 		);
 	}
 
-	/// Test that demonstrates what happens when there's a version mismatch.
-	/// This serves as documentation for the version compatibility system.
 	#[test]
-	fn test_version_compatibility_documentation() {
-		// Create a constraint system and serialize it
+	fn test_public_witness_from_value_vec() {
 		let constraint_system = create_test_constraint_system();
+		let value_vec = constraint_system.new_value_vec();
+
+		let public_witness: PublicWitness = (&value_vec).into();
+
+		assert_eq!(public_witness.len(), value_vec.public().len());
+		assert_eq!(public_witness.as_slice(), value_vec.public());
+	}
+
+	#[test]
+	fn test_public_witness_serialization_round_trip_owned() {
+		let data = vec![
+			Word::from_u64(1),
+			Word::from_u64(42),
+			Word::from_u64(0xDEADBEEF),
+			Word::from_u64(0x1234567890ABCDEF),
+		];
+		let witness = PublicWitness::owned(data.clone());
+
 		let mut buf = Vec::new();
-		constraint_system.serialize(&mut buf).unwrap();
+		witness.serialize(&mut buf).unwrap();
 
-		// Verify current version works
-		let deserialized = ConstraintSystem::deserialize(&mut buf.as_slice()).unwrap();
-		assert_eq!(constraint_system.constants.len(), deserialized.constants.len());
+		let deserialized = PublicWitness::deserialize(&mut buf.as_slice()).unwrap();
+		assert_eq!(witness, deserialized);
+		assert_eq!(deserialized.as_slice(), data.as_slice());
+	}
 
-		// Now simulate an older version by modifying the version bytes
-		let mut modified_buf = buf.clone();
-		let old_version = 0u32; // Simulate version 0
-		modified_buf[0..4].copy_from_slice(&old_version.to_le_bytes());
+	#[test]
+	fn test_public_witness_serialization_round_trip_borrowed() {
+		let data = vec![Word::from_u64(123), Word::from_u64(456)];
+		let witness = PublicWitness::borrowed(&data);
 
-		// This should fail with version mismatch
-		let result = ConstraintSystem::deserialize(&mut modified_buf.as_slice());
+		let mut buf = Vec::new();
+		witness.serialize(&mut buf).unwrap();
+
+		let deserialized = PublicWitness::deserialize(&mut buf.as_slice()).unwrap();
+		assert_eq!(witness, deserialized);
+		assert_eq!(deserialized.as_slice(), data.as_slice());
+	}
+
+	#[test]
+	fn test_public_witness_version_mismatch() {
+		let mut buf = Vec::new();
+		999u32.serialize(&mut buf).unwrap(); // Wrong version
+		vec![Word::from_u64(1)].serialize(&mut buf).unwrap(); // Some data
+
+		let result = PublicWitness::deserialize(&mut buf.as_slice());
 		assert!(result.is_err());
 		match result.unwrap_err() {
 			SerializationError::InvalidConstruction { name } => {
-				assert_eq!(name, "ConstraintSystem::version");
+				assert_eq!(name, "PublicWitness::version");
 			}
 			_ => panic!("Expected version mismatch error"),
 		}
+	}
+
+	/// Helper function to create or update the reference binary file for PublicWitness version
+	/// compatibility testing.
+	#[test]
+	#[ignore] // Use `cargo test -- --ignored create_public_witness_reference_binary` to run this
+	fn create_public_witness_reference_binary_file() {
+		let data = vec![
+			Word::from_u64(1),
+			Word::from_u64(42),
+			Word::from_u64(0xDEADBEEF),
+			Word::from_u64(0x1234567890ABCDEF),
+		];
+		let public_witness = PublicWitness::owned(data);
+
+		let mut buf = Vec::new();
+		public_witness.serialize(&mut buf).unwrap();
+
+		let test_data_path = std::path::Path::new("crates/core/test_data/public_witness_v1.bin");
+
+		if let Some(parent) = test_data_path.parent() {
+			std::fs::create_dir_all(parent).unwrap();
+		}
+
+		std::fs::write(test_data_path, &buf).unwrap();
+
+		println!("Created PublicWitness reference binary file at: {:?}", test_data_path);
+		println!("Binary data length: {} bytes", buf.len());
+	}
+
+	/// Test deserialization from a reference binary file to ensure PublicWitness version
+	/// compatibility. This test will fail if breaking changes are made without incrementing the
+	/// version.
+	#[test]
+	fn test_public_witness_deserialize_from_reference_binary_file() {
+		let test_data_path = std::path::Path::new("crates/core/test_data/public_witness_v1.bin");
+
+		let binary_data = std::fs::read(test_data_path).unwrap();
+
+		let deserialized = PublicWitness::deserialize(&mut binary_data.as_slice()).unwrap();
+
+		assert_eq!(deserialized.len(), 4);
+		assert_eq!(deserialized.as_slice()[0].as_u64(), 1);
+		assert_eq!(deserialized.as_slice()[1].as_u64(), 42);
+		assert_eq!(deserialized.as_slice()[2].as_u64(), 0xDEADBEEF);
+		assert_eq!(deserialized.as_slice()[3].as_u64(), 0x1234567890ABCDEF);
+
+		// Verify that the version is what we expect
+		// This is implicitly checked during deserialization, but we can also verify
+		// the file starts with the correct version bytes
+		let version_bytes = &binary_data[0..4]; // First 4 bytes should be version
+		let expected_version_bytes = 1u32.to_le_bytes(); // Version 1 in little-endian
+		assert_eq!(
+			version_bytes, expected_version_bytes,
+			"PublicWitness binary file version mismatch. If you made breaking changes, increment PublicWitness::SERIALIZATION_VERSION"
+		);
 	}
 }
