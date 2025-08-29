@@ -39,3 +39,7 @@ harness = false
 default = ["rayon"]
 perfetto = ["tracing-profile/perfetto"]
 rayon = ["binius-prover/rayon"]
+
+[[example]]
+name = "prover"
+path = "examples/prover.rs"
