@@ -59,7 +59,7 @@ impl ExampleCircuit for Sha512Example {
 		let message_bytes = if let Some(message_string) = instance.message_string {
 			message_string.as_bytes().to_vec()
 		} else {
-			let mut rng = StdRng::seed_from_u64(0);
+			let mut rng = StdRng::seed_from_u64(42);
 
 			let mut message_bytes = vec![0u8; self.sha512_gadget.max_len_bytes()];
 			rng.fill_bytes(&mut message_bytes);
