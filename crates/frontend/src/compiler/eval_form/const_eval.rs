@@ -127,37 +127,13 @@ pub fn evaluate_constant_gate(
 #[cfg(test)]
 mod tests {
 	use binius_core::Word;
-	use cranelift_entity::{PrimaryMap, SecondaryMap};
 
 	use super::*;
-	use crate::compiler::{
-		gate::opcode::Opcode,
-		gate_graph::{ConstPool, GateGraph},
-		pathspec::PathSpecTree,
-	};
-
-	/// Helper to create a test graph (same as const_prop tests)
-	fn create_test_graph() -> GateGraph {
-		let path_spec_tree = PathSpecTree::new();
-		let root = path_spec_tree.root();
-
-		GateGraph {
-			gates: PrimaryMap::new(),
-			wires: PrimaryMap::new(),
-			assertion_names: SecondaryMap::with_default(root),
-			gate_origin: SecondaryMap::with_default(root),
-			const_pool: ConstPool::new(),
-			path_spec_tree,
-			n_witness: 0,
-			n_inout: 0,
-			wire_def: SecondaryMap::new(),
-			wire_uses: SecondaryMap::new(),
-		}
-	}
+	use crate::compiler::{gate::opcode::Opcode, gate_graph::GateGraph};
 
 	/// Helper to create a gate with constant inputs for testing
 	fn create_test_gate(opcode: Opcode, input_values: &[Word]) -> (GateGraph, Gate, Vec<Word>) {
-		let mut graph = create_test_graph();
+		let mut graph = GateGraph::new();
 		let root = graph.path_spec_tree.root();
 
 		// Create constant wires for inputs using the proper helper function
