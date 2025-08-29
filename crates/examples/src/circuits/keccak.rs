@@ -57,7 +57,7 @@ impl ExampleCircuit for KeccakExample {
 
 	fn populate_witness(&self, _instance: Instance, w: &mut WitnessFiller) -> Result<()> {
 		// Generate random initial state with fixed seed for reproducibility
-		let mut rng = StdRng::seed_from_u64(0);
+		let mut rng = StdRng::seed_from_u64(42);
 		let initial_state: [u64; 25] = rng.random();
 
 		// Populate initial state witness

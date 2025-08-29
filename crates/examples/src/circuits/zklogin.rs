@@ -116,7 +116,7 @@ impl ExampleCircuit for ZkLoginExample {
 	}
 
 	fn populate_witness(&self, instance: Instance, w: &mut WitnessFiller) -> Result<()> {
-		let mut rng = StdRng::seed_from_u64(0);
+		let mut rng = StdRng::seed_from_u64(42);
 
 		// Generate JWT and related data
 		let JwtGenerationResult {

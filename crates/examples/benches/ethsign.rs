@@ -6,11 +6,48 @@ use binius_examples::{
 	setup,
 };
 use binius_frontend::compiler::CircuitBuilder;
+use binius_utils::platform_diagnostics::PlatformDiagnostics;
 use binius_verifier::{
 	config::StdChallenger,
 	transcript::{ProverTranscript, VerifierTranscript},
 };
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
+
+/// Generate a feature suffix for benchmark names based on platform diagnostics
+fn get_feature_suffix(_diagnostics: &PlatformDiagnostics) -> String {
+	let mut suffix_parts = Vec::new();
+
+	// Threading - check if rayon feature is enabled
+	#[cfg(feature = "rayon")]
+	suffix_parts.push("mt");
+	#[cfg(not(feature = "rayon"))]
+	suffix_parts.push("st");
+
+	// Architecture
+	#[cfg(target_arch = "x86_64")]
+	{
+		suffix_parts.push("x86");
+		// Add key features based on compile-time features
+		#[cfg(target_feature = "gfni")]
+		suffix_parts.push("gfni");
+		#[cfg(target_feature = "avx512f")]
+		suffix_parts.push("avx512");
+		#[cfg(all(not(target_feature = "avx512f"), target_feature = "avx2"))]
+		suffix_parts.push("avx2");
+	}
+
+	#[cfg(target_arch = "aarch64")]
+	{
+		suffix_parts.push("arm64");
+		// Check for NEON and AES
+		#[cfg(all(target_feature = "neon", target_feature = "aes"))]
+		suffix_parts.push("neon_aes");
+		#[cfg(all(target_feature = "neon", not(target_feature = "aes")))]
+		suffix_parts.push("neon");
+	}
+
+	suffix_parts.join("_")
+}
 
 fn bench_ethsign_signatures(c: &mut Criterion) {
 	// Parse parameters from environment variables or use defaults
@@ -24,10 +61,15 @@ fn bench_ethsign_signatures(c: &mut Criterion) {
 		.and_then(|s| s.parse::<u16>().ok())
 		.unwrap_or(67);
 
-	println!(
-		"Running ethsign benchmark with {} signatures and {} max message bytes",
-		n_signatures, max_msg_len_bytes
-	);
+	// Gather and print comprehensive platform diagnostics
+	let diagnostics = PlatformDiagnostics::gather();
+	diagnostics.print();
+
+	// Print benchmark-specific parameters
+	println!("\nEthSign Benchmark Parameters:");
+	println!("  Signatures: {}", n_signatures);
+	println!("  Max message length: {} bytes", max_msg_len_bytes);
+	println!("=========================================\n");
 
 	let params = Params {
 		n_signatures,
@@ -50,7 +92,8 @@ fn bench_ethsign_signatures(c: &mut Criterion) {
 	circuit.populate_wire_witness(&mut filler).unwrap();
 	let witness = filler.into_value_vec();
 
-	let bench_name = format!("n_sig_{}_msg_{}", n_signatures, max_msg_len_bytes);
+	let feature_suffix = get_feature_suffix(&diagnostics);
+	let bench_name = format!("sig_{}_msg_{}_{}", n_signatures, max_msg_len_bytes, feature_suffix);
 
 	// Measure witness generation time
 	{
@@ -118,7 +161,7 @@ fn bench_ethsign_signatures(c: &mut Criterion) {
 
 	// Report proof size
 	println!(
-		"EthSign proof size for {} signatures, {} max bytes: {} bytes",
+		"\nEthSign proof size for {} signatures, {} max bytes: {} bytes",
 		n_signatures, max_msg_len_bytes, proof_size
 	);
 }
