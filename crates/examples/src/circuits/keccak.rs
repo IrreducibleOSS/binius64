@@ -9,7 +9,7 @@ use rand::{Rng, SeedableRng, rngs::StdRng};
 
 use crate::ExampleCircuit;
 
-/// Example circuit that chains multiple Keccak-f[1600] permutations
+/// Example circuit that chains multiple Keccak-f\[1600\] permutations
 pub struct KeccakExample {
 	n_permutations: usize,
 	initial_state: [Wire; 25],
@@ -18,7 +18,7 @@ pub struct KeccakExample {
 
 #[derive(Args, Debug, Clone)]
 pub struct Params {
-	/// Number of Keccak-f[1600] permutations to chain together
+	/// Number of Keccak-f\[1600\] permutations to chain together
 	#[arg(short = 'n', long, default_value_t = 10)]
 	pub n_permutations: usize,
 }
