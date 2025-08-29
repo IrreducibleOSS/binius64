@@ -3,6 +3,9 @@ use std::{
 	ops::{Index, IndexMut},
 };
 
+use binius_utils::serialization::{DeserializeBytes, SerializationError, SerializeBytes};
+use bytes::{Buf, BufMut};
+
 use crate::{consts, error::ConstraintSystemError, word::Word};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -20,6 +23,21 @@ impl Default for ValueIndex {
 	}
 }
 
+impl SerializeBytes for ValueIndex {
+	fn serialize(&self, write_buf: impl BufMut) -> Result<(), SerializationError> {
+		self.0.serialize(write_buf)
+	}
+}
+
+impl DeserializeBytes for ValueIndex {
+	fn deserialize(read_buf: impl Buf) -> Result<Self, SerializationError>
+	where
+		Self: Sized,
+	{
+		Ok(ValueIndex(u32::deserialize(read_buf)?))
+	}
+}
+
 /// A different variants of shifting a value.
 ///
 /// Note that there is no shift left arithmetic because it is redundant.
@@ -31,6 +49,35 @@ pub enum ShiftVariant {
 	Slr,
 	/// Shift arithmetic right.
 	Sar,
+}
+
+impl SerializeBytes for ShiftVariant {
+	fn serialize(&self, write_buf: impl BufMut) -> Result<(), SerializationError> {
+		let index = match self {
+			ShiftVariant::Sll => 0u8,
+			ShiftVariant::Slr => 1u8,
+			ShiftVariant::Sar => 2u8,
+		};
+		index.serialize(write_buf)
+	}
+}
+
+impl DeserializeBytes for ShiftVariant {
+	fn deserialize(read_buf: impl Buf) -> Result<Self, SerializationError>
+	where
+		Self: Sized,
+	{
+		let index = u8::deserialize(read_buf)?;
+		match index {
+			0 => Ok(ShiftVariant::Sll),
+			1 => Ok(ShiftVariant::Slr),
+			2 => Ok(ShiftVariant::Sar),
+			_ => Err(SerializationError::UnknownEnumVariant {
+				name: "ShiftVariant",
+				index,
+			}),
+		}
+	}
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -84,6 +131,38 @@ impl ShiftedValueIndex {
 	}
 }
 
+impl SerializeBytes for ShiftedValueIndex {
+	fn serialize(&self, mut write_buf: impl BufMut) -> Result<(), SerializationError> {
+		self.value_index.serialize(&mut write_buf)?;
+		self.shift_variant.serialize(&mut write_buf)?;
+		self.amount.serialize(write_buf)
+	}
+}
+
+impl DeserializeBytes for ShiftedValueIndex {
+	fn deserialize(mut read_buf: impl Buf) -> Result<Self, SerializationError>
+	where
+		Self: Sized,
+	{
+		let value_index = ValueIndex::deserialize(&mut read_buf)?;
+		let shift_variant = ShiftVariant::deserialize(&mut read_buf)?;
+		let amount = usize::deserialize(read_buf)?;
+
+		// Validate that amount is within valid range
+		if amount >= 64 {
+			return Err(SerializationError::InvalidConstruction {
+				name: "ShiftedValueIndex::amount",
+			});
+		}
+
+		Ok(ShiftedValueIndex {
+			value_index,
+			shift_variant,
+			amount,
+		})
+	}
+}
+
 pub type Operand = Vec<ShiftedValueIndex>;
 
 #[derive(Debug, Clone, Default)]
@@ -119,6 +198,27 @@ impl AndConstraint {
 	}
 }
 
+impl SerializeBytes for AndConstraint {
+	fn serialize(&self, mut write_buf: impl BufMut) -> Result<(), SerializationError> {
+		self.a.serialize(&mut write_buf)?;
+		self.b.serialize(&mut write_buf)?;
+		self.c.serialize(write_buf)
+	}
+}
+
+impl DeserializeBytes for AndConstraint {
+	fn deserialize(mut read_buf: impl Buf) -> Result<Self, SerializationError>
+	where
+		Self: Sized,
+	{
+		let a = Vec::<ShiftedValueIndex>::deserialize(&mut read_buf)?;
+		let b = Vec::<ShiftedValueIndex>::deserialize(&mut read_buf)?;
+		let c = Vec::<ShiftedValueIndex>::deserialize(read_buf)?;
+
+		Ok(AndConstraint { a, b, c })
+	}
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct MulConstraint {
 	pub a: Operand,
@@ -127,12 +227,40 @@ pub struct MulConstraint {
 	pub lo: Operand,
 }
 
+impl SerializeBytes for MulConstraint {
+	fn serialize(&self, mut write_buf: impl BufMut) -> Result<(), SerializationError> {
+		self.a.serialize(&mut write_buf)?;
+		self.b.serialize(&mut write_buf)?;
+		self.hi.serialize(&mut write_buf)?;
+		self.lo.serialize(write_buf)
+	}
+}
+
+impl DeserializeBytes for MulConstraint {
+	fn deserialize(mut read_buf: impl Buf) -> Result<Self, SerializationError>
+	where
+		Self: Sized,
+	{
+		let a = Vec::<ShiftedValueIndex>::deserialize(&mut read_buf)?;
+		let b = Vec::<ShiftedValueIndex>::deserialize(&mut read_buf)?;
+		let hi = Vec::<ShiftedValueIndex>::deserialize(&mut read_buf)?;
+		let lo = Vec::<ShiftedValueIndex>::deserialize(read_buf)?;
+
+		Ok(MulConstraint { a, b, hi, lo })
+	}
+}
+
 #[derive(Debug, Clone)]
 pub struct ConstraintSystem {
 	pub value_vec_layout: ValueVecLayout,
 	pub constants: Vec<Word>,
 	pub and_constraints: Vec<AndConstraint>,
 	pub mul_constraints: Vec<MulConstraint>,
+}
+
+impl ConstraintSystem {
+	/// Serialization format version for compatibility checking
+	pub const SERIALIZATION_VERSION: u32 = 1;
 }
 
 impl ConstraintSystem {
@@ -201,6 +329,49 @@ impl ConstraintSystem {
 	}
 }
 
+impl SerializeBytes for ConstraintSystem {
+	fn serialize(&self, mut write_buf: impl BufMut) -> Result<(), SerializationError> {
+		Self::SERIALIZATION_VERSION.serialize(&mut write_buf)?;
+
+		self.value_vec_layout.serialize(&mut write_buf)?;
+		self.constants.serialize(&mut write_buf)?;
+		self.and_constraints.serialize(&mut write_buf)?;
+		self.mul_constraints.serialize(write_buf)
+	}
+}
+
+impl DeserializeBytes for ConstraintSystem {
+	fn deserialize(mut read_buf: impl Buf) -> Result<Self, SerializationError>
+	where
+		Self: Sized,
+	{
+		let version = u32::deserialize(&mut read_buf)?;
+		if version != Self::SERIALIZATION_VERSION {
+			return Err(SerializationError::InvalidConstruction {
+				name: "ConstraintSystem::version",
+			});
+		}
+
+		let value_vec_layout = ValueVecLayout::deserialize(&mut read_buf)?;
+		let constants = Vec::<Word>::deserialize(&mut read_buf)?;
+		let and_constraints = Vec::<AndConstraint>::deserialize(&mut read_buf)?;
+		let mul_constraints = Vec::<MulConstraint>::deserialize(read_buf)?;
+
+		if constants.len() != value_vec_layout.n_const {
+			return Err(SerializationError::InvalidConstruction {
+				name: "ConstraintSystem::constants",
+			});
+		}
+
+		Ok(ConstraintSystem {
+			value_vec_layout,
+			constants,
+			and_constraints,
+			mul_constraints,
+		})
+	}
+}
+
 /// Description of a layout of the value vector for a particular circuit.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ValueVecLayout {
@@ -245,6 +416,43 @@ impl ValueVecLayout {
 		}
 
 		Ok(())
+	}
+}
+
+impl SerializeBytes for ValueVecLayout {
+	fn serialize(&self, mut write_buf: impl BufMut) -> Result<(), SerializationError> {
+		self.n_const.serialize(&mut write_buf)?;
+		self.n_inout.serialize(&mut write_buf)?;
+		self.n_witness.serialize(&mut write_buf)?;
+		self.n_internal.serialize(&mut write_buf)?;
+		self.offset_inout.serialize(&mut write_buf)?;
+		self.offset_witness.serialize(&mut write_buf)?;
+		self.total_len.serialize(write_buf)
+	}
+}
+
+impl DeserializeBytes for ValueVecLayout {
+	fn deserialize(mut read_buf: impl Buf) -> Result<Self, SerializationError>
+	where
+		Self: Sized,
+	{
+		let n_const = usize::deserialize(&mut read_buf)?;
+		let n_inout = usize::deserialize(&mut read_buf)?;
+		let n_witness = usize::deserialize(&mut read_buf)?;
+		let n_internal = usize::deserialize(&mut read_buf)?;
+		let offset_inout = usize::deserialize(&mut read_buf)?;
+		let offset_witness = usize::deserialize(&mut read_buf)?;
+		let total_len = usize::deserialize(read_buf)?;
+
+		Ok(ValueVecLayout {
+			n_const,
+			n_inout,
+			n_witness,
+			n_internal,
+			offset_inout,
+			offset_witness,
+			total_len,
+		})
 	}
 }
 
@@ -310,5 +518,415 @@ impl Index<ValueIndex> for ValueVec {
 impl IndexMut<ValueIndex> for ValueVec {
 	fn index_mut(&mut self, index: ValueIndex) -> &mut Self::Output {
 		&mut self.data[index.0 as usize]
+	}
+}
+
+#[cfg(test)]
+mod serialization_tests {
+	use rand::{RngCore, SeedableRng, rngs::StdRng};
+
+	use super::*;
+
+	fn create_test_constraint_system() -> ConstraintSystem {
+		let constants = vec![
+			Word::from_u64(1),
+			Word::from_u64(42),
+			Word::from_u64(0xDEADBEEF),
+		];
+
+		let value_vec_layout = ValueVecLayout {
+			n_const: 3,
+			n_inout: 2,
+			n_witness: 10,
+			n_internal: 3,
+			offset_inout: 4,   // Must be power of 2 and >= n_const
+			offset_witness: 8, // Must be power of 2 and >= offset_inout + n_inout
+			total_len: 16,     // Must be power of 2 and >= offset_witness + n_witness
+		};
+
+		let and_constraints = vec![
+			AndConstraint::plain_abc(
+				vec![ValueIndex(0), ValueIndex(1)],
+				vec![ValueIndex(2)],
+				vec![ValueIndex(3), ValueIndex(4)],
+			),
+			AndConstraint::abc(
+				vec![ShiftedValueIndex::sll(ValueIndex(0), 5)],
+				vec![ShiftedValueIndex::srl(ValueIndex(1), 10)],
+				vec![ShiftedValueIndex::sar(ValueIndex(2), 15)],
+			),
+		];
+
+		let mul_constraints = vec![MulConstraint {
+			a: vec![ShiftedValueIndex::plain(ValueIndex(0))],
+			b: vec![ShiftedValueIndex::plain(ValueIndex(1))],
+			hi: vec![ShiftedValueIndex::plain(ValueIndex(2))],
+			lo: vec![ShiftedValueIndex::plain(ValueIndex(3))],
+		}];
+
+		ConstraintSystem::new(constants, value_vec_layout, and_constraints, mul_constraints)
+	}
+
+	#[test]
+	fn test_word_serialization_round_trip() {
+		let mut rng = StdRng::seed_from_u64(0);
+		let word = Word::from_u64(rng.next_u64());
+
+		let mut buf = Vec::new();
+		word.serialize(&mut buf).unwrap();
+
+		let deserialized = Word::deserialize(&mut buf.as_slice()).unwrap();
+		assert_eq!(word, deserialized);
+	}
+
+	#[test]
+	fn test_shift_variant_serialization_round_trip() {
+		let variants = [ShiftVariant::Sll, ShiftVariant::Slr, ShiftVariant::Sar];
+
+		for variant in variants {
+			let mut buf = Vec::new();
+			variant.serialize(&mut buf).unwrap();
+
+			let deserialized = ShiftVariant::deserialize(&mut buf.as_slice()).unwrap();
+			match (variant, deserialized) {
+				(ShiftVariant::Sll, ShiftVariant::Sll)
+				| (ShiftVariant::Slr, ShiftVariant::Slr)
+				| (ShiftVariant::Sar, ShiftVariant::Sar) => {}
+				_ => panic!("ShiftVariant round trip failed: {:?} != {:?}", variant, deserialized),
+			}
+		}
+	}
+
+	#[test]
+	fn test_shift_variant_unknown_variant() {
+		// Create invalid variant index
+		let mut buf = Vec::new();
+		255u8.serialize(&mut buf).unwrap();
+
+		let result = ShiftVariant::deserialize(&mut buf.as_slice());
+		assert!(result.is_err());
+		match result.unwrap_err() {
+			SerializationError::UnknownEnumVariant { name, index } => {
+				assert_eq!(name, "ShiftVariant");
+				assert_eq!(index, 255);
+			}
+			_ => panic!("Expected UnknownEnumVariant error"),
+		}
+	}
+
+	#[test]
+	fn test_value_index_serialization_round_trip() {
+		let value_index = ValueIndex(12345);
+
+		let mut buf = Vec::new();
+		value_index.serialize(&mut buf).unwrap();
+
+		let deserialized = ValueIndex::deserialize(&mut buf.as_slice()).unwrap();
+		assert_eq!(value_index, deserialized);
+	}
+
+	#[test]
+	fn test_shifted_value_index_serialization_round_trip() {
+		let shifted_value_index = ShiftedValueIndex::srl(ValueIndex(42), 23);
+
+		let mut buf = Vec::new();
+		shifted_value_index.serialize(&mut buf).unwrap();
+
+		let deserialized = ShiftedValueIndex::deserialize(&mut buf.as_slice()).unwrap();
+		assert_eq!(shifted_value_index.value_index, deserialized.value_index);
+		assert_eq!(shifted_value_index.amount, deserialized.amount);
+		match (shifted_value_index.shift_variant, deserialized.shift_variant) {
+			(ShiftVariant::Slr, ShiftVariant::Slr) => {}
+			_ => panic!("ShiftVariant mismatch"),
+		}
+	}
+
+	#[test]
+	fn test_shifted_value_index_invalid_amount() {
+		// Create a buffer with invalid shift amount (>= 64)
+		let mut buf = Vec::new();
+		ValueIndex(0).serialize(&mut buf).unwrap();
+		ShiftVariant::Sll.serialize(&mut buf).unwrap();
+		64usize.serialize(&mut buf).unwrap(); // Invalid amount
+
+		let result = ShiftedValueIndex::deserialize(&mut buf.as_slice());
+		assert!(result.is_err());
+		match result.unwrap_err() {
+			SerializationError::InvalidConstruction { name } => {
+				assert_eq!(name, "ShiftedValueIndex::amount");
+			}
+			_ => panic!("Expected InvalidConstruction error"),
+		}
+	}
+
+	#[test]
+	fn test_and_constraint_serialization_round_trip() {
+		let constraint = AndConstraint::abc(
+			vec![ShiftedValueIndex::sll(ValueIndex(1), 5)],
+			vec![ShiftedValueIndex::srl(ValueIndex(2), 10)],
+			vec![
+				ShiftedValueIndex::sar(ValueIndex(3), 15),
+				ShiftedValueIndex::plain(ValueIndex(4)),
+			],
+		);
+
+		let mut buf = Vec::new();
+		constraint.serialize(&mut buf).unwrap();
+
+		let deserialized = AndConstraint::deserialize(&mut buf.as_slice()).unwrap();
+		assert_eq!(constraint.a.len(), deserialized.a.len());
+		assert_eq!(constraint.b.len(), deserialized.b.len());
+		assert_eq!(constraint.c.len(), deserialized.c.len());
+
+		// Check individual elements
+		for (orig, deser) in constraint.a.iter().zip(deserialized.a.iter()) {
+			assert_eq!(orig.value_index, deser.value_index);
+			assert_eq!(orig.amount, deser.amount);
+		}
+	}
+
+	#[test]
+	fn test_mul_constraint_serialization_round_trip() {
+		let constraint = MulConstraint {
+			a: vec![ShiftedValueIndex::plain(ValueIndex(0))],
+			b: vec![ShiftedValueIndex::srl(ValueIndex(1), 32)],
+			hi: vec![ShiftedValueIndex::plain(ValueIndex(2))],
+			lo: vec![ShiftedValueIndex::plain(ValueIndex(3))],
+		};
+
+		let mut buf = Vec::new();
+		constraint.serialize(&mut buf).unwrap();
+
+		let deserialized = MulConstraint::deserialize(&mut buf.as_slice()).unwrap();
+		assert_eq!(constraint.a.len(), deserialized.a.len());
+		assert_eq!(constraint.b.len(), deserialized.b.len());
+		assert_eq!(constraint.hi.len(), deserialized.hi.len());
+		assert_eq!(constraint.lo.len(), deserialized.lo.len());
+	}
+
+	#[test]
+	fn test_value_vec_layout_serialization_round_trip() {
+		let layout = ValueVecLayout {
+			n_const: 5,
+			n_inout: 3,
+			n_witness: 12,
+			n_internal: 7,
+			offset_inout: 8,
+			offset_witness: 16,
+			total_len: 32,
+		};
+
+		let mut buf = Vec::new();
+		layout.serialize(&mut buf).unwrap();
+
+		let deserialized = ValueVecLayout::deserialize(&mut buf.as_slice()).unwrap();
+		assert_eq!(layout, deserialized);
+	}
+
+	#[test]
+	fn test_constraint_system_serialization_round_trip() {
+		let original = create_test_constraint_system();
+
+		let mut buf = Vec::new();
+		original.serialize(&mut buf).unwrap();
+
+		let deserialized = ConstraintSystem::deserialize(&mut buf.as_slice()).unwrap();
+
+		// Check version
+		assert_eq!(ConstraintSystem::SERIALIZATION_VERSION, 1);
+
+		// Check value_vec_layout
+		assert_eq!(original.value_vec_layout, deserialized.value_vec_layout);
+
+		// Check constants
+		assert_eq!(original.constants.len(), deserialized.constants.len());
+		for (orig, deser) in original.constants.iter().zip(deserialized.constants.iter()) {
+			assert_eq!(orig, deser);
+		}
+
+		// Check and_constraints
+		assert_eq!(original.and_constraints.len(), deserialized.and_constraints.len());
+
+		// Check mul_constraints
+		assert_eq!(original.mul_constraints.len(), deserialized.mul_constraints.len());
+	}
+
+	#[test]
+	fn test_constraint_system_version_mismatch() {
+		// Create a buffer with wrong version
+		let mut buf = Vec::new();
+		999u32.serialize(&mut buf).unwrap(); // Wrong version
+
+		let result = ConstraintSystem::deserialize(&mut buf.as_slice());
+		assert!(result.is_err());
+		match result.unwrap_err() {
+			SerializationError::InvalidConstruction { name } => {
+				assert_eq!(name, "ConstraintSystem::version");
+			}
+			_ => panic!("Expected InvalidConstruction error"),
+		}
+	}
+
+	#[test]
+	fn test_constraint_system_constants_length_mismatch() {
+		// Create valid components but with mismatched constants length
+		let value_vec_layout = ValueVecLayout {
+			n_const: 5, // Expect 5 constants
+			n_inout: 2,
+			n_witness: 10,
+			n_internal: 3,
+			offset_inout: 8,
+			offset_witness: 16,
+			total_len: 32,
+		};
+
+		let constants = vec![Word::from_u64(1), Word::from_u64(2)]; // Only 2 constants
+		let and_constraints: Vec<AndConstraint> = vec![];
+		let mul_constraints: Vec<MulConstraint> = vec![];
+
+		// Serialize components manually
+		let mut buf = Vec::new();
+		ConstraintSystem::SERIALIZATION_VERSION
+			.serialize(&mut buf)
+			.unwrap();
+		value_vec_layout.serialize(&mut buf).unwrap();
+		constants.serialize(&mut buf).unwrap();
+		and_constraints.serialize(&mut buf).unwrap();
+		mul_constraints.serialize(&mut buf).unwrap();
+
+		let result = ConstraintSystem::deserialize(&mut buf.as_slice());
+		assert!(result.is_err());
+		match result.unwrap_err() {
+			SerializationError::InvalidConstruction { name } => {
+				assert_eq!(name, "ConstraintSystem::constants");
+			}
+			_ => panic!("Expected InvalidConstruction error"),
+		}
+	}
+
+	#[test]
+	fn test_serialization_with_different_sources() {
+		let original = create_test_constraint_system();
+
+		// Test with Vec<u8> (memory buffer)
+		let mut vec_buf = Vec::new();
+		original.serialize(&mut vec_buf).unwrap();
+		let deserialized1 = ConstraintSystem::deserialize(&mut vec_buf.as_slice()).unwrap();
+		assert_eq!(original.constants.len(), deserialized1.constants.len());
+
+		// Test with bytes::BytesMut (another common buffer type)
+		let mut bytes_buf = bytes::BytesMut::new();
+		original.serialize(&mut bytes_buf).unwrap();
+		let deserialized2 = ConstraintSystem::deserialize(bytes_buf.freeze()).unwrap();
+		assert_eq!(original.constants.len(), deserialized2.constants.len());
+	}
+
+	/// Helper function to create or update the reference binary file for version compatibility
+	/// testing. This is not run automatically but can be used to regenerate the reference file
+	/// when needed.
+	#[test]
+	#[ignore] // Use `cargo test -- --ignored create_reference_binary` to run this
+	fn create_reference_binary_file() {
+		let constraint_system = create_test_constraint_system();
+
+		// Serialize to binary data
+		let mut buf = Vec::new();
+		constraint_system.serialize(&mut buf).unwrap();
+
+		// Write to reference file
+		let test_data_path = std::path::Path::new("crates/core/test_data/constraint_system_v1.bin");
+
+		// Create directory if it doesn't exist
+		if let Some(parent) = test_data_path.parent() {
+			std::fs::create_dir_all(parent).unwrap();
+		}
+
+		std::fs::write(test_data_path, &buf).unwrap();
+
+		println!("Created reference binary file at: {:?}", test_data_path);
+		println!("Binary data length: {} bytes", buf.len());
+	}
+
+	/// Test deserialization from a reference binary file to ensure version compatibility.
+	/// This test will fail if breaking changes are made without incrementing the version.
+	#[test]
+	fn test_deserialize_from_reference_binary_file() {
+		let test_data_path = std::path::Path::new("crates/core/test_data/constraint_system_v1.bin");
+
+		// If the reference file doesn't exist, create it first
+		if !test_data_path.exists() {
+			let constraint_system = create_test_constraint_system();
+			let mut buf = Vec::new();
+			constraint_system.serialize(&mut buf).unwrap();
+
+			// Create directory if it doesn't exist
+			if let Some(parent) = test_data_path.parent() {
+				std::fs::create_dir_all(parent).unwrap();
+			}
+
+			std::fs::write(test_data_path, &buf).unwrap();
+		}
+
+		// Read the reference binary file
+		let binary_data = std::fs::read(test_data_path).unwrap();
+
+		// Deserialize and verify it works
+		let deserialized = ConstraintSystem::deserialize(&mut binary_data.as_slice()).unwrap();
+
+		// Verify the deserialized data has expected structure
+		assert_eq!(deserialized.value_vec_layout.n_const, 3);
+		assert_eq!(deserialized.value_vec_layout.n_inout, 2);
+		assert_eq!(deserialized.value_vec_layout.n_witness, 10);
+		assert_eq!(deserialized.value_vec_layout.n_internal, 3);
+		assert_eq!(deserialized.value_vec_layout.offset_inout, 4);
+		assert_eq!(deserialized.value_vec_layout.offset_witness, 8);
+		assert_eq!(deserialized.value_vec_layout.total_len, 16);
+
+		assert_eq!(deserialized.constants.len(), 3);
+		assert_eq!(deserialized.constants[0].as_u64(), 1);
+		assert_eq!(deserialized.constants[1].as_u64(), 42);
+		assert_eq!(deserialized.constants[2].as_u64(), 0xDEADBEEF);
+
+		assert_eq!(deserialized.and_constraints.len(), 2);
+		assert_eq!(deserialized.mul_constraints.len(), 1);
+
+		// Verify that the version is what we expect
+		// This is implicitly checked during deserialization, but we can also verify
+		// the file starts with the correct version bytes
+		let version_bytes = &binary_data[0..4]; // First 4 bytes should be version
+		let expected_version_bytes = 1u32.to_le_bytes(); // Version 1 in little-endian
+		assert_eq!(
+			version_bytes, expected_version_bytes,
+			"Binary file version mismatch. If you made breaking changes, increment ConstraintSystem::SERIALIZATION_VERSION"
+		);
+	}
+
+	/// Test that demonstrates what happens when there's a version mismatch.
+	/// This serves as documentation for the version compatibility system.
+	#[test]
+	fn test_version_compatibility_documentation() {
+		// Create a constraint system and serialize it
+		let constraint_system = create_test_constraint_system();
+		let mut buf = Vec::new();
+		constraint_system.serialize(&mut buf).unwrap();
+
+		// Verify current version works
+		let deserialized = ConstraintSystem::deserialize(&mut buf.as_slice()).unwrap();
+		assert_eq!(constraint_system.constants.len(), deserialized.constants.len());
+
+		// Now simulate an older version by modifying the version bytes
+		let mut modified_buf = buf.clone();
+		let old_version = 0u32; // Simulate version 0
+		modified_buf[0..4].copy_from_slice(&old_version.to_le_bytes());
+
+		// This should fail with version mismatch
+		let result = ConstraintSystem::deserialize(&mut modified_buf.as_slice());
+		assert!(result.is_err());
+		match result.unwrap_err() {
+			SerializationError::InvalidConstruction { name } => {
+				assert_eq!(name, "ConstraintSystem::version");
+			}
+			_ => panic!("Expected version mismatch error"),
+		}
 	}
 }

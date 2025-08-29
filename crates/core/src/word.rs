@@ -3,6 +3,9 @@ use std::{
 	ops::{BitAnd, BitOr, BitXor, Not, Shl, Shr},
 };
 
+use binius_utils::serialization::{DeserializeBytes, SerializationError, SerializeBytes};
+use bytes::{Buf, BufMut};
+
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Word(pub u64);
 
@@ -192,6 +195,21 @@ impl Word {
 
 	pub fn from_u64(value: u64) -> Word {
 		Word(value)
+	}
+}
+
+impl SerializeBytes for Word {
+	fn serialize(&self, write_buf: impl BufMut) -> Result<(), SerializationError> {
+		self.0.serialize(write_buf)
+	}
+}
+
+impl DeserializeBytes for Word {
+	fn deserialize(read_buf: impl Buf) -> Result<Self, SerializationError>
+	where
+		Self: Sized,
+	{
+		Ok(Word(u64::deserialize(read_buf)?))
 	}
 }
 
