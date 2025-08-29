@@ -44,8 +44,8 @@ mod blake2b_tests {
 		vectors.push((vec![0xAAu8; 2 * BLOCK_BYTES + 1], "just_over_two_blocks".to_string()));
 
 		// Pattern tests
-		vectors.push((vec![0x00u8; 64], "all_zeros_64".to_string()));
-		vectors.push((vec![0xFFu8; 64], "all_ones_64".to_string()));
+		vectors.push((vec![0x00u8; 64], "all_zero_64".to_string()));
+		vectors.push((vec![0xFFu8; 64], "all_one_64".to_string()));
 		vectors.push(((0..64u8).collect(), "sequential_64".to_string()));
 
 		// Various sizes

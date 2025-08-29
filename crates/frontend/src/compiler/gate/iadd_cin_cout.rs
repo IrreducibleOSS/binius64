@@ -52,7 +52,7 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 		outputs,
 		..
 	} = data.gate_param();
-	let [all_1] = constants else { unreachable!() };
+	let [all_one] = constants else { unreachable!() };
 	let [a, b, cin] = inputs else { unreachable!() };
 	let [sum, cout] = outputs else { unreachable!() };
 
@@ -75,7 +75,7 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 	builder
 		.and()
 		.a(xor4(*a, *b, cout_sll_1, cin_msb))
-		.b(*all_1)
+		.b(*all_one)
 		.c(*sum)
 		.build();
 }

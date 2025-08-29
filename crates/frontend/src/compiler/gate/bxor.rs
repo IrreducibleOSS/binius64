@@ -38,14 +38,14 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 		outputs,
 		..
 	} = data.gate_param();
-	let [all_1] = constants else { unreachable!() };
+	let [all_one] = constants else { unreachable!() };
 	let [x, y] = inputs else { unreachable!() };
 	let [z] = outputs else { unreachable!() };
 
 	// Constraint: Bitwise XOR
 	//
 	// (x ⊕ y) ∧ all-1 = z
-	builder.and().a(xor2(*x, *y)).b(*all_1).c(*z).build();
+	builder.and().a(xor2(*x, *y)).b(*all_one).c(*z).build();
 }
 
 pub fn emit_eval_bytecode(

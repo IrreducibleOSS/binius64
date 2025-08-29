@@ -218,8 +218,8 @@ fn try_create_linear_def(
 	constraint: &AndConstraint,
 	all_ones: ValueIndex,
 ) -> Option<LinearDefSite> {
-	// Pattern: a & all_1 = dst
-	// Which means: b = [all_1], c = [dst], and dst ∉ a
+	// Pattern: a & all_one = dst
+	// Which means: b = [all_one], c = [dst], and dst ∉ a
 
 	// Check if `b` is exactly `[all_ones]`
 	if constraint.b.len() != 1 {
@@ -371,7 +371,7 @@ mod tests {
 	fn test_try_create_linear_def() {
 		let all_ones = ValueIndex(0);
 
-		// Valid pure XOR: a & all_1 = dst
+		// Valid pure XOR: a & all_one = dst
 		let constraint = AndConstraint {
 			a: make_operand(vec![(1, ShiftVariant::Sll, 0), (2, ShiftVariant::Sll, 0)]),
 			b: make_operand(vec![(0, ShiftVariant::Sll, 0)]), // all_ones
