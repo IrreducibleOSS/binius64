@@ -6,6 +6,7 @@ This directory contains binary reference files used for testing serialization fo
 
 - `constraint_system_v1.bin`: Reference binary serialization of a `ConstraintSystem` using serialization version 1.
 - `public_witness_v1.bin`: Reference binary serialization of a `PublicWitness` using serialization version 1.
+- `proof_v1.bin`: Reference binary serialization of a `Proof` using serialization version 1.
 
 ## Purpose
 
@@ -39,14 +40,33 @@ If you make intentional breaking changes to the serialization format:
 3. Rename the new file to include the new version number
 4. Update test paths to reference the new file
 
+### For Proof
+1. Increment `Proof::SERIALIZATION_VERSION`
+2. Run the ignored test to regenerate the reference file:
+   ```bash
+   cargo test -p binius-core -- --ignored create_proof_reference_binary
+   ```
+3. Rename the new file to include the new version number
+4. Update test paths to reference the new file
+
 ## Binary Format
 
 The binary format uses little-endian encoding and follows this structure:
 
+### ConstraintSystem Format
 1. **Version header** (4 bytes): `u32` serialization version
 2. **ValueVecLayout**: Layout configuration 
 3. **Constants**: Vector of `Word` values
 4. **AND constraints**: Vector of `AndConstraint` structures
 5. **MUL constraints**: Vector of `MulConstraint` structures
+
+### PublicWitness Format
+1. **Version header** (4 bytes): `u32` serialization version
+2. **Data**: Vector of `Word` values representing the public witness
+
+### Proof Format
+1. **Version header** (4 bytes): `u32` serialization version
+2. **Challenger type**: String identifying the challenger (e.g., "HasherChallenger<Sha256>")
+3. **Transcript data**: Vector of bytes containing the proof transcript
 
 All data uses the platform-independent `SerializeBytes`/`DeserializeBytes` traits from `binius-utils`.

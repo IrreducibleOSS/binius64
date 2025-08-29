@@ -477,6 +477,25 @@ impl ValueVec {
 		}
 	}
 
+	pub fn new_from_data(
+		layout: ValueVecLayout,
+		mut public: Vec<Word>,
+		private: Vec<Word>,
+	) -> Result<ValueVec, ConstraintSystemError> {
+		public.extend_from_slice(&private);
+		if public.len() != layout.total_len {
+			return Err(ConstraintSystemError::ValueVecLenMismatch {
+				expected: layout.total_len,
+				actual: public.len(),
+			});
+		}
+
+		Ok(ValueVec {
+			layout,
+			data: public,
+		})
+	}
+
 	/// The total size of the vector.
 	pub fn size(&self) -> usize {
 		self.data.len()
@@ -493,6 +512,11 @@ impl ValueVec {
 	/// Returns the public portion of the values vector.
 	pub fn public(&self) -> &[Word] {
 		&self.data[..self.layout.offset_witness]
+	}
+
+	/// Return all non-public values (witness + internal).
+	pub fn non_public(&self) -> &[Word] {
+		&self.data[self.layout.offset_witness..]
 	}
 
 	/// Returns the witness portion of the values vector.
@@ -522,49 +546,45 @@ impl IndexMut<ValueIndex> for ValueVec {
 	}
 }
 
-/// Public witness data for zero-knowledge proofs.
+/// Values data for zero-knowledge proofs (either public witness or non-public part - private inputs
+/// and internal values).
 ///
-/// This structure holds the public portion of witness data that needs to be shared
-/// with verifiers. It uses `Cow<[Word]>` to avoid unnecessary clones while supporting
+/// It uses `Cow<[Word]>` to avoid unnecessary clones while supporting
 /// both borrowed and owned data.
-///
-/// The public witness consists of:
-/// - Constants: Fixed values defined in the constraint system
-/// - Inputs/Outputs: Public values that are part of the statement being proven
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PublicWitness<'a> {
+pub struct ValuesData<'a> {
 	data: Cow<'a, [Word]>,
 }
 
-impl<'a> PublicWitness<'a> {
+impl<'a> ValuesData<'a> {
 	/// Serialization format version for compatibility checking
 	pub const SERIALIZATION_VERSION: u32 = 1;
 
-	/// Create a new PublicWitness from borrowed data
+	/// Create a new ValuesData from borrowed data
 	pub fn borrowed(data: &'a [Word]) -> Self {
 		Self {
 			data: Cow::Borrowed(data),
 		}
 	}
 
-	/// Create a new PublicWitness from owned data
+	/// Create a new ValuesData from owned data
 	pub fn owned(data: Vec<Word>) -> Self {
 		Self {
 			data: Cow::Owned(data),
 		}
 	}
 
-	/// Get the public witness data as a slice
+	/// Get the values data as a slice
 	pub fn as_slice(&self) -> &[Word] {
 		&self.data
 	}
 
-	/// Get the number of words in the public witness
+	/// Get the number of words in the values data
 	pub fn len(&self) -> usize {
 		self.data.len()
 	}
 
-	/// Check if the public witness is empty
+	/// Check if the witness is empty
 	pub fn is_empty(&self) -> bool {
 		self.data.is_empty()
 	}
@@ -574,15 +594,15 @@ impl<'a> PublicWitness<'a> {
 		self.data.into_owned()
 	}
 
-	/// Convert to owned version of PublicWitness
-	pub fn to_owned(&self) -> PublicWitness<'static> {
-		PublicWitness {
+	/// Convert to owned version of ValuesData
+	pub fn to_owned(&self) -> ValuesData<'static> {
+		ValuesData {
 			data: Cow::Owned(self.data.to_vec()),
 		}
 	}
 }
 
-impl<'a> SerializeBytes for PublicWitness<'a> {
+impl<'a> SerializeBytes for ValuesData<'a> {
 	fn serialize(&self, mut write_buf: impl BufMut) -> Result<(), SerializationError> {
 		Self::SERIALIZATION_VERSION.serialize(&mut write_buf)?;
 
@@ -590,7 +610,7 @@ impl<'a> SerializeBytes for PublicWitness<'a> {
 	}
 }
 
-impl DeserializeBytes for PublicWitness<'static> {
+impl DeserializeBytes for ValuesData<'static> {
 	fn deserialize(mut read_buf: impl Buf) -> Result<Self, SerializationError>
 	where
 		Self: Sized,
@@ -598,42 +618,167 @@ impl DeserializeBytes for PublicWitness<'static> {
 		let version = u32::deserialize(&mut read_buf)?;
 		if version != Self::SERIALIZATION_VERSION {
 			return Err(SerializationError::InvalidConstruction {
-				name: "PublicWitness::version",
+				name: "Witness::version",
 			});
 		}
 
 		let data = Vec::<Word>::deserialize(read_buf)?;
 
-		Ok(PublicWitness::owned(data))
+		Ok(ValuesData::owned(data))
 	}
 }
 
-impl<'a> From<&'a [Word]> for PublicWitness<'a> {
+impl<'a> From<&'a [Word]> for ValuesData<'a> {
 	fn from(data: &'a [Word]) -> Self {
-		PublicWitness::borrowed(data)
+		ValuesData::borrowed(data)
 	}
 }
 
-impl From<Vec<Word>> for PublicWitness<'static> {
+impl From<Vec<Word>> for ValuesData<'static> {
 	fn from(data: Vec<Word>) -> Self {
-		PublicWitness::owned(data)
+		ValuesData::owned(data)
 	}
 }
 
-impl<'a> From<&'a ValueVec> for PublicWitness<'a> {
-	fn from(value_vec: &'a ValueVec) -> Self {
-		PublicWitness::borrowed(value_vec.public())
-	}
-}
-
-impl<'a> AsRef<[Word]> for PublicWitness<'a> {
+impl<'a> AsRef<[Word]> for ValuesData<'a> {
 	fn as_ref(&self) -> &[Word] {
 		self.as_slice()
 	}
 }
 
-impl<'a> std::ops::Deref for PublicWitness<'a> {
+impl<'a> std::ops::Deref for ValuesData<'a> {
 	type Target = [Word];
+
+	fn deref(&self) -> &Self::Target {
+		self.as_slice()
+	}
+}
+
+/// A zero-knowledge proof that can be serialized for cross-host verification.
+///
+/// This structure contains the complete proof transcript generated by the prover,
+/// along with information about the challenger type needed for verification.
+/// The proof data represents the Fiat-Shamir transcript that can be deserialized
+/// by the verifier to recreate the interactive protocol.
+///
+/// # Design
+///
+/// The proof contains:
+/// - `data`: The actual proof transcript as bytes (zero-copy with Cow)
+/// - `challenger_type`: String identifying the challenger used (e.g., "HasherChallenger<Sha256>")
+///
+/// This enables complete cross-host verification where a proof generated on one
+/// machine can be serialized, transmitted, and verified on another machine with
+/// the correct challenger configuration.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Proof<'a> {
+	data: Cow<'a, [u8]>,
+	challenger_type: String,
+}
+
+impl<'a> Proof<'a> {
+	/// Serialization format version for compatibility checking
+	pub const SERIALIZATION_VERSION: u32 = 1;
+
+	/// Create a new Proof from borrowed transcript data
+	pub fn borrowed(data: &'a [u8], challenger_type: String) -> Self {
+		Self {
+			data: Cow::Borrowed(data),
+			challenger_type,
+		}
+	}
+
+	/// Create a new Proof from owned transcript data
+	pub fn owned(data: Vec<u8>, challenger_type: String) -> Self {
+		Self {
+			data: Cow::Owned(data),
+			challenger_type,
+		}
+	}
+
+	/// Get the proof transcript data as a slice
+	pub fn as_slice(&self) -> &[u8] {
+		&self.data
+	}
+
+	/// Get the challenger type identifier
+	pub fn challenger_type(&self) -> &str {
+		&self.challenger_type
+	}
+
+	/// Get the number of bytes in the proof transcript
+	pub fn len(&self) -> usize {
+		self.data.len()
+	}
+
+	/// Check if the proof transcript is empty
+	pub fn is_empty(&self) -> bool {
+		self.data.is_empty()
+	}
+
+	/// Convert to owned data, consuming self
+	pub fn into_owned(self) -> (Vec<u8>, String) {
+		(self.data.into_owned(), self.challenger_type)
+	}
+
+	/// Convert to owned version of Proof
+	pub fn to_owned(&self) -> Proof<'static> {
+		Proof {
+			data: Cow::Owned(self.data.to_vec()),
+			challenger_type: self.challenger_type.clone(),
+		}
+	}
+}
+
+impl<'a> SerializeBytes for Proof<'a> {
+	fn serialize(&self, mut write_buf: impl BufMut) -> Result<(), SerializationError> {
+		Self::SERIALIZATION_VERSION.serialize(&mut write_buf)?;
+
+		self.challenger_type.serialize(&mut write_buf)?;
+
+		self.data.as_ref().serialize(write_buf)
+	}
+}
+
+impl DeserializeBytes for Proof<'static> {
+	fn deserialize(mut read_buf: impl Buf) -> Result<Self, SerializationError>
+	where
+		Self: Sized,
+	{
+		let version = u32::deserialize(&mut read_buf)?;
+		if version != Self::SERIALIZATION_VERSION {
+			return Err(SerializationError::InvalidConstruction {
+				name: "Proof::version",
+			});
+		}
+
+		let challenger_type = String::deserialize(&mut read_buf)?;
+		let data = Vec::<u8>::deserialize(read_buf)?;
+
+		Ok(Proof::owned(data, challenger_type))
+	}
+}
+
+impl<'a> From<(&'a [u8], String)> for Proof<'a> {
+	fn from((data, challenger_type): (&'a [u8], String)) -> Self {
+		Proof::borrowed(data, challenger_type)
+	}
+}
+
+impl From<(Vec<u8>, String)> for Proof<'static> {
+	fn from((data, challenger_type): (Vec<u8>, String)) -> Self {
+		Proof::owned(data, challenger_type)
+	}
+}
+
+impl<'a> AsRef<[u8]> for Proof<'a> {
+	fn as_ref(&self) -> &[u8] {
+		self.as_slice()
+	}
+}
+
+impl<'a> std::ops::Deref for Proof<'a> {
+	type Target = [u8];
 
 	fn deref(&self) -> &Self::Target {
 		self.as_slice()
@@ -646,7 +791,7 @@ mod serialization_tests {
 
 	use super::*;
 
-	fn create_test_constraint_system() -> ConstraintSystem {
+	pub(crate) fn create_test_constraint_system() -> ConstraintSystem {
 		let constants = vec![
 			Word::from_u64(1),
 			Word::from_u64(42),
@@ -797,7 +942,6 @@ mod serialization_tests {
 		assert_eq!(constraint.b.len(), deserialized.b.len());
 		assert_eq!(constraint.c.len(), deserialized.c.len());
 
-		// Check individual elements
 		for (orig, deser) in constraint.a.iter().zip(deserialized.a.iter()) {
 			assert_eq!(orig.value_index, deser.value_index);
 			assert_eq!(orig.amount, deser.amount);
@@ -970,9 +1114,7 @@ mod serialization_tests {
 	/// This test will fail if breaking changes are made without incrementing the version.
 	#[test]
 	fn test_deserialize_from_reference_binary_file() {
-		let test_data_path = std::path::Path::new("crates/core/test_data/constraint_system_v1.bin");
-
-		let binary_data = std::fs::read(test_data_path).unwrap();
+		let binary_data = include_bytes!("../test_data/constraint_system_v1.bin");
 
 		let deserialized = ConstraintSystem::deserialize(&mut binary_data.as_slice()).unwrap();
 
@@ -1004,80 +1146,69 @@ mod serialization_tests {
 	}
 
 	#[test]
-	fn test_public_witness_from_value_vec() {
-		let constraint_system = create_test_constraint_system();
-		let value_vec = constraint_system.new_value_vec();
-
-		let public_witness: PublicWitness = (&value_vec).into();
-
-		assert_eq!(public_witness.len(), value_vec.public().len());
-		assert_eq!(public_witness.as_slice(), value_vec.public());
-	}
-
-	#[test]
-	fn test_public_witness_serialization_round_trip_owned() {
+	fn test_witness_serialization_round_trip_owned() {
 		let data = vec![
 			Word::from_u64(1),
 			Word::from_u64(42),
 			Word::from_u64(0xDEADBEEF),
 			Word::from_u64(0x1234567890ABCDEF),
 		];
-		let witness = PublicWitness::owned(data.clone());
+		let witness = ValuesData::owned(data.clone());
 
 		let mut buf = Vec::new();
 		witness.serialize(&mut buf).unwrap();
 
-		let deserialized = PublicWitness::deserialize(&mut buf.as_slice()).unwrap();
+		let deserialized = ValuesData::deserialize(&mut buf.as_slice()).unwrap();
 		assert_eq!(witness, deserialized);
 		assert_eq!(deserialized.as_slice(), data.as_slice());
 	}
 
 	#[test]
-	fn test_public_witness_serialization_round_trip_borrowed() {
+	fn test_witness_serialization_round_trip_borrowed() {
 		let data = vec![Word::from_u64(123), Word::from_u64(456)];
-		let witness = PublicWitness::borrowed(&data);
+		let witness = ValuesData::borrowed(&data);
 
 		let mut buf = Vec::new();
 		witness.serialize(&mut buf).unwrap();
 
-		let deserialized = PublicWitness::deserialize(&mut buf.as_slice()).unwrap();
+		let deserialized = ValuesData::deserialize(&mut buf.as_slice()).unwrap();
 		assert_eq!(witness, deserialized);
 		assert_eq!(deserialized.as_slice(), data.as_slice());
 	}
 
 	#[test]
-	fn test_public_witness_version_mismatch() {
+	fn test_witness_version_mismatch() {
 		let mut buf = Vec::new();
 		999u32.serialize(&mut buf).unwrap(); // Wrong version
 		vec![Word::from_u64(1)].serialize(&mut buf).unwrap(); // Some data
 
-		let result = PublicWitness::deserialize(&mut buf.as_slice());
+		let result = ValuesData::deserialize(&mut buf.as_slice());
 		assert!(result.is_err());
 		match result.unwrap_err() {
 			SerializationError::InvalidConstruction { name } => {
-				assert_eq!(name, "PublicWitness::version");
+				assert_eq!(name, "Witness::version");
 			}
 			_ => panic!("Expected version mismatch error"),
 		}
 	}
 
-	/// Helper function to create or update the reference binary file for PublicWitness version
+	/// Helper function to create or update the reference binary file for Witness version
 	/// compatibility testing.
 	#[test]
-	#[ignore] // Use `cargo test -- --ignored create_public_witness_reference_binary` to run this
-	fn create_public_witness_reference_binary_file() {
+	#[ignore] // Use `cargo test -- --ignored create_witness_reference_binary` to run this
+	fn create_witness_reference_binary_file() {
 		let data = vec![
 			Word::from_u64(1),
 			Word::from_u64(42),
 			Word::from_u64(0xDEADBEEF),
 			Word::from_u64(0x1234567890ABCDEF),
 		];
-		let public_witness = PublicWitness::owned(data);
+		let witness = ValuesData::owned(data);
 
 		let mut buf = Vec::new();
-		public_witness.serialize(&mut buf).unwrap();
+		witness.serialize(&mut buf).unwrap();
 
-		let test_data_path = std::path::Path::new("crates/core/test_data/public_witness_v1.bin");
+		let test_data_path = std::path::Path::new("crates/core/test_data/witness_v1.bin");
 
 		if let Some(parent) = test_data_path.parent() {
 			std::fs::create_dir_all(parent).unwrap();
@@ -1085,20 +1216,18 @@ mod serialization_tests {
 
 		std::fs::write(test_data_path, &buf).unwrap();
 
-		println!("Created PublicWitness reference binary file at: {:?}", test_data_path);
+		println!("Created Witness reference binary file at: {:?}", test_data_path);
 		println!("Binary data length: {} bytes", buf.len());
 	}
 
-	/// Test deserialization from a reference binary file to ensure PublicWitness version
+	/// Test deserialization from a reference binary file to ensure Witness version
 	/// compatibility. This test will fail if breaking changes are made without incrementing the
 	/// version.
 	#[test]
-	fn test_public_witness_deserialize_from_reference_binary_file() {
-		let test_data_path = std::path::Path::new("crates/core/test_data/public_witness_v1.bin");
+	fn test_witness_deserialize_from_reference_binary_file() {
+		let binary_data = include_bytes!("../test_data/witness_v1.bin");
 
-		let binary_data = std::fs::read(test_data_path).unwrap();
-
-		let deserialized = PublicWitness::deserialize(&mut binary_data.as_slice()).unwrap();
+		let deserialized = ValuesData::deserialize(&mut binary_data.as_slice()).unwrap();
 
 		assert_eq!(deserialized.len(), 4);
 		assert_eq!(deserialized.as_slice()[0].as_u64(), 1);
@@ -1113,7 +1242,226 @@ mod serialization_tests {
 		let expected_version_bytes = 1u32.to_le_bytes(); // Version 1 in little-endian
 		assert_eq!(
 			version_bytes, expected_version_bytes,
-			"PublicWitness binary file version mismatch. If you made breaking changes, increment PublicWitness::SERIALIZATION_VERSION"
+			"WitnessData binary file version mismatch. If you made breaking changes, increment WitnessData::SERIALIZATION_VERSION"
 		);
+	}
+
+	#[test]
+	fn test_proof_serialization_round_trip_owned() {
+		let transcript_data = vec![0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0];
+		let challenger_type = "HasherChallenger<Sha256>".to_string();
+		let proof = Proof::owned(transcript_data.clone(), challenger_type.clone());
+
+		let mut buf = Vec::new();
+		proof.serialize(&mut buf).unwrap();
+
+		let deserialized = Proof::deserialize(&mut buf.as_slice()).unwrap();
+		assert_eq!(proof, deserialized);
+		assert_eq!(deserialized.as_slice(), transcript_data.as_slice());
+		assert_eq!(deserialized.challenger_type(), &challenger_type);
+	}
+
+	#[test]
+	fn test_proof_serialization_round_trip_borrowed() {
+		let transcript_data = vec![0xAA, 0xBB, 0xCC, 0xDD];
+		let challenger_type = "TestChallenger".to_string();
+		let proof = Proof::borrowed(&transcript_data, challenger_type.clone());
+
+		let mut buf = Vec::new();
+		proof.serialize(&mut buf).unwrap();
+
+		let deserialized = Proof::deserialize(&mut buf.as_slice()).unwrap();
+		assert_eq!(proof, deserialized);
+		assert_eq!(deserialized.as_slice(), transcript_data.as_slice());
+		assert_eq!(deserialized.challenger_type(), &challenger_type);
+	}
+
+	#[test]
+	fn test_proof_empty_transcript() {
+		let proof = Proof::owned(vec![], "EmptyProof".to_string());
+		assert!(proof.is_empty());
+		assert_eq!(proof.len(), 0);
+
+		let mut buf = Vec::new();
+		proof.serialize(&mut buf).unwrap();
+
+		let deserialized = Proof::deserialize(&mut buf.as_slice()).unwrap();
+		assert_eq!(proof, deserialized);
+		assert!(deserialized.is_empty());
+	}
+
+	#[test]
+	fn test_proof_large_transcript() {
+		let mut rng = StdRng::seed_from_u64(12345);
+		let mut large_data = vec![0u8; 10000];
+		rng.fill_bytes(&mut large_data);
+
+		let challenger_type = "LargeProofChallenger".to_string();
+		let proof = Proof::owned(large_data.clone(), challenger_type.clone());
+
+		let mut buf = Vec::new();
+		proof.serialize(&mut buf).unwrap();
+
+		let deserialized = Proof::deserialize(&mut buf.as_slice()).unwrap();
+		assert_eq!(proof, deserialized);
+		assert_eq!(deserialized.len(), 10000);
+		assert_eq!(deserialized.challenger_type(), &challenger_type);
+	}
+
+	#[test]
+	fn test_proof_version_mismatch() {
+		let mut buf = Vec::new();
+		999u32.serialize(&mut buf).unwrap(); // Wrong version
+		"TestChallenger".serialize(&mut buf).unwrap(); // Some challenger type
+		vec![0xAAu8].serialize(&mut buf).unwrap(); // Some data
+
+		let result = Proof::deserialize(&mut buf.as_slice());
+		assert!(result.is_err());
+		match result.unwrap_err() {
+			SerializationError::InvalidConstruction { name } => {
+				assert_eq!(name, "Proof::version");
+			}
+			_ => panic!("Expected version mismatch error"),
+		}
+	}
+
+	#[test]
+	fn test_proof_into_owned() {
+		let original_data = vec![1, 2, 3, 4, 5];
+		let original_challenger = "TestChallenger".to_string();
+		let proof = Proof::owned(original_data.clone(), original_challenger.clone());
+
+		let (data, challenger_type) = proof.into_owned();
+		assert_eq!(data, original_data);
+		assert_eq!(challenger_type, original_challenger);
+	}
+
+	#[test]
+	fn test_proof_to_owned() {
+		let data = vec![0xFF, 0xEE, 0xDD];
+		let challenger_type = "BorrowedChallenger".to_string();
+		let borrowed_proof = Proof::borrowed(&data, challenger_type.clone());
+
+		let owned_proof = borrowed_proof.to_owned();
+		assert_eq!(owned_proof.as_slice(), data);
+		assert_eq!(owned_proof.challenger_type(), &challenger_type);
+		// Verify it's truly owned (not just borrowed)
+		drop(data); // This would fail if owned_proof was still borrowing
+		assert_eq!(owned_proof.len(), 3);
+	}
+
+	#[test]
+	fn test_proof_different_challenger_types() {
+		let data = vec![0x42];
+		let challengers = vec![
+			"HasherChallenger<Sha256>".to_string(),
+			"HasherChallenger<Blake2b>".to_string(),
+			"CustomChallenger".to_string(),
+			"".to_string(), // Empty string should also work
+		];
+
+		for challenger_type in challengers {
+			let proof = Proof::owned(data.clone(), challenger_type.clone());
+			let mut buf = Vec::new();
+			proof.serialize(&mut buf).unwrap();
+
+			let deserialized = Proof::deserialize(&mut buf.as_slice()).unwrap();
+			assert_eq!(deserialized.challenger_type(), &challenger_type);
+		}
+	}
+
+	#[test]
+	fn test_proof_serialization_with_different_sources() {
+		let transcript_data = vec![0x11, 0x22, 0x33, 0x44];
+		let challenger_type = "MultiSourceChallenger".to_string();
+		let original = Proof::owned(transcript_data, challenger_type);
+
+		// Test with Vec<u8> (memory buffer)
+		let mut vec_buf = Vec::new();
+		original.serialize(&mut vec_buf).unwrap();
+		let deserialized1 = Proof::deserialize(&mut vec_buf.as_slice()).unwrap();
+		assert_eq!(original, deserialized1);
+
+		// Test with bytes::BytesMut (another common buffer type)
+		let mut bytes_buf = bytes::BytesMut::new();
+		original.serialize(&mut bytes_buf).unwrap();
+		let deserialized2 = Proof::deserialize(bytes_buf.freeze()).unwrap();
+		assert_eq!(original, deserialized2);
+	}
+
+	/// Helper function to create or update the reference binary file for Proof version
+	/// compatibility testing.
+	#[test]
+	#[ignore] // Use `cargo test -- --ignored create_proof_reference_binary` to run this
+	fn create_proof_reference_binary_file() {
+		let transcript_data = vec![
+			0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF, 0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54,
+			0x32, 0x10, 0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE,
+		];
+		let challenger_type = "HasherChallenger<Sha256>".to_string();
+		let proof = Proof::owned(transcript_data, challenger_type);
+
+		let mut buf = Vec::new();
+		proof.serialize(&mut buf).unwrap();
+
+		let test_data_path = std::path::Path::new("crates/core/test_data/proof_v1.bin");
+
+		if let Some(parent) = test_data_path.parent() {
+			std::fs::create_dir_all(parent).unwrap();
+		}
+
+		std::fs::write(test_data_path, &buf).unwrap();
+
+		println!("Created Proof reference binary file at: {:?}", test_data_path);
+		println!("Binary data length: {} bytes", buf.len());
+	}
+
+	/// Test deserialization from a reference binary file to ensure Proof version
+	/// compatibility. This test will fail if breaking changes are made without incrementing the
+	/// version.
+	#[test]
+	fn test_proof_deserialize_from_reference_binary_file() {
+		let binary_data = include_bytes!("../test_data/proof_v1.bin");
+
+		let deserialized = Proof::deserialize(&mut binary_data.as_slice()).unwrap();
+
+		assert_eq!(deserialized.len(), 24); // 24 bytes of transcript data
+		assert_eq!(deserialized.challenger_type(), "HasherChallenger<Sha256>");
+
+		let expected_data = vec![
+			0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF, 0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54,
+			0x32, 0x10, 0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE,
+		];
+		assert_eq!(deserialized.as_slice(), expected_data);
+
+		// Verify that the version is what we expect
+		// This is implicitly checked during deserialization, but we can also verify
+		// the file starts with the correct version bytes
+		let version_bytes = &binary_data[0..4]; // First 4 bytes should be version
+		let expected_version_bytes = 1u32.to_le_bytes(); // Version 1 in little-endian
+		assert_eq!(
+			version_bytes, expected_version_bytes,
+			"Proof binary file version mismatch. If you made breaking changes, increment Proof::SERIALIZATION_VERSION"
+		);
+	}
+
+	#[test]
+	fn split_values_vec_and_combine() {
+		let values = ValueVec::new(ValueVecLayout {
+			n_const: 2,
+			n_inout: 2,
+			n_witness: 2,
+			n_internal: 2,
+			offset_inout: 2,
+			offset_witness: 4,
+			total_len: 8,
+		});
+
+		let public = values.public();
+		let non_public = values.non_public();
+		let combined =
+			ValueVec::new_from_data(values.layout.clone(), public.to_vec(), non_public.to_vec())
+				.unwrap();
+		assert_eq!(combined.combined_witness(), values.combined_witness());
 	}
 }
