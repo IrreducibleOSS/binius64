@@ -11,12 +11,12 @@ pub mod opcode;
 
 pub use opcode::Opcode;
 
-pub mod assert_0;
-pub mod assert_band_0;
 pub mod assert_eq;
 pub mod assert_eq_cond;
 pub mod assert_false;
+pub mod assert_non_zero;
 pub mod assert_true;
+pub mod assert_zero;
 pub mod band;
 pub mod biguint_divide_hint;
 pub mod biguint_mod_pow_hint;
@@ -56,8 +56,8 @@ pub fn constrain(gate: Gate, graph: &GateGraph, builder: &mut ConstraintBuilder)
 		Opcode::Rotr32 => rotr32::constrain(gate, data, builder),
 		Opcode::Rotr => rotr::constrain(gate, data, builder),
 		Opcode::AssertEq => assert_eq::constrain(gate, data, builder),
-		Opcode::Assert0 => assert_0::constrain(gate, data, builder),
-		Opcode::AssertBand0 => assert_band_0::constrain(gate, data, builder),
+		Opcode::AssertZero => assert_zero::constrain(gate, data, builder),
+		Opcode::AssertNonZero => assert_non_zero::constrain(gate, data, builder),
 		Opcode::AssertFalse => assert_false::constrain(gate, data, builder),
 		Opcode::AssertTrue => assert_true::constrain(gate, data, builder),
 		Opcode::AssertEqCond => assert_eq_cond::constrain(gate, data, builder),
@@ -102,13 +102,13 @@ pub fn emit_gate_bytecode(
 			let assertion_path = graph.assertion_names[gate];
 			assert_eq::emit_eval_bytecode(gate, data, assertion_path, builder, wire_to_reg)
 		}
-		Opcode::Assert0 => {
+		Opcode::AssertZero => {
 			let assertion_path = graph.assertion_names[gate];
-			assert_0::emit_eval_bytecode(gate, data, assertion_path, builder, wire_to_reg)
+			assert_zero::emit_eval_bytecode(gate, data, assertion_path, builder, wire_to_reg)
 		}
-		Opcode::AssertBand0 => {
+		Opcode::AssertNonZero => {
 			let assertion_path = graph.assertion_names[gate];
-			assert_band_0::emit_eval_bytecode(gate, data, assertion_path, builder, wire_to_reg)
+			assert_non_zero::emit_eval_bytecode(gate, data, assertion_path, builder, wire_to_reg)
 		}
 		Opcode::AssertEqCond => {
 			let assertion_path = graph.assertion_names[gate];

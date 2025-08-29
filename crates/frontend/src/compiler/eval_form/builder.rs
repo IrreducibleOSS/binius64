@@ -222,32 +222,39 @@ impl BytecodeBuilder {
 		self.emit_u32(error_id);
 	}
 
-	pub fn emit_assert_zero(&mut self, src: u32, error_id: u32) {
+	pub fn emit_assert_eq_cond(&mut self, cond: u32, src1: u32, src2: u32, error_id: u32) {
 		self.n_eval_insn += 1;
 		self.emit_u8(0x61);
-		self.emit_reg(src);
-		self.emit_u32(error_id);
-	}
-
-	pub fn emit_assert_cond(&mut self, cond: u32, src1: u32, src2: u32, error_id: u32) {
-		self.n_eval_insn += 1;
-		self.emit_u8(0x62);
 		self.emit_reg(cond);
 		self.emit_reg(src1);
 		self.emit_reg(src2);
 		self.emit_u32(error_id);
 	}
 
-	pub fn emit_assert_false(&mut self, src: u32, error_id: u32) {
+	pub fn emit_assert_zero(&mut self, src: u32, error_id: u32) {
+		self.n_eval_insn += 1;
+		self.emit_u8(0x62);
+		self.emit_reg(src);
+		self.emit_u32(error_id);
+	}
+
+	pub fn emit_assert_non_zero(&mut self, src: u32, error_id: u32) {
 		self.n_eval_insn += 1;
 		self.emit_u8(0x63);
 		self.emit_reg(src);
 		self.emit_u32(error_id);
 	}
 
-	pub fn emit_assert_true(&mut self, src: u32, error_id: u32) {
+	pub fn emit_assert_false(&mut self, src: u32, error_id: u32) {
 		self.n_eval_insn += 1;
 		self.emit_u8(0x64);
+		self.emit_reg(src);
+		self.emit_u32(error_id);
+	}
+
+	pub fn emit_assert_true(&mut self, src: u32, error_id: u32) {
+		self.n_eval_insn += 1;
+		self.emit_u8(0x65);
 		self.emit_reg(src);
 		self.emit_u32(error_id);
 	}

@@ -37,8 +37,8 @@ pub enum Opcode {
 
 	// Assertions
 	AssertEq,
-	Assert0,
-	AssertBand0,
+	AssertZero,
+	AssertNonZero,
 	AssertFalse,
 	AssertTrue,
 	AssertEqCond,
@@ -124,8 +124,8 @@ impl Opcode {
 
 			// Assertions (no outputs)
 			Opcode::AssertEq => gate::assert_eq::shape(),
-			Opcode::Assert0 => gate::assert_0::shape(),
-			Opcode::AssertBand0 => gate::assert_band_0::shape(),
+			Opcode::AssertZero => gate::assert_zero::shape(),
+			Opcode::AssertNonZero => gate::assert_non_zero::shape(),
 			Opcode::AssertFalse => gate::assert_false::shape(),
 			Opcode::AssertTrue => gate::assert_true::shape(),
 			Opcode::AssertEqCond => gate::assert_eq_cond::shape(),

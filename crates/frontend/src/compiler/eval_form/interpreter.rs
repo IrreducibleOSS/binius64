@@ -128,10 +128,11 @@ impl<'a> Interpreter<'a> {
 
 				// Assertions
 				0x60 => self.exec_assert_eq(ctx),
-				0x61 => self.exec_assert_zero(ctx),
-				0x62 => self.exec_assert_cond(ctx),
-				0x63 => self.exec_assert_false(ctx),
-				0x64 => self.exec_assert_true(ctx),
+				0x61 => self.exec_assert_eq_cond(ctx),
+				0x62 => self.exec_assert_zero(ctx),
+				0x63 => self.exec_assert_non_zero(ctx),
+				0x64 => self.exec_assert_false(ctx),
+				0x65 => self.exec_assert_true(ctx),
 
 				// Hint calls
 				0x80 => self.exec_hint(ctx),
@@ -374,18 +375,7 @@ impl<'a> Interpreter<'a> {
 		}
 	}
 
-	fn exec_assert_zero(&mut self, ctx: &mut ExecutionContext<'_>) {
-		let src = self.read_reg();
-		let error_id = self.read_u32();
-
-		let val = self.load(ctx, src);
-
-		if val != Word::ZERO {
-			ctx.note_assertion_failure(error_id, format!("{val:?} != 0"));
-		}
-	}
-
-	fn exec_assert_cond(&mut self, ctx: &mut ExecutionContext<'_>) {
+	fn exec_assert_eq_cond(&mut self, ctx: &mut ExecutionContext<'_>) {
 		let cond = self.read_reg();
 		let src1 = self.read_reg();
 		let src2 = self.read_reg();
@@ -404,6 +394,28 @@ impl<'a> Interpreter<'a> {
 					format!("conditional assert: {val1:?} != {val2:?}"),
 				);
 			}
+		}
+	}
+
+	fn exec_assert_zero(&mut self, ctx: &mut ExecutionContext<'_>) {
+		let src = self.read_reg();
+		let error_id = self.read_u32();
+
+		let val = self.load(ctx, src);
+
+		if val != Word::ZERO {
+			ctx.note_assertion_failure(error_id, format!("{val:?} != 0"));
+		}
+	}
+
+	fn exec_assert_non_zero(&mut self, ctx: &mut ExecutionContext<'_>) {
+		let src = self.read_reg();
+		let error_id = self.read_u32();
+
+		let val = self.load(ctx, src);
+
+		if val == Word::ZERO {
+			ctx.note_assertion_failure(error_id, format!("{val:?} == 0"));
 		}
 	}
 
