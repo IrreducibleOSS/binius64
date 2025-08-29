@@ -67,23 +67,11 @@ impl Base64UrlSafe {
 		encoded: Vec<Wire>,
 		len_bytes: Wire,
 	) -> Self {
-		assert!(
-			decoded.len().is_multiple_of(3),
-			"decoded.len() must be a multiple of 3, got {}",
-			decoded.len()
-		);
-
-		assert_eq!(
-			encoded.len(),
-			decoded.len() / 3 * 4,
-			"encoded.len() must equal decoded.len() / 3 * 4"
-		);
-
 		// Verify length bounds
 		verify_length_bounds(builder, len_bytes, decoded.len() << 3);
 
 		// Process groups of 3 bytes -> 4 base64 chars
-		let groups = (decoded.len() << 3) / 3; // how many 3-byte chunks are there?
+		let groups = (decoded.len() << 3).div_ceil(3); // how many 3-byte chunks are there?
 
 		for group_idx in 0..groups {
 			let b = builder.subcircuit(format!("group[{group_idx}]"));
@@ -170,15 +158,14 @@ fn verify_base64_group(
 	let byte1 = extract_byte(builder, decoded, base_byte_idx + 1);
 	let byte2 = extract_byte(builder, decoded, base_byte_idx + 2);
 
-	let has_1_byte = builder.icmp_ult(builder.add_constant_64(base_byte_idx as u64), len_bytes);
-	let has_2_bytes =
-		builder.icmp_ult(builder.add_constant_64((base_byte_idx + 1) as u64), len_bytes);
-	let has_3_bytes =
-		builder.icmp_ult(builder.add_constant_64((base_byte_idx + 2) as u64), len_bytes);
+	let has_1 = builder.icmp_ult(builder.add_constant_64(base_byte_idx as u64), len_bytes);
+	let has_2 = builder.icmp_ult(builder.add_constant_64((base_byte_idx + 1) as u64), len_bytes);
+	let has_3 = builder.icmp_ult(builder.add_constant_64((base_byte_idx + 2) as u64), len_bytes);
+
 	let zero = builder.add_constant(Word::ZERO);
-	builder.assert_eq_cond("past boundary should be empty", byte0, zero, builder.bnot(has_1_byte));
-	builder.assert_eq_cond("past boundary should be empty", byte1, zero, builder.bnot(has_2_bytes));
-	builder.assert_eq_cond("past boundary should be empty", byte2, zero, builder.bnot(has_3_bytes));
+	builder.assert_eq_cond("past boundary should be empty", byte0, zero, builder.bnot(has_1));
+	builder.assert_eq_cond("past boundary should be empty", byte1, zero, builder.bnot(has_2));
+	builder.assert_eq_cond("past boundary should be empty", byte2, zero, builder.bnot(has_3));
 
 	// Convert 3 bytes to 4 6-bit values
 	let val0 = extract_6bit_value_0(builder, byte0);
@@ -198,10 +185,10 @@ fn verify_base64_group(
 	let actual_char2 = extract_byte(builder, encoded, base_char_idx + 2);
 	let actual_char3 = extract_byte(builder, encoded, base_char_idx + 3);
 
-	verify_base64_char(builder, expected_char0, actual_char0, has_1_byte);
-	verify_base64_char(builder, expected_char1, actual_char1, has_1_byte);
-	verify_base64_char(builder, expected_char2, actual_char2, has_2_bytes);
-	verify_base64_char(builder, expected_char3, actual_char3, has_3_bytes);
+	verify_base64_char(builder, expected_char0, actual_char0, has_1);
+	verify_base64_char(builder, expected_char1, actual_char1, has_1);
+	verify_base64_char(builder, expected_char2, actual_char2, has_2);
+	verify_base64_char(builder, expected_char3, actual_char3, has_3);
 }
 
 /// Extracts a byte from a word array at the given byte index.
@@ -219,7 +206,8 @@ fn extract_byte(builder: &CircuitBuilder, words: &[Wire], byte_idx: usize) -> Wi
 	let word_idx = byte_idx / 8;
 	let byte_offset = byte_idx % 8;
 
-	let word = words[word_idx];
+	let zero = builder.add_constant(Word::ZERO);
+	let word = words.get(word_idx).copied().unwrap_or(zero);
 	builder.extract_byte(word, byte_offset as u32)
 }
 
