@@ -10,14 +10,14 @@ use crate::compiler::{CircuitBuilder, Wire};
 /// - Sticky tracking across alignment and underflow right-shifts
 /// - Exact cancellation (+x) + (-x) → +0
 /// - Overflow → ±Inf with computed sign
-pub fn float64_add(cb: &CircuitBuilder, a: Wire, b: Wire) -> Wire {
+pub fn float64_add(b: &CircuitBuilder, a: Wire, b_: Wire) -> Wire {
 	// unpack & classify
-	let pa = fp64_unpack(cb, a);
-	let pb = fp64_unpack(cb, b);
+	let pa = fp64_unpack(b, a);
+	let pb = fp64_unpack(b, b_);
 
 	// extended sig & effective exp
-	let (sig_a, exp_a) = fp64_ext_sig_and_exp(cb, &pa);
-	let (sig_b, exp_b) = fp64_ext_sig_and_exp(cb, &pb);
+	let (sig_a, exp_a) = fp64_ext_sig_and_exp(b, &pa);
+	let (sig_b, exp_b) = fp64_ext_sig_and_exp(b, &pb);
 
 	// order by exponent
 	let (
@@ -28,25 +28,25 @@ pub fn float64_add(cb: &CircuitBuilder, a: Wire, b: Wire) -> Wire {
 		exp_b_ordered,
 		sign_b_ordered,
 		_swapped,
-	) = fp64_order_by_exp(cb, sig_a, exp_a, pa.sign, sig_b, exp_b, pb.sign);
+	) = fp64_order_by_exp(b, sig_a, exp_a, pa.sign, sig_b, exp_b, pb.sign);
 
 	// alignment with sticky→bit0
-	let d = isub(cb, exp_a_ordered, exp_b_ordered);
-	let s_b = fp64_align_with_sticky(cb, sig_b_ordered, d);
+	let d = isub(b, exp_a_ordered, exp_b_ordered);
+	let s_b = fp64_align_with_sticky(b, sig_b_ordered, d);
 
 	// same/different sign split
-	let same_sign = bool_canonical(cb, cb.icmp_eq(sign_a_ordered, sign_b_ordered));
+	let same_sign = b.icmp_eq(sign_a_ordered, sign_b_ordered);
 
 	// add path
-	let (sum_norm, exp_add) = fp64_add_path(cb, sig_a_ordered, s_b, exp_a_ordered);
+	let (sum_norm, exp_add) = fp64_add_path(b, sig_a_ordered, s_b, exp_a_ordered);
 
 	// sub path
 	let (diff_norm, exp_sub, sign_sub, mags_equal) =
-		fp64_sub_path(cb, sig_a_ordered, s_b, exp_a_ordered, sign_a_ordered, sign_b_ordered);
+		fp64_sub_path(b, sig_a_ordered, s_b, exp_a_ordered, sign_a_ordered, sign_b_ordered);
 
 	// merge + cancellation -> +0
 	let (res_sig, res_exp, res_sign) = fp64_merge_and_cancel(
-		cb,
+		b,
 		same_sign,
 		sum_norm,
 		exp_add,
@@ -58,27 +58,26 @@ pub fn float64_add(cb: &CircuitBuilder, a: Wire, b: Wire) -> Wire {
 	);
 
 	// underflow pre-round right-shift if exp<=0
-	let (sig_round_base, exp_round_base, exp_lt_1) = fp64_underflow_shift(cb, res_sig, res_exp);
+	let (sig_round_base, exp_round_base, exp_lt_1) = fp64_underflow_shift(b, res_sig, res_exp);
 
 	// round to nearest even
 	let (mant_final_53, exp_after_round, mant_overflow_mask) =
-		fp64_round_rne(cb, sig_round_base, exp_round_base);
+		fp64_round_rne(b, sig_round_base, exp_round_base);
 
 	// Pack finite or overflow to inf.
 	// Subnormal regime if:
 	//   - we were below 1 (exp_lt_1), OR
 	//   - base exponent == 1 and the integer bit (bit 63) is 0 (no hidden 1)
-	let msb01 = bit_lsb(cb, sig_round_base, 63); // 0/1
-	let msb_is_zero = bool_canonical(cb, cb.icmp_eq(msb01, zero(cb))); // MSB-bool
-	let base_is_one = bool_canonical(cb, cb.icmp_eq(exp_round_base, one(cb)));
-	let in_sub_regime = bool_canonical(cb, cb.bor(exp_lt_1, cb.band(base_is_one, msb_is_zero)));
-	let stayed_sub_mask =
-		bool_canonical(cb, cb.band(in_sub_regime, bool_not(cb, mant_overflow_mask)));
+	let msb01 = bit_lsb(b, sig_round_base, 63); // 0/1
+	let msb_is_zero = b.icmp_eq(msb01, zero(b)); // MSB-bool
+	let base_is_one = b.icmp_eq(exp_round_base, one(b));
+	let in_sub_regime = b.bor(exp_lt_1, b.band(base_is_one, msb_is_zero));
+	let stayed_sub_mask = b.band(in_sub_regime, b.bnot(mant_overflow_mask));
 	let finite_or_inf =
-		fp64_pack_finite_or_inf(cb, res_sign, mant_final_53, exp_after_round, stayed_sub_mask);
+		fp64_pack_finite_or_inf(b, res_sign, mant_final_53, exp_after_round, stayed_sub_mask);
 
 	// operand-driven specials (NaN, operand infinities)
-	fp64_finish_specials(cb, &pa, &pb, finite_or_inf)
+	fp64_finish_specials(b, &pa, &pb, finite_or_inf)
 }
 
 /// Build an **extended significand** and **effective exponent**.
@@ -95,14 +94,14 @@ pub fn float64_add(cb: &CircuitBuilder, a: Wire, b: Wire) -> Wire {
 ///
 /// Output:
 /// - `(sig_ext, exp_eff)` using the above convention.
-fn fp64_ext_sig_and_exp(cb: &CircuitBuilder, p: &Fp64Parts) -> (Wire, Wire) {
-	let one52 = cb.add_constant_64(1u64 << 52);
+fn fp64_ext_sig_and_exp(b: &CircuitBuilder, p: &Fp64Parts) -> (Wire, Wire) {
+	let one52 = b.add_constant_64(1u64 << 52);
 
-	let sig_norm = cb.shl(cb.bor(one52, p.frac), 11);
-	let sig_sub = cb.shl(p.frac, 11);
-	let sig = cb.select(p.is_norm, sig_norm, sig_sub);
+	let sig_norm = b.shl(b.bor(one52, p.frac), 11);
+	let sig_sub = b.shl(p.frac, 11);
+	let sig = b.select(p.is_norm, sig_norm, sig_sub);
 
-	let exp_eff = cb.select(p.is_norm, p.exp, one(cb)); // subnormals use exp=1
+	let exp_eff = b.select(p.is_norm, p.exp, one(b)); // subnormals use exp=1
 	(sig, exp_eff)
 }
 
@@ -115,7 +114,7 @@ fn fp64_ext_sig_and_exp(cb: &CircuitBuilder, p: &Fp64Parts) -> (Wire, Wire) {
 /// - `(sig_a, exp_a, sign_a, sig_b, exp_b, sign_b, swapped_mask)` where `swapped_mask` is all-1 if
 ///   we swapped A/B (i.e., A.exp < B.exp).
 fn fp64_order_by_exp(
-	cb: &CircuitBuilder,
+	b: &CircuitBuilder,
 	sig_a: Wire,
 	exp_a: Wire,
 	sign_a: Wire,
@@ -123,14 +122,14 @@ fn fp64_order_by_exp(
 	exp_b: Wire,
 	sign_b: Wire,
 ) -> (Wire, Wire, Wire, Wire, Wire, Wire, Wire) {
-	let a_lt_b = bool_canonical(cb, cb.icmp_ult(exp_a, exp_b));
+	let a_lt_b = b.icmp_ult(exp_a, exp_b);
 
-	let exp_a_ordered = cb.select(a_lt_b, exp_b, exp_a);
-	let exp_b_ordered = cb.select(a_lt_b, exp_a, exp_b);
-	let sig_a_ordered = cb.select(a_lt_b, sig_b, sig_a);
-	let sig_b_ordered = cb.select(a_lt_b, sig_a, sig_b);
-	let sign_a_ordered = cb.select(a_lt_b, sign_b, sign_a);
-	let sign_b_ordered = cb.select(a_lt_b, sign_a, sign_b);
+	let exp_a_ordered = b.select(a_lt_b, exp_b, exp_a);
+	let exp_b_ordered = b.select(a_lt_b, exp_a, exp_b);
+	let sig_a_ordered = b.select(a_lt_b, sig_b, sig_a);
+	let sig_b_ordered = b.select(a_lt_b, sig_a, sig_b);
+	let sign_a_ordered = b.select(a_lt_b, sign_b, sign_a);
+	let sign_b_ordered = b.select(a_lt_b, sign_a, sign_b);
 
 	(
 		sig_a_ordered,
@@ -152,13 +151,13 @@ fn fp64_order_by_exp(
 ///
 /// Output:
 /// - `aligned` where bit0 = old_bit0 | sticky (i.e., precise sticky folding).
-fn fp64_align_with_sticky(cb: &CircuitBuilder, sig_b: Wire, d: Wire) -> Wire {
-	let (mut v, sticky) = var_shr_with_sticky(cb, sig_b, d, true);
+fn fp64_align_with_sticky(b: &CircuitBuilder, sig_b: Wire, d: Wire) -> Wire {
+	let (mut v, sticky) = var_shr_with_sticky(b, sig_b, d, true);
 
-	let one_const = one(cb);
-	let keep = cb.bnot(one_const); // ~1 = clear bit0
-	let bit0 = cb.bor(cb.band(v, one_const), cb.band(sticky, one_const));
-	v = cb.bor(cb.band(v, keep), bit0);
+	let one_const = one(b);
+	let keep = b.bnot(one_const); // ~1 = clear bit0
+	let bit0 = b.bor(b.band(v, one_const), b.band(sticky, one_const));
+	v = b.bor(b.band(v, keep), bit0);
 	v
 }
 
@@ -170,29 +169,29 @@ fn fp64_align_with_sticky(cb: &CircuitBuilder, sig_b: Wire, d: Wire) -> Wire {
 /// Output:
 /// - `(sum_norm, exp_add)` If carry occurs, result is shifted right by 1; new sticky = (old R) |
 ///   (old S).
-fn fp64_add_path(cb: &CircuitBuilder, sig_a: Wire, s_b: Wire, exp_a: Wire) -> (Wire, Wire) {
-	let (sum_raw, carry_mask) = cb.iadd_cin_cout(sig_a, s_b, zero(cb));
+fn fp64_add_path(b: &CircuitBuilder, sig_a: Wire, s_b: Wire, exp_a: Wire) -> (Wire, Wire) {
+	let (sum_raw, carry_mask) = b.iadd_cin_cout(sig_a, s_b, zero(b));
 
 	// Detect final carry-out (bit63 of carry mask) as 0/1 and as a select mask
-	let carry_bit01 = bit_lsb(cb, carry_mask, 63); // 0/1
-	let carry_sel_mask = bit_msb(cb, carry_mask, 63); // use carry's MSB directly as MSB-bool
+	let carry_bit01 = bit_lsb(b, carry_mask, 63); // 0/1
+	let carry_sel_mask = bit_msb01(b, carry_mask, 63); // use carry's MSB directly as MSB-bool
 
 	// if carry: shift 1 and update sticky := old R | old S
-	let sum_shift1 = cb.shr(sum_raw, 1);
-	let old_r = bit_lsb(cb, sum_raw, 9);
-	let old_s = cb.band(sum_raw, one(cb));
-	let new_s = cb.bor(old_r, old_s);
+	let sum_shift1 = b.shr(sum_raw, 1);
+	let old_r = bit_lsb(b, sum_raw, 9);
+	let old_s = b.band(sum_raw, one(b));
+	let new_s = b.bor(old_r, old_s);
 
 	// Inject carry into bit63 when renormalizing: (carry_bit01 << 63)
-	let carry_hi = cb.shl(carry_bit01, 63);
-	let sum_shift1_with_carry = cb.bor(sum_shift1, carry_hi);
+	let carry_hi = b.shl(carry_bit01, 63);
+	let sum_shift1_with_carry = b.bor(sum_shift1, carry_hi);
 
-	let keep = cb.bnot(one(cb));
-	let sum_shift1clr = cb.band(sum_shift1_with_carry, keep);
-	let sum_norm = cb.select(carry_sel_mask, cb.bor(sum_shift1clr, new_s), sum_raw);
+	let keep = b.bnot(one(b));
+	let sum_shift1clr = b.band(sum_shift1_with_carry, keep);
+	let sum_norm = b.select(carry_sel_mask, b.bor(sum_shift1clr, new_s), sum_raw);
 
 	// Increment exponent by carry (0/1)
-	let exp_add = iadd(cb, exp_a, carry_bit01);
+	let exp_add = iadd(b, exp_a, carry_bit01);
 	(sum_norm, exp_add)
 }
 
@@ -209,32 +208,32 @@ fn fp64_add_path(cb: &CircuitBuilder, sig_a: Wire, s_b: Wire, exp_a: Wire) -> (W
 ///   - If `sig_a == s_b`, `diff_norm` may be 0; caller can force +0 behavior using
 ///     `mags_equal_mask`.
 fn fp64_sub_path(
-	cb: &CircuitBuilder,
+	b: &CircuitBuilder,
 	sig_a: Wire,
 	s_b: Wire,
 	exp_a: Wire,
 	sign_a: Wire,
 	sign_b: Wire,
 ) -> (Wire, Wire, Wire, Wire) {
-	let a_lt_b = bool_canonical(cb, cb.icmp_ult(sig_a, s_b));
-	let big = cb.select(a_lt_b, s_b, sig_a);
-	let small = cb.select(a_lt_b, sig_a, s_b);
-	let diff_raw = isub(cb, big, small);
-	let sign_sub = cb.select(a_lt_b, sign_b, sign_a);
-	let mags_eq = bool_canonical(cb, cb.icmp_eq(sig_a, s_b));
+	let a_lt_b = b.icmp_ult(sig_a, s_b);
+	let big = b.select(a_lt_b, s_b, sig_a);
+	let small = b.select(a_lt_b, sig_a, s_b);
+	let diff_raw = isub(b, big, small);
+	let sign_sub = b.select(a_lt_b, sign_b, sign_a);
+	let mags_eq = b.icmp_eq(sig_a, s_b);
 
-	let lz = clz64(cb, diff_raw);
-	let c64 = cb.add_constant_64(64);
-	let c63 = cb.add_constant_64(63);
-	let lt64 = cb.icmp_ult(lz, c64);
-	let lz_clamped = cb.select(lt64, lz, c63);
+	let lz = clz64(b, diff_raw);
+	let c64 = b.add_constant_64(64);
+	let c63 = b.add_constant_64(63);
+	let lt64 = b.icmp_ult(lz, c64);
+	let lz_clamped = b.select(lt64, lz, c63);
 
-	let exp_a_m1 = isub(cb, exp_a, one(cb));
-	let lz_lt_expm1 = cb.icmp_ult(lz_clamped, exp_a_m1);
-	let sh = cb.select(lz_lt_expm1, lz_clamped, exp_a_m1);
+	let exp_a_m1 = isub(b, exp_a, one(b));
+	let lz_lt_expm1 = b.icmp_ult(lz_clamped, exp_a_m1);
+	let sh = b.select(lz_lt_expm1, lz_clamped, exp_a_m1);
 
-	let diff_norm = var_shl(cb, diff_raw, sh);
-	let exp_sub = isub(cb, exp_a, sh);
+	let diff_norm = var_shl(b, diff_raw, sh);
+	let exp_sub = isub(b, exp_a, sh);
 
 	(diff_norm, exp_sub, sign_sub, mags_eq)
 }
@@ -250,7 +249,7 @@ fn fp64_sub_path(
 /// - `(res_sig, res_exp, res_sign)` with cancellation mapped to +0.
 #[allow(clippy::too_many_arguments)]
 fn fp64_merge_and_cancel(
-	cb: &CircuitBuilder,
+	b: &CircuitBuilder,
 	same_sign: Wire,
 	sum_norm: Wire,
 	exp_add: Wire,
@@ -260,16 +259,16 @@ fn fp64_merge_and_cancel(
 	sign_sub: Wire,
 	mags_equal: Wire,
 ) -> (Wire, Wire, Wire) {
-	let res_sig_pre = cb.select(same_sign, sum_norm, diff_norm);
-	let res_exp_pre = cb.select(same_sign, exp_add, exp_sub);
-	let res_sign_pre = cb.select(same_sign, sign_a, sign_sub);
+	let res_sig_pre = b.select(same_sign, sum_norm, diff_norm);
+	let res_exp_pre = b.select(same_sign, exp_add, exp_sub);
+	let res_sign_pre = b.select(same_sign, sign_a, sign_sub);
 
 	// different signs and equal magnitudes => +0
-	let cancel = bool_canonical(cb, cb.band(bool_not(cb, same_sign), mags_equal));
+	let cancel = b.band(b.bnot(same_sign), mags_equal);
 
-	let res_sig = cb.select(cancel, zero(cb), res_sig_pre);
-	let res_exp = cb.select(cancel, zero(cb), res_exp_pre); // exp ignored for zero
-	let res_sign = cb.select(cancel, zero(cb), res_sign_pre); // +0
+	let res_sig = b.select(cancel, zero(b), res_sig_pre);
+	let res_exp = b.select(cancel, zero(b), res_exp_pre); // exp ignored for zero
+	let res_sign = b.select(cancel, zero(b), res_sign_pre); // +0
 	(res_sig, res_exp, res_sign)
 }
 
@@ -288,29 +287,28 @@ fn fp64_merge_and_cancel(
 /// Output:
 /// - final packed double
 fn fp64_finish_specials(
-	cb: &CircuitBuilder,
+	b: &CircuitBuilder,
 	pa: &Fp64Parts,
 	pb: &Fp64Parts,
 	finite_or_inf: Wire,
 ) -> Wire {
-	let qnan = cb.add_constant_64(0x7FF8_0000_0000_0000);
-	let exp_2047 = cb.add_constant_64(0x7FF);
-	let inf_payload = cb.shl(exp_2047, 52);
+	let qnan = b.add_constant_64(0x7FF8_0000_0000_0000);
+	let exp_2047 = b.add_constant_64(0x7FF);
+	let inf_payload = b.shl(exp_2047, 52);
 
-	let same_sign = bool_canonical(cb, cb.icmp_eq(pa.sign, pb.sign));
-	let opp_inf_nan =
-		bool_canonical(cb, cb.band(cb.band(pa.is_inf, pb.is_inf), bool_not(cb, same_sign)));
-	let any_nan = bool_canonical(cb, cb.bor(pa.is_nan, pb.is_nan));
-	let nan_mask = bool_canonical(cb, cb.bor(any_nan, opp_inf_nan));
+	let same_sign = b.icmp_eq(pa.sign, pb.sign);
+	let opp_inf_nan = b.band(b.band(pa.is_inf, pb.is_inf), b.bnot(same_sign));
+	let any_nan = b.bor(pa.is_nan, pb.is_nan);
+	let nan_mask = b.bor(any_nan, opp_inf_nan);
 
 	// If any operand is infinity (with either same signs or only one inf), pick its sign.
-	let any_inf = cb.bor(pa.is_inf, pb.is_inf);
-	let inf_sign = cb.select(pb.is_inf, pb.sign, pa.sign);
-	let inf_hi = cb.shl(inf_sign, 63);
-	let packed_inf = cb.bor(inf_hi, inf_payload);
+	let any_inf = b.bor(pa.is_inf, pb.is_inf);
+	let inf_sign = b.select(pb.is_inf, pb.sign, pa.sign);
+	let inf_hi = b.shl(inf_sign, 63);
+	let packed_inf = b.bor(inf_hi, inf_payload);
 
-	let with_inf = cb.select(any_inf, packed_inf, finite_or_inf);
-	cb.select(nan_mask, qnan, with_inf)
+	let with_inf = b.select(any_inf, packed_inf, finite_or_inf);
+	b.select(nan_mask, qnan, with_inf)
 }
 
 #[cfg(test)]
@@ -683,11 +681,12 @@ mod tests {
 			let expected_exp = builder.add_inout();
 			let expected_sign = builder.add_inout();
 			let expected_mags = builder.add_inout();
+			let bool_mask = builder.add_constant(Word::MSB_ONE);
 
 			builder.assert_eq("diff_norm", diff_norm, expected_diff);
 			builder.assert_eq("exp_sub", exp_sub, expected_exp);
 			builder.assert_eq("sign_sub", sign_sub, expected_sign);
-			builder.assert_eq("mags_equal", mags_equal, expected_mags);
+			builder.assert_eq("mags_equal", builder.band(mags_equal, bool_mask), expected_mags);
 
 			let circuit = builder.build();
 			let mut w = circuit.new_witness_filler();
@@ -966,6 +965,7 @@ mod tests {
 			let expected_exp_b = builder.add_inout();
 			let expected_sign_b = builder.add_inout();
 			let expected_swapped = builder.add_inout();
+			let bool_mask = builder.add_constant(Word::MSB_ONE);
 
 			builder.assert_eq("sig_a", sig_a_out, expected_sig_a);
 			builder.assert_eq("exp_a", exp_a_out, expected_exp_a);
@@ -973,7 +973,7 @@ mod tests {
 			builder.assert_eq("sig_b", sig_b_out, expected_sig_b);
 			builder.assert_eq("exp_b", exp_b_out, expected_exp_b);
 			builder.assert_eq("sign_b", sign_b_out, expected_sign_b);
-			builder.assert_eq("swapped", swapped, expected_swapped);
+			builder.assert_eq("swapped", builder.band(swapped, bool_mask), expected_swapped);
 
 			let circuit = builder.build();
 			let mut w = circuit.new_witness_filler();
