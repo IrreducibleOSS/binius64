@@ -53,8 +53,6 @@ The constraint system supports two types of constraints over 64-bit words:
 - AND constraints: `A & B ^ C = 0`
 - MUL constraints: `A * B = (HI << 64) | LO`
 
-See [docs/frontend/circuit_design.md](docs/frontend/circuit_design.md) for detailed information about circuit design and the constraint system specification.
-
 ## Authors
 
 Binius64 is developed by [Irreducible](https://www.irreducible.com).
