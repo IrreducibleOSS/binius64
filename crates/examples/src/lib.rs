@@ -1,3 +1,4 @@
+pub mod circuits;
 pub mod cli;
 pub mod snapshot;
 
