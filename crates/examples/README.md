@@ -361,6 +361,31 @@ cargo run --release --example prover -- \
     --log-inv-rate 1
 ```
 
+## Verifier binary
+
+The `verifier` example binary reads a constraint system, a public witness, and a proof from disk and verifies the proof. It also checks that the challenger type embedded in the proof matches the verifier’s expected challenger (HasherChallenger<Sha256>), returning an error if it doesn’t.
+
+Arguments:
+- `--cs-path PATH`: path to the constraint system binary
+- `--pub-witness-path PATH`: path to the public values binary (ValuesData)
+- `--proof-path PATH`: path to the proof binary
+- `-l, --log-inv-rate N`: log of the inverse rate (default: 1)
+
+Usage:
+
+```bash
+# Verify the proof generated above
+cargo run --release --example verifier -- \
+    --cs-path out/sha256/cs.bin \
+    --pub-witness-path out/sha256/public.bin \
+    --proof-path out/sha256/proof.bin \
+    --log-inv-rate 1
+```
+
+Notes:
+- The verifier fails if the challenger type in the proof is not `HasherChallenger<Sha256>`.
+- The public witness must match the constraint system and the proof’s statement.
+
 ## Tips
 
 1. **Keep it simple**: The main function should just create the CLI and run it

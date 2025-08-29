@@ -43,3 +43,7 @@ rayon = ["binius-prover/rayon"]
 [[example]]
 name = "prover"
 path = "examples/prover.rs"
+
+[[example]]
+name = "verifier"
+path = "examples/verifier.rs"
