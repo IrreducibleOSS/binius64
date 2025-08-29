@@ -5,6 +5,7 @@ use binius_frontend::{
 	circuits::keccak::permutation::Permutation,
 	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
 };
+use binius_utils::rayon::config::adjust_thread_pool;
 use clap::Args;
 use rand::{Rng, SeedableRng, rngs::StdRng};
 
@@ -85,6 +86,7 @@ impl ExampleCircuit for KeccakExample {
 
 fn main() -> Result<()> {
 	let _tracing_guard = tracing_profile::init_tracing()?;
+	adjust_thread_pool();
 
 	Cli::<KeccakExample>::new("keccak")
 		.about("Keccak-f[1600] permutation example - chains multiple permutations together")

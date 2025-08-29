@@ -33,7 +33,7 @@ use super::error::Error;
 /// separately.
 #[derive(Clone, Getters)]
 #[getset(get = "pub")]
-pub struct Witness<P: PackedField, B: Bitwise, S: AsRef<[B]>> {
+pub struct Witness<P: PackedField, B: Bitwise, S: AsRef<[B]> + Sync> {
 	pub a: BinaryTree<P, B, S>,
 	pub b: BinaryTree<P, B, S>,
 	pub c_lo: BinaryTree<P, B, S>,
@@ -46,7 +46,7 @@ where
 	F: BinaryField,
 	P: PackedField<Scalar = F>,
 	B: Bitwise,
-	S: AsRef<[B]>,
+	S: AsRef<[B]> + Sync,
 {
 	/// Constructs a new integer multiplication witness from the statement.
 	///
@@ -117,34 +117,50 @@ where
 	F: Field,
 	P: PackedField<Scalar = F>,
 	B: Bitwise,
-	S: AsRef<[B]>,
+	S: AsRef<[B]> + Sync,
 {
 	/// Constant base witness construction.
 	pub fn constant_base(log_bits: usize, base: F, exponents: S) -> Self {
 		let n_vars = checked_log_2(exponents.as_ref().len());
 		let p_width = P::WIDTH.min(1 << n_vars);
 
-		let bases = iterate(base, |g| g.square());
+		let bases = iterate(base, |g| g.square())
+			.take(1 << log_bits)
+			.collect::<Vec<_>>();
 
-		let mut widest_layer = Vec::with_capacity(1 << log_bits);
-		for (bit_offset, base) in bases.take(1 << log_bits).enumerate() {
-			let bits = BitSelector::new(bit_offset, &exponents);
-			let values = (0..1 << n_vars.saturating_sub(P::LOG_WIDTH))
-				.map(|i| {
-					let scalars = (0..p_width).map(|j| {
-						if bits.get(i << P::LOG_WIDTH | j) {
-							base
-						} else {
-							F::ONE
-						}
-					});
-					P::from_scalars(scalars)
-				})
-				.collect::<Box<[_]>>();
+		let widest_layer = bases
+			.par_iter()
+			.enumerate()
+			.map(|(bit_offset, base)| {
+				let bits = BitSelector::new(bit_offset, &exponents);
+				let elements = [F::ONE, *base];
+				let values = (0..1 << n_vars.saturating_sub(P::LOG_WIDTH))
+					.map(|i| {
+						let scalars = (0..p_width).map(|j| {
+							// The following code is equivalent to
+							// ```
+							// if bits.get(i << P::LOG_WIDTH | j) {
+							// 	*base
+							// } else {
+							// 	F::ONE
+							// }
+							// ```
+							unsafe {
+								// Safety:
+								// - `i << P::LOG_WIDTH | j` is guaranteed to be in-bounds
+								// - elements has two values
+								*elements.get_unchecked(
+									bits.get_unchecked(i << P::LOG_WIDTH | j) as usize
+								)
+							}
+						});
+						P::from_scalars(scalars)
+					})
+					.collect::<Box<[_]>>();
 
-			widest_layer
-				.push(FieldBuffer::new(n_vars, values).expect("values length matches n_vars"));
-		}
+				FieldBuffer::new(n_vars, values).expect("values length matches n_vars")
+			})
+			.collect();
 
 		let tree = build_remaining_tree_layers(log_bits, widest_layer);
 		Self {
@@ -166,8 +182,8 @@ where
 		for bit_offset in 0..1 << log_bits {
 			let bits = BitSelector::new(bit_offset, &exponents);
 			let values = bases
-				.as_ref()
-				.iter()
+				.as_mut()
+				.into_par_iter()
 				.enumerate()
 				.map(|(i, bases_packed)| {
 					let scalars = bases_packed
@@ -175,19 +191,19 @@ where
 						.take(p_width)
 						.enumerate()
 						.map(|(j, base)| {
-							if bits.get(i << P::LOG_WIDTH | j) {
-								base
-							} else {
-								F::ONE
-							}
+							let is_base = unsafe {
+								// Safety: `bits` is guaranteed to be in-bounds
+								bits.get_unchecked(i << P::LOG_WIDTH | j)
+							};
+							if is_base { base } else { F::ONE }
 						});
-					P::from_scalars(scalars)
+
+					let result = P::from_scalars(scalars);
+					*bases_packed = bases_packed.square();
+
+					result
 				})
 				.collect::<Box<[_]>>();
-
-			for base in bases.as_mut() {
-				*base = base.square();
-			}
 
 			widest_layer
 				.push(FieldBuffer::new(n_vars, values).expect("values length matches n_vars"));
@@ -272,7 +288,9 @@ mod tests {
 
 	const LOG_BITS: usize = 6;
 
-	fn check_consistency<P: PackedField, B: Bitwise, S: AsRef<[B]>>(witness: &Witness<P, B, S>) {
+	fn check_consistency<P: PackedField, B: Bitwise, S: AsRef<[B]> + Sync>(
+		witness: &Witness<P, B, S>,
+	) {
 		let b_root = witness.b().root();
 		let c_root = witness.c_root();
 		assert_eq!(b_root, c_root);

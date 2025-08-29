@@ -13,6 +13,7 @@ binius-core = { path = "../core" }
 binius-frontend = { path = "../frontend" }
 binius-verifier = { path = "../verifier" }
 binius-prover = { path = "../prover", default-features = false }
+binius-utils = { path = "../utils" }
 clap.workspace = true
 tracing.workspace = true
 tracing-profile.workspace = true

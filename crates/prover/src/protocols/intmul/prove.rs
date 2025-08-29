@@ -54,7 +54,7 @@ where
 	F: BinaryField,
 	P: PackedField<Scalar = F>,
 	B: Bitwise,
-	S: AsRef<[B]>,
+	S: AsRef<[B]> + Sync,
 	C: Challenger,
 {
 	/// Prove an integer multiplication statement.
@@ -194,8 +194,11 @@ where
 			assert_eq!(evals.len(), 1 << depth);
 			assert_eq!(layer.len(), 2 << depth);
 
-			let a_sumcheck_prover =
-				BivariateProductMultiMlecheckProver::new(make_pairs(layer), &eval_point, &evals)?;
+			let a_sumcheck_prover = BivariateProductMultiMlecheckProver::new(
+				make_pairs(layer),
+				&eval_point,
+				evals.clone(),
+			)?;
 
 			let a_prover = MleToSumCheckDecorator::new(a_sumcheck_prover);
 
@@ -294,16 +297,12 @@ where
 			assert_eq!(c_hi_l.len(), 2 << depth);
 			assert_eq!(evals.len(), 3 << depth);
 
-			// NB: you may be tempted to use .concat here, but don't be - it clones, whereas the
-			// code below moves.
-			let mut layer = Vec::with_capacity(6 << depth);
-			layer.extend(a_l);
-			layer.extend(c_lo_l);
-			layer.extend(c_hi_l);
-			assert_eq!(layer.len(), 6 << depth);
-
-			let sumcheck_prover =
-				BivariateProductMultiMlecheckProver::new(make_pairs(layer), &eval_point, &evals)?;
+			let layer = a_l.into_iter().chain(c_lo_l).chain(c_hi_l);
+			let sumcheck_prover = BivariateProductMultiMlecheckProver::new(
+				make_pairs(layer),
+				&eval_point,
+				evals.clone(),
+			)?;
 
 			let prover = MleToSumCheckDecorator::new(sumcheck_prover);
 
@@ -352,22 +351,11 @@ where
 		assert_eq!(b_eval_point.len(), a_layer.first().expect("log_bits >= 1").log_len());
 		assert_eq!(a_c_eval_point.len(), b_eval_point.len());
 
-		// NB: you may be tempted to use .concat here, but don't be - it clones, whereas the code
-		// below moves.
-		let mut layer = Vec::with_capacity(3 << log_bits);
-		layer.extend(a_layer);
-		layer.extend(c_lo_layer);
-		layer.extend(c_hi_layer);
-		assert_eq!(layer.len(), 3 << log_bits);
-
-		let mut evals = Vec::with_capacity(3 << (log_bits - 1));
-		evals.extend(a_evals);
-		evals.extend(c_lo_evals);
-		evals.extend(c_hi_evals);
-		assert_eq!(evals.len(), 3 << (log_bits - 1));
+		let layer = a_layer.into_iter().chain(c_lo_layer).chain(c_hi_layer);
+		let evals = [a_evals, c_lo_evals, c_hi_evals].concat();
 
 		let a_c_sumcheck_prover =
-			BivariateProductMultiMlecheckProver::new(make_pairs(layer), a_c_eval_point, &evals)?;
+			BivariateProductMultiMlecheckProver::new(make_pairs(layer), a_c_eval_point, evals)?;
 
 		let a_c_prover = MleToSumCheckDecorator::new(a_c_sumcheck_prover);
 
@@ -407,7 +395,7 @@ where
 	}
 }
 
-fn make_pairs<T>(layer: Vec<T>) -> Vec<[T; 2]> {
+fn make_pairs<T>(layer: impl IntoIterator<Item = T>) -> Vec<[T; 2]> {
 	layer
 		.into_iter()
 		.chunks(2)

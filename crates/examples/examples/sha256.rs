@@ -6,6 +6,7 @@ use binius_frontend::{
 	circuits::sha256::Sha256,
 	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
 };
+use binius_utils::rayon::config::adjust_thread_pool;
 use clap::Args;
 use rand::prelude::*;
 use sha2::Digest;
@@ -87,6 +88,7 @@ fn mk_circuit(b: &mut CircuitBuilder, max_len: usize, len_bytes: Wire) -> Sha256
 
 fn main() -> Result<()> {
 	let _tracing_guard = tracing_profile::init_tracing()?;
+	adjust_thread_pool();
 
 	Cli::<Sha256Example>::new("sha256")
 		.about("SHA256 compression function example")
