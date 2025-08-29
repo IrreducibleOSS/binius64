@@ -1,4 +1,4 @@
-//! Spark2: Expression Rewriting Framework for Binius64
+//! Beamish: Expression Rewriting Framework for Binius64
 //!
 //! This crate provides an expression-first approach to constraint generation,
 //! leveraging the rich constraint language of Binius64 to optimize high-level

@@ -1,8 +1,8 @@
-# Spark2 Implementation Plan
+# Beamish Implementation Plan
 
 ## Overview
 
-24-day implementation plan to build Spark2 expression rewriting framework, achieving 2-4x constraint reduction for Binius64 circuits.
+24-day implementation plan to build Beamish expression rewriting framework, achieving 2-4x constraint reduction for Binius64 circuits.
 
 ## Phase 1: Foundation (Days 1-4)
 
@@ -10,7 +10,7 @@
 **Goal**: Implement Field64, U32, U64 with simple operations only
 
 ```rust
-// Implement in crates/spark2/src/types/
+// Implement in crates/beamish/src/types/
 pub struct Field64(Word);
 pub struct U32(Word);
 pub struct U64(Word);
@@ -342,7 +342,7 @@ pub fn benchmark_all_circuits() {
 
 ## Conclusion
 
-This plan provides a methodical path to implementing Spark2, with:
+This plan provides a methodical path to implementing Beamish, with:
 - Clear daily objectives
 - Measurable success metrics
 - Risk mitigation strategies

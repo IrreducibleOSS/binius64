@@ -1,6 +1,6 @@
 //! Demo of expression building and rewriting
 
-use binius_spark2::{
+use binius_beamish::{
     Expr,
     core::rewrite::Rewriter,
 };
@@ -9,7 +9,7 @@ fn main() {
     println!("=== Expression Building Demo ===\n");
     
     // XOR chain example
-    println!("XOR Chain (FREE in Binius64):");
+    println!("XOR Chain (Native to Binius64):");
     let xor_chain = Expr::val(0)
         .xor(Expr::val(1))
         .xor(Expr::val(2))

@@ -1,6 +1,6 @@
 //! Example demonstrating Keccak chi optimization
 
-use binius_spark2::{
+use binius_beamish::{
     gadgets::keccak::KeccakChi,
     core::rewrite::Rewriter,
     patterns::crypto::add_crypto_rules,

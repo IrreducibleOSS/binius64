@@ -1,0 +1,13 @@
+[package]
+name = "binius-beamish"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+binius-core = { path = "../core" }
+binius-field = { path = "../field" }
+log = "0.4"
+env_logger = "0.11"
+
+[dev-dependencies]

@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(BEAMISH_VERBOSE=1 cargo run --example sha256 full --verbose)",
+      "Bash(BEAMISH_VERBOSE=1 cargo run --example sha256 full)",
+      "Bash(RUST_LOG=binius_beamish=debug cargo run -p binius-beamish --example basic)",
+      "Bash(RUST_LOG=debug cargo run -p binius-beamish --example basic)",
+      "Bash(RUST_LOG=debug cargo run -p binius-beamish --example optimization_passes)",
+      "Bash(RUST_LOG=debug rustc --edition 2024 -L target/debug/deps test_logging.rs -o test_logging --extern binius_beamish=target/debug/libbinius_beamish.rlib --extern env_logger=target/debug/deps/libenv_logger-4e48a980a9233cad.rlib)",
+      "Bash(RUST_LOG=debug cargo run -p binius-beamish --example advanced_optimizations)",
+      "Bash(RUST_LOG=debug rustc --edition 2021 -L target/debug/deps /tmp/test_rotation_as_operand.rs -o /tmp/test_rotation --extern binius_beamish=target/debug/libbinius_beamish.rlib --extern env_logger=target/debug/deps/libenv_logger-*.rlib)",
+      "Bash(RUST_LOG=debug rustc --edition 2021 -L target/debug/deps /tmp/test_rotation_as_operand.rs -o /tmp/test_rotation --extern binius_beamish=target/debug/libbinius_beamish.rlib --extern env_logger=target/debug/deps/libenv_logger-c95c62dfd6ea925f.rlib)",
+      "Bash(/tmp:*)",
+      "Bash(RUST_LOG=debug /tmp/test_rotation)",
+      "Bash(RUST_LOG=debug /tmp/test_xor_unopt)",
+      "Bash(RUST_LOG=debug cargo run --example advanced_optimizations -- --no-xor-chain)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
