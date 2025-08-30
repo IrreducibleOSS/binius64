@@ -2,7 +2,7 @@
 
 mod bitcoin;
 mod ecrecover;
-mod shamirs_trick;
+mod scalar_mul;
 
 pub use bitcoin::verify as bitcoin_verify;
 pub use ecrecover::ecrecover;

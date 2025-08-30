@@ -1,4 +1,4 @@
-use super::shamirs_trick::shamirs_trick_endomorphism;
+use super::scalar_mul::shamirs_trick_endomorphism;
 use crate::{
 	circuits::{
 		bignum::{BigUint, biguint_lt},
