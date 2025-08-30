@@ -11,6 +11,58 @@ use crate::{
 	compiler::{CircuitBuilder, Wire},
 };
 
+/// Compute scalar multiplication `point * scalar` using the naive double-and-add algorithm.
+///
+/// This implementation does not use the secp256k1 endomorphism optimization.
+///
+/// # Parameters
+/// - `b`: The circuit builder
+/// - `curve`: The secp256k1 curve instance
+/// - `bits`: Number of bits to process in the scalar
+/// - `scalar`: The scalar to multiply by (as a BigUint, must have enough limbs for bits)
+/// - `point`: The point to multiply (in affine coordinates)
+///
+/// # Returns
+/// The result of `point * scalar` in affine coordinates
+pub fn scalar_mul_naive(
+	b: &CircuitBuilder,
+	curve: &Secp256k1,
+	bits: usize,
+	scalar: &BigUint,
+	point: Secp256k1Affine,
+) -> Secp256k1Affine {
+	// Ensure scalar has enough limbs for the requested bits
+	let required_limbs = bits.div_ceil(WORD_SIZE_BITS);
+	assert!(
+		scalar.limbs.len() >= required_limbs,
+		"scalar must have at least {} limbs for {} bits, but has {}",
+		required_limbs,
+		bits,
+		scalar.limbs.len()
+	);
+
+	let mut acc = Secp256k1Affine::point_at_infinity(b);
+
+	for bit_index in (0..bits).rev() {
+		let limb = bit_index / WORD_SIZE_BITS;
+		let bit = bit_index % WORD_SIZE_BITS;
+
+		if bit_index != bits - 1 {
+			acc = curve.double(b, &acc);
+		}
+
+		let scalar_bit = b.shl(scalar.limbs[limb], (WORD_SIZE_BITS - 1 - bit) as u32);
+
+		// Add the selected point to the accumulator
+		let acc_plus_point = curve.add_incomplete(b, &acc, &point);
+
+		// Select whether to add point to accumulator based on scalar bit
+		acc = select_secp256k1_affine(b, scalar_bit, &acc_plus_point, &acc);
+	}
+
+	acc
+}
+
 /// A common trick to save doublings when computing multiexponentiations of the form
 /// `G*g_mult + PK*pk_mult` - instead of doing two scalar multiplications separately and
 /// adding their results, we share the doubling step of double-and-add.
