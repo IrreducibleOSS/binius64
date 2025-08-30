@@ -189,7 +189,6 @@ impl Sha256 {
 		let zero = builder.add_constant(Word::ZERO);
 		let end_block_index =
 			builder.shr(builder.iadd_32(len_bytes, builder.add_constant_64(8)), 6);
-		let delim: Wire = builder.add_constant_zx_8(0x80);
 		let m32 = builder.add_constant(Word::MASK_32);
 		// ---- 2b. Final digest selection
 		//
@@ -239,13 +238,6 @@ impl Sha256 {
 
 		let boundary_padded_lo32 = single_wire_multiplex(builder, &padded_evens, w_bd);
 		let boundary_padded_hi32 = single_wire_multiplex(builder, &padded_odds, w_bd);
-		// manually enforce that high halves of both of these words are empty
-		builder.assert_zero("mask boundary lo", builder.shr(boundary_padded_lo32, 32));
-		builder.assert_zero("mask boundary hi", builder.shr(boundary_padded_hi32, 32));
-		// this is the only place where we have to explicitly check emptiness of the high halves.
-		// for the other words, we guarantee this indirectly, via the other checks we are running.
-		// this condition in turn is necessary for the Compress gadget to be sound.
-
 		let boundary_message_word = single_wire_multiplex(builder, &message, w_bd);
 		// for the multiplexer above to be sound, we need `sel < inputs.len()` to be true.
 		// since we constrained `len_bytes ≤ max_len_bytes ≔ message.len() << 3`, above,
@@ -259,46 +251,21 @@ impl Sha256 {
 		// thus it truly doesn't matter what the multiplexer returns; in this case,
 		// we are simply asserting that `boundary_padded_word` == 0x 80 00 ...... 00.
 
-		for j in 0..8 {
-			let builder = builder.subcircuit(format!("byte[{j}]"));
-			let j_const = builder.add_constant_64(j as u64);
+		let candidates: Vec<Wire> = (0..8)
+			.map(|i| {
+				let temp_mask = 0xFFFFFFFFFFFFFF00 << ((7 - i) << 3);
+				let halves_swap = temp_mask << 32 ^ temp_mask >> 32;
+				let mask = builder.add_constant_64(halves_swap);
+				let padding_byte = builder.add_constant_64(0x8000000000000000 >> ((i ^ 4) << 3));
+				let message_low = builder.band(boundary_message_word, mask);
+				builder.bxor(message_low, padding_byte)
+			})
+			.collect();
 
-			let data_b = builder.icmp_ult(j_const, len_mod_8);
-			let delim_b = builder.icmp_eq(j_const, len_mod_8);
-			let zero_b = builder.icmp_ult(len_mod_8, j_const);
-
-			// We need to extract the byte according to big-endian.
-			//
-			// | j | Extract from | Byte index (in 64-bit word) |
-			// |---|--------------|-----------------------------|
-			// | 0 | low 32 bits  | 3 (MSB of lo)               |
-			// | 1 | low 32 bits  | 2                           |
-			// | 2 | low 32 bits  | 1                           |
-			// | 3 | low 32 bits  | 0 (LSB of lo)               |
-			// | 4 | high 32 bits | 7 (MSB of hi)               |
-			// | 5 | high 32 bits | 6                           |
-			// | 6 | high 32 bits | 5                           |
-			// | 7 | high 32 bits | 4 (LSB of hi)               |
-			let byte_m = if j < 4 {
-				builder.extract_byte(boundary_message_word, 3 - j)
-			} else {
-				builder.extract_byte(boundary_message_word, 11 - j)
-			};
-			let byte_w = if j < 4 {
-				builder.extract_byte(boundary_padded_lo32, 3 - j)
-			} else {
-				builder.extract_byte(boundary_padded_hi32, 7 - j)
-			};
-
-			// case 1. this is still message byte. Assert equality.
-			builder.assert_eq_cond("3b.1".to_string(), byte_w, byte_m, data_b);
-
-			// case 2. this is the first padding byte, or the delimiter.
-			builder.assert_eq_cond("3b.2".to_string(), byte_w, delim, delim_b);
-
-			// case 3. this is the byte past the delimiter, ie. zero.
-			builder.assert_eq_cond("3b.3".to_string(), byte_w, zero, zero_b);
-		}
+		let expected_padded = single_wire_multiplex(builder, &candidates, len_mod_8);
+		builder.assert_eq("first half", builder.band(expected_padded, m32), boundary_padded_lo32);
+		builder.assert_eq("second half", builder.shr(expected_padded, 32), boundary_padded_hi32);
+		// also guarantees as a side effect that `boundary_padded` hi and lo have empty high halves.
 
 		for block_index in 0..n_blocks {
 			let builder = builder.subcircuit(format!("word[{block_index}]"));
