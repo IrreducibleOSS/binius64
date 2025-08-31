@@ -257,27 +257,12 @@ pub fn grind_nonce(
 #[cfg(test)]
 mod tests {
 	use rand::{RngCore, SeedableRng, rngs::StdRng};
-	use sha3::{Digest, Keccak256};
 
-	use super::{super::hashing::build_chain_hash, *};
+	use super::{
+		super::hashing::{build_chain_hash, hash_chain_keccak},
+		*,
+	};
 	use crate::{constraint_verifier::verify_constraints, util::pack_bytes_into_wires_le};
-
-	fn hash_chain_keccak(
-		domain_param: &[u8],
-		chain_index: usize,
-		start_hash: &[u8; 32],
-		start_pos: usize,
-		num_hashes: usize,
-	) -> [u8; 32] {
-		let mut current = *start_hash;
-		for i in 0..num_hashes {
-			let position = start_pos + i + 1;
-			let tweaked_message =
-				build_chain_hash(domain_param, &current, chain_index as u64, position as u64);
-			current = Keccak256::digest(tweaked_message).into();
-		}
-		current
-	}
 
 	#[test]
 	fn test_circuit_winternitz_ots() {

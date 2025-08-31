@@ -125,6 +125,26 @@ pub fn build_tree_hash(
 	message
 }
 
+/// Computes a Merkle tree node hash.
+///
+/// # Arguments
+/// * `param` - Cryptographic parameter
+/// * `left` - Left child hash
+/// * `right` - Right child hash
+/// * `level` - Tree level (0 = leaf level)
+/// * `index` - Node index at this level
+pub fn hash_tree_node_keccak(
+	param: &[u8],
+	left: &[u8; 32],
+	right: &[u8; 32],
+	level: u32,
+	index: u32,
+) -> [u8; 32] {
+	use sha3::{Digest, Keccak256};
+	let tweaked_tree_node = build_tree_hash(param, left, right, level, index);
+	Keccak256::digest(tweaked_tree_node).into()
+}
+
 #[cfg(test)]
 mod tests {
 	use binius_core::Word;
