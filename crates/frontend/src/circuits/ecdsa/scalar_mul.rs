@@ -265,3 +265,66 @@ pub fn shamirs_trick_naive(
 
 	acc
 }
+
+#[cfg(test)]
+mod tests {
+	use binius_core::word::Word;
+	use k256::{
+		ProjectivePoint, Scalar,
+		elliptic_curve::{ops::MulByGenerator, sec1::ToEncodedPoint},
+	};
+
+	use super::*;
+	use crate::{
+		circuits::{
+			bignum::{BigUint, assert_eq},
+			secp256k1::{Secp256k1, Secp256k1Affine},
+		},
+		compiler::CircuitBuilder,
+	};
+
+	#[test]
+	fn test_scalar_mul_naive() {
+		let builder = CircuitBuilder::new();
+		let curve = Secp256k1::new(&builder);
+
+		// Test with scalar = 69
+		let scalar_value = 69u64;
+
+		// Use k256 to compute the expected result
+		let k256_scalar = Scalar::from(scalar_value);
+		let k256_point = ProjectivePoint::mul_by_generator(&k256_scalar).to_affine();
+
+		// Extract coordinates from k256 result
+		let point_bytes = k256_point.to_encoded_point(false).to_bytes();
+		// The uncompressed format is: 0x04 || x || y (65 bytes total)
+		// We need to extract x and y coordinates (32 bytes each)
+		let x_coord = num_bigint::BigUint::from_bytes_be(&point_bytes[1..33]);
+		let y_coord = num_bigint::BigUint::from_bytes_be(&point_bytes[33..65]);
+
+		// Create our scalar as BigUint
+		let scalar = BigUint::new_constant(&builder, &num_bigint::BigUint::from(scalar_value));
+
+		// Create expected coordinates as BigUint
+		let expected_x = BigUint::new_constant(&builder, &x_coord);
+		let expected_y = BigUint::new_constant(&builder, &y_coord);
+
+		// Get the generator point
+		let generator = Secp256k1Affine::generator(&builder);
+
+		// Perform scalar multiplication with our implementation
+		let result = scalar_mul_naive(&builder, &curve, 7, &scalar, generator);
+
+		// Check that the result matches the expected point
+		assert_eq(&builder, "result_x", &result.x, &expected_x);
+		assert_eq(&builder, "result_y", &result.y, &expected_y);
+
+		// Build and verify the circuit
+		let cs = builder.build();
+		let mut w = cs.new_witness_filler();
+		assert!(cs.populate_wire_witness(&mut w).is_ok());
+
+		// Also verify the point is not at infinity
+		assert_eq!(w[result.is_point_at_infinity], Word::ZERO);
+	}
+}
