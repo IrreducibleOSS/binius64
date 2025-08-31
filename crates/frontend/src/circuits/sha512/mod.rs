@@ -560,39 +560,30 @@ pub fn sha512_fixed(builder: &CircuitBuilder, message: &[Wire], len_bytes: usize
 
 	// Create padded message wires
 	let mut padded_message = Vec::with_capacity(n_padded_words);
+	if len_bytes % 8 == 0 {
+		// Message ends at a word boundary - all words are complete
+		padded_message.extend_from_slice(message);
+		// Next word starts with 0x80 delimiter
+		padded_message.push(builder.add_constant(Word(0x8000000000000000)));
+	} else {
+		// Message ends mid-word - need to handle boundary word
+		padded_message.extend_from_slice(&message[..message.len() - 1]);
 
-	// Handle message padding based on length
-	match len_bytes {
-		0 => {
-			// Empty message - first word is just the delimiter
-			padded_message.push(builder.add_constant(Word(0x8000000000000000)));
-		}
-		len_bytes if len_bytes % 8 == 0 => {
-			// Message ends at a word boundary - all words are complete
-			padded_message.extend_from_slice(message);
-			// Next word starts with 0x80 delimiter
-			padded_message.push(builder.add_constant(Word(0x8000000000000000)));
-		}
-		_ => {
-			// Message ends mid-word - need to handle boundary word
-			padded_message.extend_from_slice(&message[..message.len() - 1]);
+		// Handle the last message word which is partial
+		let last_idx = message.len() - 1;
+		let boundary_byte_in_word = len_bytes % 8;
 
-			// Handle the last message word which is partial
-			let last_idx = message.len() - 1;
-			let boundary_byte_in_word = len_bytes % 8;
+		// Use shift operations to extract valid bytes and add delimiter
+		// Shift right to remove unwanted bytes, then shift left to restore position
+		let shift_amount = (8 - boundary_byte_in_word) * 8;
+		let shifted_right = builder.shr(message[last_idx], shift_amount as u32);
+		let shifted_back = builder.shl(shifted_right, shift_amount as u32);
 
-			// Use shift operations to extract valid bytes and add delimiter
-			// Shift right to remove unwanted bytes, then shift left to restore position
-			let shift_amount = (8 - boundary_byte_in_word) * 8;
-			let shifted_right = builder.shr(message[last_idx], shift_amount as u32);
-			let shifted_back = builder.shl(shifted_right, shift_amount as u32);
-
-			// Add 0x80 delimiter at the right position
-			let delimiter_shift = (7 - boundary_byte_in_word) * 8;
-			let delimiter = builder.add_constant(Word(0x80u64 << delimiter_shift));
-			let boundary_word = builder.bxor(shifted_back, delimiter);
-			padded_message.push(boundary_word);
-		}
+		// Add 0x80 delimiter at the right position
+		let delimiter_shift = (7 - boundary_byte_in_word) * 8;
+		let delimiter = builder.add_constant(Word(0x80u64 << delimiter_shift));
+		let boundary_word = builder.bxor(shifted_back, delimiter);
+		padded_message.push(boundary_word);
 	}
 
 	// Fill with zeros until we reach the length field position
