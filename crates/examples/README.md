@@ -113,11 +113,10 @@ impl ExampleCircuit for MyCircuitExample {
 }
 
 fn main() -> Result<()> {
-    let _tracing_guard = tracing_profile::init_tracing()?;
-    
     // Create and run the CLI - this is all you need!
     Cli::<MyCircuitExample>::new("my_circuit")
         .about("Description of what your circuit does")
+        .with_repeat()  // Optional: Enable --repeat flag to run multiple iterations
         .run()
 }
 ```
@@ -272,6 +271,12 @@ cargo run --release --example my_circuit -- --help
 
 # Run with increased verbosity
 RUST_LOG=info cargo run --release --example my_circuit
+
+# Run multiple iterations (useful for benchmarking, testing consistency, etc.)
+cargo run --release --example my_circuit -- --repeat 3
+
+# With perfetto feature, each iteration creates a separate trace file
+cargo run --release --example my_circuit --features perfetto -- --repeat 3
 ```
 
 ## CLI subcommands

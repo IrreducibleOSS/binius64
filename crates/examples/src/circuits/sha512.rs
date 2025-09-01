@@ -78,6 +78,15 @@ impl ExampleCircuit for Sha512Example {
 
 		Ok(())
 	}
+
+	fn param_summary(params: &Self::Params) -> Option<String> {
+		let base = format!("{}b", params.max_len_bytes);
+		if params.exact_len_bytes {
+			Some(format!("{}-exact", base))
+		} else {
+			Some(base)
+		}
+	}
 }
 
 fn mk_circuit(b: &mut CircuitBuilder, max_len: usize, len_bytes: Wire) -> Sha512 {

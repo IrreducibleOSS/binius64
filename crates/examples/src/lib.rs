@@ -111,4 +111,21 @@ pub trait ExampleCircuit: Sized {
 	/// - Fill all witness values using the provided filler
 	/// - Validate that instance data is compatible with circuit parameters
 	fn populate_witness(&self, instance: Self::Instance, filler: &mut WitnessFiller) -> Result<()>;
+
+	/// Generate a concise parameter summary for perfetto trace filenames.
+	///
+	/// This method should return a short string (5-10 chars max) that captures
+	/// the most important parameters for this circuit configuration.
+	/// Used to differentiate traces with different parameter settings.
+	///
+	/// Format suggestions:
+	/// - Bytes: "2048b", "4096b"
+	/// - Counts: "10p" (permutations), "5s" (signatures)
+	/// - Flags: add suffix like "exact" -> "2048b-exact"
+	///
+	/// Returns None if no meaningful parameters to include in filename.
+	fn param_summary(params: &Self::Params) -> Option<String> {
+		let _ = params; // Suppress unused parameter warning
+		None // Default implementation - no parameters in filename
+	}
 }

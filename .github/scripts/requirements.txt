@@ -1,0 +1,2 @@
+# Requirements for run_benchmarks.py
+perfetto>=0.14.0

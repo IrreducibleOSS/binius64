@@ -122,7 +122,7 @@ where
 		}
 
 		let _prove_guard = tracing::info_span!(
-			"prove",
+			"Prove",
 			operation = "prove",
 			perfetto_category = "operation",
 			n_witness_words = cs.value_vec_layout.total_len,
