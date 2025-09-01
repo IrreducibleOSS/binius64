@@ -177,7 +177,6 @@ impl Sha512 {
 		// end_block_index = floor((len + 16) / 128) using 64-bit add
 		let (sum, _carry) = builder.iadd_cin_cout(len_bytes, builder.add_constant_64(16), zero);
 		let end_block_index = builder.shr(sum, 7);
-		let delim: Wire = builder.add_constant_zx_8(0x80);
 		// ---- 2b. Final digest selection
 		//
 		// Select the correct final digest from all compression outputs. The final digest is
@@ -234,23 +233,16 @@ impl Sha512 {
 		// thus it truly doesn't matter what the multiplexer returns; in this case,
 		// we are simply asserting that `boundary_padded_word` == 0x 80 00 ...... 00.
 
-		for j in 0..8 {
-			let builder = builder.subcircuit(format!("byte[{j}]"));
-			let j_const = builder.add_constant_64(j as u64);
-			let data_b = builder.icmp_ult(j_const, len_mod_8);
-			let delim_b = builder.icmp_eq(j_const, len_mod_8);
-			let zero_b = builder.icmp_ult(len_mod_8, j_const);
-
-			let byte_w = builder.extract_byte(boundary_padded_word, 7 - j);
-			let byte_m = builder.extract_byte(boundary_message_word, 7 - j);
-
-			// case 1. this is still message byte. Assert equality.
-			builder.assert_eq_cond("3b.1", byte_w, byte_m, data_b);
-			// case 2. this is the first padding byte, or the delimiter.
-			builder.assert_eq_cond("3b.2", byte_w, delim, delim_b);
-			// case 3. this is the byte past the delimiter, ie. zero.
-			builder.assert_eq_cond("3b.3", byte_w, zero, zero_b);
-		}
+		let candidates: Vec<Wire> = (0..8)
+			.map(|i| {
+				let mask = builder.add_constant_64(0xFFFFFFFFFFFFFF00 << ((7 - i) << 3));
+				let padding_byte = builder.add_constant_64(0x8000000000000000 >> (i << 3));
+				let message_low = builder.band(boundary_message_word, mask);
+				builder.bxor(message_low, padding_byte)
+			})
+			.collect();
+		let expected_padded = single_wire_multiplex(builder, &candidates, len_mod_8);
+		builder.assert_eq("expected padded", expected_padded, boundary_padded_word);
 
 		for block_index in 0..n_blocks {
 			let builder = builder.subcircuit(format!("word[{block_index}]"));
