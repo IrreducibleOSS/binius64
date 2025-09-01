@@ -13,7 +13,7 @@ use crate::{
 /// signatures.
 ///
 /// This circuit computes Keccak-256 of a message that's been tweaked with
-/// chain-specific parameters: `Keccak256(param || tweak_byte || hash || chain_index || position)`
+/// chain-specific parameters: `Keccak256(param || 0x00 || hash || chain_index || position)`
 pub struct ChainTweak {
 	/// The Keccak-256 hasher that computes the final digest
 	pub keccak: Keccak,
@@ -21,8 +21,6 @@ pub struct ChainTweak {
 	pub param_wires: Vec<Wire>,
 	/// The actual parameter length in bytes (before padding)
 	pub param_len: usize,
-	/// Single-byte tweak value (as a 64-bit wire with byte in LSB)
-	pub tweak_byte: Wire,
 	/// The hash value to be tweaked (32 bytes as 4x64-bit LE-packed wires)
 	pub hash: [Wire; 4],
 	/// Index of this chain (as 64-bit value in wire)
@@ -40,6 +38,8 @@ pub struct ChainTweak {
 /// - 8 bytes: position
 const FIXED_MESSAGE_OVERHEAD: usize = 1 + 32 + 8 + 8;
 
+const CHAIN_TWEAK: u8 = 0x00;
+
 impl ChainTweak {
 	/// Creates a new chain-tweaked Keccak-256 circuit.
 	///
@@ -48,7 +48,6 @@ impl ChainTweak {
 	/// * `builder` - Circuit builder for constructing constraints
 	/// * `param_wires` - The cryptographic parameter wires
 	/// * `param_len` - The actual parameter length in bytes
-	/// * `tweak_byte` - Single-byte tweak value (as a 64-bit wire with byte in LSB)
 	/// * `hash` - The hash value to be tweaked (32 bytes as 4x64-bit LE-packed wires)
 	/// * `chain_index` - Index of this chain (as 64-bit value in wire)
 	/// * `position` - Position within the chain (as 64-bit value in wire)
@@ -57,18 +56,17 @@ impl ChainTweak {
 	/// # Returns
 	///
 	/// A `ChainTweak` instance that verifies the tweaked hash.
-	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		builder: &CircuitBuilder,
 		param_wires: Vec<Wire>,
 		param_len: usize,
-		tweak_byte: Wire,
 		hash: [Wire; 4],
 		chain_index: Wire,
 		position: Wire,
 		digest: [Wire; 4],
 	) -> Self {
 		let message_len = param_len + FIXED_MESSAGE_OVERHEAD;
+		let tweak_byte = builder.add_constant_64(CHAIN_TWEAK as u64);
 		assert_eq!(param_wires.len(), param_len.div_ceil(8));
 
 		// Create the message wires for Keccak (LE-packed)
@@ -120,7 +118,6 @@ impl ChainTweak {
 			keccak,
 			param_wires,
 			param_len,
-			tweak_byte,
 			hash,
 			chain_index,
 			position,
@@ -132,11 +129,6 @@ impl ChainTweak {
 	pub fn populate_param(&self, w: &mut WitnessFiller, param_bytes: &[u8]) {
 		assert_eq!(param_bytes.len(), self.param_len);
 		pack_bytes_into_wires_le(w, &self.param_wires, param_bytes);
-	}
-
-	/// Populate the tweak byte wire.
-	pub fn populate_tweak_byte(&self, w: &mut WitnessFiller, tweak_byte: u8) {
-		w[self.tweak_byte] = Word::from_u64(tweak_byte as u64);
 	}
 
 	/// Populate the hash wires (32 bytes as 4x64-bit LE-packed).
@@ -181,14 +173,13 @@ impl ChainTweak {
 	/// Build the tweaked message from components.
 	pub fn build_message(
 		param_bytes: &[u8],
-		tweak_byte: u8,
 		hash_bytes: &[u8; 32],
 		chain_index_value: u64,
 		position_value: u64,
 	) -> Vec<u8> {
 		let mut message = Vec::new();
 		message.extend_from_slice(param_bytes);
-		message.push(tweak_byte);
+		message.push(CHAIN_TWEAK);
 		message.extend_from_slice(hash_bytes);
 		message.extend_from_slice(&chain_index_value.to_le_bytes());
 		message.extend_from_slice(&position_value.to_le_bytes());
@@ -217,21 +208,10 @@ mod tests {
 		fn new(param_len: usize) -> Self {
 			let builder = CircuitBuilder::new();
 
-			let tweak_byte = builder.add_inout();
-			let hash: [Wire; 4] = [
-				builder.add_inout(),
-				builder.add_inout(),
-				builder.add_inout(),
-				builder.add_inout(),
-			];
+			let hash: [Wire; 4] = std::array::from_fn(|_| builder.add_inout());
 			let chain_index = builder.add_inout();
 			let position = builder.add_inout();
-			let digest: [Wire; 4] = [
-				builder.add_inout(),
-				builder.add_inout(),
-				builder.add_inout(),
-				builder.add_inout(),
-			];
+			let digest: [Wire; 4] = std::array::from_fn(|_| builder.add_inout());
 
 			let num_param_wires = param_len.div_ceil(8);
 			let param_wires: Vec<Wire> =
@@ -241,7 +221,6 @@ mod tests {
 				&builder,
 				param_wires,
 				param_len,
-				tweak_byte,
 				hash,
 				chain_index,
 				position,
@@ -257,11 +236,9 @@ mod tests {
 		}
 
 		/// Populate witness and verify constraints with given test data
-		#[allow(clippy::too_many_arguments)]
 		fn populate_and_verify(
 			&self,
 			param_bytes: &[u8],
-			tweak_byte_val: u8,
 			hash_bytes: &[u8; 32],
 			chain_index_val: u64,
 			position_val: u64,
@@ -271,8 +248,6 @@ mod tests {
 			let mut w = self.circuit.new_witness_filler();
 
 			self.tweaked_keccak.populate_param(&mut w, param_bytes);
-			self.tweaked_keccak
-				.populate_tweak_byte(&mut w, tweak_byte_val);
 			self.tweaked_keccak.populate_hash(&mut w, hash_bytes);
 			self.tweaked_keccak
 				.populate_chain_index(&mut w, chain_index_val);
@@ -292,25 +267,18 @@ mod tests {
 		let test_circuit = TestCircuit::new(32);
 
 		let param_bytes = b"test_parameter_32_bytes_long!!!!";
-		let tweak_byte_val = 0x42u8;
 		let hash_bytes = b"hash_value_32_bytes_long!!!!!!!!";
 		let chain_index_val = 123u64;
 		let position_val = 456u64;
 
-		let message = ChainTweak::build_message(
-			param_bytes,
-			tweak_byte_val,
-			hash_bytes,
-			chain_index_val,
-			position_val,
-		);
+		let message =
+			ChainTweak::build_message(param_bytes, hash_bytes, chain_index_val, position_val);
 
 		let expected_digest = Keccak256::digest(&message);
 
 		test_circuit
 			.populate_and_verify(
 				param_bytes,
-				tweak_byte_val,
 				hash_bytes,
 				chain_index_val,
 				position_val,
@@ -326,25 +294,18 @@ mod tests {
 		let test_circuit = TestCircuit::new(18);
 
 		let param_bytes: &[u8; 18] = b"test_param_18bytes";
-		let tweak_byte_val = 0x00u8;
 		let hash_bytes = b"hash_value_32_bytes_long!!!!!!!!";
 		let chain_index_val = 123u64;
 		let position_val = 456u64;
 
-		let message = ChainTweak::build_message(
-			param_bytes,
-			tweak_byte_val,
-			hash_bytes,
-			chain_index_val,
-			position_val,
-		);
+		let message =
+			ChainTweak::build_message(param_bytes, hash_bytes, chain_index_val, position_val);
 
 		let expected_digest = Keccak256::digest(&message);
 
 		test_circuit
 			.populate_and_verify(
 				param_bytes,
-				tweak_byte_val,
 				hash_bytes,
 				chain_index_val,
 				position_val,
@@ -359,25 +320,18 @@ mod tests {
 		let test_circuit = TestCircuit::new(32);
 
 		let param_bytes = b"test_parameter_32_bytes_long!!!!";
-		let tweak_byte_val = 0x42u8;
 		let hash_bytes = b"hash_value_32_bytes_long!!!!!!!!";
 		let chain_index_val = 123u64;
 		let position_val = 456u64;
 
-		let message = ChainTweak::build_message(
-			param_bytes,
-			tweak_byte_val,
-			hash_bytes,
-			chain_index_val,
-			position_val,
-		);
+		let message =
+			ChainTweak::build_message(param_bytes, hash_bytes, chain_index_val, position_val);
 
 		// Populate with WRONG digest - this should cause verification to fail
 		let wrong_digest = [0u8; 32];
 
 		let result = test_circuit.populate_and_verify(
 			param_bytes,
-			tweak_byte_val,
 			hash_bytes,
 			chain_index_val,
 			position_val,
@@ -394,7 +348,6 @@ mod tests {
 
 		let correct_param_bytes = b"correct_parameter_32_bytes!!!!!!";
 		let wrong_param_bytes = b"wrong___parameter_32_bytes!!!!!!";
-		let tweak_byte_val = 0x42u8;
 		let hash_bytes = b"hash_value_32_bytes_long!!!!!!!!";
 		let chain_index_val = 123u64;
 		let position_val = 456u64;
@@ -402,7 +355,6 @@ mod tests {
 		// Message built with correct param
 		let message = ChainTweak::build_message(
 			correct_param_bytes,
-			tweak_byte_val,
 			hash_bytes,
 			chain_index_val,
 			position_val,
@@ -413,7 +365,6 @@ mod tests {
 		// Populate with WRONG param but correct digest
 		let result = test_circuit.populate_and_verify(
 			wrong_param_bytes,
-			tweak_byte_val,
 			hash_bytes,
 			chain_index_val,
 			position_val,
@@ -429,27 +380,20 @@ mod tests {
 		let test_circuit = TestCircuit::new(32);
 
 		let param_bytes = b"test_parameter_32_bytes_long!!!!";
-		let tweak_byte_val = 0x42u8;
 		let hash_bytes = b"hash_value_32_bytes_long!!!!!!!!";
 		let correct_chain_index = 123u64;
 		let wrong_chain_index = 999u64;
 		let position_val = 456u64;
 
 		// Message built with correct chain_index
-		let message = ChainTweak::build_message(
-			param_bytes,
-			tweak_byte_val,
-			hash_bytes,
-			correct_chain_index,
-			position_val,
-		);
+		let message =
+			ChainTweak::build_message(param_bytes, hash_bytes, correct_chain_index, position_val);
 
 		let expected_digest = Keccak256::digest(&message);
 
 		// Populate with WRONG chain_index but correct digest
 		let result = test_circuit.populate_and_verify(
 			param_bytes,
-			tweak_byte_val,
 			hash_bytes,
 			wrong_chain_index,
 			position_val,

@@ -1,2 +1,2 @@
 pub mod codeword;
-pub mod tweak;
+pub mod hashing;
