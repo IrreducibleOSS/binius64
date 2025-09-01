@@ -1,0 +1,34 @@
+[package]
+name = "binius-prover-client"
+version = "0.1.0"
+edition = "2021"
+authors = ["Irreducible Team <opensource@irreducible.com>"]
+description = "Simplified open-source interface to the Binius ZK prover using serialization"
+license = "MIT OR Apache-2.0"
+build = "build.rs"
+
+[lib]
+# This is a Rust crate (rlib). The cdylib is only built for internal testing purposes.
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+# Core dependencies for serialization
+binius-core = { path = "../core" }
+binius-utils = { path = "../utils" }
+bytes = "1.7"
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Needed for the FFI implementation (only when building cdylib)
+binius-prover = { path = "../prover", optional = true }
+
+[features]
+default = []
+# Enable building the FFI implementation (for cdylib)
+ffi-impl = ["binius-prover"]
+
+[dev-dependencies]
+# For testing and benchmarking
+criterion = "0.6"
