@@ -158,11 +158,31 @@ impl Keccak {
 					// last word in the block
 					let must_check_delimiter = b.band(is_end_block, is_not_last_column);
 					b.assert_eq_cond("delim", padded_word, msb_one, must_check_delimiter);
-					// if the word in which 0x01 must reside is NOT the last word in the block,
+					// the case we need to deal with: we're in end block but `is_not_last_column`.
+					// this means that the `boundary_message_word` is not the last word in its block
 					// then the presence of the 0x80 delimiter is NOT treated with the boundary word
 					// thus we must separately check that the ACTUAL last word in the block has it
+
+					// if `is_end_block` is true but NOT `is_not_last_column`, then we're fine.
+					// indeed: if `!is_not_last_column`, boundary message word IS in last column,
+					// so we already handled the validity of that word, and there is nothing to do.
+
+					// if NOT in end block, then again i claim there is nothing we need to check.
+					// if we're in the last column but strictly before the end block, then we're
+					// still in the message, by definition of `end_block`. indeed, the `0x80` byte
+					// happens in the soonest possible block after the message ends, and no later.
+					// thus we already checked the validity of this word above (a `message_word`).
+					// the other case is that we're strictly after the end block. in this case,
+					// we can just leave the `padded_word` completely unconstrained. after all,
+					// said word will have no effect on `digest` whatsoever, so we just leave it.
 				} else {
 					b.assert_eq_cond("after-message padding", padded_word, zero, is_past_message);
+					// we're strictly after the word w/ the 0x01 byte and not in the last column.
+					// there are two cases: either we're within the end block or strictly after it.
+					// if the former, we're after the boundary word but before the word w/ 0x80.
+					// in that case, we must for the sake of correctness assert that this word is 0.
+					// if strictly after the end block, this word will have no effect on `digest`;
+					// thus we're free to assert that it's 0, but it's not necessary for soundness.
 				}
 			}
 		}
