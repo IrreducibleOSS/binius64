@@ -7,7 +7,10 @@ use binius_core::{
 pub use compress::{Compress, State};
 
 use crate::{
-	circuits::multiplexer::{multi_wire_multiplex, single_wire_multiplex},
+	circuits::{
+		bytes::{swap_bytes, swap_bytes_32},
+		multiplexer::{multi_wire_multiplex, single_wire_multiplex},
+	},
 	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
 };
 
@@ -381,42 +384,13 @@ impl Sha256 {
 	/// Returns digest wires in little-endian packed format.
 	///
 	/// The SHA256 digest is stored as 4 wires, each containing 8 bytes of the hash
-	/// as a 64-bit big-endian value.
-	///
-	/// This method extracts the individual bytes and repacks them in little-endian format,
-	/// which is useful for interfacing with other circuits that expect LE format.
+	/// as a 64-bit big-endian value. This method converts from big-endian to little-endian format.
 	///
 	/// # Returns
 	/// An array of 4 wires containing the 32-byte digest repacked in little-endian format (8 bytes
 	/// per wire)
 	pub fn digest_to_le_wires(&self, builder: &CircuitBuilder) -> [Wire; 4] {
-		let mut wires = [builder.add_constant(Word::ZERO); 4];
-
-		for i in 0..4 {
-			let be_wire = self.digest[i];
-
-			// Extract 8 bytes from the 64-bit BE value
-			let mut bytes = Vec::with_capacity(8);
-			for j in 0..8 {
-				let shift_amount = (56 - j * 8) as u32;
-				let byte = builder
-					.band(builder.shr(be_wire, shift_amount), builder.add_constant(Word(0xFF)));
-				bytes.push(byte);
-			}
-
-			// Repack bytes in little-endian order
-			// bytes[0..8] contains the 8 digest bytes in their original order
-			// We pack them in LE format: byte0 | (byte1 << 8) | ... | (byte7 << 56)
-			let mut le_wire = bytes[0];
-			for j in 1..8 {
-				let shifted = builder.shl(bytes[j], (j * 8) as u32);
-				le_wire = builder.bor(le_wire, shifted);
-			}
-
-			wires[i] = le_wire;
-		}
-
-		wires
+		self.digest.map(|be_wire| swap_bytes(builder, be_wire))
 	}
 
 	/// Returns message wires in little-endian packed format.
@@ -424,57 +398,16 @@ impl Sha256 {
 	/// The SHA256 message is stored with each wire containing 8 bytes packed as two XORed 32-bit
 	/// big-endian words: `lo_word ^ (hi_word << 32)`.
 	///
-	/// This method extracts the individual bytes and repacks them in little-endian format,
+	/// This method converts both 32-bit big-endian words to little-endian format simultaneously,
 	/// which is useful for interfacing with other circuits that expect LE format (e.g., zklogin).
 	///
 	/// # Returns
 	/// A vector of wires containing the message repacked in little-endian format (8 bytes per wire)
 	pub fn message_to_le_wires(&self, builder: &CircuitBuilder) -> Vec<Wire> {
-		let mut wires = Vec::with_capacity(self.message.len());
-
-		for &sha256_wire in &self.message {
-			// Extract the two 32-bit words from SHA256 format
-			// SHA256 format: lo_word ^ (hi_word << 32)
-			let hi_word = builder.shr(sha256_wire, 32);
-			let hi_word_masked = builder.band(hi_word, builder.add_constant(Word(0xFFFFFFFF)));
-			let lo_word = builder.band(sha256_wire, builder.add_constant(Word(0xFFFFFFFF)));
-
-			// Extract bytes from the two 32-bit BE words
-			// lo_word contains message bytes[i*8..i*8+4] in big-endian
-			// hi_word contains message bytes[i*8+4..i*8+8] in big-endian
-			let mut bytes = Vec::with_capacity(8);
-
-			// Extract 4 bytes from lo_word (BE format) - these are bytes 0-3
-			for j in 0..4 {
-				let shift_amount = (24 - j * 8) as u32;
-				let byte = builder
-					.band(builder.shr(lo_word, shift_amount), builder.add_constant(Word(0xFF)));
-				bytes.push(byte);
-			}
-
-			// Extract 4 bytes from hi_word (BE format) - these are bytes 4-7
-			for j in 0..4 {
-				let shift_amount = (24 - j * 8) as u32;
-				let byte = builder.band(
-					builder.shr(hi_word_masked, shift_amount),
-					builder.add_constant(Word(0xFF)),
-				);
-				bytes.push(byte);
-			}
-
-			// Repack bytes in little-endian order
-			// bytes[0..8] contains the 8 message bytes in their original order
-			// We pack them in LE format: byte0 | (byte1 << 8) | ... | (byte7 << 56)
-			let mut le_wire = bytes[0];
-			for j in 1..8 {
-				let shifted = builder.shl(bytes[j], (j * 8) as u32);
-				le_wire = builder.bor(le_wire, shifted);
-			}
-
-			wires.push(le_wire);
-		}
-
-		wires
+		self.message
+			.iter()
+			.map(|&sha256_wire| swap_bytes_32(builder, sha256_wire))
+			.collect()
 	}
 
 	/// Populates the message wires and internal compression blocks with the input message.
