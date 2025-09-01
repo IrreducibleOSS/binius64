@@ -1,1066 +1,462 @@
-# Beamish: Expression Rewriting Framework Design
+# Beamish: Expression-Based Constraint Generation
 
-## Executive Summary
+## Overview
 
-Beamish is an expression rewriting framework for Binius64 that achieves 2-4x constraint reduction through pattern recognition and algebraic optimization. Users write typed code; the system recognizes patterns and generates optimized constraints.
+Beamish is a functional expression-based framework for generating Binius64 constraints. Users build expression trees using typed operations, and the system compiles these to optimized constraints through pattern recognition and delayed binding.
 
-**Key Concept**: Binius64 constraints can express complex combinations of XORs, shifts, and logical operations in a single constraint, unlike traditional gate-based systems.
+## Binius64 Constraint System
 
-## Part I: Theoretical Foundation
+### Constraint Types
 
-### Binary Field Fundamentals
+Binius64 has only two constraint types:
 
-In binary fields GF(2^n) with characteristic 2:
-- **Addition = XOR**: `a + b = a ⊕ b`
-- **Subtraction = XOR**: `a - b = a ⊕ b` (same as addition!)
-- **Additive inverse**: `-a = a` (every element is its own inverse)
+1. **AND Constraint**: `(A) & (B) ⊕ (C) = 0`
+   - A, B, C are operands (XOR combinations of shifted values)
+   - Cost: 1x (baseline)
 
-This holds for ALL binary field extensions: GF(2), GF(2^8), GF(2^64), GF(2^128), etc. The reason: in characteristic 2, `1 + 1 = 0`, therefore `a + a = 0` for any element, making every element self-inverse.
+2. **MUL Constraint**: `(A) × (B) = (HI << 64) | LO`
+   - 64×64 bit multiplication producing 128-bit result
+   - Cost: ~200x (expensive)
 
-### The Constraint Language
+### Operand Structure
 
-#### AND Constraint
-```
-(⊕ᵢ aᵢ) & (⊕ⱼ bⱼ) ⊕ (⊕ₖ cₖ) = 0
-```
+Within each operand (A, B, or C), these are "free" (no additional constraints):
+- XOR of multiple values: `v1 ⊕ v2 ⊕ v3 ⊕ ...`
+- Shifted values: `v1 >> 5`, `v2 << 3`, `v3 >>> 7`
+- Constants: `0xFFFFFFFFFFFFFFFF`
+- Any combination: `(v1 >> 2) ⊕ (v2 << 5) ⊕ 0x12345678`
 
-Where each `aᵢ`, `bⱼ`, `cₖ` can be:
-- A value: `v[i]`
-- A shifted value: `v[i] << n` or `v[i] >> n` or `v[i] >>> n`
-- Any XOR combination thereof
+### Basic Operation Encoding
 
-**Note**: XOR operations within operands do not require additional constraints.
-
-#### MUL Constraint
-```
-(⊕ᵢ aᵢ) * (⊕ⱼ bⱼ) = (⊕ₘ hiₘ) || (⊕ₙ loₙ)
-```
-Similar richness but ~200x more expensive than AND.
-
-### Basic Constraint Encoding
-
-Since Binius64 only has AND and MUL constraints, all operations must be encoded using these primitives.
-
-#### How XOR is Encoded
-
-To compute `result = a ^ b`:
-
+#### XOR (Field Addition in GF(2^64))
+To compute `result = a ⊕ b`:
 ```
 Constraint: (a) & (0xFFFFFFFFFFFFFFFF) ⊕ (b ⊕ result) = 0
 ```
+Since `a & 0xFF..FF = a`, this enforces `a = b ⊕ result`, thus `result = a ⊕ b`.
 
-**Why this works:**
-1. `a & 0xFFFFFFFFFFFFFFFF = a` (identity operation)
-2. The constraint enforces: `a ⊕ (b ⊕ result) = 0`
-3. Rearranging: `a = b ⊕ result`
-4. Therefore: `result = a ⊕ b` (since XOR is self-inverse)
+#### AND
+To compute `result = a & b`:
+```
+Constraint: (a) & (b) ⊕ (result) = 0
+```
 
+#### NOT
+To compute `result = ~a`:
+```
+Constraint: (a) & (0xFFFFFFFFFFFFFFFF) ⊕ (0xFFFFFFFFFFFFFFFF ⊕ result) = 0
+```
+This is just XOR with all-ones: `result = a ⊕ 0xFF..FF`.
 
-### Core Principle: Expression-First Compilation
+#### Equality
+To enforce `a = b`:
+```
+Constraint: (a ⊕ b) & (0xFFFFFFFFFFFFFFFF) ⊕ (0) = 0
+```
+This forces `a ⊕ b = 0`, which means `a = b` in GF(2^64).
 
-Instead of compiling instruction-by-instruction:
-1. Build complete expression trees
-2. Recognize patterns through rewriting
-3. Generate minimal constraints
+## Architecture
 
-This paradigm shift enables dramatic optimization because patterns that span multiple "instructions" can be compiled to single constraints.
-
-## Part II: Type System
-
-### Design Philosophy
-Types provide **basic operations only**. All optimization happens through **pattern recognition** in the rewriting layer.
-
-### Core Types
-
-#### Field64 - Binary Field GF(2^64)
+### Expression Layer
+Users write typed functional code that builds expression trees:
 ```rust
-pub struct Field64(Word);
+let a = val::<Field64>(0);
+let b = val::<Field64>(1);
+let c = val::<Field64>(2);
+let result = xor(&a, &and(&not(&b), &c));
+```
 
-impl Field64 {
-    // Basic operations only - no optimization passes
-    pub fn xor(self, other: Field64) -> Field64
-    pub fn and(self, other: Field64) -> Field64
-    pub fn or(self, other: Field64) -> Field64
-    pub fn not(self) -> Field64
+### Expression Tree Representation
+```rust
+enum ExprNode {
+    // Values
+    Witness(u32),
+    Constant(u64),
     
-    // Basic shifts and rotations
-    pub fn shl(self, amount: u8) -> Field64
-    pub fn shr(self, amount: u8) -> Field64
-    pub fn ror(self, amount: u8) -> Field64
-    pub fn rol(self, amount: u8) -> Field64
+    // Bitwise operations
+    Xor(Rc<ExprNode>, Rc<ExprNode>),
+    And(Rc<ExprNode>, Rc<ExprNode>),
+    Or(Rc<ExprNode>, Rc<ExprNode>),
+    Not(Rc<ExprNode>),
+    
+    // Shifts and rotations
+    Shl(Rc<ExprNode>, u8),
+    Shr(Rc<ExprNode>, u8),
+    Ror(Rc<ExprNode>, u8),
+    
+    // Arithmetic
+    Add32(Rc<ExprNode>, Rc<ExprNode>),
+    Mul64(Rc<ExprNode>, Rc<ExprNode>),
+    
+    // Equality constraint
+    Equal(Rc<ExprNode>, Rc<ExprNode>),
 }
 ```
 
-#### U32 - 32-bit Unsigned (SHA256)
-```rust
-pub struct U32(Word);  // Lower 32 bits used
+### Optimization Pipeline
 
-impl U32 {
-    // Basic arithmetic
-    pub fn add(self, other: U32) -> (U32, Bool)
-    pub fn add_with_carry(self, other: U32, carry: Bool) -> (U32, Bool)
-    pub fn sub(self, other: U32) -> (U32, Bool)
-    
-    // Basic bitwise
-    pub fn xor(self, other: U32) -> U32
-    pub fn and(self, other: U32) -> U32
-    pub fn or(self, other: U32) -> U32
-    pub fn not(self) -> U32
-    
-    // Basic shifts and rotations
-    pub fn shl(self, amount: u8) -> U32
-    pub fn shr(self, amount: u8) -> U32
-    pub fn ror(self, amount: u8) -> U32
-}
-```
+The expression tree passes through four phases in strict order:
 
-#### U64 - 64-bit Unsigned
-```rust
-pub struct U64(Word);
+1. **Canonicalization**: Transforms expressions into a normal form where semantically equivalent expressions have identical structure. Flattens nested associative operations (XOR chains), sorts commutative operands by a deterministic ordering, and positions constants consistently. This ensures pattern matchers need only recognize one canonical form rather than all equivalent variations.
 
-impl U64 {
-    // Basic arithmetic
-    pub fn add(self, other: U64) -> (U64, Bool)
-    pub fn add_with_carry(self, other: U64, carry: Bool) -> (U64, Bool)
-    pub fn sub(self, other: U64) -> (U64, Bool)
-    pub fn mul(self, other: U64) -> (U64, U64)  // (low, high)
-    
-    // Basic comparisons
-    pub fn lt(self, other: U64) -> Bool
-    pub fn eq(self, other: U64) -> Bool
-}
-```
+2. **Expression Rewriting**: Applies pattern-based transformations on the canonicalized tree. Patterns can be written simply since they match against predictable canonical forms. Rewriting may expose new optimization opportunities by restructuring expressions (e.g., transforming `(a&b)⊕(a&c)⊕(b&c)` into `(a⊕c)&(b⊕c)⊕c` creates shared subexpressions).
 
-#### Bool - Conditions
-```rust
-pub struct Bool(Word);  // 0 or 1
+3. **Common Subexpression Elimination** (Optional, disabled by default): Identifies duplicate subtrees in the expression DAG and replaces them with references to a single computation. In practice, well-written circuits rarely have duplicate computations, so this pass is disabled by default to avoid its runtime cost. It can be enabled for poorly structured input code where the same complex expression might be computed multiple times.
 
-impl Bool {
-    pub fn and(self, other: Bool) -> Bool
-    pub fn or(self, other: Bool) -> Bool
-    pub fn xor(self, other: Bool) -> Bool
-    pub fn not(self) -> Bool
-    
-    pub fn select<T>(self, if_true: T, if_false: T) -> T
-}
-```
+   When enabled, CSE marks shared subexpressions so constraint generation knows to bind them to temporary variables rather than recomputing them.
 
-#### Byte - 8-bit Values
-```rust
-pub struct Byte(Word);  // Lower 8 bits used
+4. **Constraint Generation**: Traverses the final optimized DAG to emit constraints. Must run last because delayed binding decisions depend on: (a) the final expression structure after all optimizations, (b) which values are shared versus used once (from CSE), and (c) the patterns present in the optimized form. The algorithm can make better packing decisions with complete structural information.
 
-impl Byte {
-    pub fn xor(self, other: Byte) -> Byte
-    pub fn and(self, other: Byte) -> Byte
-    
-    pub fn pack_into_word(bytes: &[Byte; 8]) -> U64
-    pub fn extract_from_word(word: U64, index: u8) -> Byte
-}
-```
+## Delayed Binding Constraint Generation
 
-### Typed Expression AST
+### Core Algorithm
+
+The algorithm accumulates operations into complex operands until a constraint boundary is reached. Multiple XOR operations, shifts, and constants combine into single operand terms, eliminating intermediate constraints.
+
+Example: `(a >> 2) ⊕ (b << 5) ⊕ c ⊕ 0x12345678` becomes a single operand term rather than requiring 3 XOR constraints. Temporary variables are created only at constraint boundaries (AND, MUL) or when results must be stored.
+
+#### Operand Building
+
+Operations fall into two categories:
+- **Operandic**: Can be represented directly in operand structure (XOR, NOT, shifts)
+- **Constraining**: Require generating constraints (AND, OR, MUL, ADD)
 
 ```rust
-pub enum TypedExpr {
-    // Field64 - only basic operations
-    Field64Val(ValueId),
-    Field64Xor(Box<TypedExpr>, Box<TypedExpr>),
-    Field64And(Box<TypedExpr>, Box<TypedExpr>),
-    Field64Or(Box<TypedExpr>, Box<TypedExpr>),
-    Field64Not(Box<TypedExpr>),
-    Field64Ror(Box<TypedExpr>, u8),
-    
-    // U32 - only basic operations
-    U32Val(ValueId),
-    U32Add(Box<TypedExpr>, Box<TypedExpr>),
-    U32Xor(Box<TypedExpr>, Box<TypedExpr>),
-    U32Ror(Box<TypedExpr>, u8),
-    
-    // U64 - only basic operations
-    U64Val(ValueId),
-    U64Add(Box<TypedExpr>, Box<TypedExpr>),
-    U64AddWithCarry(Box<TypedExpr>, Box<TypedExpr>, Box<TypedExpr>),
-    
-    // Optimized forms (created by rewriter, never by user)
-    OptimizedKeccakChi(Box<TypedExpr>, Box<TypedExpr>, Box<TypedExpr>),
-    OptimizedMultiXor(Vec<TypedExpr>),
-    OptimizedRotationXor(Box<TypedExpr>, Vec<u8>),
-    OptimizedCarryChain(Vec<(TypedExpr, TypedExpr)>),
-}
-```
-
-## Part III: Optimization Passes
-
-Each optimization pass performs expression tree rewriting using pattern matching and algebraic transformations. Passes are applied in sequence until a fixed point is reached.
-
-### Rewriting Rule Format
-
-Each optimization is specified using this formal notation:
-
-```
-INPUT:    C1: {first constraint}
-          C2: {second constraint}
-          ...
-FREE VARS: {variables that appear only in INPUT, eliminated by optimization}
-OUTPUT:   {optimized constraint(s)}
-NOTE:     {optional: special conditions or arbitrary n handling}
-```
-
-**Free variables** (marked as FREE VARS) are intermediate values that exist only to pass data between constraints. The optimization eliminates these by algebraically combining the constraints.
-
-### Pass 1: XOR Chain Consolidation
-
-**Example**: `a ^ b ^ c` ([See mathematical derivation](#derivation-1-xor-chain-consolidation))
-
-**Before (2 constraints):**
-```
-Constraint 1: (a) & (0xFFFFFFFFFFFFFFFF) ⊕ (b ⊕ t1) = 0
-Constraint 2: (t1) & (0xFFFFFFFFFFFFFFFF) ⊕ (c ⊕ result) = 0
-```
-
-**Rewriting Rule:**
-```
-INPUT:    C1: (x₀) & (0xFFFFFFFFFFFFFFFF) ⊕ (x₁ ⊕ t₁) = 0
-          C2: (t₁) & (0xFFFFFFFFFFFFFFFF) ⊕ (x₂ ⊕ t₂) = 0
-          ...
-          Cₙ₋₁: (tₙ₋₂) & (0xFFFFFFFFFFFFFFFF) ⊕ (xₙ₋₁ ⊕ result) = 0
-          Cₙ: (result) & (R) ⊕ (S) = 0  // Next operation using result
-FREE VARS: t₁, t₂, ..., tₙ₋₂, result
-OUTPUT:   (x₀ ⊕ x₁ ⊕ ... ⊕ xₙ₋₁) & (R) ⊕ (S) = 0
-```
-
-**After:**
-The XOR chain becomes a single operand in the consuming constraint.
-
-**Where Applied**:
-- Keccak theta: 25 instances → 100 constraints eliminated
-- SHA256 expansion: 48 instances → 96 constraints eliminated
-- Blake2 mixing: 32 instances → 64 constraints eliminated
-
-### Pass 2: Masked AND-XOR Pattern
-
-**Example**: `a ^ ((~b) & c)` ([See mathematical derivation](#derivation-2-masked-and-xor-pattern))
-
-**Rewriting Rule:**
-```
-INPUT:    C1: (b) & (0xFFFFFFFFFFFFFFFF) ⊕ (0xFFFFFFFFFFFFFFFF ⊕ not_b) = 0
-          C2: (not_b) & (c) ⊕ (and_result) = 0
-          C3: (a) & (0xFFFFFFFFFFFFFFFF) ⊕ (and_result ⊕ chi) = 0
-FREE VARS: not_b, and_result
-OUTPUT:   (b ⊕ 0xFFFFFFFFFFFFFFFF) & (c) ⊕ (a ⊕ chi) = 0
-```
-
-**Where Applied**:
-- Keccak chi step: 25 × 24 rounds = 600 instances
-- ARX ciphers (ChaCha, Salsa20): ~100 instances per block
-- Bitsliced implementations: widespread pattern
-- Total: 1800 → 600 constraints (1200 eliminated in Keccak alone)
-
-### Pass 3: Rotation-XOR Elimination
-
-**Example**: `(x >>> 7) ^ (x >>> 18) ^ (x >> 3)` ([See mathematical derivation](#derivation-3-rotation-xor-elimination))
-
-**Rewriting Rule:**
-```
-INPUT:    C1: (x[>>>7]) & (0xFFFFFFFFFFFFFFFF) ⊕ (x[>>>18] ⊕ result) = 0
-          C2: (result) & (R) ⊕ (S) = 0  // Next operation using result
-FREE VARS: result
-OUTPUT:   (x[>>>7] ⊕ x[>>>18]) & (R) ⊕ (S) = 0
-```
-
-**Where Applied**:
-- SHA-256 sigma functions: 224 constraints eliminated per block
-- Blake2 mixing functions: ~128 constraints eliminated per block
-- Skein threefish: ~96 constraints eliminated per block
-- Any rotation-based mixing: proportional savings
-
-### Pass 4: Binary Choice Pattern
-
-**Example**: `(a & b) ^ ((~a) & c)` ([See mathematical derivation](#derivation-4-binary-choice-pattern))
-
-**Rewriting Rule:**
-```
-INPUT:    C1: (a) & (b) ⊕ (and1) = 0
-          C2: (a) & (0xFFFFFFFFFFFFFFFF) ⊕ (0xFFFFFFFFFFFFFFFF ⊕ not_a) = 0
-          C3: (not_a) & (c) ⊕ (and2) = 0
-          C4: (and1) & (0xFFFFFFFFFFFFFFFF) ⊕ (and2 ⊕ ch) = 0
-FREE VARS: and1, not_a, and2
-OUTPUT:   (a) & (b ⊕ c) ⊕ (ch ⊕ c) = 0
-```
-
-**Where Applied**:
-- SHA-256 Ch function: 64 per block → 192 constraints eliminated
-- Conditional move operations in constant-time code
-- Branch-free selection in cryptographic implementations
-
-### Pass 5: Majority Voting Pattern
-
-**Example**: `(a & b) ^ (a & c) ^ (b & c)` ([See mathematical derivation](#derivation-5-majority-voting-pattern))
-
-**Rewriting Rule:**
-```
-INPUT:    C1: (a) & (b) ⊕ (and1) = 0
-          C2: (a) & (c) ⊕ (and2) = 0
-          C3: (b) & (c) ⊕ (and3) = 0
-          C4: (and1 ⊕ and2) & (0xFFFFFFFFFFFFFFFF) ⊕ (and3 ⊕ maj) = 0
-FREE VARS: and1, and2, and3
-OUTPUT:   C1: (a ⊕ c) & (b ⊕ c) ⊕ (t) = 0
-          C2: (t) & (0xFFFFFFFFFFFFFFFF) ⊕ (c ⊕ maj) = 0
-```
-
-**Where Applied**:
-- SHA-256 Maj function: 64 per block → 64 constraints eliminated
-- Error correction codes (3-way voting)
-- Consensus algorithms and fault tolerance
-
-### Pass 6: Carry Chain Fusion
-
-**Example**: Two 64-bit additions with carry ([See mathematical derivation](#derivation-6-carry-chain-fusion))
-
-**Rewriting Rule:**
-```
-INPUT:    C1: (a0) * (b0) = (hi0 << 64) | sum0
-          C2: (a1 ⊕ hi0) * (b1) = (hi1 << 64) | sum1
-FREE VARS: hi0
-OUTPUT:   (a0 | (a1 << 64)) * (b0 | (b1 << 64)) = ((hi1 << 128) | (sum1 << 64) | sum0)
-```
-
-**Where Applied**:
-- 128-bit addition: 2 → 1 constraint
-- 256-bit addition: 4 → 1 constraint
-- ECDSA field ops: 8 → 2 constraints per operation
-
-### Pass 7: Multiplexer Pattern
-
-**Example**: `cond ? a : b` ([See mathematical derivation](#derivation-7-multiplexer-pattern))
-
-**Rewriting Rule:**
-```
-INPUT:    C1: (cond) & (a) ⊕ (t1) = 0
-          C2: (cond ⊕ 0xFFFFFFFFFFFFFFFF) & (b) ⊕ (t2) = 0
-          C3: (t1) & (0xFFFFFFFFFFFFFFFF) ⊕ (t2 ⊕ result) = 0
-FREE VARS: t1, t2
-OUTPUT:   (cond) & (a ⊕ b) ⊕ (result ⊕ b) = 0
-```
-
-**Where Applied**:
-- Cryptographic constant-time swaps (ECDSA, Ed25519)
-- Branch-free programming patterns
-- Conditional moves in timing-sensitive code
-- General ternary operator optimization
-
-### Pass 8: Boolean Simplification
-
-**Example**: `~~a` (double NOT) ([See mathematical derivation](#derivation-8-boolean-simplification))
-
-**Rewriting Rule:**
-```
-INPUT:    C1: (a) & (0xFFFFFFFFFFFFFFFF) ⊕ (0xFFFFFFFFFFFFFFFF ⊕ not_a) = 0
-          C2: (not_a) & (0xFFFFFFFFFFFFFFFF) ⊕ (0xFFFFFFFFFFFFFFFF ⊕ result) = 0
-          C3: (result) & (R) ⊕ (S) = 0  // Next operation using result
-FREE VARS: not_a, result
-OUTPUT:   (a) & (R) ⊕ (S) = 0
-```
-
-**Complete Boolean Simplification Rules**:
-
-- **XOR identities**:
-  - `x ⊕ x → 0` [--no-xor-self]
-  - `x ⊕ 0 → x` [--no-xor-zero]
-  - `x ⊕ 1* → ¬x` [--no-xor-ones]
-
-- **NOT identities**:
-  - `¬¬x → x` [--no-double-not]
-  - `¬0 → 1*` [--no-not-const]
-  - `¬1* → 0` [--no-not-const]
-
-- **AND identities**:
-  - `x ∧ x → x` [--no-and-self]
-  - `x ∧ 0 → 0` [--no-and-zero]
-  - `x ∧ 1* → x` [--no-and-ones]
-
-- **OR identities**:
-  - `x ∨ x → x` [--no-or-self]
-  - `x ∨ 0 → x` [--no-or-zero]
-  - `x ∨ 1* → 1*` [--no-or-ones]
-
-**Where Applied**: General cleanup across all circuits (5-10% reduction)
-
-## Part III-B: Optimization Summary
-
-### Complete Optimization Catalog
-
-| Optimization | Pass | Flag | Description |
-|-------------|------|------|-------------|
-| XOR chain consolidation | Pass 1 | --no-xor-chain | (a⊕b)⊕(a⊕c) → b⊕c |
-| Masked AND-XOR | Pass 2 | --no-masked-and-xor | a⊕((¬b)∧c) → single constraint |
-| Rotation-XOR | Pass 3 | [rotation-xor] | Native form, always enabled |
-| Binary choice (Ch) | Pass 4 | (included in Pass 2) | (a∧b)⊕((¬a)∧c) |
-| Majority voting (Maj) | Pass 5 | (complex pattern) | (a∧b)⊕(a∧c)⊕(b∧c) |
-| Carry chain fusion | Pass 6 | (automatic) | Multiple additions → single MUL |
-| Multiplexer | Pass 7 | (automatic) | cond ? a : b |
-| XOR self | Pass 8 | --no-xor-self | x⊕x → 0 |
-| XOR zero | Pass 8 | --no-xor-zero | x⊕0 → x |
-| XOR ones | Pass 8 | --no-xor-ones | x⊕1* → ¬x |
-| Double NOT | Pass 8 | --no-double-not | ¬¬x → x |
-| NOT constants | Pass 8 | --no-not-const | ¬0 → 1*, ¬1* → 0 |
-| AND self | Pass 8 | --no-and-self | x∧x → x |
-| AND zero | Pass 8 | --no-and-zero | x∧0 → 0 |
-| AND ones | Pass 8 | --no-and-ones | x∧1* → x |
-| OR self | Pass 8 | --no-or-self | x∨x → x |
-| OR zero | Pass 8 | --no-or-zero | x∨0 → x |
-| OR ones | Pass 8 | --no-or-ones | x∨1* → 1* |
-
-## Part III-C: Comparison with Current Frontend
-
-### Native Forms in Beamish
-
-The Beamish constraint system provides several native forms that would require explicit optimization passes in traditional frontends:
-
-#### 1. Rotation-XOR Patterns [rotation-xor]
-
-**Traditional Frontend (e.g., R1CS):**
-```
-// SHA-256 Sigma0(x) = (x >>> 2) ^ (x >>> 13) ^ (x >>> 22)
-t1 = x >>> 2     // Constraint 1: rotation
-t2 = x >>> 13    // Constraint 2: rotation  
-t3 = x >>> 22    // Constraint 3: rotation
-t4 = t1 ^ t2     // Constraint 4: XOR
-result = t4 ^ t3 // Constraint 5: XOR
-// Total: 5 constraints + 4 auxiliary variables
-```
-
-**Beamish (By Design):**
-```
-result = (x >>> 2) ^ (x >>> 13) ^ (x >>> 22)
-// Compiles to: Single operand in consuming constraint
-// Total: 0 additional constraints!
-```
-
-**Why it's native:** Binius64's `ShiftedValue` indices allow shifts as operand modifiers, and XOR combinations within operands don't require additional constraints. The entire rotation-XOR pattern becomes a single operand term like `x[>>>2] ⊕ x[>>>13] ⊕ x[>>>22]`.
-
-#### 2. Complex XOR Chains [xor-operands]
-
-**Traditional Frontend:**
-```
-// a ^ b ^ c ^ d ^ e
-t1 = a ^ b       // Constraint 1
-t2 = t1 ^ c      // Constraint 2
-t3 = t2 ^ d      // Constraint 3
-result = t3 ^ e  // Constraint 4
-// Total: 4 constraints + 3 auxiliary variables
-```
-
-**Beamish (Optimized):**
-```
-result = a ^ b ^ c ^ d ^ e
-// Compiles to: Single operand (a ⊕ b ⊕ c ⊕ d ⊕ e) in consuming constraint
-// Total: 0-1 constraints depending on usage
-```
-
-#### 3. Bitwise Operations with Constants [constant-operands]
-
-**Traditional Frontend:**
-```
-// x & 0xFF00FF00
-result = x & 0xFF00FF00  // Requires constraint
-```
-
-**Beamish:**
-```
-// Constants are direct operands
-result = x & 0xFF00FF00
-// Compiles to: (x) & (0xFF00FF00) ⊕ result = 0
-// No optimization needed - already optimal
-```
-
-### Optimizations Requiring Explicit Passes
-
-These patterns still require optimization passes in Beamish:
-
-#### 1. Masked AND-XOR Pattern [--no-masked-and-xor] (Requires Optimization)
-
-```
-// a ^ ((~b) & c) - Common in Keccak chi
-// Without optimization: 2 constraints (NOT + AND-XOR)
-// With optimization: 1 specialized constraint
-```
-
-#### 2. Boolean Simplifications (Requires Optimization)
-
-```
-// Double NOT [--no-double-not]: ~~x → x
-// XOR self [--no-xor-self]: x ^ x → 0
-// XOR zero [--no-xor-zero]: x ^ 0 → x
-// XOR ones [--no-xor-ones]: x ^ 1* → ~x
-// NOT const [--no-not-const]: ~0 → 1*, ~1* → 0
-// AND self [--no-and-self]: x & x → x
-// AND zero [--no-and-zero]: x & 0 → 0
-// AND ones [--no-and-ones]: x & 1* → x
-// OR self [--no-or-self]: x | x → x
-// OR zero [--no-or-zero]: x | 0 → x
-// OR ones [--no-or-ones]: x | 1* → 1*
-```
-
-#### 3. XOR Chain Consolidation [--no-xor-chain] (Requires Optimization)
-
-```
-// (a ^ b) ^ (a ^ c) → b ^ c
-// Eliminates common terms across XOR operations
-```
-
-### Comparison Summary
-
-| Pattern | Traditional Frontend | Beamish (No Opt) | Beamish (With Opt) |
-|---------|---------------------|------------------|-------------------|
-| Rotation-XOR (SHA σ) | 5 constraints | **0 constraints** | 0 constraints |
-| Simple XOR chain | n-1 constraints | n-1 constraints | **0-1 constraints** |
-| Masked AND-XOR (Keccak χ) | 3 constraints | 2 constraints | **1 constraint** |
-| Binary choice (SHA Ch) | 4 constraints | 4 constraints | **1 constraint** |
-| Majority (SHA Maj) | 4 constraints | 4 constraints | **2 constraints** |
-| Double NOT | 2 constraints | 2 constraints | **0 constraints** |
-
-**Summary:** Beamish's constraint language differs from traditional systems - operations that require multiple gates in R1CS or AIR can often be expressed as a single Binius64 constraint. The optimization passes recognize patterns and map them to efficient constraint forms.
-
-## Part IV: Pattern Recognition Engine
-
-### Pattern Matching Framework
-
-```rust
-pub trait Pattern {
-    fn matches(&self, expr: &TypedExpr) -> Option<Bindings>;
-}
-
-pub struct RewriteRule {
-    pattern: Box<dyn Pattern>,
-    transform: Box<dyn Fn(&Bindings) -> TypedExpr>,
-}
-
-pub struct RewritePipeline {
-    passes: Vec<Box<dyn RewritePass>>,
-}
-```
-
-### Recognition Algorithm
-
-1. **Bottom-up traversal** of expression tree
-2. **Pattern matching** at each node
-3. **Transformation** when pattern matches
-4. **Fixed-point iteration** until no more matches
-
-### Example: Recognizing Keccak Chi
-
-```rust
-impl Pattern for KeccakChiPattern {
-    fn matches(&self, expr: &TypedExpr) -> Option<Bindings> {
-        match expr {
-            // Pattern: a ^ ((~b) & c)
-            TypedExpr::Field64Xor(a,
-                box TypedExpr::Field64And(
-                    box TypedExpr::Field64Not(b),
-                    c
-                )
-            ) => {
-                Some(Bindings::from([
-                    ("a", a.clone()),
-                    ("b", b.clone()),
-                    ("c", c.clone()),
-                ]))
+fn build_expr(&mut self, expr: &ExprNode) -> Operand {
+    match expr {
+        // Operandic operations - build operand without constraints
+        ExprNode::Xor(a, b) => {
+            let a_op = self.build_expr(a);
+            let b_op = self.build_expr(b);
+            a_op.xor(b_op)  // Combine operands
+        }
+        
+        // Constraining operations - must generate constraint
+        ExprNode::And(a, b) => {
+            let a_op = self.build_expr(a);
+            let b_op = self.build_expr(b);
+            
+            // Check if we can pack into existing constraint
+            if let Some(packed) = self.try_pack_and(a_op, b_op) {
+                return packed;
             }
-            _ => None
+            
+            // Must create temporary and constraint
+            let result = self.next_temp();
+            self.constraints.push(Constraint::And {
+                a: a_op,
+                b: b_op,
+                c: Operand::from_value(result),
+            });
+            Operand::from_value(result)
         }
     }
 }
 ```
 
-## Part V: Constraint Generation
+#### Constraint Packing
 
-### From Optimized Patterns to Constraints
+When an AND operation's result feeds into XORs, we can pack them together:
 
 ```rust
-impl TypedExpr {
-    pub fn to_constraints(&self) -> Vec<Constraint> {
-        match self {
-            // Basic operations compile naively
-            TypedExpr::Field64Xor(a, b) => {
-                vec![/* standard XOR constraint */]
-            }
-            
-            // Optimized patterns compile efficiently
-            TypedExpr::OptimizedKeccakChi(a, b, c) => {
-                vec![Constraint::And {
-                    left: vec![b.inverted()],
-                    right: vec![c],
-                    result: vec![chi_output, a.inverted()],
-                }]
-            }
-            
-            TypedExpr::OptimizedMultiXor(operands) => {
-                // No constraints - becomes single operand!
-                vec![]
-            }
-            
-            TypedExpr::OptimizedCarryChain(chain) => {
-                vec![Constraint::Mul {
-                    // Wide arithmetic in single constraint
-                }]
-            }
+// Expression: x = a ⊕ ((¬b) & c)
+// Becomes: (b ⊕ 0xFF..) & c ⊕ (a ⊕ x) = 0
+```
+
+The packing works because the AND constraint form `A & B ⊕ C = 0` allows arbitrary XOR combinations in the C operand.
+
+### Operand Structure
+
+```rust
+struct Operand {
+    terms: Vec<ShiftedValue>,  // XOR of these terms
+    constant: Option<u64>,      // Optional constant to XOR
+}
+
+struct ShiftedValue {
+    value_id: u32,       // Witness or temp ID
+    shift_op: ShiftOp,   // None, Shl, Shr, Ror, etc.
+    shift_amount: u8,    // 0-63
+}
+```
+
+Operations on operands:
+- XOR: Concatenate term lists, XOR constants
+- Shifts: Apply to each term
+- Constants: Set or XOR with existing constant
+
+## Pattern Recognition and Rewriting
+
+### Pattern Detection
+
+Patterns are detected through structural matching on the expression tree:
+
+```rust
+fn detect_xor_of_ands_pattern(expr: &ExprNode) -> Option<(Rc<ExprNode>, Rc<ExprNode>, Rc<ExprNode>)> {
+    // Match: (a & b) ⊕ (a & c) ⊕ (b & c)
+    if let ExprNode::Xor(left, right) = expr {
+        if let (Some((a1, b1)), Some((a2, c1))) = (extract_and(left), extract_and(right)) {
+            if a1 == a2 { /* found pattern */ }
         }
+    }
+    None
+}
+```
+
+### Rewriting Rules
+
+Rewriting rules are transformations that replace expression patterns with semantically equivalent but structurally different forms. Rules are applied when the new form will generate fewer constraints or expose further optimization opportunities.
+
+A rewrite rule consists of:
+1. **Pattern**: The expression structure to match
+2. **Guard**: Additional conditions that must hold
+3. **Replacement**: The new expression structure
+
+Example rule for XOR of ANDs pattern:
+```rust
+// Pattern: (a & b) ⊕ (a & c) ⊕ (b & c)
+// Replacement: (a ⊕ c) & (b ⊕ c) ⊕ c
+fn rewrite_xor_of_ands(a: Rc<ExprNode>, b: Rc<ExprNode>, c: Rc<ExprNode>) -> ExprNode {
+    ExprNode::Xor(
+        Rc::new(ExprNode::And(
+            Rc::new(ExprNode::Xor(a, c.clone())),
+            Rc::new(ExprNode::Xor(b, c.clone()))
+        )),
+        c
+    )
+}
+```
+
+The replacement form generates 2 constraints instead of 3, and creates the common subexpression `c` that CSE can exploit.
+
+## Optimization Passes
+
+### Pass 1: Canonicalization
+- Flatten nested XORs: `(a ⊕ b) ⊕ c` → `XorChain([a, b, c])`
+- Sort operands for consistent ordering
+- Normalize constants to right side
+
+### Pass 2: Boolean Simplifications
+- `x ⊕ x` → `0`
+- `x ⊕ 0` → `x`
+- `x & 0` → `0`
+- `x & 0xFF..FF` → `x`
+- `~~x` → `x`
+
+### Pass 3: XOR Chain Consolidation
+Eliminates common terms in XOR chains:
+```
+(a ⊕ b) ⊕ (a ⊕ c) → b ⊕ c
+```
+
+### Pass 4: Pattern-Specific Rewrites
+
+#### Masked AND-XOR (Keccak Chi)
+```
+a ⊕ ((~b) & c)
+→ Single constraint: (b ⊕ 0xFF..) & c ⊕ (a ⊕ result) = 0
+```
+
+#### Binary Choice (SHA256 Ch)
+```
+(a & b) ⊕ ((~a) & c)
+→ a & (b ⊕ c) ⊕ c
+→ Single constraint: a & (b ⊕ c) ⊕ (result ⊕ c) = 0
+```
+
+#### XOR of ANDs Pattern
+```
+(a & b) ⊕ (a & c) ⊕ (b & c)
+→ (a ⊕ c) & (b ⊕ c) ⊕ c
+→ Two constraints (optimal for this pattern)
+```
+
+### Pass 5: Template Matching
+
+Templates handle complex patterns that generate multiple constraints with specific structure. Unlike simple rewrites, templates directly generate optimized constraint sequences.
+
+```rust
+trait ConstraintTemplate {
+    fn matches(&self, expr: &ExprNode) -> bool;
+    fn generate(&self, expr: &ExprNode, next_temp: &mut u32) -> Vec<Constraint>;
+}
+```
+
+Example - Carry Chain Template:
+```rust
+// Pattern: ((a + b) + c) + d  (chain of additions)
+// Generates fused carry propagation constraints instead of separate additions
+
+struct CarryChainTemplate;
+
+impl ConstraintTemplate {
+    fn matches(&self, expr: &ExprNode) -> bool {
+        // Detect: Add(Add(Add(a, b), c), d)
+        matches!(expr, ExprNode::Add32(
+            box ExprNode::Add32(
+                box ExprNode::Add32(_, _), _
+            ), _
+        ))
+    }
+    
+    fn generate(&self, expr: &ExprNode, next_temp: &mut u32) -> Vec<Constraint> {
+        // Extract operands: [a, b, c, d]
+        let operands = extract_addition_chain(expr);
+        
+        // Generate single fused carry constraint
+        // Instead of 6 constraints (3 additions × 2 each)
+        generate_fused_carry_chain(operands, next_temp)
     }
 }
 ```
 
-## Part VI: Impact Analysis
+Templates are checked before general constraint generation - if a template matches, its specialized generation is used instead of the default algorithm.
 
-### Per-Circuit Constraint Reduction
+## Constraint Generation Details
 
-| Circuit | Original | Optimized | Reduction | Key Passes |
-|---------|----------|-----------|-----------|------------|
-| **Keccak-f1600** | 3,000 | 1,000 | 67% | Chi (Pass 2), XOR chains (Pass 1) |
-| **SHA256 block** | 2,800 | 1,200 | 57% | Sigma (Pass 3), Ch/Maj (Pass 4) |
-| **ECDSA verify** | 1,500 | 600 | 60% | Carry chains (Pass 5), Conditionals (Pass 6) |
-| **Add128** | 12 | 3 | 75% | Carry chain (Pass 5) |
-| **Base64 decode** | 400 | 120 | 70% | Byte parallel (Pass 8), XOR (Pass 1) |
+### AND Constraints
 
-### Overall System Impact
-- **Average constraint reduction**: 2.5-3x across all circuits
-- **Proof time improvement**: 6-9x (quadratic effect from constraint reduction)
-- **Verifier time improvement**: 2.5-3x (linear with constraint count)
+Basic form: `A & B ⊕ C = 0`
 
-## Part VII: Design Principles
+Encoding patterns:
+- Direct AND: `result = a & b` → `a & b ⊕ result = 0`
+- AND with XOR: `result = (a & b) ⊕ c` → `a & b ⊕ (c ⊕ result) = 0`
+- Masked AND: `result = a & (b ⊕ mask)` → `a & (b ⊕ mask) ⊕ result = 0`
 
-### 1. Simple User API
-- No complex methods to learn
-- Operations match mathematical intuition
-- Type safety prevents errors
+### MUL Constraints
 
-### 2. Pattern Recognition
-- Rewriter handles all optimization
-- New patterns can be added without API changes
-- Optimization is transparent to users
+Form: `A × B = (hi << 64) | lo`
 
-### 3. Optimal Constraint Generation
-- Patterns compile to minimal constraints
-- Leverages Binius64's rich constraint language
-- Achieves theoretical optimal bounds
+Used for:
+- 64-bit multiplication
+- Multi-word arithmetic with carry
+- Field operations
 
-### 4. Extensibility
-- Add new patterns as discovered
-- No need to change type definitions
-- Backward compatible
+### Operand Encoding
 
-## Part VIII: Correctness & Validation
+Within operands, these are "free" (no additional constraints):
+- XOR of multiple values: `a ⊕ b ⊕ c ⊕ ...`
+- Shifted values: `a >> 5`, `b << 3`, `c >>> 7`
+- Constants: `0xFF00FF00`
+- Combinations: `(a >> 2) ⊕ (b << 5) ⊕ 0x12345678`
 
-### Property Testing
-Each optimization preserves algebraic equivalence:
-```rust
-#[test]
-fn test_chi_optimization_preserves_semantics() {
-    let a = Field64::random();
-    let b = Field64::random();
-    let c = Field64::random();
-    
-    let naive = a.xor(b.not().and(c));
-    let optimized = optimize(naive.to_expr());
-    
-    assert_eq!(evaluate(naive), evaluate(optimized));
-}
+## Implementation Structure
+
+```
+crates/beamish/src/
+  expr.rs           - Expression tree types
+  types.rs          - Type markers (Field64, U32, etc.)
+  ops/              - Typed operations (xor, and, add, etc.)
+  constraints.rs    - Core constraint types
+  generate/         
+    delayed_binding.rs - Constraint generation with delayed binding
+  optimize/
+    canonicalize.rs - Expression normalization
+    rewrite.rs      - Pattern-based rewriting
+    templates.rs    - Multi-constraint templates
+    cse.rs          - Common subexpression elimination
+  compute/
+    expressions.rs  - Expression evaluation
+    constraints.rs  - Constraint validation
 ```
 
-### Constraint Validation
-Verify constraint count reductions:
+## Usage Example
+
 ```rust
-#[test]
-fn test_chi_constraint_reduction() {
-    let chi_expr = build_keccak_chi();
-    let naive_constraints = compile_naive(chi_expr.clone());
-    let optimized_constraints = compile_optimized(chi_expr);
-    
-    assert_eq!(naive_constraints.len(), 3);
-    assert_eq!(optimized_constraints.len(), 1);
-}
+use binius_beamish::*;
+
+// Build expression for Keccak chi step
+let a = val::<Field64>(0);
+let b = val::<Field64>(1); 
+let c = val::<Field64>(2);
+let chi = xor(&a, &and(&not(&b), &c));
+
+// Generate optimized constraints
+let constraints = to_constraints(&chi, &OptConfig::default());
+// Result: 1 constraint instead of 3
 ```
 
-## Conclusion
+## Configuration
 
-Beamish achieves dramatic constraint reduction through:
-1. **Types** that provide safety without complexity
-2. **Expression trees** that capture complete computation patterns  
-3. **Pattern recognition** that identifies optimization opportunities
-4. **Algebraic rewriting** that transforms to optimal forms
-5. **Rich constraints** that express complex operations directly
+Optimizations can be controlled via `OptConfig`:
 
-The result is 2-4x constraint reduction with a clean, maintainable design that's extensible for future optimizations.
+```rust
+let mut config = OptConfig::none_enabled();
+config.xor_chain_consolidation = true;
+config.masked_and_xor_rewrite = true;
+config.cse_enabled = true;
 
-## Appendix A: Algebraic Framework
+let constraints = to_constraints(&expr, &config);
+```
 
-### Field Axioms for GF(2⁶⁴)
+## Correctness
 
-The binary field GF(2⁶⁴) satisfies the following axioms:
+Each optimization preserves semantic equivalence. The test suite validates:
+1. Optimized circuits produce identical results to unoptimized
+2. Constraint counts match expected reductions
 
-- **(F1)** Additive identity: $\forall a: a \oplus 0 = a$
-- **(F2)** Additive inverse: $\forall a: a \oplus a = 0$  
-- **(F3)** Associativity: $(a \oplus b) \oplus c = a \oplus (b \oplus c)$
-- **(F4)** Commutativity: $a \oplus b = b \oplus a$
-- **(F5)** Characteristic 2: $\forall a: a + a = 0 \Rightarrow a = -a$
+## U32 Operations in GF(2^64)
 
-### Boolean Algebra Properties
+U32 operations are implemented as regular GF(2^64) operations with the constraint that values are masked to 32 bits:
 
-- **(B1)** AND identity: $a \land \mathbb{1} = a$ where $\mathbb{1} = 2^{64}-1$ (0xFFFFFFFFFFFFFFFF)
-- **(B2)** AND annihilator: $a \land 0 = 0$
-- **(B3)** Negation: $\text{NOT}(a) = a \oplus \mathbb{1}$
-- **(B4)** De Morgan's Law: $\text{NOT}(a \land b) = \text{NOT}(a) \lor \text{NOT}(b)$
-- **(B5)** Distributivity: $a \land (b \oplus c) = (a \land b) \oplus (a \land c)$
+- **Storage**: U32 values are stored in the lower 32 bits of 64-bit field elements
+- **Operations**: All operations (XOR, AND, etc.) work identically on the lower 32 bits
+- **Rotations**: `ror32(x, n)` = `(x & 0xFFFFFFFF).rotate_right(n) & 0xFFFFFFFF`
+- **Shifts**: `shr32(x, n)` = `((x & 0xFFFFFFFF) >> n)`
+- **Addition**: `add32(a, b)` = `(a + b) & 0xFFFFFFFF`
 
-### Constraint Equivalence Rules
+The key insight: We don't need separate constraint types - the same AND and MUL constraints work, we just ensure values stay within 32-bit range through masking in the witness generation.
 
-- **(E1)** Zero constraint: If $C: P \oplus Q = 0$, then $P = Q$
-- **(E2)** Substitution: If $x = y$ and $C[x]$ is a constraint containing $x$, then $C[y]$ is equivalent
-- **(E3)** Constraint composition: If $C_1: a = b$ and $C_2: b = c$, then $a = c$
+## Appendix: Mathematical Foundations
 
-### Notation Conventions
+### Field Axioms for GF(2^64)
 
-- $\oplus$ denotes XOR (addition in GF(2⁶⁴))
-- $\land$ denotes bitwise AND
-- $\mathbb{1}$ denotes the all-ones value (0xFFFFFFFFFFFFFFFF)
-- $1$ denotes the literal value 1 (0x0000000000000001) when needed
-- $\bar{a}$ or $\text{NOT}(a)$ denotes bitwise negation
-- $\bigoplus_{i=0}^n x_i$ denotes $x_0 \oplus x_1 \oplus \cdots \oplus x_n$
+In the binary field GF(2^64):
+- **Addition = XOR**: `a + b = a ⊕ b`
+- **Additive inverse**: `−a = a` (every element is its own inverse)
+- **Characteristic 2**: `1 + 1 = 0`, therefore `a + a = 0`
 
-**Note:** Throughout this document, $\mathbb{1}$ is used for the all-ones mask in identity operations like $(a) \land \mathbb{1}$. The literal value $1$ is rarely used.
+### Formal Derivations of Rewriting Rules
 
-## Appendix B: Mathematical Derivations of Rewriting Rules
+#### XOR Chain Consolidation
 
-### Derivation 1: XOR Chain Consolidation
+**Pattern**: Sequential XOR constraints
+```
+C1: a & 0xFF..FF ⊕ (b ⊕ t1) = 0
+C2: t1 & 0xFF..FF ⊕ (c ⊕ result) = 0
+```
 
-**Theorem:** Given constraint sequence:
-$$C_i: t_{i-1} \land \mathbb{1} \oplus (x_i \oplus t_i) = 0, \quad i \in [1,n]$$
-where $t_0 = x_0$, then $t_n = \bigoplus_{i=0}^n x_i$.
+**Optimization**: Single operand `a ⊕ b ⊕ c` in consuming constraint
 
-**Proof by induction:**
+**Proof**: From C1: `a = b ⊕ t1`, so `t1 = a ⊕ b`. From C2: `t1 = c ⊕ result`, so `result = t1 ⊕ c = (a ⊕ b) ⊕ c = a ⊕ b ⊕ c`.
 
-*Base case (n=1):* From $C_1$:
+#### Masked AND-XOR Pattern (Keccak Chi)
 
-$$ \begin{aligned} x_0 \land \mathbb{1} \oplus (x_1 \oplus t_1) &= 0 \\\\ x_0 \oplus x_1 \oplus t_1 &= 0 && \text{(B1)} \\\\ t_1 &= x_0 \oplus x_1 && \text{(E1, F2)} \quad \checkmark \end{aligned} $$
+**Pattern**: `a ⊕ ((~b) & c)`
 
-*Inductive step:* Assume $t_k = \bigoplus_{i=0}^k x_i$. From $C_{k+1}$:
+**Naive**: 
+```
+C1: b & 0xFF..FF ⊕ (0xFF..FF ⊕ not_b) = 0
+C2: not_b & c ⊕ temp = 0
+C3: a & 0xFF..FF ⊕ (temp ⊕ result) = 0
+```
 
-$$ \begin{aligned} t_k \land \mathbb{1} \oplus (x_{k+1} \oplus t_{k+1}) &= 0 \\\\ t_k \oplus x_{k+1} \oplus t_{k+1} &= 0 && \text{(B1)} \\\\ t_{k+1} &= t_k \oplus x_{k+1} && \text{(E1, F2)} \\\\ &= \left(\bigoplus_{i=0}^k x_i\right) \oplus x_{k+1} && \text{(Inductive hypothesis)} \\\\ &= \bigoplus_{i=0}^{k+1} x_i && \text{(Definition)} \quad \square \end{aligned} $$
+**Optimized**: Single constraint `(b ⊕ 0xFF..FF) & c ⊕ (a ⊕ result) = 0`
 
-### Derivation 2: Masked AND-XOR Pattern
+**Proof**: From C1: `not_b = b ⊕ 0xFF..FF`. Substituting into C2: `(b ⊕ 0xFF..FF) & c = temp`. From C3: `result = a ⊕ temp = a ⊕ ((b ⊕ 0xFF..FF) & c)`.
 
-**Theorem:** Given constraints:
-- $C_1: b \land \mathbb{1} \oplus (\mathbb{1} \oplus \bar{b}) = 0$
-- $C_2: \bar{b} \land c \oplus t = 0$  
-- $C_3: a \land \mathbb{1} \oplus (t \oplus \chi) = 0$
+#### Binary Choice Pattern (SHA256 Ch)
 
-These reduce to: $(b \oplus \mathbb{1}) \land c \oplus (a \oplus \chi) = 0$.
+**Pattern**: `(a & b) ⊕ ((~a) & c)`
 
-**Proof:**
+**Mathematical identity**: `a & (b ⊕ c) ⊕ c`
 
-$$ \begin{aligned} \text{From } C_1: \quad b \oplus \mathbb{1} \oplus \bar{b} &= 0 && \text{(B1, E1)} \\\\ \Rightarrow \bar{b} &= b \oplus \mathbb{1} && \text{(E1, F2)} \\\\ \text{From } C_2: \quad \bar{b} \land c &= t && \text{(E1)} \\\\ \text{Substituting: } \quad (b \oplus \mathbb{1}) \land c &= t && \text{(E2)} \\\\ \text{From } C_3: \quad a \oplus t \oplus \chi &= 0 && \text{(B1, E1)} \\\\ \text{Substituting: } \quad a \oplus ((b \oplus \mathbb{1}) \land c) \oplus \chi &= 0 && \text{(E2)} \\\\ \Rightarrow (b \oplus \mathbb{1}) \land c \oplus (a \oplus \chi) &= 0 && \text{(F3, F4)} \quad \square \end{aligned} $$
+**Proof**: When `a = 1`: `(1 & b) ⊕ (0 & c) = b`. When `a = 0`: `(0 & b) ⊕ (1 & c) = c`. The identity `a & (b ⊕ c) ⊕ c` gives the same results.
 
-### Derivation 3: Rotation-XOR Elimination
+#### XOR of ANDs Pattern
 
-**Theorem:** Rotation-XOR patterns can be expressed as single operands in constraints.
+**Pattern**: `(a & b) ⊕ (a & c) ⊕ (b & c)`
 
-**Example:** For $\sigma_0(x) = (x \gg 7) \oplus (x \gg 18) \oplus (x \gg\gg 3)$:
+**Mathematical identity**: `(a ⊕ c) & (b ⊕ c) ⊕ c`
 
-**Proof:**
-The expression $(x[\gg\gg7]) \oplus (x[\gg\gg18]) \oplus (x[\gg\gg3])$ requires no constraints because:
-- Shifted values are inherent operands in Binius64
-- XOR combinations within operands don't require additional constraints
-- The entire expression becomes a single operand: $x[\gg\gg7] \oplus x[\gg\gg18] \oplus x[\gg\gg3]$
-
-This eliminates the constraint entirely when used as an operand. $\square$
-
-### Derivation 4: Binary Choice Pattern
-
-**Theorem:** Given constraints for Ch(a, b, c) = (a ∧ b) ⊕ (¬a ∧ c):
-- $C_1: a \land b \oplus t_1 = 0$
-- $C_2: a \land \mathbb{1} \oplus (\mathbb{1} \oplus \bar{a}) = 0$
-- $C_3: \bar{a} \land c \oplus t_2 = 0$
-- $C_4: t_1 \land \mathbb{1} \oplus (t_2 \oplus \text{ch}) = 0$
-
-These reduce to: $a \land (b \oplus c) \oplus (\text{ch} \oplus c) = 0$.
-
-**Proof:**
-
-$$ \begin{aligned} \text{From } C_2: \quad \bar{a} &= a \oplus \mathbb{1} && \text{(As in Derivation 4)} \\\\ \text{From } C_1, C_3: \quad t_1 &= a \land b, \quad t_2 = \bar{a} \land c && \text{(E1)} \\\\ \text{From } C_4: \quad t_1 \oplus t_2 &= \text{ch} && \text{(B1, E1)} \\\\ (a \land b) \oplus ((a \oplus \mathbb{1}) \land c) &= \text{ch} && \text{(Substitution)} \\\\ \text{Using B5: } \quad (a \land b) \oplus ((a \oplus \mathbb{1}) \land c) &= (a \land b) \oplus (a \land c) \oplus (\mathbb{1} \land c) \\\\ &= a \land (b \oplus c) \oplus c && \text{(B5, B1)} \\\\ \text{Therefore: } \quad a \land (b \oplus c) \oplus c &= \text{ch} \\\\ \Rightarrow a \land (b \oplus c) \oplus (\text{ch} \oplus c) &= 0 && \text{(F2)} \quad \square \end{aligned} $$
-
-### Derivation 5: Majority Voting Pattern  
-
-**Theorem:** Given constraints for Maj(a, b, c) = (a ∧ b) ⊕ (a ∧ c) ⊕ (b ∧ c):
-- $C_1: a \land b \oplus t_1 = 0$
-- $C_2: a \land c \oplus t_2 = 0$
-- $C_3: b \land c \oplus t_3 = 0$
-- $C_4: (t_1 \oplus t_2) \land \mathbb{1} \oplus (t_3 \oplus \text{maj}) = 0$
-
-These reduce to two constraints involving $(a \oplus c) \land (b \oplus c)$.
-
-**Proof:**
-
-$$ \begin{aligned} \text{From } C_1, C_2, C_3: \quad & t_1 = a \land b, \quad t_2 = a \land c, \quad t_3 = b \land c && \text{(E1)} \\\\ \text{From } C_4: \quad & (a \land b) \oplus (a \land c) \oplus (b \land c) = \text{maj} && \text{(B1, E1)} \\\\ \text{Using Boolean algebra:} \\\\ & (a \land b) \oplus (a \land c) \oplus (b \land c) \\\\ &= a \land (b \oplus c) \oplus (b \land c) && \text{(B5)} \\\\ &= a \land (b \oplus c) \oplus c \land (b \oplus 0) && \text{(F1)} \\\\ &= (a \oplus c) \land (b \oplus c) \oplus c && \text{(Algebraic manipulation)} \\\\ \text{Therefore: } \quad & (a \oplus c) \land (b \oplus c) \oplus (c \oplus \text{maj}) = 0 \quad \square \end{aligned} $$
-
-### Derivation 6: Carry Chain Fusion
-
-**Theorem:** Multiple additions with carry propagation can be fused into a single MUL constraint.
-
-**Proof:**
-For two 64-bit additions with carry:
-$$\begin{aligned} \text{Addition 1:} \quad & a_0 + b_0 = \text{sum}_0 + (\text{carry}_0 \ll 64) \\\\ \text{Addition 2:} \quad & a_1 + b_1 + \text{carry}_0 = \text{sum}_1 + (\text{carry}_1 \ll 64) \end{aligned}$$
-
-Combining into 128-bit arithmetic:
-$$(a_0 | (a_1 \ll 64)) \cdot (b_0 | (b_1 \ll 64)) = (\text{sum}_0 | (\text{sum}_1 \ll 64) | (\text{carry}_1 \ll 128))$$
-
-This replaces 2 MUL constraints with 1 MUL constraint. $\square$
-
-### Derivation 7: Multiplexer Pattern
-
-**Theorem:** Given constraints for $\text{cond} ? a : b$:
-- $C_1: \text{cond} \land a \oplus t_1 = 0$
-- $C_2: (\text{cond} \oplus \mathbb{1}) \land b \oplus t_2 = 0$
-- $C_3: t_1 \land \mathbb{1} \oplus (t_2 \oplus r) = 0$
-
-These reduce to: $\text{cond} \land (a \oplus b) \oplus (r \oplus b) = 0$.
-
-**Proof:**
-
-$$ \begin{aligned} \text{From } C_1, C_2: \quad & t_1 = \text{cond} \land a, \quad t_2 = \overline{\text{cond}} \land b && \text{(E1)} \\\\ \text{From } C_3: \quad & t_1 \oplus t_2 = r && \text{(B1, E1)} \\\\ & (\text{cond} \land a) \oplus (\overline{\text{cond}} \land b) = r && \text{(Substitution)} \\\\ \text{When cond = 1:} \quad & (1 \land a) \oplus (0 \land b) = a \oplus 0 = a && \text{(B1, B2, F1)} \\\\ \text{When cond = 0:} \quad & (0 \land a) \oplus (1 \land b) = 0 \oplus b = b && \text{(B2, B1, F1)} \\\\ \text{Rewriting:} \quad & \text{cond} \land a \oplus \overline{\text{cond}} \land b \\\\ &= \text{cond} \land a \oplus b \oplus \text{cond} \land b && \text{(Expand } \overline{\text{cond}} \land b \text{)} \\\\ &= \text{cond} \land (a \oplus b) \oplus b && \text{(B5)} \\\\ \text{Therefore:} \quad & \text{cond} \land (a \oplus b) \oplus (r \oplus b) = 0 \quad \square \end{aligned} $$
-
-### Derivation 8: Boolean Simplification
-
-**Theorem:** Various boolean simplifications eliminate constraints.
-
-**Examples:**
-
-1. **Double NOT:** $\text{NOT}(\text{NOT}(a)) = a$
-   - Proof: $(a \oplus \mathbb{1}) \oplus \mathbb{1} = a \oplus 0 = a$ $\square$
-
-2. **XOR with self:** $a \oplus a = 0$
-   - Proof: Direct from field axiom F2 $\square$
-
-3. **AND with zero:** $a \land 0 = 0$  
-   - Proof: Direct from boolean property B2 $\square$
-
-4. **AND with all ones:** $a \land \mathbb{1} = a$
-   - Proof: Direct from boolean property B1 $\square$
-
-These mathematical derivations provide formal proofs that our rewriting rules are correct and preserve constraint semantics while reducing constraint count.
-
-## Appendix C: Derivation of Basic Operation Encodings
-
-This section derives how basic operations map to Binius64's constraint system from first principles.
-
-### C.1: XOR Operation
-
-**Theorem:** Bitwise XOR (field addition in GF(2⁶⁴)) requires no constraints when used as an operand, but needs one AND constraint to store the result.
-
-**Derivation:**
-
-For 64-bit values a, b, r ∈ GF(2⁶⁴):
-
-$$ \begin{aligned} a \oplus_{\text{field}} b &= r && \text{(Bitwise XOR = field addition)} \\\\ a \oplus_{\text{field}} b \oplus_{\text{field}} r &= 0 && \text{(Field equation)} \\\\ (a) \land_{\text{bitwise}} \mathbb{1} \oplus_{\text{field}} (b \oplus_{\text{field}} r) &= 0 && \text{(AND constraint form)} \end{aligned} $$
-
-Where:
-- $\oplus_{\text{field}}$: Field addition in GF(2⁶⁴) (equivalent to bitwise XOR)
-- $\land_{\text{bitwise}}$: Bitwise AND operation
-- $\mathbb{1}$: All-ones mask (0xFFFFFFFFFFFFFFFF)
-
-**Encoding:** 1 AND constraint
-
-### C.2: AND Operation  
-
-**Theorem:** Bitwise AND is the fundamental constraint type in Binius64.
-
-**Derivation:**
-
-For 64-bit values a, b, r ∈ GF(2⁶⁴):
-
-$$ \begin{aligned} a \land_{\text{bitwise}} b &= r && \text{(Bitwise AND operation)} \\\\ a \land_{\text{bitwise}} b \oplus_{\text{field}} r &= 0 && \text{(Constraint form)} \\\\ (a) \land_{\text{bitwise}} (b) \oplus_{\text{field}} (r) &= 0 && \text{(AND constraint)} \end{aligned} $$
-
-Where:
-- $\land_{\text{bitwise}}$: Bitwise AND (not field multiplication)
-- $\oplus_{\text{field}}$: Field addition in GF(2⁶⁴)
-
-**Encoding:** 1 AND constraint
-
-### C.3: OR Operation
-
-**Theorem:** Bitwise OR requires 3 AND constraints using De Morgan's law.
-
-**Derivation:**
-
-For 64-bit values a, b, r ∈ GF(2⁶⁴):
-
-Using De Morgan's law: $a \lor_{\text{bitwise}} b = \lnot_{\text{bitwise}}(\lnot_{\text{bitwise}} a \land_{\text{bitwise}} \lnot_{\text{bitwise}} b)$
-
-$$ \begin{aligned} \text{Step 1: } \quad \bar{a} &= a \oplus_{\text{field}} \mathbb{1} && \text{(Bitwise NOT via field XOR)} \\\\ \text{Step 2: } \quad \bar{b} &= b \oplus_{\text{field}} \mathbb{1} && \text{(Bitwise NOT via field XOR)} \\\\ \text{Step 3: } \quad t &= \bar{a} \land_{\text{bitwise}} \bar{b} && \text{(Bitwise AND)} \\\\ \text{Step 4: } \quad r &= t \oplus_{\text{field}} \mathbb{1} && \text{(Bitwise NOT via field XOR)} \end{aligned} $$
-
-Constraints:
-1. $(a) \land_{\text{bitwise}} \mathbb{1} \oplus_{\text{field}} (\mathbb{1} \oplus_{\text{field}} \bar{a}) = 0$
-2. $(b) \land_{\text{bitwise}} \mathbb{1} \oplus_{\text{field}} (\mathbb{1} \oplus_{\text{field}} \bar{b}) = 0$
-3. $(\bar{a}) \land_{\text{bitwise}} (\bar{b}) \oplus_{\text{field}} (t) = 0$
-4. $(t) \land_{\text{bitwise}} \mathbb{1} \oplus_{\text{field}} (\mathbb{1} \oplus_{\text{field}} r) = 0$
-
-**Optimization:** Can be reduced to 1 constraint: $(a \oplus_{\text{field}} \mathbb{1}) \land_{\text{bitwise}} (b \oplus_{\text{field}} \mathbb{1}) \oplus_{\text{field}} (\mathbb{1} \oplus_{\text{field}} r) = 0$
-
-**Encoding:** 1 AND constraint (optimized)
-
-### C.4: NOT Operation
-
-**Theorem:** Bitwise NOT is XOR with all-ones mask.
-
-**Derivation:**
-
-For 64-bit value a, r ∈ GF(2⁶⁴):
-
-$$ \begin{aligned} \lnot_{\text{bitwise}} a &= a \oplus_{\text{field}} \mathbb{1} && \text{(Bitwise NOT = field XOR with } \mathbb{1}\text{)} \\\\ (a) \land_{\text{bitwise}} \mathbb{1} \oplus_{\text{field}} (\mathbb{1} \oplus_{\text{field}} r) &= 0 && \text{(AND constraint form)} \end{aligned} $$
-
-Where $\mathbb{1} = $ 0xFFFFFFFFFFFFFFFF (all-ones mask).
-
-**Encoding:** 1 AND constraint
-
-### C.5: Addition (U32/U64)
-
-**Theorem:** Integer addition uses carry propagation with auxiliary wires and AND constraints.
-
-**Derivation for 64-bit addition `sum = a + b`:**
-
-Addition requires tracking carry bits at each position. We introduce auxiliary wire `cout`:
-
-$$ \begin{aligned} 
-\text{cout}[i] &= \text{carry bit at position } i \\\\
-\text{sum}[i] &= a[i] \oplus b[i] \oplus \text{cout}[i-1] && \text{(Sum with carry-in)} \\\\
-\text{cout}[i] &= (a[i] \land b[i]) \lor ((a[i] \oplus b[i]) \land \text{cout}[i-1]) && \text{(Carry generation)}
-\end{aligned} $$
-
-This is encoded with two AND constraints:
-
-1. **Carry propagation:** $(a \oplus (\text{cout} \ll 1)) \land (b \oplus (\text{cout} \ll 1)) = \text{cout} \oplus (\text{cout} \ll 1)$
-2. **Sum computation:** $(a \oplus b \oplus (\text{cout} \ll 1)) \land \mathbb{1} = \text{sum}$
-
-For 32-bit addition `z = (x + y) \land \text{MASK\_32}`:
-
-1. **Carry propagation:** $(x \oplus (\text{cout} \ll 1)) \land (y \oplus (\text{cout} \ll 1)) = \text{cout} \oplus (\text{cout} \ll 1)$
-2. **Result masking:** $(x \oplus y \oplus (\text{cout} \ll 1)) \land \text{MASK\_32} = z$
-
-**Encoding:** 2 AND constraints + 1 auxiliary wire
-
-### C.6: Subtraction
-
-**Theorem:** Integer subtraction uses borrow propagation with auxiliary wires and AND constraints.
-
-**Derivation for `diff = a - b`:**
-
-Subtraction tracks borrow bits similar to how addition tracks carry bits. We introduce auxiliary wire `bout`:
-
-$$ \begin{aligned} 
-\text{bout}[i] &= \text{borrow bit at position } i \\\\
-\text{diff}[i] &= a[i] \oplus b[i] \oplus \text{bout}[i-1] && \text{(Difference with borrow-in)} \\\\
-\text{bout}[i] &= (\lnot a[i] \land b[i]) \lor ((\lnot(a[i] \oplus b[i])) \land \text{bout}[i-1]) && \text{(Borrow generation)}
-\end{aligned} $$
-
-This is encoded with two AND constraints:
-
-1. **Borrow propagation:** $((a \oplus \mathbb{1}) \oplus (\text{bout} \ll 1)) \land (b \oplus (\text{bout} \ll 1)) = \text{bout} \oplus (\text{bout} \ll 1)$
-2. **Difference computation:** $(a \oplus b \oplus (\text{bout} \ll 1)) \land \mathbb{1} = \text{diff}$
-
-Alternative two's complement approach: `a - b = a + (~b + 1)` requires:
-- 2 AND constraints for `~b + 1` (addition with constant 1)
-- 2 AND constraints for `a + result` (another addition)
-- Total: 4 AND constraints + 2 auxiliary wires
-
-**Encoding:** 2 AND constraints + 1 auxiliary wire (borrow method)
-
-### C.7: Multiplication
-
-**Theorem:** Full 64×64 integer multiplication produces 128-bit result.
-
-**Derivation:**
-
-$$ a \times_{\mathbb{Z}} b = (\text{high64} \times_{\mathbb{Z}} 2^{64}) + \text{low64} $$
-
-Field MUL constraint in GF(2⁶⁴) computes the same as integer multiplication modulo 2¹²⁸:
-$(a) \times_{\text{field}} (b) = (\text{high64} \ll 64) | \text{low64}$
-
-**Encoding:** 1 MUL constraint (field multiplication = integer multiplication mod 2¹²⁸)
-
-### C.8: Shifts and Rotations
-
-**Theorem:** Shifts and rotations are inherent as shifted value indices.
-
-**Derivation:**
-
-Shifted value index: $(v_i, \text{shiftop}, \text{amount})$
-
-Within operands:
-- `v << k`: Left shift by k (inherent)
-- `v >> k`: Right shift by k (inherent)  
-- `v >>> k`: Rotate right by k (inherent)
-
-Only need constraint to store result:
-$(v[\text{shift}]) \land \mathbb{1} \oplus (r) = 0$
-
-**Encoding:** 1 AND constraint (only for storage)
-
-### C.9: Comparisons
-
-**Theorem:** Unsigned less-than uses integer subtraction and sign bit extraction.
-
-**Derivation for `a < b` (unsigned):**
-
-$$ \begin{aligned} \text{diff} &= a -_{\mathbb{Z}} b && \text{(Integer subtraction with borrow)} \\\\ \text{borrow} &= \text{diff} \gg 63 && \text{(Extract borrow bit, gives 0 or 1)} \\\\ \text{result} &= \text{borrow} && \text{(Borrow indicates a < b)} \end{aligned} $$
-
-Constraints:
-1. MUL for integer subtraction with borrow tracking
-2. AND to extract and store borrow bit
-
-**Encoding:** 1 MUL + 1 AND constraint
-
-### C.10: Equality
-
-**Theorem:** Equality constraint `a = b` requires 1 AND constraint.
-
-**Derivation:**
-
-To enforce `a = b`, we need:
-
-$$ \begin{aligned} a &= b && \text{(Desired equality)} \\\\ a \oplus_{\text{field}} b &= 0 && \text{(In GF(2⁶⁴), equal iff XOR is zero)} \\\\ (a \oplus_{\text{field}} b) \land_{\text{bitwise}} \mathbb{1} \oplus_{\text{field}} 0 &= 0 && \text{(AND constraint form)} \end{aligned} $$
-
-Since XOR doesn't require additional constraints in operands, this simplifies to storing the XOR result must equal zero:
-$$(a \oplus b) \land \mathbb{1} \oplus 0 = 0$$
-
-**Encoding:** 1 AND constraint
-
-### C.11: Conditional (Multiplexer)
-
-**Theorem:** `cond ? a : b` requires 1 optimized AND constraint.
-
-**Derivation:**
-
-$$ \begin{aligned} \text{result} &= (\text{cond} \land a) \lor (\lnot\text{cond} \land b) && \text{(Definition)} \\\\ &= (\text{cond} \land a) \oplus ((\text{cond} \oplus \mathbb{1}) \land b) && \text{(XOR for OR in GF(2))} \\\\ &= \text{cond} \land (a \oplus b) \oplus b && \text{(Algebraic simplification)} \end{aligned} $$
-
-Final constraint:
-$(\text{cond}) \land (a \oplus b) \oplus (\text{result} \oplus b) = 0$
-
-**Encoding:** 1 AND constraint
-
-### Summary of Constraint Costs
-
-| Operation | Constraints | Type | Notes |
-|-----------|------------|------|-------|
-| XOR | 1 | AND | Storage only |
-| AND | 1 | AND | |
-| OR | 1 | AND | |
-| NOT | 1 | AND | Storage only |
-| Add (64-bit) | 2 | AND | + 1 aux wire |
-| Add (32-bit) | 2 | AND | + 1 aux wire |
-| Sub | 2 | AND | + 1 aux wire |
-| Multiply | 1 | MUL | |
-| Shift/Rotate | 1 | AND | Storage only |
-| Compare | TBD | TBD | Needs subtraction |
-| Equality | 1 | AND | |
-| Conditional | 1 | AND | |
-
-This systematic derivation shows that all basic operations can be encoded efficiently in Binius64's constraint system, with most requiring just a single constraint.
+**Proof**: Expanding `(a ⊕ c) & (b ⊕ c)` using distributivity over GF(2): equals `(a & b) ⊕ (a & c) ⊕ (c & b) ⊕ (c & c)`. Since `c & c = c` in GF(2), this becomes `(a & b) ⊕ (a & c) ⊕ (b & c) ⊕ c`. XORing with `c` gives the original majority expression.

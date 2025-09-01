@@ -5,7 +5,7 @@ use std::fmt;
 use std::rc::Rc;
 
 /// Internal representation of expression nodes
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub enum ExprNode {
     /// Witness value (input)
     Witness(u32),
@@ -38,11 +38,64 @@ pub enum ExprNode {
     
     // Equality constraint
     Equal(Rc<ExprNode>, Rc<ExprNode>), // a = b
+    
+    // Black box computed value
+    BlackBox {
+        compute: fn(&[u64]) -> u64,
+        inputs: Vec<Rc<ExprNode>>,
+    }
+}
+
+impl PartialEq for ExprNode {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (ExprNode::Witness(a), ExprNode::Witness(b)) => a == b,
+            (ExprNode::Constant(a), ExprNode::Constant(b)) => a == b,
+            
+            (ExprNode::Xor(a1, a2), ExprNode::Xor(b1, b2)) => a1 == b1 && a2 == b2,
+            (ExprNode::And(a1, a2), ExprNode::And(b1, b2)) => a1 == b1 && a2 == b2,
+            (ExprNode::Or(a1, a2), ExprNode::Or(b1, b2)) => a1 == b1 && a2 == b2,
+            (ExprNode::Not(a), ExprNode::Not(b)) => a == b,
+            
+            (ExprNode::Shl(a1, n1), ExprNode::Shl(a2, n2)) => a1 == a2 && n1 == n2,
+            (ExprNode::Shr(a1, n1), ExprNode::Shr(a2, n2)) => a1 == a2 && n1 == n2,
+            (ExprNode::Sar(a1, n1), ExprNode::Sar(a2, n2)) => a1 == a2 && n1 == n2,
+            (ExprNode::Rol(a1, n1), ExprNode::Rol(a2, n2)) => a1 == a2 && n1 == n2,
+            (ExprNode::Ror(a1, n1), ExprNode::Ror(a2, n2)) => a1 == a2 && n1 == n2,
+            
+            (ExprNode::Add32(a1, a2), ExprNode::Add32(b1, b2)) => a1 == b1 && a2 == b2,
+            (ExprNode::Add64(a1, a2), ExprNode::Add64(b1, b2)) => a1 == b1 && a2 == b2,
+            (ExprNode::Sub32(a1, a2), ExprNode::Sub32(b1, b2)) => a1 == b1 && a2 == b2,
+            (ExprNode::Sub64(a1, a2), ExprNode::Sub64(b1, b2)) => a1 == b1 && a2 == b2,
+            (ExprNode::Mul32(a1, a2), ExprNode::Mul32(b1, b2)) => a1 == b1 && a2 == b2,
+            (ExprNode::Mul64(a1, a2), ExprNode::Mul64(b1, b2)) => a1 == b1 && a2 == b2,
+            
+            (ExprNode::Mux(c1, t1, f1), ExprNode::Mux(c2, t2, f2)) => c1 == c2 && t1 == t2 && f1 == f2,
+            (ExprNode::Equal(a1, a2), ExprNode::Equal(b1, b2)) => a1 == b1 && a2 == b2,
+            
+            (ExprNode::BlackBox { compute: c1, inputs: i1 }, ExprNode::BlackBox { compute: c2, inputs: i2 }) => {
+                // Compare function pointers by address and inputs
+                std::ptr::eq(c1 as *const _, c2 as *const _) && i1 == i2
+            }
+            
+            _ => false,
+        }
+    }
+}
+
+impl ExprNode {
+    /// Get witness ID if this is a witness node
+    pub fn as_witness(&self) -> Option<u32> {
+        match self {
+            ExprNode::Witness(id) => Some(*id),
+            _ => None,
+        }
+    }
 }
 
 /// Type-safe expression with phantom type parameter
 pub struct Expr<T> {
-    pub(crate) inner: Rc<ExprNode>,
+    pub inner: Rc<ExprNode>,
     _phantom: PhantomData<T>,
 }
 
@@ -62,16 +115,6 @@ impl<T> Expr<T> {
             _phantom: PhantomData,
         }
     }
-    
-    /// Build a binary operation (helper to reduce boilerplate)
-    pub(crate) fn binary(a: Expr<T>, b: Expr<T>, f: impl FnOnce(Rc<ExprNode>, Rc<ExprNode>) -> ExprNode) -> Self {
-        Expr::new(f(a.inner, b.inner))
-    }
-    
-    /// Build a unary operation (helper to reduce boilerplate)
-    pub(crate) fn unary(a: Expr<T>, f: impl FnOnce(Rc<ExprNode>) -> ExprNode) -> Self {
-        Expr::new(f(a.inner))
-    }
 }
 
 impl<T> Clone for Expr<T> {
@@ -80,6 +123,14 @@ impl<T> Clone for Expr<T> {
             inner: self.inner.clone(),
             _phantom: PhantomData,
         }
+    }
+}
+
+impl<T> Expr<T> {
+    /// Cast expression to a different phantom type
+    /// Safe because the underlying ExprNode is untyped
+    pub fn cast<U>(&self) -> Expr<U> {
+        Expr::wrap(self.inner.clone())
     }
 }
 
@@ -120,6 +171,14 @@ fn fmt_node(node: &ExprNode, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         
         ExprNode::Mux(c, t, fl) => write!(f, "({} ? {} : {})", fmt_str(c), fmt_str(t), fmt_str(fl)),
         ExprNode::Equal(a, b) => write!(f, "({} = {})", fmt_str(a), fmt_str(b)),
+        
+        ExprNode::BlackBox { inputs, .. } => {
+            match inputs.len() {
+                1 => write!(f, "blackbox({})", fmt_str(&inputs[0])),
+                2 => write!(f, "blackbox({}, {})", fmt_str(&inputs[0]), fmt_str(&inputs[1])),
+                _ => write!(f, "blackbox({} inputs)", inputs.len()),
+            }
+        }
     }
 }
 
