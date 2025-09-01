@@ -19,11 +19,11 @@ use crate::{
 /// thus more proving time. Picking a small number may make some statements unprovable.
 #[derive(Debug)]
 pub struct Config {
-	/// Maximum byte length of the base64 decoded JWT header. Must be a multiple of 8.
+	/// Maximum length in wires of the base64 decoded JWT header. Must be a multiple of 8.
 	pub max_len_json_jwt_header: usize,
-	/// Maximum byte length of the base64 decoded JWT payload. Must be a multiple of 8.
+	/// Maximum length in wires of the base64 decoded JWT payload. Must be a multiple of 8.
 	pub max_len_json_jwt_payload: usize,
-	/// Maximum byte length of the base64 decoded JWT signature. Must be a multiple of 8.
+	/// Maximum length in wires of the base64 decoded JWT signature. Must be a multiple of 8.
 	pub max_len_jwt_signature: usize,
 	pub max_len_jwt_sub: usize,
 	pub max_len_jwt_aud: usize,
@@ -36,30 +36,30 @@ pub struct Config {
 impl Default for Config {
 	fn default() -> Self {
 		Self {
-			max_len_json_jwt_header: 264,
-			max_len_json_jwt_payload: 504,
-			max_len_jwt_signature: 264,
-			max_len_jwt_sub: 72,
-			max_len_jwt_aud: 72,
-			max_len_jwt_iss: 72,
-			max_len_salt: 72,
-			max_len_nonce_r: 48,
-			max_len_t_max: 48,
+			max_len_json_jwt_header: 33,
+			max_len_json_jwt_payload: 63,
+			max_len_jwt_signature: 33,
+			max_len_jwt_sub: 9,
+			max_len_jwt_aud: 9,
+			max_len_jwt_iss: 9,
+			max_len_salt: 9,
+			max_len_nonce_r: 6,
+			max_len_t_max: 6,
 		}
 	}
 }
 
 impl Config {
 	pub fn max_len_base64_jwt_header(&self) -> usize {
-		(self.max_len_json_jwt_header.div_ceil(3) * 4).next_multiple_of(8)
+		self.max_len_json_jwt_header.div_ceil(3) * 4
 	}
 
 	pub fn max_len_base64_jwt_payload(&self) -> usize {
-		(self.max_len_json_jwt_payload.div_ceil(3) * 4).next_multiple_of(8)
+		self.max_len_json_jwt_payload.div_ceil(3) * 4
 	}
 
 	pub fn max_len_base64_jwt_signature(&self) -> usize {
-		(self.max_len_jwt_signature.div_ceil(3) * 4).next_multiple_of(8)
+		self.max_len_jwt_signature.div_ceil(3) * 4
 	}
 }
 
@@ -96,7 +96,7 @@ pub struct ZkLogin {
 	/// The decoded jwt_signature (264 bytes for Base64, little-endian packing)
 	pub jwt_signature: FixedByteVec,
 	/// The base64 encoded nonce
-	pub base64_jwt_payload_nonce: [Wire; 8],
+	pub base64_jwt_payload_nonce: [Wire; 6],
 	/// The SHA256 circuit for nonce verification
 	pub nonce_sha256: Sha256,
 	/// The nonce value (32 bytes SHA256 hash)
@@ -111,31 +111,30 @@ pub struct ZkLogin {
 
 impl ZkLogin {
 	pub fn new(b: &mut CircuitBuilder, config: Config) -> Self {
-		let sub = FixedByteVec::new_inout(b, config.max_len_jwt_sub >> 3);
-		let aud = FixedByteVec::new_inout(b, config.max_len_jwt_aud >> 3);
-		let iss = FixedByteVec::new_inout(b, config.max_len_jwt_iss >> 3);
-		let salt = FixedByteVec::new_inout(b, config.max_len_salt >> 3);
+		let sub = FixedByteVec::new_inout(b, config.max_len_jwt_sub);
+		let aud = FixedByteVec::new_inout(b, config.max_len_jwt_aud);
+		let iss = FixedByteVec::new_inout(b, config.max_len_jwt_iss);
+		let salt = FixedByteVec::new_inout(b, config.max_len_salt);
 
-		let base64_jwt_header = FixedByteVec::new_inout(b, config.max_len_base64_jwt_header() >> 3);
-		let base64_jwt_payload =
-			FixedByteVec::new_inout(b, config.max_len_base64_jwt_payload() >> 3);
+		let base64_jwt_header = FixedByteVec::new_inout(b, config.max_len_base64_jwt_header());
+		let base64_jwt_payload = FixedByteVec::new_inout(b, config.max_len_base64_jwt_payload());
 		let base64_jwt_signature =
-			FixedByteVec::new_inout(b, config.max_len_base64_jwt_signature() >> 3);
+			FixedByteVec::new_inout(b, config.max_len_base64_jwt_signature());
 
-		let jwt_header = FixedByteVec::new_inout(b, config.max_len_json_jwt_header >> 3);
-		let jwt_payload = FixedByteVec::new_witness(b, config.max_len_json_jwt_payload >> 3);
-		let jwt_signature = FixedByteVec::new_witness(b, config.max_len_jwt_signature >> 3);
+		let jwt_header = FixedByteVec::new_inout(b, config.max_len_json_jwt_header);
+		let jwt_payload = FixedByteVec::new_witness(b, config.max_len_json_jwt_payload);
+		let jwt_signature = FixedByteVec::new_witness(b, config.max_len_jwt_signature);
 
-		let t_max = FixedByteVec::new_inout(b, config.max_len_t_max >> 3);
-		let nonce_r = FixedByteVec::new_witness(b, config.max_len_nonce_r >> 3);
+		let t_max = FixedByteVec::new_inout(b, config.max_len_t_max);
+		let nonce_r = FixedByteVec::new_witness(b, config.max_len_nonce_r);
 
 		let zkaddr: [Wire; 4] = std::array::from_fn(|_| b.add_inout());
 		let vk_u: [Wire; 4] = std::array::from_fn(|_| b.add_inout());
 		let nonce: [Wire; 4] = std::array::from_fn(|_| b.add_witness());
 
 		// The base64 encoded nonce in the JWT payload. This must have
-		// 8 wires = 64 bytes to accommodate the 43-byte base64 nonce with padding.
-		let base64_jwt_payload_nonce: [Wire; 8] = std::array::from_fn(|_| b.add_witness());
+		// 6 wires = 48 bytes to accommodate the 43-byte base64 nonce with padding.
+		let base64_jwt_payload_nonce: [Wire; 6] = std::array::from_fn(|_| b.add_witness());
 
 		// RSA modulus as public input (256 bytes for 2048-bit RSA)
 		let rsa_modulus = FixedByteVec::new_inout(b, 32);
@@ -174,25 +173,25 @@ impl ZkLogin {
 			+ config.max_len_salt;
 
 		// Create SHA256 verification for zkaddr first
-		let zkaddr_preimage_len = b.add_witness();
-		let zkaddr_sha256_message: Vec<Wire> = (0..max_len_zkaddr_preimage / 8)
+		let zkaddr_preimage_len_bytes = b.add_witness();
+		let zkaddr_sha256_message: Vec<Wire> = (0..max_len_zkaddr_preimage)
 			.map(|_| b.add_witness())
 			.collect();
 		let zkaddr_sha256 = Sha256::new(
 			&b.subcircuit("zkaddr_sha256"),
-			zkaddr_preimage_len,
+			zkaddr_preimage_len_bytes,
 			zkaddr,
 			zkaddr_sha256_message,
 		);
 
 		let zkaddr_preimage_le_wires = zkaddr_sha256.message_to_le_wires(b);
-		let zkaddr_joined_words = max_len_zkaddr_preimage / 8;
+		let zkaddr_joined_words = max_len_zkaddr_preimage;
 		let zkaddr_joined_le = zkaddr_preimage_le_wires[..zkaddr_joined_words].to_vec();
 
 		// Create the concatenation that outputs to the LE wires
 		let _zkaddr_preimage_concat = Concat::new(
 			&b.subcircuit("zkaddr_preimage_concat"),
-			zkaddr_preimage_len,
+			zkaddr_preimage_len_bytes,
 			zkaddr_joined_le,
 			vec![
 				Term {
@@ -219,26 +218,26 @@ impl ZkLogin {
 		// nonce_preimage = concat(vk_u, T_max, r) where vk_u is a public key
 		// assert nonce = SHA256(nonce_preimage)
 		// assert nonce = base64_decode(base64_jwt_payload_nonce)
-		let max_len_nonce_preimage = 32 + config.max_len_t_max + config.max_len_nonce_r;
+		let max_len_nonce_preimage = 4 + config.max_len_t_max + config.max_len_nonce_r;
 
 		// Create SHA256 verification for nonce first
-		let nonce_preimage_len = b.add_witness();
-		let nonce_sha256_message: Vec<Wire> = (0..max_len_nonce_preimage / 8)
+		let nonce_preimage_len_bytes = b.add_witness();
+		let nonce_sha256_message: Vec<Wire> = (0..max_len_nonce_preimage)
 			.map(|_| b.add_witness())
 			.collect();
 		let nonce_sha256 = Sha256::new(
 			&b.subcircuit("nonce_sha256"),
-			nonce_preimage_len,
+			nonce_preimage_len_bytes,
 			nonce,
 			nonce_sha256_message,
 		);
 
 		let nonce_preimage_le_wires = nonce_sha256.message_to_le_wires(b);
-		let nonce_joined_words = max_len_nonce_preimage / 8;
+		let nonce_joined_words = max_len_nonce_preimage;
 		let nonce_joined_le = nonce_preimage_le_wires[..nonce_joined_words].to_vec();
 		let _nonce_preimage_concat = Concat::new(
 			&b.subcircuit("nonce_preimage_concat"),
-			nonce_preimage_len,
+			nonce_preimage_len_bytes,
 			nonce_joined_le,
 			vec![
 				Term {
@@ -267,8 +266,7 @@ impl ZkLogin {
 		// <https://github.com/MystenLabs/ts-sdks/blob/eb23fc1c122a1495e52d0bd613bf5e8e6eb816cc/packages/typescript/src/zklogin/nonce.ts#L33>
 		//
 		// The nonce is 32 bytes which encodes to 43 base64 characters.
-		// Base64UrlSafe requires max_len_decoded to be a multiple of 24,
-		// so we use 48 bytes (6 wires) for decoded and 64 bytes (8 wires) for encoded.
+		// minimal wires those will fit into: 6 wires.
 		let base64_check_nonce_builder = b.subcircuit("base64_check_nonce");
 		let _base64decode_check_nonce = Base64UrlSafe::new(
 			&base64_check_nonce_builder,
@@ -281,13 +279,12 @@ impl ZkLogin {
 		//
 		// L = concat(jwt.header | "." | jwt.payload)
 		//
-		let max_len_jwt_signing_payload = (config.max_len_base64_jwt_header()
-			+ 1 + config.max_len_base64_jwt_payload())
-		.next_multiple_of(8);
+		let max_len_jwt_signing_payload =
+			config.max_len_base64_jwt_header() + 1 + config.max_len_base64_jwt_payload();
 
 		// Create witness wires for the JWT signing payload in SHA256 format
 		let jwt_signing_payload_sha256_len = b.add_witness();
-		let n_words_jwt_signing_payload_sha256 = max_len_jwt_signing_payload.div_ceil(8);
+		let n_words_jwt_signing_payload_sha256 = max_len_jwt_signing_payload;
 		let jwt_signing_payload_sha256_message: Vec<Wire> = (0..n_words_jwt_signing_payload_sha256)
 			.map(|_| b.add_witness())
 			.collect();
@@ -301,7 +298,7 @@ impl ZkLogin {
 			Rs256Verify::new(b, jwt_signing_payload, jwt_signature.clone(), rsa_modulus);
 
 		let jwt_signing_payload_le_wires = jwt_signature_verify.sha256.message_to_le_wires(b);
-		let signing_joined_words = max_len_jwt_signing_payload / 8;
+		let signing_joined_words = max_len_jwt_signing_payload;
 		let signing_joined_le = jwt_signing_payload_le_wires[..signing_joined_words].to_vec();
 		let _jwt_signing_payload_concat = Concat::new(
 			&b.subcircuit("jwt_signing_payload_concat"),
@@ -400,10 +397,7 @@ impl ZkLogin {
 	}
 
 	pub fn populate_base64_jwt_signature(&self, w: &mut WitnessFiller, bytes: &[u8]) {
-		let mut padded = bytes.to_vec();
-		let expected_len = ((self.jwt_signature.data.len() * 8) / 3) * 4; // (264 bytes / 3) * 4 = 352
-		padded.resize(expected_len, 0);
-		self.base64_jwt_signature.populate_bytes_le(w, &padded);
+		self.base64_jwt_signature.populate_bytes_le(w, bytes);
 	}
 
 	pub fn populate_rsa_modulus(&self, w: &mut WitnessFiller, modulus_bytes: &[u8]) {
@@ -441,10 +435,9 @@ impl ZkLogin {
 	}
 
 	pub fn populate_base64_jwt_payload_nonce(&self, w: &mut WitnessFiller, base64_nonce: &[u8]) {
-		// The base64 nonce is 43 characters, but we need to pad to 64 bytes (8 wires)
-		let mut padded = vec![0u8; 64];
-		padded[..base64_nonce.len().min(64)]
-			.copy_from_slice(&base64_nonce[..base64_nonce.len().min(64)]);
+		// The base64 nonce is 43 characters, but we need to pad to 48 bytes (6 wires)
+		let mut padded = vec![0u8; 48];
+		padded[..base64_nonce.len()].copy_from_slice(&base64_nonce[..base64_nonce.len()]);
 		pack_bytes_into_wires_le(w, &self.base64_jwt_payload_nonce, &padded);
 	}
 }
@@ -479,7 +472,7 @@ fn jwt_payload_check(
 	sub_byte_vec: &FixedByteVec,
 	aud_byte_vec: &FixedByteVec,
 	iss_byte_vec: &FixedByteVec,
-	base64_nonce: &[Wire; 8],
+	base64_nonce: &[Wire; 6],
 ) -> JwtClaims {
 	JwtClaims::new(
 		&b.subcircuit("jwt_claims_payload"),
@@ -505,8 +498,7 @@ fn jwt_payload_check(
 				name: "nonce",
 				len_bytes: b.add_constant_64(43), /* Base64 encoded 32 bytes without padding = 43
 				                                   * chars */
-				// Only use the first 6 wires (48 bytes) which contain the 43-byte nonce
-				value: base64_nonce[..6].to_vec(),
+				value: base64_nonce.to_vec(),
 			},
 		],
 	)
@@ -522,8 +514,7 @@ mod tests {
 	use super::*;
 	use crate::constraint_verifier::verify_constraints;
 
-	#[test]
-	fn test_zklogin_with_jwt_population() {
+	fn run_zk_login_with_jwt_population(config: Config) {
 		use jwt_simple::prelude::*;
 
 		let jwt_key_pair = RS256KeyPair::generate(2048).unwrap();
@@ -573,7 +564,6 @@ mod tests {
 		let payload = BASE64_URL_SAFE_NO_PAD.decode(payload_base64).unwrap();
 
 		let mut builder = CircuitBuilder::new();
-		let config = Config::default();
 		let zklogin = ZkLogin::new(&mut builder, config);
 		let circuit = builder.build();
 
@@ -628,5 +618,25 @@ mod tests {
 		circuit.populate_wire_witness(&mut w).unwrap();
 		let cs = circuit.constraint_system();
 		verify_constraints(cs, &w.value_vec).unwrap();
+	}
+
+	#[test]
+	fn test_zk_login_with_jwt_population() {
+		run_zk_login_with_jwt_population(Config::default());
+	}
+
+	#[test]
+	fn test_zk_login_with_jwt_population_weird_lengths() {
+		run_zk_login_with_jwt_population(Config {
+			max_len_json_jwt_header: 35,
+			max_len_json_jwt_payload: 61,
+			max_len_jwt_signature: 32,
+			max_len_jwt_sub: 8,
+			max_len_jwt_aud: 9,
+			max_len_jwt_iss: 10,
+			max_len_salt: 9,
+			max_len_nonce_r: 6,
+			max_len_t_max: 7,
+		});
 	}
 }
