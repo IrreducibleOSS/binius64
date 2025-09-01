@@ -35,7 +35,7 @@ pub struct XmssHashers {
 	/// Keccak hasher for computing the OTS public key hash from individual Winternitz public keys.
 	/// Computes: `hash(param || TWEAK_PUBLIC_KEY || pk_hash[0] || pk_hash[1] || ... ||
 	/// pk_hash[D-1])` Must be populated with:
-	/// - Message: The concatenated public key data (use `tweak::build_public_key_tweak`)
+	/// - Message: The concatenated public key data (use `hashing::build_public_key_hash`)
 	/// - Digest: The resulting public key hash (which becomes a leaf in the Merkle tree)
 	pub public_key_hasher: Keccak,
 
@@ -43,7 +43,7 @@ pub struct XmssHashers {
 	/// Contains one hasher per level of the tree that needs to be computed.
 	/// Each hasher computes: `hash(param || TWEAK_TREE || level || index || left_child ||
 	/// right_child)` Must be populated with:
-	/// - Message: The tree node tweak message (use `tweak::build_tree_tweak`)
+	/// - Message: The tree node hash message (use `hashing::build_tree_hash`)
 	/// - Digest: The parent node hash at that level
 	///
 	/// The hashers are ordered from leaf level upward to the root.
@@ -128,10 +128,10 @@ mod tests {
 	use crate::{
 		circuits::hash_based_sig::{
 			hashing::{hash_chain_keccak, hash_public_key_keccak},
-			test_utils::{
+			winternitz_ots::grind_nonce,
+			witness_utils::{
 				XmssHasherData, build_merkle_tree, extract_auth_path, populate_xmss_hashers,
 			},
-			winternitz_ots::grind_nonce,
 		},
 		constraint_verifier::verify_constraints,
 		util::pack_bytes_into_wires_le,

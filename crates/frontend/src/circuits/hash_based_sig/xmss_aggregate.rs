@@ -123,86 +123,12 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		circuits::hash_based_sig::{
-			hashing::{hash_chain_keccak, hash_public_key_keccak},
-			test_utils::{
-				XmssHasherData, build_merkle_tree, extract_auth_path, populate_xmss_hashers,
-			},
-			winternitz_ots::grind_nonce,
+		circuits::hash_based_sig::witness_utils::{
+			ValidatorSignatureData, XmssHasherData, populate_xmss_hashers,
 		},
 		constraint_verifier::verify_constraints,
 		util::pack_bytes_into_wires_le,
 	};
-
-	/// Helper to generate a valid signature for a validator at a given epoch.
-	struct ValidatorData {
-		root: [u8; 32],
-		nonce: [u8; 23],
-		signature_hashes: Vec<[u8; 32]>,
-		public_key_hashes: Vec<[u8; 32]>,
-		auth_path: Vec<[u8; 32]>,
-		coords: Vec<u8>,
-	}
-
-	impl ValidatorData {
-		/// Generate a valid signature for a validator at a given epoch.
-		fn generate(
-			rng: &mut StdRng,
-			param_bytes: &[u8],
-			message_bytes: &[u8; 32],
-			epoch: u32,
-			spec: &WinternitzSpec,
-			tree_height: usize,
-		) -> Self {
-			let grind_result = grind_nonce(spec, rng, param_bytes, message_bytes)
-				.expect("Failed to find valid nonce");
-
-			let mut nonce = [0u8; 23];
-			nonce.copy_from_slice(&grind_result.nonce);
-			let coords = grind_result.coords;
-
-			// Generate Winternitz signature and public key
-			let mut signature_hashes = Vec::new();
-			let mut public_key_hashes = Vec::new();
-
-			for (chain_idx, &coord) in coords.iter().enumerate() {
-				let mut sig_hash = [0u8; 32];
-				rng.fill_bytes(&mut sig_hash);
-				signature_hashes.push(sig_hash);
-
-				let pk_hash = hash_chain_keccak(
-					param_bytes,
-					chain_idx,
-					&sig_hash,
-					coord as usize,
-					spec.chain_len() - 1 - coord as usize,
-				);
-				public_key_hashes.push(pk_hash);
-			}
-
-			// Build a Merkle tree with 2^tree_height leaves
-			let num_leaves = 1 << tree_height;
-			let mut leaves = vec![[0u8; 32]; num_leaves];
-			leaves[epoch as usize] = hash_public_key_keccak(param_bytes, &public_key_hashes);
-			for (i, leaf) in leaves.iter_mut().enumerate() {
-				if i != epoch as usize {
-					rng.fill_bytes(leaf);
-				}
-			}
-
-			let (tree_levels, root) = build_merkle_tree(param_bytes, &leaves);
-			let auth_path = extract_auth_path(&tree_levels, epoch as usize);
-
-			ValidatorData {
-				root,
-				nonce,
-				signature_hashes,
-				public_key_hashes,
-				auth_path,
-				coords,
-			}
-		}
-	}
 
 	fn test_spec_small() -> WinternitzSpec {
 		WinternitzSpec {
@@ -272,7 +198,7 @@ mod tests {
 		param_bytes: Vec<u8>,
 		message_bytes: [u8; 32],
 		epoch: u32, // Single shared epoch for all validators
-		validators: Vec<ValidatorData>,
+		validators: Vec<ValidatorSignatureData>,
 	}
 
 	impl MultisigTestData {
@@ -292,7 +218,7 @@ mod tests {
 
 			let mut validators = Vec::new();
 			for _ in 0..num_validators {
-				validators.push(ValidatorData::generate(
+				validators.push(ValidatorSignatureData::generate(
 					rng,
 					&param_bytes,
 					&message_bytes,
@@ -450,7 +376,7 @@ mod tests {
 
 			// Regenerate second validator's signature with wrong message
 			let spec = test_spec_small();
-			test_data.validators[1] = ValidatorData::generate(
+			test_data.validators[1] = ValidatorSignatureData::generate(
 				&mut rng,
 				&test_data.param_bytes,
 				&wrong_message,
@@ -485,7 +411,7 @@ mod tests {
 
 			// Regenerate second validator with a different epoch
 			let different_epoch = (test_data.epoch + 1) % 8;
-			test_data.validators[1] = ValidatorData::generate(
+			test_data.validators[1] = ValidatorSignatureData::generate(
 				&mut rng,
 				&test_data.param_bytes,
 				&test_data.message_bytes,
