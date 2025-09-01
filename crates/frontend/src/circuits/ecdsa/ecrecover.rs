@@ -41,8 +41,8 @@ pub fn ecrecover(
 	let u1 = f_scalar.sub(b, &coord_zero(b), &f_scalar.mul(b, z, &r_inverse));
 	let u2 = f_scalar.mul(b, s, &r_inverse);
 
-	let (recovered_pk, endo_ok) = shamirs_trick_endomorphism(b, &curve, &u1, &u2, nonce);
+	let recovered_pk = shamirs_trick_endomorphism(b, &curve, &u1, &u2, nonce);
 
-	let conditions = [valid_r, valid_s, endo_ok, nonce_not_pai];
+	let conditions = [valid_r, valid_s, nonce_not_pai];
 	recovered_pk.pai_unless(b, all_true(b, conditions))
 }
