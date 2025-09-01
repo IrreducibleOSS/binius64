@@ -29,7 +29,7 @@ struct HashBasedSigExample {
 	hashers: XmssMultisigHashers,
 }
 
-#[derive(Args, Debug)]
+#[derive(Args, Debug, Clone)]
 struct Params {
 	/// Number of validators in the multi-signature
 	#[arg(short = 'n', long, default_value_t = 3)]
@@ -44,7 +44,7 @@ struct Params {
 	spec: u8,
 }
 
-#[derive(Args, Debug)]
+#[derive(Args, Debug, Clone)]
 struct Instance {}
 
 impl ExampleCircuit for HashBasedSigExample {
@@ -193,12 +193,15 @@ impl ExampleCircuit for HashBasedSigExample {
 
 		Ok(())
 	}
+
+	fn param_summary(params: &Self::Params) -> Option<String> {
+		Some(format!("{}v-{}t-s{}", params.num_validators, params.tree_height, params.spec))
+	}
 }
 
 fn main() -> Result<()> {
-	let _tracing_guard = tracing_profile::init_tracing()?;
-
 	Cli::<HashBasedSigExample>::new("hash_based_sig")
 		.about("Hash-based multi-signature (XMSS) verification example")
+		.with_repeat()
 		.run()
 }

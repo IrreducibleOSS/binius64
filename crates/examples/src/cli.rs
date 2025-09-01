@@ -5,6 +5,8 @@ use binius_core::constraint_system::{ValueVec, ValuesData};
 use binius_frontend::{compiler::CircuitBuilder, stat::CircuitStat};
 use binius_utils::serialization::SerializeBytes;
 use clap::{Arg, Args, Command, FromArgMatches, Subcommand};
+#[cfg(feature = "perfetto")]
+use tracing_profile::{TraceFilenameBuilder, init_tracing_with_builder};
 
 use crate::{ExampleCircuit, prove_verify, setup};
 
@@ -52,6 +54,7 @@ fn write_serialized<T: SerializeBytes>(value: &T, path: &str) -> Result<()> {
 pub struct Cli<E: ExampleCircuit> {
 	name: String,
 	command: Command,
+	repeat_enabled: bool,
 	_phantom: std::marker::PhantomData<E>,
 }
 
@@ -63,6 +66,10 @@ enum Commands {
 		/// Log of the inverse rate for the proof system
 		#[arg(short = 'l', long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..))]
 		log_inv_rate: u32,
+
+		/// Number of times to run the benchmark (default: 1 for no repetition)
+		#[arg(long, default_value = "1")]
+		repeat: usize,
 
 		#[command(flatten)]
 		params: CommandArgs,
@@ -126,8 +133,8 @@ struct CommandArgs {
 
 impl<E: ExampleCircuit> Cli<E>
 where
-	E::Params: Args,
-	E::Instance: Args,
+	E::Params: Args + Clone,
+	E::Instance: Args + Clone,
 {
 	/// Create a new CLI for the given circuit example.
 	///
@@ -171,6 +178,7 @@ where
 		Self {
 			name: name.to_string(),
 			command,
+			repeat_enabled: false,
 			_phantom: std::marker::PhantomData,
 		}
 	}
@@ -270,11 +278,34 @@ where
 		self
 	}
 
+	/// Enable repeat functionality with --repeat argument.
+	pub fn with_repeat(mut self) -> Self {
+		self.repeat_enabled = true;
+
+		// Add repeat argument to top-level command for default prove behavior
+		self.command = self.command.arg(
+			Arg::new("repeat")
+				.long("repeat")
+				.value_name("COUNT")
+				.help("Number of times to run the benchmark (default: 1 for no repetition)")
+				.default_value("1")
+				.value_parser(clap::value_parser!(usize)),
+		);
+
+		self
+	}
+
 	/// Run the circuit with parsed ArgMatches (implementation).
-	fn run_with_matches_impl(matches: clap::ArgMatches, circuit_name: &str) -> Result<()> {
+	fn run_with_matches_impl(
+		matches: clap::ArgMatches,
+		repeat_enabled: bool,
+		circuit_name: &str,
+	) -> Result<()> {
 		// Check if a subcommand was used
 		match matches.subcommand() {
-			Some(("prove", sub_matches)) => Self::run_prove(sub_matches.clone()),
+			Some(("prove", sub_matches)) => {
+				Self::run_prove(sub_matches.clone(), repeat_enabled, circuit_name)
+			}
 			Some(("stat", sub_matches)) => Self::run_stat(sub_matches.clone()),
 			Some(("composition", sub_matches)) => Self::run_composition(sub_matches.clone()),
 			Some(("check-snapshot", sub_matches)) => {
@@ -287,21 +318,78 @@ where
 			Some((cmd, _)) => anyhow::bail!("Unknown subcommand: {}", cmd),
 			None => {
 				// No subcommand - default to prove behavior for backward compatibility
-				Self::run_prove(matches)
+				Self::run_prove(matches, repeat_enabled, circuit_name)
 			}
 		}
 	}
 
-	fn run_prove(matches: clap::ArgMatches) -> Result<()> {
+	fn run_prove(
+		matches: clap::ArgMatches,
+		repeat_enabled: bool,
+		#[allow(unused)] circuit_name: &str,
+	) -> Result<()> {
 		// Extract common arguments
 		let log_inv_rate = *matches
 			.get_one::<u32>("log_inv_rate")
 			.expect("has default value");
 
+		// Check for repeat arguments (only if repeat mode was enabled)
+		let repeat_count = if repeat_enabled {
+			matches.get_one::<usize>("repeat").copied().unwrap_or(1)
+		} else {
+			1
+		};
+
 		// Parse Params and Instance from matches
 		let params = E::Params::from_arg_matches(&matches)?;
 		let instance = E::Instance::from_arg_matches(&matches)?;
 
+		// Generate base builder once for this session
+		#[cfg(feature = "perfetto")]
+		let perfetto_path_builder = {
+			let mut builder = TraceFilenameBuilder::for_benchmark(circuit_name)
+				.output_dir("perfetto_traces")
+				.subdir(circuit_name)
+				.subdir_run_id()
+				.timestamp() // Add timestamp for uniqueness
+				.git_info() // Include git status
+				.platform(); // Include OS info
+
+			// Add parameter summary if available
+			if let Some(param_summary) = E::param_summary(&params) {
+				builder = builder.add("params", param_summary);
+			}
+
+			builder
+		};
+
+		if repeat_enabled && repeat_count > 1 {
+			// Run multiple iterations with separate trace files
+			for i in 1..=repeat_count {
+				#[cfg(feature = "perfetto")]
+				let _tracing_guard = {
+					let perfetto_path = perfetto_path_builder.clone().iteration(i);
+					init_tracing_with_builder(perfetto_path).ok()
+				};
+
+				println!("Running iteration {}/{}...", i, repeat_count);
+				Self::run_single_prove(log_inv_rate, params.clone(), instance.clone())?;
+			}
+			println!("Done.");
+			Ok(())
+		} else {
+			// Single run
+			#[cfg(feature = "perfetto")]
+			let _tracing_guard = {
+				let perfetto_path = perfetto_path_builder.clone();
+				init_tracing_with_builder(perfetto_path)?
+			};
+
+			Self::run_single_prove(log_inv_rate, params, instance)
+		}
+	}
+
+	fn run_single_prove(log_inv_rate: u32, params: E::Params, instance: E::Instance) -> Result<()> {
 		// Build the circuit
 		let build_scope = tracing::info_span!("Building circuit").entered();
 		let mut builder = CircuitBuilder::new();
@@ -448,9 +536,10 @@ where
 	/// 4. Generate witness using the instance
 	/// 5. Create and verify proof
 	pub fn run(self) -> Result<()> {
+		let repeat_enabled = self.repeat_enabled;
 		let name = self.name.clone();
 		let matches = self.command.get_matches();
-		Self::run_with_matches_impl(matches, &name)
+		Self::run_with_matches_impl(matches, repeat_enabled, &name)
 	}
 
 	/// Parse arguments and run with custom argument strings (useful for testing).
@@ -462,8 +551,9 @@ where
 		I: IntoIterator<Item = T>,
 		T: Into<std::ffi::OsString> + Clone,
 	{
+		let repeat_enabled = self.repeat_enabled;
 		let name = self.name.clone();
 		let matches = self.command.try_get_matches_from(args)?;
-		Self::run_with_matches_impl(matches, &name)
+		Self::run_with_matches_impl(matches, repeat_enabled, &name)
 	}
 }
