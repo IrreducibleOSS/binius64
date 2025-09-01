@@ -100,32 +100,13 @@ pub fn circuit_merkle_path(
 #[cfg(test)]
 mod tests {
 	use binius_core::Word;
-	use sha3::{Digest, Keccak256};
 
 	use super::*;
 	use crate::{
-		circuits::hash_based_sig::hashing::{TREE_TWEAK, build_tree_hash},
+		circuits::hash_based_sig::hashing::{build_tree_hash, hash_tree_node_keccak},
 		constraint_verifier::verify_constraints,
 		util::pack_bytes_into_wires_le,
 	};
-
-	/// Helper to compute tree node hash using Keccak
-	fn hash_tree_node_keccak(
-		param: &[u8],
-		left: &[u8; 32],
-		right: &[u8; 32],
-		level: u32,
-		index: u32,
-	) -> [u8; 32] {
-		let mut hasher = Keccak256::new();
-		hasher.update(param);
-		hasher.update([TREE_TWEAK]);
-		hasher.update(level.to_le_bytes());
-		hasher.update(index.to_le_bytes());
-		hasher.update(left);
-		hasher.update(right);
-		hasher.finalize().into()
-	}
 
 	#[test]
 	fn test_circuit_merkle_path_verification() {

@@ -109,6 +109,33 @@ pub fn build_chain_hash(
 	message
 }
 
+/// Computes a hash chain for Winternitz OTS signature verification.
+///
+/// # Arguments
+/// * `param` - Cryptographic parameter
+/// * `chain_index` - Index of the chain being computed
+/// * `start_hash` - Starting hash value
+/// * `start_pos` - Starting position in the chain
+/// * `num_hashes` - Number of hash iterations to perform
+pub fn hash_chain_keccak(
+	param: &[u8],
+	chain_index: usize,
+	start_hash: &[u8; 32],
+	start_pos: usize,
+	num_hashes: usize,
+) -> [u8; 32] {
+	use sha3::{Digest, Keccak256};
+
+	let mut current = *start_hash;
+	for i in 0..num_hashes {
+		let position = start_pos + i + 1;
+		let tweaked_message =
+			build_chain_hash(param, &current, chain_index as u64, position as u64);
+		current = Keccak256::digest(tweaked_message).into();
+	}
+	current
+}
+
 #[cfg(test)]
 mod tests {
 	use binius_core::Word;
