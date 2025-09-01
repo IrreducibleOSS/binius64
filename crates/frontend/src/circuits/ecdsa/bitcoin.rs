@@ -42,10 +42,10 @@ pub fn verify(
 	let u1 = f_scalar.mul(b, z, &s_inverse);
 	let u2 = f_scalar.mul(b, r, &s_inverse);
 
-	let (nonce, endo_ok) = shamirs_trick_endomorphism(b, &curve, &u1, &u2, pk);
+	let nonce = shamirs_trick_endomorphism(b, &curve, &u1, &u2, pk);
 	let nonce_not_pai = b.bnot(nonce.is_point_at_infinity);
 	let r_diff = curve.f_p().sub(b, &nonce.x, r);
 
-	let conditions = [valid_r, valid_s, nonce_not_pai, endo_ok, r_diff.is_zero(b)];
+	let conditions = [valid_r, valid_s, nonce_not_pai, r_diff.is_zero(b)];
 	all_true(b, conditions)
 }

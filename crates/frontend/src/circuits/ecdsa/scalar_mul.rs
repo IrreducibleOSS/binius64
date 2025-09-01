@@ -157,15 +157,14 @@ pub fn scalar_mul(
 /// endomorphism. This halves the total number of doublings and additions at a cost of a larger
 /// precomputation, but the eventual savings are still in the order of 2x.
 ///
-/// Returns `G*g_mult + PK*pk_mult` and an MSB-bool indicating the correctness of endomorphism
-/// splits.
+/// Returns `G*g_mult + PK*pk_mult`.
 pub fn shamirs_trick_endomorphism(
 	b: &CircuitBuilder,
 	curve: &Secp256k1,
 	g_mult: &BigUint,
 	pk_mult: &BigUint,
 	pk: Secp256k1Affine,
-) -> (Secp256k1Affine, Wire) {
+) -> Secp256k1Affine {
 	assert_eq!(g_mult.limbs.len(), N_LIMBS);
 	assert_eq!(pk_mult.limbs.len(), N_LIMBS);
 
@@ -182,6 +181,7 @@ pub fn shamirs_trick_endomorphism(
 		g2_mult_abs,
 		g_mult,
 	);
+	b.assert_true("g endomorphism hint", g_endo_ok);
 
 	let (pk1_mult_neg, pk2_mult_neg, pk1_mult_abs, pk2_mult_abs) =
 		b.secp256k1_endomorphism_split_hint(&pk_mult.limbs);
@@ -195,6 +195,7 @@ pub fn shamirs_trick_endomorphism(
 		pk2_mult_abs,
 		pk_mult,
 	);
+	b.assert_true("pk endomorphism hint", pk_endo_ok);
 
 	// Compute the endomorphisms
 	let g = Secp256k1Affine::generator(b);
@@ -255,7 +256,7 @@ pub fn shamirs_trick_endomorphism(
 		acc = curve.add_incomplete(b, &acc, &level[0]);
 	}
 
-	(acc, b.band(g_endo_ok, pk_endo_ok))
+	acc
 }
 
 // Constrain the return value of `CircuitBuilder::secp256k1_endomorphism_split_hint`.
