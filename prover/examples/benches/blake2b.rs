@@ -65,6 +65,8 @@ fn bench_blake2b_hash(c: &mut Criterion) {
 	// Print benchmark-specific parameters
 	println!("\nBlake2b Benchmark Parameters:");
 	println!("  Message length: {} bytes", max_msg_len_bytes);
+	println!("  Circuit capacity: 16384 bytes (128 blocks × 128 bytes/block)");
+	println!("  Note: Circuit has fixed size regardless of message length");
 	println!("=======================================\n");
 
 	let params = Params { max_msg_len_bytes };
