@@ -9,7 +9,6 @@ fn main() -> Result<()> {
 	unsafe {
 		std::env::set_var("RUST_LOG", "binius=trace,ureq=off");
 	}
-	let _tracing_guard = tracing_profile::init_tracing()?;
 
 	Cli::<BitcoinHeaderChainExample>::new("bitcoin_headers")
 		.about("Bitcoin Header Chain Example")

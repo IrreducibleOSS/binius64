@@ -73,6 +73,10 @@ impl ExampleCircuit for BitcoinHeaderChainExample {
 
 		Ok(())
 	}
+
+	fn param_summary(params: &Self::Params) -> Option<String> {
+		Some(format!("{}blk", params.num_blocks))
+	}
 }
 
 fn pull_headers(

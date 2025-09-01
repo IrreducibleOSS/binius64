@@ -245,6 +245,15 @@ impl<Challenger_: Challenger> ProverTranscript<Challenger_> {
 	pub fn finalize(self) -> Vec<u8> {
 		let transcript = self.combined.buffer.to_vec();
 
+		// Emit proof size as a tracing event
+		let proof_size_bytes = transcript.len();
+		tracing::event!(
+			name: "proof_size",
+			tracing::Level::INFO,
+			category = "metrics",
+			proof_size_bytes = proof_size_bytes,
+		);
+
 		// Dumps the transcript to the path set in the BINIUS_DUMP_PROOF env variable.
 		if let Ok(path) = std::env::var("BINIUS_DUMP_PROOF") {
 			let path = if cfg!(test) {

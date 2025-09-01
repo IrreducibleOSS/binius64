@@ -113,8 +113,6 @@ impl ExampleCircuit for MyCircuitExample {
 }
 
 fn main() -> Result<()> {
-    let _tracing_guard = tracing_profile::init_tracing()?;
-    
     // Create and run the CLI - this is all you need!
     Cli::<MyCircuitExample>::new("my_circuit")
         .about("Description of what your circuit does")
@@ -272,6 +270,9 @@ cargo run --release --example my_circuit -- --help
 
 # Run with increased verbosity
 RUST_LOG=info cargo run --release --example my_circuit
+
+# With perfetto feature for performance profiling
+cargo run --release --example my_circuit --features perfetto
 ```
 
 ## CLI subcommands

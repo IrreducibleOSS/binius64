@@ -183,4 +183,8 @@ impl ExampleCircuit for HashBasedSigExample {
 
 		Ok(())
 	}
+
+	fn param_summary(params: &Self::Params) -> Option<String> {
+		Some(format!("{}v-{}t-s{}", params.num_validators, params.tree_height, params.spec))
+	}
 }

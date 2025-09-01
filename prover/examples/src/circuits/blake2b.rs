@@ -94,4 +94,8 @@ impl ExampleCircuit for Blake2bExample {
 
 		Ok(())
 	}
+
+	fn param_summary(params: &Self::Params) -> Option<String> {
+		Some(format!("{}b", params.max_msg_len_bytes))
+	}
 }
