@@ -2,7 +2,7 @@ use binius_core::consts::WORD_SIZE_BITS;
 
 use crate::{
 	circuits::{
-		bignum::{BigUint, biguint_eq, select as select_biguint},
+		bignum::{BigUint, assert_eq, select as select_biguint},
 		secp256k1::{
 			N_LIMBS, Secp256k1, Secp256k1Affine, coord_lambda, coord_zero,
 			select as select_secp256k1_affine,
@@ -88,8 +88,7 @@ pub fn scalar_mul(
 	// Nondeterministically split the scalar, constrain the split
 	let (k1_neg, k2_neg, k1_abs, k2_abs) = b.secp256k1_endomorphism_split_hint(&scalar.limbs);
 
-	let endo_ok = check_endomorphism_split(b, curve, k1_neg, k2_neg, k1_abs, k2_abs, scalar);
-	b.assert_true("endomorphism hint", endo_ok);
+	check_endomorphism_split(b, curve, k1_neg, k2_neg, k1_abs, k2_abs, scalar);
 
 	// Compute the endomorphism of the point
 	let point_endo = curve.endomorphism(b, &point);
@@ -172,21 +171,12 @@ pub fn shamirs_trick_endomorphism(
 	let (g1_mult_neg, g2_mult_neg, g1_mult_abs, g2_mult_abs) =
 		b.secp256k1_endomorphism_split_hint(&g_mult.limbs);
 
-	let g_endo_ok = check_endomorphism_split(
-		b,
-		curve,
-		g1_mult_neg,
-		g2_mult_neg,
-		g1_mult_abs,
-		g2_mult_abs,
-		g_mult,
-	);
-	b.assert_true("g endomorphism hint", g_endo_ok);
+	check_endomorphism_split(b, curve, g1_mult_neg, g2_mult_neg, g1_mult_abs, g2_mult_abs, g_mult);
 
 	let (pk1_mult_neg, pk2_mult_neg, pk1_mult_abs, pk2_mult_abs) =
 		b.secp256k1_endomorphism_split_hint(&pk_mult.limbs);
 
-	let pk_endo_ok = check_endomorphism_split(
+	check_endomorphism_split(
 		b,
 		curve,
 		pk1_mult_neg,
@@ -195,7 +185,6 @@ pub fn shamirs_trick_endomorphism(
 		pk2_mult_abs,
 		pk_mult,
 	);
-	b.assert_true("pk endomorphism hint", pk_endo_ok);
 
 	// Compute the endomorphisms
 	let g = Secp256k1Affine::generator(b);
@@ -269,7 +258,7 @@ fn check_endomorphism_split(
 	k1_abs: [Wire; 2],
 	k2_abs: [Wire; 2],
 	k: &BigUint,
-) -> Wire {
+) {
 	assert_eq!(k.limbs.len(), N_LIMBS);
 
 	let k1_abs = BigUint {
@@ -285,7 +274,12 @@ fn check_endomorphism_split(
 	let k1 = select_biguint(b, k1_neg, &f_scalar.sub(b, &coord_zero(b), &k1_abs), &k1_abs);
 	let k2 = select_biguint(b, k2_neg, &f_scalar.sub(b, &coord_zero(b), &k2_abs), &k2_abs);
 
-	biguint_eq(b, k, &f_scalar.add(b, &k1, &f_scalar.mul(b, &k2, &coord_lambda(b))))
+	assert_eq(
+		b,
+		"endomorphism split k1 + λk2 = k (mod n)",
+		k,
+		&f_scalar.add(b, &k1, &f_scalar.mul(b, &k2, &coord_lambda(b))),
+	);
 }
 
 /// A common trick to save doublings when computing multiexponentiations of the form
