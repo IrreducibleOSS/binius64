@@ -552,12 +552,134 @@ impl Sha256 {
 	}
 }
 
+/// Computes SHA-256 hash of a fixed-length message.
+///
+/// This function creates a subcircuit that computes the SHA-256 hash of a message
+/// with a compile-time known length. Unlike the `Sha256` struct which handles
+/// variable-length inputs, this function is optimized for fixed-length inputs where
+/// the length is known at circuit construction time.
+///
+/// # Arguments
+/// * `builder` - Circuit builder for constructing constraints
+/// * `message` - Input message as 32-bit words (4 bytes per wire) in big-endian format. Each wire
+///   must have the high 32 bits set to zero (enforced as a precondition).
+/// * `len_bytes` - The fixed length of the message in bytes (known at compile time)
+///
+/// # Returns
+/// * `[Wire; 8]` - The SHA-256 digest as 8 wires, each containing a 32-bit word in the low 32 bits
+///   (high 32 bits are zero) in big-endian order
+///
+/// # Panics
+/// * If `message.len()` does not equal exactly `len_bytes.div_ceil(4)`
+/// * If the message length in bits cannot fit in 32 bits
+///
+/// # Example
+/// ```rust,ignore
+/// use binius_frontend::circuits::sha256::sha256_fixed;
+/// use binius_frontend::compiler::CircuitBuilder;
+///
+/// let mut builder = CircuitBuilder::new();
+///
+/// // Create input wires for a 32-byte message (8 32-bit words)
+/// let message: Vec<_> = (0..8).map(|_| builder.add_witness()).collect();
+///
+/// // Compute SHA-256 of the 32-byte message
+/// let digest = sha256_fixed(&builder, &message, 32);
+/// ```
+pub fn sha256_fixed(builder: &CircuitBuilder, message: &[Wire], len_bytes: usize) -> [Wire; 8] {
+	// Validate that message.len() equals exactly len_bytes.div_ceil(4)
+	assert_eq!(
+		message.len(),
+		len_bytes.div_ceil(4),
+		"message.len() ({}) must equal len_bytes.div_ceil(4) ({})",
+		message.len(),
+		len_bytes.div_ceil(4)
+	);
+
+	// Ensure message length in bits fits in 32 bits
+	assert!(
+		(len_bytes as u64)
+			.checked_mul(8)
+			.is_some_and(|bits| bits <= u32::MAX as u64),
+		"Message length in bits must fit in 32 bits"
+	);
+
+	// Calculate padding requirements
+	// SHA-256 requires: message || 0x80 || zeros || 64-bit length field
+	// The 64-bit length field goes in the last 8 bytes of a block
+	// We need at least 9 bytes for padding (1 for 0x80 + 8 for length)
+	let n_blocks = (len_bytes + 9).div_ceil(64);
+	let n_padded_words = n_blocks * 16; // 16 32-bit words per block
+
+	// Create padded message
+	let mut padded_message = Vec::with_capacity(n_padded_words);
+
+	// Add message words
+	let n_message_words = len_bytes / 4;
+	let boundary_bytes = len_bytes % 4;
+
+	// Add complete message words
+	padded_message.extend_from_slice(&message[0..n_message_words]);
+
+	// Handle partial word at boundary
+	if boundary_bytes > 0 {
+		// The last message word contains partial data
+		let last_word = message[n_message_words];
+
+		// Mask out the unused bytes and add delimiter
+		let shift_amount = (4 - boundary_bytes) * 8;
+		let mask = builder.add_constant(Word((0xFFFFFFFFu64 >> shift_amount) << shift_amount));
+		let masked = builder.band(last_word, mask);
+
+		// Add 0x80 delimiter at the right position
+		let delimiter_shift = (3 - boundary_bytes) * 8;
+		let delimiter = builder.add_constant(Word(0x80u64 << delimiter_shift));
+		let boundary_word = builder.bxor(masked, delimiter);
+
+		padded_message.push(boundary_word);
+	} else {
+		// Message ends at word boundary - delimiter goes in new word
+		padded_message.push(builder.add_constant(Word(0x80000000)));
+	}
+
+	// Fill with zeros until we reach the length field position
+	let zero = builder.add_constant(Word::ZERO);
+	padded_message.resize(n_padded_words - 2, zero);
+
+	// Add the length field (64 bits total)
+	padded_message.push(zero); // High 32 bits of length (always 0 for us)
+	let bitlen = (len_bytes as u64) * 8;
+	padded_message.push(builder.add_constant(Word(bitlen)));
+
+	// Process compression blocks
+	let state_out = padded_message.chunks_exact(16).enumerate().fold(
+		State::iv(builder),
+		|state, (block_idx, block)| {
+			let block_message: [Wire; 16] = block.try_into().unwrap();
+
+			let compress = Compress::new(
+				&builder.subcircuit(format!("sha256_fixed_compress[{}]", block_idx)),
+				state.clone(),
+				block_message,
+			);
+
+			compress.state_out
+		},
+	);
+
+	// Return the final state as 8 32-bit words
+	state_out.0
+}
+
 #[cfg(test)]
 mod tests {
+	use std::array;
+
 	use binius_core::Word;
 	use hex_literal::hex;
+	use sha2::Digest;
 
-	use super::Sha256;
+	use super::*;
 	use crate::{
 		compiler::{self, Wire},
 		constraint_verifier::verify_constraints,
@@ -972,5 +1094,106 @@ mod tests {
 			extracted_bytes.push(byte);
 		}
 		assert_eq!(&extracted_bytes, message);
+	}
+
+	// Helper function for sha256_fixed tests
+	fn test_sha256_fixed_with_input(message: &[u8], expected_bytes: [u8; 32]) {
+		let b = CircuitBuilder::new();
+
+		// Pack message into 32-bit words
+		let n_words = message.len().div_ceil(4);
+		let mut message_wires = Vec::new();
+
+		for word_idx in 0..n_words {
+			let mut packed = 0u32;
+			for i in 0..4 {
+				let byte_idx = word_idx * 4 + i;
+				if byte_idx < message.len() {
+					packed |= (message[byte_idx] as u32) << (24 - i * 8);
+				}
+			}
+			message_wires.push(b.add_constant(Word(packed as u64)));
+		}
+
+		// Create expected digest wires (8 32-bit words)
+		let expected_digest_wires = array::from_fn::<_, 8, _>(|_| b.add_inout());
+
+		// Compute the digest
+		let computed_digest = sha256_fixed(&b, &message_wires, message.len());
+
+		// Assert that computed digest equals expected digest
+		for i in 0..8 {
+			b.assert_eq(format!("digest[{}]", i), computed_digest[i], expected_digest_wires[i]);
+		}
+
+		let circuit = b.build();
+		let cs = circuit.constraint_system();
+		let mut w = circuit.new_witness_filler();
+
+		// Populate the expected digest wires
+		for i in 0..8 {
+			let mut word = 0u32;
+			for j in 0..4 {
+				word |= (expected_bytes[i * 4 + j] as u32) << (24 - j * 8);
+			}
+			w[expected_digest_wires[i]] = Word(word as u64);
+		}
+
+		circuit.populate_wire_witness(&mut w).unwrap();
+		verify_constraints(cs, &w.into_value_vec()).unwrap();
+	}
+
+	#[test]
+	#[should_panic(expected = "message.len() (1) must equal len_bytes.div_ceil(4) (2)")]
+	fn test_sha256_fixed_with_insufficient_wires() {
+		use super::sha256_fixed;
+		let builder = compiler::CircuitBuilder::new();
+
+		// Create only 1 wire but claim message is 5 bytes (which needs 2 wires)
+		let message_wires: Vec<Wire> = vec![builder.add_witness()];
+
+		// This should panic because message.len() (1) != len_bytes.div_ceil(4) (2)
+		sha256_fixed(&builder, &message_wires, 5);
+	}
+
+	#[test]
+	fn test_sha256_fixed_various_sizes() {
+		use rand::{Rng, SeedableRng, rngs::StdRng};
+
+		// Test various message sizes to ensure padding works correctly
+		let sizes = vec![
+			0,   // empty
+			1,   // single byte
+			3,   // "abc" test vector
+			4,   // exactly one word
+			5,   // just over word boundary
+			31,  // just under half block
+			32,  // exactly half block
+			33,  // just over half block
+			55,  // max single block
+			56,  // forces two blocks
+			63,  // one byte from block boundary
+			64,  // exactly one block
+			65,  // just over one block
+			119, // max two blocks
+			120, // forces three blocks
+			128, // exactly two blocks
+			256, // exactly four blocks
+		];
+
+		let mut rng = StdRng::seed_from_u64(0);
+
+		for size in sizes {
+			// Generate random payload
+			let mut message = vec![0u8; size];
+			rng.fill(&mut message[..]);
+
+			// Compute expected hash using sha2 crate
+			let expected = sha2::Sha256::digest(&message);
+			let expected_bytes: [u8; 32] = expected.into();
+
+			// Test with our circuit
+			test_sha256_fixed_with_input(&message, expected_bytes);
+		}
 	}
 }
