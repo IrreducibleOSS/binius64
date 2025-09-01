@@ -501,18 +501,136 @@ impl Sha512 {
 	}
 }
 
+/// Computes SHA-512 hash of a fixed-length message.
+///
+/// This function creates a subcircuit that computes the SHA-512 hash of a message
+/// with a compile-time known length. Unlike the `Sha512` struct which handles
+/// variable-length inputs, this function is optimized for fixed-length inputs where
+/// the length is known at circuit construction time.
+///
+/// # Arguments
+/// * `builder` - Circuit builder for constructing constraints
+/// * `message` - Input message as packed 64-bit words (8 bytes per wire) in big-endian format. The
+///   words should already be encoded from bytes in big-endian order, matching SHA-512's
+///   byte-to-word conversion.
+/// * `len_bytes` - The fixed length of the message in bytes (known at compile time)
+///
+/// # Returns
+/// * `[Wire; 8]` - The SHA-512 digest as 8 wires of 64 bits each in big-endian order
+///
+/// # Panics
+/// * If `message.len()` does not equal exactly `len_bytes.div_ceil(8)`
+/// * If the message length in bits cannot fit in 64 bits
+///
+/// # Example
+/// ```rust,ignore
+/// use binius_frontend::circuits::sha512::sha512_fixed;
+/// use binius_frontend::compiler::CircuitBuilder;
+///
+/// let mut builder = CircuitBuilder::new();
+///
+/// // Create input wires for a 32-byte message
+/// let message: Vec<_> = (0..4).map(|_| builder.add_witness()).collect();
+///
+/// // Compute SHA-512 of the 32-byte message
+/// let digest = sha512_fixed(&builder, &message, 32);
+/// ```
+pub fn sha512_fixed(builder: &CircuitBuilder, message: &[Wire], len_bytes: usize) -> [Wire; 8] {
+	// Validate that message.len() equals exactly len_bytes.div_ceil(8)
+	assert_eq!(
+		message.len(),
+		len_bytes.div_ceil(8),
+		"message.len() ({}) must equal len_bytes.div_ceil(8) ({})",
+		message.len(),
+		len_bytes.div_ceil(8)
+	);
+
+	// Ensure message length in bits fits in 64 bits
+	assert!(
+		(len_bytes as u64).checked_mul(8).is_some(),
+		"Message length in bits must fit in 64 bits"
+	);
+
+	// Calculate padding requirements
+	// SHA-512 requires: message || 0x80 || zeros || 128-bit length field
+	// The 128-bit length field goes in the last 16 bytes of a block
+	// We need at least 17 bytes for padding (1 for 0x80 + 16 for length)
+	let n_blocks = (len_bytes + 17).div_ceil(128);
+	let n_padded_words = n_blocks * 16; // 16 words per block
+
+	// Create padded message wires
+	let mut padded_message = Vec::with_capacity(n_padded_words);
+	if len_bytes % 8 == 0 {
+		// Message ends at a word boundary - all words are complete
+		padded_message.extend_from_slice(message);
+		// Next word starts with 0x80 delimiter
+		padded_message.push(builder.add_constant(Word(0x8000000000000000)));
+	} else {
+		// Message ends mid-word - need to handle boundary word
+		padded_message.extend_from_slice(&message[..message.len() - 1]);
+
+		// Handle the last message word which is partial
+		let last_idx = message.len() - 1;
+		let boundary_byte_in_word = len_bytes % 8;
+
+		// Use shift operations to extract valid bytes and add delimiter
+		// Shift right to remove unwanted bytes, then shift left to restore position
+		let shift_amount = (8 - boundary_byte_in_word) * 8;
+		let shifted_right = builder.shr(message[last_idx], shift_amount as u32);
+		let shifted_back = builder.shl(shifted_right, shift_amount as u32);
+
+		// Add 0x80 delimiter at the right position
+		let delimiter_shift = (7 - boundary_byte_in_word) * 8;
+		let delimiter = builder.add_constant(Word(0x80u64 << delimiter_shift));
+		let boundary_word = builder.bxor(shifted_back, delimiter);
+		padded_message.push(boundary_word);
+	}
+
+	// Fill with zeros until we reach the length field position
+	let zero = builder.add_constant(Word::ZERO);
+	padded_message.resize(n_padded_words - 2, zero);
+
+	// Add the length field (128 bits, but high 64 bits are always 0 for us)
+	padded_message.push(zero);
+
+	let bitlen = (len_bytes as u64) * 8;
+	padded_message.push(builder.add_constant(Word(bitlen))); // Low 64 bits of length
+
+	// Process compression blocks
+	let state_out = padded_message.chunks(16).enumerate().fold(
+		State::iv(builder),
+		|state, (block_idx, block)| {
+			let block_message: [Wire; 16] = block
+				.try_into()
+				.expect("padded_message.len() must be divisible by 16");
+
+			let compress = Compress::new(
+				&builder.subcircuit(format!("sha512_fixed_compress[{}]", block_idx)),
+				state.clone(),
+				block_message,
+			);
+
+			compress.state_out
+		},
+	);
+
+	// Return the final state as the digest
+	state_out.0
+}
+
 #[cfg(test)]
 mod tests {
 	use binius_core::Word;
 	use hex_literal::hex;
+	use sha2::Digest;
 
-	use super::Sha512;
+	use super::{Sha512, sha512_fixed};
 	use crate::{
-		compiler::{self, Wire},
+		compiler::{self, CircuitBuilder, Wire},
 		constraint_verifier::verify_constraints,
 	};
 
-	fn mk_circuit(b: &mut compiler::CircuitBuilder, max_len: usize) -> Sha512 {
+	fn mk_circuit(b: &mut CircuitBuilder, max_len: usize) -> Sha512 {
 		let len = b.add_witness();
 		let digest: [Wire; 8] = std::array::from_fn(|_| b.add_inout());
 		let message = (0..max_len).map(|_| b.add_inout()).collect();
@@ -966,5 +1084,135 @@ mod tests {
 			extracted_bytes.push(byte);
 		}
 		assert_eq!(&extracted_bytes, message);
+	}
+
+	// ---- Tests for sha512_fixed function ----
+
+	/// Helper function to test sha512_fixed with a specific message
+	fn test_sha512_fixed_with_input(message_bytes: &[u8], expected_digest: [u8; 64]) {
+		let builder = CircuitBuilder::new();
+
+		// Create message wires
+		let n_words = message_bytes.len().div_ceil(8);
+		let message_wires: Vec<Wire> = (0..n_words).map(|_| builder.add_witness()).collect();
+
+		// Create digest output wires
+		let expected_digest_wires: [Wire; 8] = std::array::from_fn(|_| builder.add_witness());
+
+		// Call sha512_fixed
+		let computed_digest = sha512_fixed(&builder, &message_wires, message_bytes.len());
+
+		// Assert computed digest equals expected
+		for i in 0..8 {
+			builder.assert_eq(format!("digest[{i}]"), computed_digest[i], expected_digest_wires[i]);
+		}
+
+		let circuit = builder.build();
+		let cs = circuit.constraint_system();
+		let mut w = circuit.new_witness_filler();
+
+		// Populate message wires
+		for (i, wire) in message_wires.iter().enumerate() {
+			let byte_start = i * 8;
+			let byte_end = ((i + 1) * 8).min(message_bytes.len());
+
+			let mut word = 0u64;
+			for j in byte_start..byte_end {
+				word |= (message_bytes[j] as u64) << (56 - (j - byte_start) * 8);
+			}
+			w[*wire] = Word(word);
+		}
+
+		// Populate expected digest wires
+		for (i, bytes) in expected_digest.chunks(8).enumerate() {
+			let word = u64::from_be_bytes(bytes.try_into().unwrap());
+			w[expected_digest_wires[i]] = Word(word);
+		}
+
+		circuit.populate_wire_witness(&mut w).unwrap();
+		verify_constraints(cs, &w.into_value_vec()).unwrap();
+	}
+
+	#[test]
+	#[should_panic(expected = "message.len() (1) must equal len_bytes.div_ceil(8) (2)")]
+	fn test_sha512_fixed_with_insufficient_wires() {
+		let builder = CircuitBuilder::new();
+
+		// Create only 1 wire but claim message is 10 bytes (which needs 2 wires)
+		let message_wires: Vec<Wire> = vec![builder.add_witness()];
+
+		// This should panic because message.len() (1) != len_bytes.div_ceil(8) (2)
+		sha512_fixed(&builder, &message_wires, 10);
+	}
+
+	#[test]
+	fn test_sha512_fixed_exact_wire_count() {
+		let builder = CircuitBuilder::new();
+
+		// Test that the function requires exact wire count
+
+		// Empty message: 0 bytes requires 0 wires
+		let empty: Vec<Wire> = vec![];
+		let _ = sha512_fixed(&builder, &empty, 0);
+
+		// 8 bytes requires exactly 1 wire
+		let one_wire: Vec<Wire> = vec![builder.add_witness()];
+		let _ = sha512_fixed(&builder, &one_wire, 8);
+
+		// 10 bytes requires exactly 2 wires (10.div_ceil(8) = 2)
+		let two_wires: Vec<Wire> = vec![builder.add_witness(), builder.add_witness()];
+		let _ = sha512_fixed(&builder, &two_wires, 10);
+
+		// 16 bytes requires exactly 2 wires
+		let two_wires_full: Vec<Wire> = vec![builder.add_witness(), builder.add_witness()];
+		let _ = sha512_fixed(&builder, &two_wires_full, 16);
+
+		// 17 bytes requires exactly 3 wires (17.div_ceil(8) = 3)
+		let three_wires: Vec<Wire> = vec![
+			builder.add_witness(),
+			builder.add_witness(),
+			builder.add_witness(),
+		];
+		let _ = sha512_fixed(&builder, &three_wires, 17);
+	}
+
+	#[test]
+	fn test_sha512_fixed_various_sizes() {
+		use rand::{Rng, SeedableRng, rngs::StdRng};
+
+		// Test various message sizes to ensure padding works correctly
+		let sizes = vec![
+			0,   // empty
+			1,   // single byte
+			7,   // just under word boundary
+			8,   // exactly one word
+			9,   // just over word boundary
+			63,  // just under half block
+			64,  // exactly half block
+			65,  // just over half block
+			111, // max single block
+			112, // forces two blocks
+			127, // one byte from block boundary
+			128, // exactly one block
+			129, // just over one block
+			239, // max two blocks
+			240, // forces three blocks
+			256, // exactly two blocks
+		];
+
+		let mut rng = StdRng::seed_from_u64(0);
+
+		for size in sizes {
+			// Generate random payload
+			let mut message = vec![0u8; size];
+			rng.fill(&mut message[..]);
+
+			// Compute expected hash using sha2 crate
+			let expected = sha2::Sha512::digest(&message);
+			let expected_bytes: [u8; 64] = expected.into();
+
+			// Test with our circuit
+			test_sha512_fixed_with_input(&message, expected_bytes);
+		}
 	}
 }
