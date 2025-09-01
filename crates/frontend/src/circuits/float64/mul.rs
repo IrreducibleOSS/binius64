@@ -14,7 +14,7 @@ use crate::compiler::{CircuitBuilder, Wire};
 /// - `(m_a, m_b, exp_pre, sign)` where:
 ///   - `m_a`, `m_b`: 53-bit integer significands (with hidden 1 for normals)
 ///   - `exp_pre`: Base exponent before normalization adjustment
-///   - `sign`: Result sign (0 or 1)
+///   - `sign`: Result sign as an MSB boolean
 pub fn fp64_mul_prepare(
 	b: &CircuitBuilder,
 	pa: &Fp64Parts,
@@ -93,7 +93,7 @@ pub fn fp64_mul_make_round_base(b: &CircuitBuilder, m_a: Wire, m_b: Wire) -> (Wi
 ///
 /// # Parameters
 /// - `pa`, `pb`: Parts from `fp64_unpack` for operands a and b
-/// - `sign_xor`: XOR of input signs (0 or 1)
+/// - `sign_msb`: MSB boolean of XOR of input signs
 /// - `finite_result`: Result from finite multiplication pipeline
 ///
 /// # Returns
@@ -108,7 +108,6 @@ pub fn fp64_mul_finish_specials(
 	let qnan = b.add_constant_64(0x7FF8_0000_0000_0000);
 	let exp_2047 = b.add_constant_64(0x7FF);
 	let inf_payload = b.shl(exp_2047, 52);
-	let sign_hi = b.shl(sign_xor, 63);
 
 	let any_nan = b.bor(pa.is_nan, pb.is_nan);
 	let any_inf = b.bor(pa.is_inf, pb.is_inf);
@@ -117,11 +116,11 @@ pub fn fp64_mul_finish_specials(
 
 	let nan_mask = b.bor(any_nan, inf_times_zero);
 
-	let packed_inf = b.bor(sign_hi, inf_payload);
-	let packed_zero = sign_hi; // exp=0, frac=0
+	let sign_msb = b.band(sign_xor, b.add_constant_64(1u64 << 63));
+	let packed_inf = b.bor(sign_msb, inf_payload);
 
 	// Layered precedence: start with finite, then Zero, then Inf, then NaN
-	let with_zero = b.select(any_zero, packed_zero, finite_result);
+	let with_zero = b.select(any_zero, sign_msb, finite_result);
 	let with_inf = b.select(any_inf, packed_inf, with_zero);
 	b.select(nan_mask, qnan, with_inf)
 }
@@ -139,35 +138,35 @@ pub fn fp64_mul_finish_specials(
 ///
 /// # Returns
 /// - 64-bit IEEE-754 binary64 result of `a * b`
-pub fn float64_mul(b: &CircuitBuilder, a: Wire, b_: Wire) -> Wire {
+pub fn float64_mul(builder: &CircuitBuilder, a: Wire, b: Wire) -> Wire {
 	// Unpack & classify (reuse addition helper)
-	let pa = fp64_unpack(b, a);
-	let pb = fp64_unpack(b, b_);
+	let pa = fp64_unpack(builder, a);
+	let pb = fp64_unpack(builder, b);
 
 	// Early combine: multiplicands & base exponent/sign
-	let (m_a, m_b, exp_pre, sign_xor) = fp64_mul_prepare(b, &pa, &pb);
+	let (m_a, m_b, exp_pre, sign_msb) = fp64_mul_prepare(builder, &pa, &pb);
 
 	// 106-bit product -> round-base 64-bit (integer at bit63) + norm adjust bit
-	let (sig_round_base_uncut, norm_shift1_bit01) = fp64_mul_make_round_base(b, m_a, m_b);
+	let (sig_round_base_uncut, norm_shift1_bit01) = fp64_mul_make_round_base(builder, m_a, m_b);
 
 	// Exponent bump for normalization: exp_round_base = exp_pre + (norm_shift1?1:0)
-	let exp_round_base = iadd(b, exp_pre, norm_shift1_bit01);
+	let exp_round_base = iadd(builder, exp_pre, norm_shift1_bit01);
 
 	// Pre-round underflow to subnormal domain if needed (same as addition block)
 	let (sig_round_base, exp_for_round, exp_lt_1) =
-		fp64_underflow_shift(b, sig_round_base_uncut, exp_round_base);
+		fp64_underflow_shift(builder, sig_round_base_uncut, exp_round_base);
 
 	// Round to nearest-even
 	let (mant_final_53, exp_after_round, mant_overflow_mask) =
-		fp64_round_rne(b, sig_round_base, exp_for_round);
+		fp64_round_rne(builder, sig_round_base, exp_for_round);
 
 	// Pack finite or overflow to ±Inf
-	let stayed_sub_mask = b.band(exp_lt_1, b.bnot(mant_overflow_mask));
+	let stayed_sub_mask = builder.band(exp_lt_1, builder.bnot(mant_overflow_mask));
 	let finite_or_inf =
-		fp64_pack_finite_or_inf(b, sign_xor, mant_final_53, exp_after_round, stayed_sub_mask);
+		fp64_pack_finite_or_inf(builder, sign_msb, mant_final_53, exp_after_round, stayed_sub_mask);
 
 	// Multiplication-specific specials overlay (NaN / Inf*0 / ±Inf / ±0)
-	fp64_mul_finish_specials(b, &pa, &pb, sign_xor, finite_or_inf)
+	fp64_mul_finish_specials(builder, &pa, &pb, sign_msb, finite_or_inf)
 }
 
 #[cfg(test)]
@@ -265,7 +264,6 @@ mod tests {
 		finite_result: u64,
 	) -> u64 {
 		let qnan = 0x7FF8_0000_0000_0000u64;
-		let sign_hi = sign_xor << 63;
 		let inf_payload = 0x7FFu64 << 52;
 
 		let any_nan = (pa_is_nan | pb_is_nan) != 0;
@@ -280,10 +278,10 @@ mod tests {
 			return qnan;
 		}
 		if any_inf {
-			return sign_hi | inf_payload;
+			return sign_xor | inf_payload;
 		}
 		if any_zero {
-			return sign_hi; // signed zero
+			return sign_xor; // signed zero
 		}
 		finite_result
 	}
@@ -308,19 +306,19 @@ mod tests {
 		// 2. Any infinity -> return ±Inf with XOR sign
 		let any_inf = (pa.is_inf | pb.is_inf) != 0;
 		if any_inf {
-			let sign_xor = pa.sign ^ pb.sign;
-			return (sign_xor << 63) | (0x7FFu64 << 52);
+			let sign_xor_msb = pa.sign ^ pb.sign; // MSB-bool
+			return sign_xor_msb | (0x7FFu64 << 52);
 		}
 
 		// 3. Any zero -> return signed zero with XOR sign
 		let any_zero = pa_is_zero || pb_is_zero;
 		if any_zero {
-			let sign_xor = pa.sign ^ pb.sign;
-			return sign_xor << 63;
+			let sign_xor_msb = pa.sign ^ pb.sign; // MSB-bool
+			return sign_xor_msb; // signed zero
 		}
 
 		// 4. Finite multiplication pipeline
-		let sign_xor = pa.sign ^ pb.sign;
+		let sign_xor = pa.sign ^ pb.sign; // MSB-bool
 
 		// Get 53-bit significands and effective exponents
 		let (m_a, exp_eff_a) = if pa.is_norm != 0 {
@@ -373,7 +371,7 @@ mod tests {
 
 		// Pack finite result or overflow to infinity
 		let stayed_sub_mask = if exp_lt_1 != 0 && mant_overflow_mask == 0 {
-			u64::MAX
+			1u64 << 63
 		} else {
 			0
 		};
@@ -403,11 +401,12 @@ mod tests {
 			let expected_m_b = builder.add_inout();
 			let expected_exp_pre = builder.add_inout();
 			let expected_sign = builder.add_inout();
+			let mask = builder.add_constant_64(1u64 << 63);
 
 			builder.assert_eq("m_a", m_a, expected_m_a);
 			builder.assert_eq("m_b", m_b, expected_m_b);
 			builder.assert_eq("exp_pre", exp_pre, expected_exp_pre);
-			builder.assert_eq("sign", sign, expected_sign);
+			builder.assert_eq("sign", builder.band(sign, mask), expected_sign);
 
 			let circuit = builder.build();
 			let mut w = circuit.new_witness_filler();
@@ -415,12 +414,12 @@ mod tests {
 			w[b_wire] = Word(b_bits);
 
 			// Calculate expected values using reference
-			let pa_sign = (a_bits >> 63) & 1;
+			let pa_sign = a_bits;
 			let pa_exp = (a_bits >> 52) & 0x7FF;
 			let pa_frac = a_bits & ((1u64 << 52) - 1);
 			let pa_is_norm = pa_exp != 0 && pa_exp != 0x7FF;
 
-			let pb_sign = (b_bits >> 63) & 1;
+			let pb_sign = b_bits;
 			let pb_exp = (b_bits >> 52) & 0x7FF;
 			let pb_frac = b_bits & ((1u64 << 52) - 1);
 			let pb_is_norm = pb_exp != 0 && pb_exp != 0x7FF;
@@ -432,7 +431,7 @@ mod tests {
 			w[expected_m_a] = Word(ref_m_a);
 			w[expected_m_b] = Word(ref_m_b);
 			w[expected_exp_pre] = Word(ref_exp_pre);
-			w[expected_sign] = Word(ref_sign);
+			w[expected_sign] = Word(ref_sign & (1u64 << 63));
 
 			circuit.populate_wire_witness(&mut w).unwrap();
 			let cs = circuit.constraint_system();
@@ -484,13 +483,15 @@ mod tests {
 			// finite_result)
 			(0, 0, 0, 0, 0, 0, 0, 0x4000000000000000u64), // Normal case -> finite_result
 			(1u64 << 63, 0, 0, 0, 0, 0, 0, 0x4000000000000000u64), // A is NaN -> qNaN
-			(0, 0, 0, 1u64 << 63, 0, 0, 1, 0x4000000000000000u64), // B is NaN -> qNaN
+			(0, 0, 0, 1u64 << 63, 0, 0, 1u64 << 63, 0x4000000000000000u64), // B is NaN -> qNaN
 			(0, 1u64 << 63, 0, 0, 0, 1u64 << 63, 0, 0x4000000000000000u64), // Inf * 0 -> qNaN
-			(0, 0, 1u64 << 63, 0, 1u64 << 63, 0, 1, 0x4000000000000000u64), // 0 * Inf -> qNaN
+			(0, 0, 1u64 << 63, 0, 1u64 << 63, 0, 1u64 << 63, 0x4000000000000000u64), // 0 * Inf -> qNaN
 			(0, 1u64 << 63, 0, 0, 0, 0, 0, 0x4000000000000000u64), // +Inf * finite -> +Inf
-			(0, 1u64 << 63, 0, 0, 0, 0, 1, 0x4000000000000000u64), // Inf * finite with XOR sign -> -Inf
+			(0, 1u64 << 63, 0, 0, 0, 0, 1u64 << 63, 0x4000000000000000u64), /* Inf * finite with
+			                                               * XOR sign -> -Inf */
 			(0, 0, 1u64 << 63, 0, 0, 0, 0, 0x4000000000000000u64), // 0 * finite -> +0
-			(0, 0, 1u64 << 63, 0, 0, 0, 1, 0x4000000000000000u64), // 0 * finite with XOR sign -> -0
+			(0, 0, 1u64 << 63, 0, 0, 0, 1u64 << 63, 0x4000000000000000u64), /* 0 * finite with XOR sign
+			                                                        * -> -0 */
 		];
 
 		for (

@@ -1,9 +1,11 @@
+use binius_core::Word;
+
 use crate::compiler::{CircuitBuilder, Wire};
 
 /// Simple view of a decoded binary64 payload.
 #[derive(Clone, Copy)]
 pub struct Fp64Parts {
-	pub sign: Wire, // 0 or 1, placed in LSB
+	pub sign: Wire, // Sign as MSB-bool (bit63 set for negative, 0 otherwise)
 	pub exp: Wire,  // unbiased field bits (0..=0x7FF)
 	pub frac: Wire, // 52-bit payload
 
@@ -43,8 +45,8 @@ pub fn msb_to_lsb01(b: &CircuitBuilder, b_msb: Wire) -> Wire {
 ///
 /// This is a wrapper around the circuit builder's integer addition that handles
 /// carry-in/carry-out automatically with zero carry-in.
-pub fn iadd(b: &CircuitBuilder, a: Wire, b_: Wire) -> Wire {
-	let (s, _c) = b.iadd_cin_cout(a, b_, zero(b));
+pub fn iadd(builder: &CircuitBuilder, a: Wire, b: Wire) -> Wire {
+	let (s, _c) = builder.iadd_cin_cout(a, b, zero(builder));
 	s
 }
 
@@ -52,8 +54,8 @@ pub fn iadd(b: &CircuitBuilder, a: Wire, b_: Wire) -> Wire {
 ///
 /// This is a wrapper around the circuit builder's integer subtraction that handles
 /// borrow-in/borrow-out automatically with zero borrow-in.
-pub fn isub(b: &CircuitBuilder, a: Wire, b_: Wire) -> Wire {
-	let (d, _b) = b.isub_bin_bout(a, b_, zero(b));
+pub fn isub(builder: &CircuitBuilder, a: Wire, b: Wire) -> Wire {
+	let (d, _b) = builder.isub_bin_bout(a, b, zero(builder));
 	d
 }
 
@@ -335,7 +337,7 @@ pub fn sticky_from_low_k(b: &CircuitBuilder, lo: Wire, k: u32) -> Wire {
 ///
 /// Output:
 /// - `Fp64Parts` with fields:
-///   - `sign = (x >> 63) & 1`
+///   - `sign`: MSB-bool of sign bit (i.e., `x & (1<<63)`, either 0 or 0x8000..)
 ///   - `exp = (x >> 52) & 0x7FF`
 ///   - `frac = x & ((1<<52)-1)`
 ///   - `is_nan`: exp==0x7FF && frac!=0
@@ -344,12 +346,12 @@ pub fn sticky_from_low_k(b: &CircuitBuilder, lo: Wire, k: u32) -> Wire {
 ///   - `is_sub`: exp==0 && frac!=0
 ///   - `is_norm`: exp!=0 && exp!=0x7FF
 ///
-/// All booleans are 64-bit masks (all-1/all-0), suitable for `select`.
+/// All booleans are in MSB-bool format.
 pub fn fp64_unpack(b: &CircuitBuilder, x: Wire) -> Fp64Parts {
 	let exp_m = b.add_constant_64(0x7FF);
 	let frac_m = b.add_constant_64((1u64 << 52) - 1);
 
-	let sign = b.shr(x, 63);
+	let sign = x;
 	let exp = b.band(b.shr(x, 52), exp_m);
 	let frac = b.band(x, frac_m);
 
@@ -453,27 +455,26 @@ pub fn fp64_pack_finite_or_inf(
 ) -> Wire {
 	let frac_m = b.add_constant_64((1u64 << 52) - 1);
 	let exp_2047 = b.add_constant_64(0x7FF);
-	let sign_hi = b.shl(sign, 63);
 
 	let frac = b.band(mant_final_53, frac_m);
-	let packed_sub = b.bor(sign_hi, frac);
+	let sign = b.band(sign, b.add_constant(Word::MSB_ONE));
+	let packed_sub = b.bor(sign, frac);
 
 	let exp_sh = b.shl(exp_after_round, 52);
-	let packed_norm = b.bor(b.bor(sign_hi, exp_sh), frac);
+	let packed_norm = b.bor(b.bor(sign, exp_sh), frac);
 
 	let finite_packed = b.select(stayed_sub_mask, packed_sub, packed_norm);
 
 	// If mantissa is zero, the result is a signed zero regardless of exp_after_round.
 	let mant_is_zero = b.icmp_eq(mant_final_53, zero(b));
-	let packed_zero = sign_hi; // exp=0, frac=0
-	let finite_or_zero = b.select(mant_is_zero, packed_zero, finite_packed);
+	let finite_or_zero = b.select(mant_is_zero, sign, finite_packed);
 
 	// overflow_to_inf when exp_after_round >= 2047
 	let exp_eq_2047 = b.icmp_eq(exp_after_round, exp_2047);
 	let exp_gt_2047 = b.icmp_ult(exp_2047, exp_after_round);
 	let overflow_to_inf = b.bor(exp_eq_2047, exp_gt_2047);
 	let inf_payload = b.shl(exp_2047, 52);
-	let packed_inf = b.bor(sign_hi, inf_payload);
+	let packed_inf = b.bor(sign, inf_payload);
 
 	b.select(overflow_to_inf, packed_inf, finite_or_zero)
 }
@@ -497,7 +498,7 @@ pub mod tests {
 	}
 
 	pub fn ref_fp64_unpack(x: u64) -> Fp64UnpackResult {
-		let sign = (x >> 63) & 1;
+		let sign = x & (1u64 << 63);
 		let exp = (x >> 52) & 0x7FF;
 		let frac = x & ((1u64 << 52) - 1);
 
@@ -577,12 +578,12 @@ pub mod tests {
 	}
 
 	pub fn ref_fp64_pack_finite_or_inf(
-		sign: u64,
+		sign_msb: u64,
 		mant_final_53: u64,
 		exp_after_round: u64,
 		stayed_sub_mask_msb: u64,
 	) -> u64 {
-		let sign_hi = sign << 63;
+		let sign_hi = sign_msb & (1u64 << 63);
 		let frac = mant_final_53 & ((1u64 << 52) - 1);
 
 		let packed_sub = sign_hi | frac;
@@ -873,9 +874,10 @@ pub mod tests {
 			let expected_is_nan = builder.add_inout();
 			let expected_is_inf = builder.add_inout();
 			let expected_is_norm = builder.add_inout();
-			let bool_mask = builder.add_constant(Word::MSB_ONE);
 
-			builder.assert_eq("sign", result.sign, expected_sign);
+			// Compare only the MSB of sign; sign is represented as MSB-bool
+			let bool_mask = builder.add_constant(Word::MSB_ONE);
+			builder.assert_eq("sign", builder.band(result.sign, bool_mask), expected_sign);
 			builder.assert_eq("exp", result.exp, expected_exp);
 			builder.assert_eq("frac", result.frac, expected_frac);
 			builder.assert_eq("is_nan", builder.band(result.is_nan, bool_mask), expected_is_nan);

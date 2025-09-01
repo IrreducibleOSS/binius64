@@ -1,3 +1,5 @@
+use binius_core::Word;
+
 use super::utils::*;
 use crate::compiler::{CircuitBuilder, Wire};
 
@@ -10,14 +12,14 @@ use crate::compiler::{CircuitBuilder, Wire};
 /// - Sticky tracking across alignment and underflow right-shifts
 /// - Exact cancellation (+x) + (-x) → +0
 /// - Overflow → ±Inf with computed sign
-pub fn float64_add(b: &CircuitBuilder, a: Wire, b_: Wire) -> Wire {
+pub fn float64_add(builder: &CircuitBuilder, a: Wire, b: Wire) -> Wire {
 	// unpack & classify
-	let pa = fp64_unpack(b, a);
-	let pb = fp64_unpack(b, b_);
+	let pa = fp64_unpack(builder, a);
+	let pb = fp64_unpack(builder, b);
 
 	// extended sig & effective exp
-	let (sig_a, exp_a) = fp64_ext_sig_and_exp(b, &pa);
-	let (sig_b, exp_b) = fp64_ext_sig_and_exp(b, &pb);
+	let (sig_a, exp_a) = fp64_ext_sig_and_exp(builder, &pa);
+	let (sig_b, exp_b) = fp64_ext_sig_and_exp(builder, &pb);
 
 	// order by exponent
 	let (
@@ -28,26 +30,26 @@ pub fn float64_add(b: &CircuitBuilder, a: Wire, b_: Wire) -> Wire {
 		exp_b_ordered,
 		sign_b_ordered,
 		_swapped,
-	) = fp64_order_by_exp(b, sig_a, exp_a, pa.sign, sig_b, exp_b, pb.sign);
+	) = fp64_order_by_exp(builder, sig_a, exp_a, pa.sign, sig_b, exp_b, pb.sign);
 
 	// alignment with sticky→bit0
-	let d = isub(b, exp_a_ordered, exp_b_ordered);
-	let s_b = fp64_align_with_sticky(b, sig_b_ordered, d);
+	let d = isub(builder, exp_a_ordered, exp_b_ordered);
+	let s_b = fp64_align_with_sticky(builder, sig_b_ordered, d);
 
 	// same/different sign split
-	let same_sign = b.icmp_eq(sign_a_ordered, sign_b_ordered);
+	let diff_sign = builder.bxor(sign_a_ordered, sign_b_ordered);
 
 	// add path
-	let (sum_norm, exp_add) = fp64_add_path(b, sig_a_ordered, s_b, exp_a_ordered);
+	let (sum_norm, exp_add) = fp64_add_path(builder, sig_a_ordered, s_b, exp_a_ordered);
 
 	// sub path
 	let (diff_norm, exp_sub, sign_sub, mags_equal) =
-		fp64_sub_path(b, sig_a_ordered, s_b, exp_a_ordered, sign_a_ordered, sign_b_ordered);
+		fp64_sub_path(builder, sig_a_ordered, s_b, exp_a_ordered, sign_a_ordered, sign_b_ordered);
 
 	// merge + cancellation -> +0
 	let (res_sig, res_exp, res_sign) = fp64_merge_and_cancel(
-		b,
-		same_sign,
+		builder,
+		diff_sign,
 		sum_norm,
 		exp_add,
 		sign_a_ordered,
@@ -58,26 +60,27 @@ pub fn float64_add(b: &CircuitBuilder, a: Wire, b_: Wire) -> Wire {
 	);
 
 	// underflow pre-round right-shift if exp<=0
-	let (sig_round_base, exp_round_base, exp_lt_1) = fp64_underflow_shift(b, res_sig, res_exp);
+	let (sig_round_base, exp_round_base, exp_lt_1) =
+		fp64_underflow_shift(builder, res_sig, res_exp);
 
 	// round to nearest even
 	let (mant_final_53, exp_after_round, mant_overflow_mask) =
-		fp64_round_rne(b, sig_round_base, exp_round_base);
+		fp64_round_rne(builder, sig_round_base, exp_round_base);
 
 	// Pack finite or overflow to inf.
 	// Subnormal regime if:
 	//   - we were below 1 (exp_lt_1), OR
 	//   - base exponent == 1 and the integer bit (bit 63) is 0 (no hidden 1)
-	let msb01 = bit_lsb(b, sig_round_base, 63); // 0/1
-	let msb_is_zero = b.icmp_eq(msb01, zero(b)); // MSB-bool
-	let base_is_one = b.icmp_eq(exp_round_base, one(b));
-	let in_sub_regime = b.bor(exp_lt_1, b.band(base_is_one, msb_is_zero));
-	let stayed_sub_mask = b.band(in_sub_regime, b.bnot(mant_overflow_mask));
+	let msb01 = bit_lsb(builder, sig_round_base, 63); // 0/1
+	let msb_is_zero = builder.icmp_eq(msb01, zero(builder)); // MSB-bool
+	let base_is_one = builder.icmp_eq(exp_round_base, one(builder));
+	let in_sub_regime = builder.bor(exp_lt_1, builder.band(base_is_one, msb_is_zero));
+	let stayed_sub_mask = builder.band(in_sub_regime, builder.bnot(mant_overflow_mask));
 	let finite_or_inf =
-		fp64_pack_finite_or_inf(b, res_sign, mant_final_53, exp_after_round, stayed_sub_mask);
+		fp64_pack_finite_or_inf(builder, res_sign, mant_final_53, exp_after_round, stayed_sub_mask);
 
 	// operand-driven specials (NaN, operand infinities)
-	fp64_finish_specials(b, &pa, &pb, finite_or_inf)
+	fp64_finish_specials(builder, &pa, &pb, finite_or_inf)
 }
 
 /// Build an **extended significand** and **effective exponent**.
@@ -250,7 +253,7 @@ fn fp64_sub_path(
 #[allow(clippy::too_many_arguments)]
 fn fp64_merge_and_cancel(
 	b: &CircuitBuilder,
-	same_sign: Wire,
+	diff_sign: Wire,
 	sum_norm: Wire,
 	exp_add: Wire,
 	sign_a: Wire,
@@ -259,12 +262,12 @@ fn fp64_merge_and_cancel(
 	sign_sub: Wire,
 	mags_equal: Wire,
 ) -> (Wire, Wire, Wire) {
-	let res_sig_pre = b.select(same_sign, sum_norm, diff_norm);
-	let res_exp_pre = b.select(same_sign, exp_add, exp_sub);
-	let res_sign_pre = b.select(same_sign, sign_a, sign_sub);
+	let res_sig_pre = b.select(diff_sign, diff_norm, sum_norm);
+	let res_exp_pre = b.select(diff_sign, exp_sub, exp_add);
+	let res_sign_pre = b.select(diff_sign, sign_sub, sign_a);
 
 	// different signs and equal magnitudes => +0
-	let cancel = b.band(b.bnot(same_sign), mags_equal);
+	let cancel = b.band(diff_sign, mags_equal);
 
 	let res_sig = b.select(cancel, zero(b), res_sig_pre);
 	let res_exp = b.select(cancel, zero(b), res_exp_pre); // exp ignored for zero
@@ -296,16 +299,15 @@ fn fp64_finish_specials(
 	let exp_2047 = b.add_constant_64(0x7FF);
 	let inf_payload = b.shl(exp_2047, 52);
 
-	let same_sign = b.icmp_eq(pa.sign, pb.sign);
-	let opp_inf_nan = b.band(b.band(pa.is_inf, pb.is_inf), b.bnot(same_sign));
+	let diff_sign = b.bxor(pa.sign, pb.sign);
+	let opp_inf_nan = b.band(b.band(pa.is_inf, pb.is_inf), diff_sign);
 	let any_nan = b.bor(pa.is_nan, pb.is_nan);
 	let nan_mask = b.bor(any_nan, opp_inf_nan);
 
 	// If any operand is infinity (with either same signs or only one inf), pick its sign.
 	let any_inf = b.bor(pa.is_inf, pb.is_inf);
 	let inf_sign = b.select(pb.is_inf, pb.sign, pa.sign);
-	let inf_hi = b.shl(inf_sign, 63);
-	let packed_inf = b.bor(inf_hi, inf_payload);
+	let packed_inf = b.bor(b.band(inf_sign, b.add_constant(Word::MSB_ONE)), inf_payload);
 
 	let with_inf = b.select(any_inf, packed_inf, finite_or_inf);
 	b.select(nan_mask, qnan, with_inf)
@@ -445,7 +447,7 @@ mod tests {
 
 	#[allow(clippy::too_many_arguments)]
 	fn ref_fp64_merge_and_cancel(
-		same_sign: u64,
+		diff_sign: u64,
 		sum_norm: u64,
 		exp_add: u64,
 		sign_a: u64,
@@ -454,14 +456,14 @@ mod tests {
 		sign_sub: u64,
 		mags_equal: u64,
 	) -> (u64, u64, u64) {
-		let (res_sig_pre, res_exp_pre, res_sign_pre) = if same_sign != 0 {
+		let (res_sig_pre, res_exp_pre, res_sign_pre) = if diff_sign & (1u64 << 63) == 0 {
 			(sum_norm, exp_add, sign_a)
 		} else {
 			(diff_norm, exp_sub, sign_sub)
 		};
 
 		// Handle exact cancellation -> +0
-		let cancel = if same_sign == 0 && mags_equal != 0 {
+		let cancel = if diff_sign & (1u64 << 63) != 0 && mags_equal != 0 {
 			1u64 << 63
 		} else {
 			0
@@ -477,16 +479,16 @@ mod tests {
 	fn ref_fp64_finish_specials(
 		pa_is_nan: u64,
 		pa_is_inf: u64,
-		pa_sign: u64,
+		pa_sign_msb: u64,
 		pb_is_nan: u64,
 		pb_is_inf: u64,
-		pb_sign: u64,
+		pb_sign_msb: u64,
 		finite_or_inf: u64,
 	) -> u64 {
 		let qnan = 0x7FF8_0000_0000_0000u64;
 
 		let any_nan = (pa_is_nan | pb_is_nan) != 0;
-		let same_sign = pa_sign == pb_sign;
+		let same_sign = pa_sign_msb == pb_sign_msb;
 		let opp_inf_nan = (pa_is_inf != 0) && (pb_is_inf != 0) && !same_sign;
 		let nan_case = any_nan || opp_inf_nan;
 
@@ -496,10 +498,13 @@ mod tests {
 
 		let any_inf = (pa_is_inf | pb_is_inf) != 0;
 		if any_inf {
-			let inf_sign = if pb_is_inf != 0 { pb_sign } else { pa_sign };
-			let inf_hi = inf_sign << 63;
+			let inf_msb = if pb_is_inf != 0 {
+				pb_sign_msb
+			} else {
+				pa_sign_msb
+			} & (1u64 << 63);
 			let inf_payload = 0x7FFu64 << 52;
-			return inf_hi | inf_payload;
+			return inf_msb | inf_payload;
 		}
 
 		finite_or_inf
@@ -522,15 +527,15 @@ mod tests {
 		let d = exp_a.wrapping_sub(exp_b);
 		let s_b_align = ref_fp64_align_with_sticky(sig_b, d);
 
-		// Choose path by sign (MSB-bool)
-		let same_sign = if sign_a == sign_b { 1u64 << 63 } else { 0 };
+		// Choose path by sign (both MSB-bools already)
+		let diff_sign = sign_a ^ sign_b;
 		let (sum_norm, exp_add) = ref_fp64_add_path(sig_a, s_b_align, exp_a);
 		let (diff_norm, exp_sub, sign_sub, mags_equal) =
 			ref_fp64_sub_path(sig_a, s_b_align, exp_a, sign_a, sign_b);
 
 		// Merge + exact cancellation to +0
 		let (res_sig, res_exp, res_sign) = ref_fp64_merge_and_cancel(
-			same_sign, sum_norm, exp_add, sign_a, diff_norm, exp_sub, sign_sub, mags_equal,
+			diff_sign, sum_norm, exp_add, sign_a, diff_norm, exp_sub, sign_sub, mags_equal,
 		);
 
 		// Pre-round underflow handling
@@ -794,8 +799,10 @@ mod tests {
 			let exp_wire = builder.add_inout();
 			let stayed_sub_wire = builder.add_inout();
 
+			// Convert 0/1 sign input into MSB-bool for the packer
+			let sign_msb = builder.shl(sign_wire, 63);
 			let result =
-				fp64_pack_finite_or_inf(&builder, sign_wire, mant_wire, exp_wire, stayed_sub_wire);
+				fp64_pack_finite_or_inf(&builder, sign_msb, mant_wire, exp_wire, stayed_sub_wire);
 
 			let expected_result = builder.add_inout();
 			builder.assert_eq("pack_result", result, expected_result);
@@ -807,8 +814,12 @@ mod tests {
 			w[exp_wire] = Word(exp_after_round);
 			w[stayed_sub_wire] = Word(stayed_sub_mask);
 
-			let ref_result =
-				ref_fp64_pack_finite_or_inf(sign, mant_final_53, exp_after_round, stayed_sub_mask);
+			let ref_result = ref_fp64_pack_finite_or_inf(
+				sign << 63,
+				mant_final_53,
+				exp_after_round,
+				stayed_sub_mask,
+			);
 			w[expected_result] = Word(ref_result);
 
 			circuit.populate_wire_witness(&mut w).unwrap();
@@ -863,7 +874,8 @@ mod tests {
 			let mut w = circuit.new_witness_filler();
 
 			// Fill in all the pa/pb fields (most are unused for this test)
-			w[pa.sign] = Word(pa_sign);
+			// Provide MSB-bool sign values
+			w[pa.sign] = Word(pa_sign << 63);
 			w[pa.exp] = Word(0);
 			w[pa.frac] = Word(0);
 			w[pa.is_nan] = Word(pa_is_nan);
@@ -872,7 +884,7 @@ mod tests {
 			w[pa.is_sub] = Word(0);
 			w[pa.is_norm] = Word(0);
 
-			w[pb.sign] = Word(pb_sign);
+			w[pb.sign] = Word(pb_sign << 63);
 			w[pb.exp] = Word(0);
 			w[pb.frac] = Word(0);
 			w[pb.is_nan] = Word(pb_is_nan);
@@ -886,10 +898,10 @@ mod tests {
 			let ref_result = ref_fp64_finish_specials(
 				pa_is_nan,
 				pa_is_inf,
-				pa_sign,
+				pa_sign << 63,
 				pb_is_nan,
 				pb_is_inf,
-				pb_sign,
+				pb_sign << 63,
 				finite_or_inf,
 			);
 			w[expected_result] = Word(ref_result);
