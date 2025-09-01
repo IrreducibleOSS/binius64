@@ -36,6 +36,10 @@ harness = false
 name = "ethsign"
 harness = false
 
+[[bench]]
+name = "blake2s"
+harness = false
+
 [features]
 default = ["rayon"]
 perfetto = ["tracing-profile/perfetto"]
