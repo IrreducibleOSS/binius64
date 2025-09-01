@@ -17,16 +17,20 @@ binius-utils = { path = "../utils", features = ["platform-diagnostics"] }
 clap.workspace = true
 tracing.workspace = true
 tracing-profile.workspace = true
+blake2 = "0.10"
 ethsign = "0.9.0"
 tiny-keccak = "2.0.2"
 rand.workspace = true
 base64.workspace = true
-blake2.workspace = true
 jwt-simple.workspace = true
 sha2.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
+
+[[bench]]
+name = "blake2b"
+harness = false
 
 [[bench]]
 name = "keccak"
