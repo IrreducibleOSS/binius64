@@ -1,7 +1,6 @@
 // Copyright 2023-2025 Irreducible Inc.
 
 use std::{
-	any::TypeId,
 	fmt::{Debug, Display, Formatter},
 	iter::{Product, Sum},
 	ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign},
@@ -31,17 +30,9 @@ pub trait BinaryField: ExtensionField<BinaryField1b> {
 /// trait can be implemented on any binary field *isomorphic* to the canonical tower field.
 ///
 /// [DP23]: https://eprint.iacr.org/2023/1784
-pub trait TowerField: BinaryField + From<Self::Canonical>
-where
-	Self::Canonical: From<Self>,
-{
+pub trait TowerField: BinaryField {
 	/// The level $\iota$ in the tower, where this field is isomorphic to $T_{\iota}$.
 	const TOWER_LEVEL: usize = Self::N_BITS.ilog2() as usize;
-
-	/// The canonical field isomorphic to this tower field.
-	/// Currently for every tower field, the canonical field is Fan-Paar's binary field of the same
-	/// degree.
-	type Canonical: TowerField + SerializeBytes + DeserializeBytes;
 
 	/// Returns the smallest valid `TOWER_LEVEL` in the tower that can fit the same value.
 	///
@@ -533,11 +524,6 @@ macro_rules! impl_field_extension {
 pub(crate) use impl_field_extension;
 
 binary_field!(pub BinaryField1b(U1), U1::new(0x1));
-
-#[inline(always)]
-pub fn is_canonical_tower<F: TowerField>() -> bool {
-	TypeId::of::<F::Canonical>() == TypeId::of::<F>()
-}
 
 macro_rules! serialize_deserialize {
 	($bin_type:ty) => {

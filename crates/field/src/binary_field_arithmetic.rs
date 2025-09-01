@@ -59,8 +59,6 @@ pub(crate) use impl_arithmetic_using_packed;
 
 // TODO: try to get rid of `TowerFieldArithmetic` and use `impl_arithmetic_using_packed` here
 impl TowerField for BinaryField1b {
-	type Canonical = Self;
-
 	fn min_tower_level(self) -> usize {
 		0
 	}

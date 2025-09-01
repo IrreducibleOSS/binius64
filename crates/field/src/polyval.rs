@@ -483,8 +483,6 @@ impl BinaryField for BinaryField128bPolyval {
 }
 
 impl TowerField for BinaryField128bPolyval {
-	type Canonical = BinaryField128bPolyval;
-
 	fn min_tower_level(self) -> usize {
 		match self {
 			Self::ZERO | Self::ONE => 0,

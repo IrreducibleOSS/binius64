@@ -44,8 +44,6 @@ mul_by_binary_field_1b!(AESTowerField8b);
 impl_arithmetic_using_packed!(AESTowerField8b);
 
 impl TowerField for AESTowerField8b {
-	type Canonical = AESTowerField8b;
-
 	fn min_tower_level(self) -> usize {
 		match self {
 			Self::ZERO | Self::ONE => 0,
