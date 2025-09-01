@@ -11,6 +11,58 @@ use crate::{
 	compiler::{CircuitBuilder, Wire},
 };
 
+/// Compute scalar multiplication `point * scalar` using the naive double-and-add algorithm.
+///
+/// This implementation does not use the secp256k1 endomorphism optimization.
+///
+/// # Parameters
+/// - `b`: The circuit builder
+/// - `curve`: The secp256k1 curve instance
+/// - `bits`: Number of bits to process in the scalar
+/// - `scalar`: The scalar to multiply by (as a BigUint, must have enough limbs for bits)
+/// - `point`: The point to multiply (in affine coordinates)
+///
+/// # Returns
+/// The result of `point * scalar` in affine coordinates
+pub fn scalar_mul_naive(
+	b: &CircuitBuilder,
+	curve: &Secp256k1,
+	bits: usize,
+	scalar: &BigUint,
+	point: Secp256k1Affine,
+) -> Secp256k1Affine {
+	// Ensure scalar has enough limbs for the requested bits
+	let required_limbs = bits.div_ceil(WORD_SIZE_BITS);
+	assert!(
+		scalar.limbs.len() >= required_limbs,
+		"scalar must have at least {} limbs for {} bits, but has {}",
+		required_limbs,
+		bits,
+		scalar.limbs.len()
+	);
+
+	let mut acc = Secp256k1Affine::point_at_infinity(b);
+
+	for bit_index in (0..bits).rev() {
+		let limb = bit_index / WORD_SIZE_BITS;
+		let bit = bit_index % WORD_SIZE_BITS;
+
+		if bit_index != bits - 1 {
+			acc = curve.double(b, &acc);
+		}
+
+		let scalar_bit = b.shl(scalar.limbs[limb], (WORD_SIZE_BITS - 1 - bit) as u32);
+
+		// Add the selected point to the accumulator
+		let acc_plus_point = curve.add_incomplete(b, &acc, &point);
+
+		// Select whether to add point to accumulator based on scalar bit
+		acc = select_secp256k1_affine(b, scalar_bit, &acc_plus_point, &acc);
+	}
+
+	acc
+}
+
 /// A common trick to save doublings when computing multiexponentiations of the form
 /// `G*g_mult + PK*pk_mult` - instead of doing two scalar multiplications separately and
 /// adding their results, we share the doubling step of double-and-add.
@@ -212,4 +264,67 @@ pub fn shamirs_trick_naive(
 	}
 
 	acc
+}
+
+#[cfg(test)]
+mod tests {
+	use binius_core::word::Word;
+	use k256::{
+		ProjectivePoint, Scalar,
+		elliptic_curve::{ops::MulByGenerator, sec1::ToEncodedPoint},
+	};
+
+	use super::*;
+	use crate::{
+		circuits::{
+			bignum::{BigUint, assert_eq},
+			secp256k1::{Secp256k1, Secp256k1Affine},
+		},
+		compiler::CircuitBuilder,
+	};
+
+	#[test]
+	fn test_scalar_mul_naive() {
+		let builder = CircuitBuilder::new();
+		let curve = Secp256k1::new(&builder);
+
+		// Test with scalar = 69
+		let scalar_value = 69u64;
+
+		// Use k256 to compute the expected result
+		let k256_scalar = Scalar::from(scalar_value);
+		let k256_point = ProjectivePoint::mul_by_generator(&k256_scalar).to_affine();
+
+		// Extract coordinates from k256 result
+		let point_bytes = k256_point.to_encoded_point(false).to_bytes();
+		// The uncompressed format is: 0x04 || x || y (65 bytes total)
+		// We need to extract x and y coordinates (32 bytes each)
+		let x_coord = num_bigint::BigUint::from_bytes_be(&point_bytes[1..33]);
+		let y_coord = num_bigint::BigUint::from_bytes_be(&point_bytes[33..65]);
+
+		// Create our scalar as BigUint
+		let scalar = BigUint::new_constant(&builder, &num_bigint::BigUint::from(scalar_value));
+
+		// Create expected coordinates as BigUint
+		let expected_x = BigUint::new_constant(&builder, &x_coord);
+		let expected_y = BigUint::new_constant(&builder, &y_coord);
+
+		// Get the generator point
+		let generator = Secp256k1Affine::generator(&builder);
+
+		// Perform scalar multiplication with our implementation
+		let result = scalar_mul_naive(&builder, &curve, 7, &scalar, generator);
+
+		// Check that the result matches the expected point
+		assert_eq(&builder, "result_x", &result.x, &expected_x);
+		assert_eq(&builder, "result_y", &result.y, &expected_y);
+
+		// Build and verify the circuit
+		let cs = builder.build();
+		let mut w = cs.new_witness_filler();
+		assert!(cs.populate_wire_witness(&mut w).is_ok());
+
+		// Also verify the point is not at infinity
+		assert_eq!(w[result.is_point_at_infinity], Word::ZERO);
+	}
 }
