@@ -63,6 +63,85 @@ pub fn scalar_mul_naive(
 	acc
 }
 
+/// Compute scalar multiplication `point * scalar` using the secp256k1 endomorphism optimization.
+///
+/// This implementation uses the curve's endomorphism to split the scalar into two ~128-bit
+/// components, reducing the number of doublings from 256 to 128.
+///
+/// # Parameters
+/// - `b`: The circuit builder
+/// - `curve`: The secp256k1 curve instance
+/// - `scalar`: The scalar to multiply by (as a BigUint with N_LIMBS)
+/// - `point`: The point to multiply (in affine coordinates)
+///
+/// # Returns
+///
+/// The result of `point * scalar` in affine coordinates
+pub fn scalar_mul(
+	b: &CircuitBuilder,
+	curve: &Secp256k1,
+	scalar: &BigUint,
+	point: Secp256k1Affine,
+) -> Secp256k1Affine {
+	assert_eq!(scalar.limbs.len(), N_LIMBS);
+
+	// Nondeterministically split the scalar, constrain the split
+	let (k1_neg, k2_neg, k1_abs, k2_abs) = b.secp256k1_endomorphism_split_hint(&scalar.limbs);
+
+	let endo_ok = check_endomorphism_split(b, curve, k1_neg, k2_neg, k1_abs, k2_abs, scalar);
+	b.assert_true("endomorphism hint", endo_ok);
+
+	// Compute the endomorphism of the point
+	let point_endo = curve.endomorphism(b, &point);
+
+	// The split returns "signed scalars" (which is required to fit them into 128 bits).
+	// Negate the base if needed to only care about positive exponents.
+	let p1 = curve.negate_if(b, k1_neg, &point);
+	let p2 = curve.negate_if(b, k2_neg, &point_endo);
+
+	// Compute the 4-element lookup table: {0, P1, P2, P1+P2}
+	let lookup = vec![
+		Secp256k1Affine::point_at_infinity(b),
+		p1.clone(),
+		p2.clone(),
+		curve.add_incomplete(b, &p1, &p2),
+	];
+
+	let mut acc = Secp256k1Affine::point_at_infinity(b);
+
+	for bit_index in (0..128).rev() {
+		let limb = bit_index / WORD_SIZE_BITS;
+		let bit = bit_index % WORD_SIZE_BITS;
+
+		if bit_index != 127 {
+			acc = curve.double(b, &acc);
+		}
+
+		// Extract the current bit from each scalar component
+		let k1_bit = b.shl(k1_abs[limb], (WORD_SIZE_BITS - 1 - bit) as u32);
+		let k2_bit = b.shl(k2_abs[limb], (WORD_SIZE_BITS - 1 - bit) as u32);
+
+		// Perform 2-bit lookup using nested selection
+		// This selects one of the 4 lookup table entries based on the two bits
+		let mut level = lookup.clone();
+		for sel_bit in [k1_bit, k2_bit] {
+			let next_level = level
+				.chunks(2)
+				.map(|pair| {
+					assert_eq!(pair.len(), 2);
+					select_secp256k1_affine(b, sel_bit, &pair[1], &pair[0])
+				})
+				.collect();
+			level = next_level;
+		}
+
+		assert_eq!(level.len(), 1);
+		acc = curve.add_incomplete(b, &acc, &level[0]);
+	}
+
+	acc
+}
+
 /// A common trick to save doublings when computing multiexponentiations of the form
 /// `G*g_mult + PK*pk_mult` - instead of doing two scalar multiplications separately and
 /// adding their results, we share the doubling step of double-and-add.
@@ -270,9 +349,10 @@ pub fn shamirs_trick_naive(
 mod tests {
 	use binius_core::word::Word;
 	use k256::{
-		ProjectivePoint, Scalar,
-		elliptic_curve::{ops::MulByGenerator, sec1::ToEncodedPoint},
+		ProjectivePoint, Scalar, U256,
+		elliptic_curve::{ops::MulByGenerator, scalar::FromUintUnchecked, sec1::ToEncodedPoint},
 	};
+	use rand::prelude::*;
 
 	use super::*;
 	use crate::{
@@ -325,6 +405,53 @@ mod tests {
 		assert!(cs.populate_wire_witness(&mut w).is_ok());
 
 		// Also verify the point is not at infinity
+		assert_eq!(w[result.is_point_at_infinity], Word::ZERO);
+	}
+
+	#[test]
+	fn test_scalar_mul_with_endomorphism() {
+		let builder = CircuitBuilder::new();
+		let curve = Secp256k1::new(&builder);
+
+		// Generate a random 256-bit scalar
+		let mut rng = StdRng::seed_from_u64(0);
+		let mut scalar_bytes = [0u8; 32];
+		rng.fill(&mut scalar_bytes);
+
+		// Create the scalar in both k256 and our format
+		let k256_uint = U256::from_be_slice(&scalar_bytes);
+		let k256_scalar = Scalar::from_uint_unchecked(k256_uint);
+		let scalar_bigint = num_bigint::BigUint::from_bytes_be(&scalar_bytes);
+		let scalar = BigUint::new_constant(&builder, &scalar_bigint).zero_extend(&builder, N_LIMBS);
+
+		// Use k256 to compute the expected result with the generator point
+		let k256_point = ProjectivePoint::mul_by_generator(&k256_scalar).to_affine();
+
+		// Extract coordinates from k256 result
+		let point_bytes = k256_point.to_encoded_point(false).to_bytes();
+		let x_coord = num_bigint::BigUint::from_bytes_be(&point_bytes[1..33]);
+		let y_coord = num_bigint::BigUint::from_bytes_be(&point_bytes[33..65]);
+
+		// Create expected coordinates as BigUint
+		let expected_x = BigUint::new_constant(&builder, &x_coord);
+		let expected_y = BigUint::new_constant(&builder, &y_coord);
+
+		// Get the generator point
+		let generator = Secp256k1Affine::generator(&builder);
+
+		// Perform scalar multiplication with our endomorphism implementation
+		let result = scalar_mul(&builder, &curve, &scalar, generator);
+
+		// Check that the result matches the expected point
+		assert_eq(&builder, "result_x", &result.x, &expected_x);
+		assert_eq(&builder, "result_y", &result.y, &expected_y);
+
+		// Build and verify the circuit
+		let cs = builder.build();
+		let mut w = cs.new_witness_filler();
+		assert!(cs.populate_wire_witness(&mut w).is_ok());
+
+		// Verify the point is not at infinity
 		assert_eq!(w[result.is_point_at_infinity], Word::ZERO);
 	}
 }
