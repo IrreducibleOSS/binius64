@@ -128,7 +128,7 @@ fn bench_blake2s_hash(c: &mut Criterion) {
 
 	// Generate one proof for verification benchmark and size reporting
 	let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
-	let _ = prover
+	prover
 		.prove(witness.clone(), &mut prover_transcript)
 		.unwrap();
 	let proof_bytes = prover_transcript.finalize();
