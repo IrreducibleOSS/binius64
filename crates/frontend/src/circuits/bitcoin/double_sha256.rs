@@ -21,9 +21,6 @@ impl DoubleSha256 {
 	/// Constructs a circuit that asserts that `digest = SHA256(SHA256(message))`.
 	/// The message length in bytes is fixed at compile time to be `message.len() * 8`.
 	///
-	/// **Note:** This does NOT assert that `digest` matches any particular digest, you would have
-	/// to do such a check yourself.
-	///
 	/// # Preconditions
 	///
 	/// - `message.len() * 8 == message_len`
