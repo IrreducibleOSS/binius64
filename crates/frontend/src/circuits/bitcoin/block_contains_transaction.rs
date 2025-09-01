@@ -93,19 +93,7 @@ mod tests {
 		.take(30)
 		.collect();
 		let merkle_path_len = builder.add_witness();
-		// let block_header: [Wire; 10] = array::from_fn(|_| builder.add_witness());
-		let block_header = [
-			builder.add_constant_64(0x1ae2144a26000000), // 0
-			builder.add_constant_64(0x266ac081d947d0da), // 1
-			builder.add_constant_64(0xeb8b3dda5e346e44), // 2
-			builder.add_constant_64(0x0000000000017480), // 3
-			builder.add_constant_64(0x21df01fc00000000), // 4
-			builder.add_constant_64(0xa63fbcce364b9539), // 5
-			builder.add_constant_64(0x4bd3670a16a7f6fb), // 6
-			builder.add_constant_64(0x6fe47c2aaac4e567), // 7
-			builder.add_constant_64(0x68a42e64832ab45b), // 8
-			builder.add_constant_64(0xd1a44bd117022cb3), // 9
-		];
+		let block_header: [Wire; 10] = std::array::from_fn(|_| builder.add_witness());
 		let block_hash: [Wire; 4] = std::array::from_fn(|_| builder.add_witness());
 		let block_contains_transaction = BlockContainsTransaction::construct_circuit(
 			&builder,
