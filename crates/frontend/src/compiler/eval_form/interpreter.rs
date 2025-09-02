@@ -102,6 +102,7 @@ impl<'a> Interpreter<'a> {
 				0x04 => self.exec_bnot(ctx),
 				0x05 => self.exec_select(ctx),
 				0x06 => self.exec_bxor_multi(ctx),
+				0x07 => self.exec_fax(ctx),
 
 				// Shifts
 				0x10 => self.exec_sll(ctx),
@@ -198,6 +199,15 @@ impl<'a> Interpreter<'a> {
 			let src = self.read_reg();
 			val = val ^ self.load(ctx, src);
 		}
+		self.store(ctx, dst, val);
+	}
+
+	fn exec_fax(&mut self, ctx: &mut ExecutionContext<'_>) {
+		let dst = self.read_reg();
+		let src1 = self.read_reg();
+		let src2 = self.read_reg();
+		let src3 = self.read_reg();
+		let val = (self.load(ctx, src1) & self.load(ctx, src2)) ^ self.load(ctx, src3);
 		self.store(ctx, dst, val);
 	}
 

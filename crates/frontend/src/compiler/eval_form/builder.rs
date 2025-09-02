@@ -56,6 +56,15 @@ impl BytecodeBuilder {
 		}
 	}
 
+	pub fn emit_fax(&mut self, dst: u32, src1: u32, src2: u32, src3: u32) {
+		self.n_eval_insn += 1;
+		self.emit_u8(0x07);
+		self.emit_reg(dst);
+		self.emit_reg(src1);
+		self.emit_reg(src2);
+		self.emit_reg(src3);
+	}
+
 	pub fn emit_select(&mut self, dst: u32, a: u32, b: u32, cond: u32) {
 		self.n_eval_insn += 1;
 		self.emit_u8(0x05);

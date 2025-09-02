@@ -9,6 +9,7 @@ pub enum Opcode {
 	Bxor,
 	BxorMulti,
 	Bor,
+	Fax,
 
 	// Selection
 	Select,
@@ -96,6 +97,7 @@ impl Opcode {
 			Opcode::Bxor => gate::bxor::shape(),
 			Opcode::BxorMulti => gate::bxor_multi::shape(dimensions),
 			Opcode::Bor => gate::bor::shape(),
+			Opcode::Fax => gate::fax::shape(),
 
 			// Selection
 			Opcode::Select => gate::select::shape(),
