@@ -24,6 +24,8 @@ base64.workspace = true
 blake2.workspace = true
 jwt-simple.workspace = true
 sha2.workspace = true
+hex = "0.4"
+k256 = { workspace = true, features = ["arithmetic"] }
 
 [dev-dependencies]
 criterion.workspace = true
@@ -52,3 +54,7 @@ path = "examples/prover.rs"
 [[example]]
 name = "verifier"
 path = "examples/verifier.rs"
+
+[[example]]
+name = "padding_validation_test"
+path = "examples/padding_validation_test.rs"

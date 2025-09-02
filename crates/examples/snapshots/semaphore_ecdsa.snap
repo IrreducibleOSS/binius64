@@ -1,0 +1,11 @@
+semaphore_ecdsa circuit
+--
+Number of gates: 475686
+Number of evaluation instructions: 563535
+Number of AND constraints: 609289
+Number of MUL constraints: 48536
+Length of value vec: 1048576
+  Constants: 72
+  Inout: 11
+  Witness: 97
+  Internal: 887101
