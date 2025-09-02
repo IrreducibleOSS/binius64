@@ -31,19 +31,15 @@ pub fn shape(dimensions: &[usize]) -> OpcodeShape {
 
 pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) {
 	let GateParam {
-		constants,
-		inputs,
-		outputs,
-		..
+		inputs, outputs, ..
 	} = data.gate_param();
-	let [all_one] = constants else { unreachable!() };
 	let [z] = outputs else { unreachable!() };
 
-	// Constraint: N-way Bitwise XOR
+	// Constraint: N-way Bitwise XOR (linear)
 	//
-	// (x0 ⊕ x1 ⊕ ... ⊕ xn) ∧ all-1 = z
+	// (x0 ⊕ x1 ⊕ ... ⊕ xn) = z
 	let terms: Vec<WireExprTerm> = inputs.iter().map(|&w| w.into()).collect();
-	builder.and().a(xor_multi(terms)).b(*all_one).c(*z).build();
+	builder.linear().rhs(xor_multi(terms)).dst(*z).build();
 }
 
 pub fn emit_eval_bytecode(

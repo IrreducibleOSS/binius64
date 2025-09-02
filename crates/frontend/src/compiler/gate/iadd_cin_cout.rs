@@ -47,12 +47,8 @@ pub fn shape() -> OpcodeShape {
 
 pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) {
 	let GateParam {
-		constants,
-		inputs,
-		outputs,
-		..
+		inputs, outputs, ..
 	} = data.gate_param();
-	let [all_one] = constants else { unreachable!() };
 	let [a, b, cin] = inputs else { unreachable!() };
 	let [sum, cout] = outputs else { unreachable!() };
 
@@ -69,14 +65,13 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 		.c(xor3(*cout, cout_sll_1, cin_msb))
 		.build();
 
-	// Constraint 2: Sum equality
+	// Constraint 2: Sum equality (linear)
 	//
-	// (a ⊕ b ⊕ (cout << 1) ⊕ cin_msb) ∧ all-1 = sum
+	// (a ⊕ b ⊕ (cout << 1) ⊕ cin_msb) = sum
 	builder
-		.and()
-		.a(xor4(*a, *b, cout_sll_1, cin_msb))
-		.b(*all_one)
-		.c(*sum)
+		.linear()
+		.rhs(xor4(*a, *b, cout_sll_1, cin_msb))
+		.dst(*sum)
 		.build();
 }
 

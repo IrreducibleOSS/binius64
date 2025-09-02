@@ -43,14 +43,13 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 		.c(xor3(*bout, bout_sll_1, bin_msb))
 		.build();
 
-	// Constraint 2: Diff equality
+	// Constraint 2: Diff equality (linear)
 	//
-	// (a ⊕ b ⊕ (bout << 1) ⊕ bin_msb) ∧ all-1 = diff
+	// (a ⊕ b ⊕ (bout << 1) ⊕ bin_msb) = diff
 	builder
-		.and()
-		.a(xor4(*a, *b, bout_sll_1, bin_msb))
-		.b(*all_one)
-		.c(*diff)
+		.linear()
+		.rhs(xor4(*a, *b, bout_sll_1, bin_msb))
+		.dst(*diff)
 		.build();
 }
 

@@ -449,3 +449,254 @@ proptest! {
 		assert_eq!((k1 + lambda * k2) % modulus, k_bignum);
 	}
 }
+
+#[test]
+fn test_bxor_linear_constraint() {
+	// Test that bxor operation internally uses linear constraints
+	// which are then expanded to AND constraints with all_one
+	let builder = CircuitBuilder::new();
+
+	let a = builder.add_inout();
+	let b = builder.add_inout();
+
+	// bxor internally creates a linear constraint
+	let c = builder.bxor(a, b);
+
+	let circuit = builder.build();
+
+	// Verify the circuit builds successfully and bxor works correctly
+	let mut w = circuit.new_witness_filler();
+	w[a] = Word(0x123456789abcdef0);
+	w[b] = Word(0xfedcba9876543210);
+
+	circuit.populate_wire_witness(&mut w).unwrap();
+
+	// Verify result is correct
+	assert_eq!(w[c], Word(0x123456789abcdef0 ^ 0xfedcba9876543210));
+
+	// Verify constraints are satisfied
+	let cs = circuit.constraint_system();
+	verify_constraints(cs, &w.value_vec).unwrap();
+}
+
+#[test]
+fn test_shift_operations_with_linear_constraints() {
+	// Test that shift operations (shl, shr, sar) work correctly
+	// These operations internally use linear constraints
+	let builder = CircuitBuilder::new();
+
+	let a = builder.add_inout();
+	let b = builder.add_inout();
+
+	// Test shift left
+	let shl_result = builder.shl(a, 8);
+	// Test shift right
+	let shr_result = builder.shr(b, 16);
+	// Combine with XOR
+	let combined = builder.bxor(shl_result, shr_result);
+
+	let circuit = builder.build();
+
+	// Test with specific values
+	let mut w = circuit.new_witness_filler();
+	w[a] = Word(0xff00ff00ff00ff00);
+	w[b] = Word(0x0000abcd0000ef12);
+
+	circuit.populate_wire_witness(&mut w).unwrap();
+
+	// Verify results
+	assert_eq!(w[shl_result], Word(0xff00ff00ff00ff00 << 8));
+	assert_eq!(w[shr_result], Word(0x0000abcd0000ef12 >> 16));
+	assert_eq!(w[combined], Word((0xff00ff00ff00ff00 << 8) ^ (0x0000abcd0000ef12 >> 16)));
+
+	// Verify constraints are satisfied
+	let cs = circuit.constraint_system();
+	verify_constraints(cs, &w.value_vec).unwrap();
+}
+
+#[test]
+fn test_rotr_operation_expansion() {
+	// Test that rotr operation correctly expands to (srl XOR sll)
+	// This tests the expansion logic in constraint_builder.rs
+	let builder = CircuitBuilder::new();
+
+	let a = builder.add_inout();
+	let b = builder.add_inout();
+
+	// rotr internally expands to: (a >> 12) XOR (a << 52)
+	let rotr_result = builder.rotr(a, 12);
+	let combined = builder.bxor(rotr_result, b);
+
+	let circuit = builder.build();
+
+	// Test with specific values
+	let mut w = circuit.new_witness_filler();
+	w[a] = Word(0xabcdef1234567890);
+	w[b] = Word(0x1111111111111111);
+
+	circuit.populate_wire_witness(&mut w).unwrap();
+
+	// Verify rotr works correctly: rotr(a, 12)
+	let expected_rotr = 0xabcdef1234567890u64.rotate_right(12);
+	assert_eq!(w[rotr_result], Word(expected_rotr));
+	assert_eq!(w[combined], Word(expected_rotr ^ 0x1111111111111111));
+
+	// Verify constraints are satisfied
+	let cs = circuit.constraint_system();
+	verify_constraints(cs, &w.value_vec).unwrap();
+}
+
+#[test]
+fn test_multiple_xor_operations() {
+	// Test multiple XOR operations that internally use linear constraints
+	let builder = CircuitBuilder::new();
+
+	let a = builder.add_inout();
+	let b = builder.add_inout();
+	let c = builder.add_inout();
+	let d = builder.add_inout();
+
+	// Multiple XOR operations, each creating linear constraints
+	let result1 = builder.bxor(a, b);
+	let result2 = builder.bxor(c, d);
+	// Chain XOR operations
+	let final_result = builder.bxor(result1, result2);
+
+	let circuit = builder.build();
+
+	// Test with specific values
+	let mut w = circuit.new_witness_filler();
+	w[a] = Word(0xaaaaaaaaaaaaaaaa);
+	w[b] = Word(0x5555555555555555);
+	w[c] = Word(0x0f0f0f0f0f0f0f0f);
+	w[d] = Word(0xf0f0f0f0f0f0f0f0);
+
+	circuit.populate_wire_witness(&mut w).unwrap();
+
+	// Verify intermediate results
+	assert_eq!(w[result1], Word(0xaaaaaaaaaaaaaaaa ^ 0x5555555555555555));
+	assert_eq!(w[result2], Word(0x0f0f0f0f0f0f0f0f ^ 0xf0f0f0f0f0f0f0f0));
+	assert_eq!(w[final_result], Word(w[result1].0 ^ w[result2].0));
+
+	// Verify constraints are satisfied
+	let cs = circuit.constraint_system();
+	verify_constraints(cs, &w.value_vec).unwrap();
+}
+
+#[test]
+fn test_linear_constraint_conversion_to_and() {
+	// This test verifies that linear constraints (created by XOR/shift operations)
+	// are properly converted to AND constraints during circuit building.
+	// The conversion happens in constraint_builder.rs build() method.
+
+	let builder = CircuitBuilder::new();
+
+	// Create a circuit with various operations that generate linear constraints
+	let a = builder.add_inout();
+	let b = builder.add_inout();
+
+	// These operations create linear constraints internally:
+	let xor_result = builder.bxor(a, b);
+	let shift_left = builder.shl(a, 5);
+	let shift_right = builder.shr(b, 10);
+	let sar_result = builder.sar(a, 3);
+	let rotr_result = builder.rotr(b, 7);
+
+	// Combine some results
+	let combined1 = builder.bxor(shift_left, shift_right);
+	let combined2 = builder.bxor(sar_result, rotr_result);
+	let final_result = builder.bxor(combined1, combined2);
+
+	let circuit = builder.build();
+
+	// Get the constraint system which should have AND constraints
+	// (linear constraints were converted to AND constraints)
+	let cs = circuit.constraint_system();
+
+	// The circuit should have AND constraints but no separate linear constraints
+	// (they were all converted during build)
+	assert!(
+		!cs.and_constraints.is_empty(),
+		"Should have AND constraints from converted linear constraints"
+	);
+
+	// Test with values to ensure correctness
+	let mut w = circuit.new_witness_filler();
+	w[a] = Word(0xdeadbeefcafe1234);
+	w[b] = Word(0x1234567890abcdef);
+
+	circuit.populate_wire_witness(&mut w).unwrap();
+
+	// Verify all operations computed correctly
+	assert_eq!(w[xor_result], Word(0xdeadbeefcafe1234 ^ 0x1234567890abcdef));
+	assert_eq!(w[shift_left], Word(0xdeadbeefcafe1234 << 5));
+	assert_eq!(w[shift_right], Word(0x1234567890abcdef >> 10));
+	assert_eq!(w[sar_result], Word(((0xdeadbeefcafe1234u64 as i64) >> 3) as u64));
+	assert_eq!(w[rotr_result], Word(0x1234567890abcdef_u64.rotate_right(7)));
+
+	// Verify final results
+	assert_eq!(w[combined1], Word(w[shift_left].0 ^ w[shift_right].0));
+	assert_eq!(w[combined2], Word(w[sar_result].0 ^ w[rotr_result].0));
+	assert_eq!(w[final_result], Word(w[combined1].0 ^ w[combined2].0));
+
+	// Verify all constraints are satisfied
+	verify_constraints(cs, &w.value_vec).unwrap();
+}
+
+proptest! {
+	#[test]
+	fn prop_xor_operations_with_shifts(a: u64, b: u64, shift1: u32, shift2: u32) {
+		// Limit shifts to 0-63
+		let shift1 = shift1 % 64;
+		let shift2 = shift2 % 64;
+
+		// Test that XOR operations with shifts work correctly
+		let builder = CircuitBuilder::new();
+
+		let wire_a = builder.add_constant_64(a);
+		let wire_b = builder.add_constant_64(b);
+
+		// Create shifted values
+		let shifted_a = builder.shl(wire_a, shift1);
+		let shifted_b = builder.shr(wire_b, shift2);
+
+		// XOR the shifted values
+		let result = builder.bxor(shifted_a, shifted_b);
+
+		let circuit = builder.build();
+		let mut w = circuit.new_witness_filler();
+		circuit.populate_wire_witness(&mut w).unwrap();
+
+		// Verify the result is computed correctly
+		let expected = (a << shift1) ^ (b >> shift2);
+		assert_eq!(w[result], Word(expected));
+
+		// Verify constraints are satisfied
+		let cs = circuit.constraint_system();
+		verify_constraints(cs, &w.value_vec).unwrap();
+	}
+
+	#[test]
+	fn prop_rotr_operation(value: u64, shift: u32) {
+		// Limit shift to 0-63
+		let shift = shift % 64;
+
+		// Test that rotr operation works correctly
+		let builder = CircuitBuilder::new();
+
+		let wire_value = builder.add_constant_64(value);
+		let rotr_result = builder.rotr(wire_value, shift);
+
+		let circuit = builder.build();
+		let mut w = circuit.new_witness_filler();
+		circuit.populate_wire_witness(&mut w).unwrap();
+
+		// Verify rotr is computed correctly
+		let expected = value.rotate_right(shift);
+		assert_eq!(w[rotr_result], Word(expected));
+
+		// Verify constraints are satisfied
+		let cs = circuit.constraint_system();
+		verify_constraints(cs, &w.value_vec).unwrap();
+	}
+}

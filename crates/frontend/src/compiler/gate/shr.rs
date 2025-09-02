@@ -33,20 +33,18 @@ pub fn shape() -> OpcodeShape {
 
 pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) {
 	let GateParam {
-		constants,
 		inputs,
 		outputs,
 		imm,
 		..
 	} = data.gate_param();
-	let [all_one] = constants else { unreachable!() };
 	let [x] = inputs else { unreachable!() };
 	let [z] = outputs else { unreachable!() };
 	let [n] = imm else { unreachable!() };
 
-	// Constraint: Logical right shift
-	// (x >> n) ∧ all-1 = z
-	builder.and().a(srl(*x, *n)).b(*all_one).c(*z).build();
+	// Constraint: Logical right shift (linear)
+	// (x >> n) = z
+	builder.linear().rhs(srl(*x, *n)).dst(*z).build();
 }
 
 pub fn emit_eval_bytecode(

@@ -33,19 +33,15 @@ pub fn shape() -> OpcodeShape {
 
 pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) {
 	let GateParam {
-		constants,
-		inputs,
-		outputs,
-		..
+		inputs, outputs, ..
 	} = data.gate_param();
-	let [all_one] = constants else { unreachable!() };
 	let [x, y] = inputs else { unreachable!() };
 	let [z] = outputs else { unreachable!() };
 
-	// Constraint: Bitwise XOR
+	// Constraint: Bitwise XOR (linear)
 	//
-	// (x ⊕ y) ∧ all-1 = z
-	builder.and().a(xor2(*x, *y)).b(*all_one).c(*z).build();
+	// (x ⊕ y) = z
+	builder.linear().rhs(xor2(*x, *y)).dst(*z).build();
 }
 
 pub fn emit_eval_bytecode(
