@@ -332,6 +332,35 @@ Look at these examples for reference:
 - `sha256.rs` - Shows parameter/instance separation, random data generation
 - `zklogin.rs` - Shows complex witness population with external data generation
 
+## Prover binary
+
+The `prover` example binary reads a constraint system and witnesses from disk and produces a serialized proof. This is useful for cross-host proof generation pipelines.
+
+Arguments:
+- `--cs-path PATH`: path to the constraint system binary
+- `--pub-witness-path PATH`: path to the public values binary (ValuesData)
+- `--non-pub-data-path PATH`: path to the non-public values binary (ValuesData)
+- `--proof-path PATH`: path to write the proof binary
+- `-l, --log-inv-rate N`: log of the inverse rate (default: 1)
+
+Usage:
+
+```bash
+# 1) Generate artifacts from an example circuit (e.g., sha256)
+cargo run --release --example sha256 -- save \
+    --cs-path out/sha256/cs.bin \
+    --pub-witness-path out/sha256/public.bin \
+    --non-pub-data-path out/sha256/non_public.bin
+
+# 2) Produce a proof from those files
+cargo run --release --example prover -- \
+    --cs-path out/sha256/cs.bin \
+    --pub-witness-path out/sha256/public.bin \
+    --non-pub-data-path out/sha256/non_public.bin \
+    --proof-path out/sha256/proof.bin \
+    --log-inv-rate 1
+```
+
 ## Tips
 
 1. **Keep it simple**: The main function should just create the CLI and run it
