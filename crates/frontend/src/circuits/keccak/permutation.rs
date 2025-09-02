@@ -98,11 +98,11 @@ impl Permutation {
 			let a3 = state[idx(3, y)];
 			let a4 = state[idx(4, y)];
 
-			state[idx(0, y)] = b.bxor(a0, b.band(b.bnot(a1), a2));
-			state[idx(1, y)] = b.bxor(a1, b.band(b.bnot(a2), a3));
-			state[idx(2, y)] = b.bxor(a2, b.band(b.bnot(a3), a4));
-			state[idx(3, y)] = b.bxor(a3, b.band(b.bnot(a4), a0));
-			state[idx(4, y)] = b.bxor(a4, b.band(b.bnot(a0), a1));
+			state[idx(0, y)] = b.fax(b.bnot(a1), a2, a0);
+			state[idx(1, y)] = b.fax(b.bnot(a2), a3, a1);
+			state[idx(2, y)] = b.fax(b.bnot(a3), a4, a2);
+			state[idx(3, y)] = b.fax(b.bnot(a4), a0, a3);
+			state[idx(4, y)] = b.fax(b.bnot(a0), a1, a4);
 		}
 	}
 
