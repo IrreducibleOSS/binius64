@@ -21,33 +21,69 @@ pub const N_WORDS_PER_BLOCK: usize = RATE_BYTES / 8;
 /// * `len_bytes` - A wire representing the input message length in bytes
 /// * `digest` - Array of 4 wires representing the 256-bit output digest
 /// * `message` - Vector of wires representing the input message
+/// * `padded_message` - Vector of wires representing the padded message
 pub struct Keccak {
 	pub len_bytes: Wire,
 	pub digest: [Wire; N_WORDS_PER_DIGEST],
 	pub message: Vec<Wire>,
-	padded_message: Vec<Wire>,
+	pub padded_message: Vec<Wire>,
 	n_blocks: usize,
 }
 
 impl Keccak {
-	/// Create a new keccak circuit using the circuit builder
+	/// Build the Keccak-256 circuit constraints
+	///
+	/// This function adds all the necessary constraints to the circuit builder to implement
+	/// the Keccak-256 hash function. It handles variable-length inputs up to a maximum length
+	/// determined by the size of the message vector.
 	///
 	/// # Arguments
 	///
-	/// * `builder` - circuit builder object
-	/// * `max_len` - max message length in bytes for this circuit instance
-	/// * `len` - wire representing the claimed input message length in bytes
-	/// * `digest` - array of 4 wires representing the claimed 256-bit output digest
-	/// * `message` - vector of wires representing the claimed input message
+	/// * `b` - Circuit builder object to add constraints to
+	/// * `len_bytes` - Wire representing the claimed input message length in bytes
+	/// * `digest` - Array of 4 wires representing the claimed 256-bit output digest
+	/// * `message` - Slice of wires representing the claimed input message (unpacked)
+	/// * `padded_message` - Slice of wires representing the padded message according to Keccak
+	///   padding rules
 	///
 	/// ## Preconditions
-	/// * max_len > 0
-	pub fn new(
+	///
+	/// * `message.len()` must be non-zero (implies max_len_bytes > 0)
+	/// * `padded_message.len()` must equal `n_blocks * N_WORDS_PER_BLOCK` where:
+	///   - `n_blocks = (max_len_bytes + 1).div_ceil(RATE_BYTES)`
+	///   - `max_len_bytes = message.len() * 8`
+	///   - `RATE_BYTES = 136`
+	///   - `N_WORDS_PER_BLOCK = 17`
+	/// * The padded message must follow Keccak padding rules:
+	///   - Padding byte 0x01 after the message
+	///   - Final byte of the last block must have 0x80 bit set
+	///
+	/// ## Circuit Constraints
+	///
+	/// This function adds the following constraints to the circuit:
+	/// 1. Length bounds checking - ensures `len_bytes <= max_len_bytes`
+	/// 2. Keccak-f[1600] permutation rounds for each rate block
+	/// 3. Digest correctness - verifies the claimed digest matches the computed hash
+	/// 4. Padding validation - ensures proper Keccak padding is applied
+	///
+	/// ## Example
+	///
+	/// ```ignore
+	/// let b = CircuitBuilder::new();
+	/// let len = b.add_witness();
+	/// let digest = [b.add_inout(); 4];
+	/// let message = vec![b.add_inout(); 32];  // 256 bytes max
+	/// let padded_message = vec![b.add_witness(); 34];  // 2 blocks * 17 words
+	///
+	/// Keccak::build_circuit(&b, len, digest, &message, &padded_message);
+	/// ```
+	pub fn build_circuit(
 		b: &CircuitBuilder,
 		len_bytes: Wire,
 		digest: [Wire; N_WORDS_PER_DIGEST],
-		message: Vec<Wire>,
-	) -> Self {
+		message: &[Wire],
+		padded_message: &[Wire],
+	) {
 		let max_len_bytes = message.len() << 3;
 		// number of blocks needed for the maximum sized message
 		let n_blocks = (max_len_bytes + 1).div_ceil(RATE_BYTES);
@@ -56,9 +92,14 @@ impl Keccak {
 		let len_check = b.icmp_ult(b.add_constant_64(max_len_bytes as u64), len_bytes); // max_len_bytes < len_bytes
 		b.assert_false("len_check", len_check);
 
-		let padded_message: Vec<Wire> = (0..n_blocks * N_WORDS_PER_BLOCK)
-			.map(|_| b.add_witness())
-			.collect();
+		// Validate that padded_message has the correct size
+		assert_eq!(
+			padded_message.len(),
+			n_blocks * N_WORDS_PER_BLOCK,
+			"padded_message must have {} wires, got {}",
+			n_blocks * N_WORDS_PER_BLOCK,
+			padded_message.len()
+		);
 
 		// zero initialized keccak state
 		let mut states: Vec<[Wire; N_WORDS_PER_STATE]> = Vec::with_capacity(n_blocks + 1);
@@ -113,8 +154,8 @@ impl Keccak {
 
 		// begin treatment of boundary word.
 		let word_boundary = b.shr(len_bytes, 3);
-		let boundary_word = single_wire_multiplex(b, &message, word_boundary);
-		let boundary_padded_word = single_wire_multiplex(b, &padded_message, word_boundary);
+		let boundary_word = single_wire_multiplex(b, message, word_boundary);
+		let boundary_padded_word = single_wire_multiplex(b, padded_message, word_boundary);
 		// When the last word of the message is not full, we expect a padding byte to be
 		// somewhere within the word. Since the top bit will also be in this word.
 		let candidates: Vec<Wire> = (0..8)
@@ -186,7 +227,42 @@ impl Keccak {
 				}
 			}
 		}
+	}
+	/// Create a new keccak circuit using the circuit builder
+	///
+	/// This function creates the necessary padded message wires, builds the circuit constraints,
+	/// and returns a Keccak struct that can be used to populate witness values.
+	///
+	/// # Arguments
+	///
+	/// * `b` - Circuit builder object
+	/// * `len_bytes` - Wire representing the claimed input message length in bytes
+	/// * `digest` - Array of 4 wires representing the claimed 256-bit output digest
+	/// * `message` - Vector of wires representing the claimed input message (unpacked)
+	///
+	/// ## Preconditions
+	/// * `message.len()` must be non-zero (implies max_len_bytes > 0)
+	///
+	/// ## Returns
+	///
+	/// A `Keccak` struct containing the wire references needed to populate witness values
+	pub fn new(
+		b: &CircuitBuilder,
+		len_bytes: Wire,
+		digest: [Wire; N_WORDS_PER_DIGEST],
+		message: Vec<Wire>,
+	) -> Self {
+		// Calculate n_blocks and create padded_message wires
+		let max_len_bytes = message.len() << 3;
+		let n_blocks = (max_len_bytes + 1).div_ceil(RATE_BYTES);
+		let padded_message: Vec<Wire> = (0..n_blocks * N_WORDS_PER_BLOCK)
+			.map(|_| b.add_witness())
+			.collect();
 
+		// Build the circuit constraints
+		Self::build_circuit(b, len_bytes, digest, &message, &padded_message);
+
+		// Return the struct with wire references
 		Self {
 			len_bytes,
 			digest,
@@ -236,61 +312,107 @@ impl Keccak {
 	/// * w - The witness filler to populate
 	/// * message_bytes - The input message as a byte slice
 	pub fn populate_message(&self, w: &mut WitnessFiller<'_>, message_bytes: &[u8]) {
-		assert!(
-			message_bytes.len() <= self.max_len_bytes(),
-			"Message length {} exceeds maximum {}",
-			message_bytes.len(),
-			self.max_len_bytes()
+		let max_len_bytes = self.max_len_bytes();
+		populate_message_and_padded(
+			w,
+			message_bytes,
+			&self.message,
+			&self.padded_message,
+			max_len_bytes,
+			self.n_blocks,
 		);
-
-		// populate message words from input bytes
-		let words = self.pack_bytes_into_words(message_bytes, self.max_len_bytes().div_ceil(8));
-		for (i, word) in words.iter().enumerate() {
-			if i < self.message.len() {
-				w[self.message[i]] = Word(*word);
-			}
-		}
-
-		let mut padded_bytes = vec![0u8; self.n_blocks * RATE_BYTES];
-
-		padded_bytes[..message_bytes.len()].copy_from_slice(message_bytes);
-
-		let msg_len = message_bytes.len();
-		let num_full_blocks = msg_len / RATE_BYTES;
-		let padding_block_start = num_full_blocks * RATE_BYTES;
-
-		padded_bytes[msg_len] = 0x01;
-
-		let padding_block_end = padding_block_start + RATE_BYTES - 1;
-		padded_bytes[padding_block_end] |= 0x80;
-
-		for block_idx in 0..self.n_blocks {
-			for (i, chunk) in padded_bytes[block_idx * RATE_BYTES..(block_idx + 1) * RATE_BYTES]
-				.chunks(8)
-				.enumerate()
-			{
-				let word = u64::from_le_bytes(chunk.try_into().unwrap());
-				w[self.padded_message[block_idx * N_WORDS_PER_BLOCK + i]] = Word(word);
-			}
-		}
 	}
+}
 
-	fn pack_bytes_into_words(&self, bytes: &[u8], n_words: usize) -> Vec<u64> {
-		let mut words = Vec::with_capacity(n_words);
-		for i in 0..n_words {
-			if i * 8 < bytes.len() {
+/// Standalone function to populate message and padded message wires from raw bytes
+///
+/// This function takes a raw message and populates both the unpacked message wires
+/// and the properly padded message wires according to Keccak-256 padding rules.
+///
+/// ## Arguments
+///
+/// * `w` - The witness filler to populate
+/// * `message_bytes` - The input message as a byte slice
+/// * `message_wires` - Wires to populate with the unpacked message
+/// * `padded_message_wires` - Wires to populate with the padded message
+/// * `max_len_bytes` - Maximum message length in bytes that the circuit supports
+/// * `n_blocks` - Number of rate blocks needed (must be `(max_len_bytes + 1).div_ceil(RATE_BYTES)`)
+///
+/// ## Preconditions
+///
+/// * `message_bytes.len() <= max_len_bytes`
+/// * `n_blocks == (max_len_bytes + 1).div_ceil(RATE_BYTES)`
+/// * `message_wires.len() == max_len_bytes.div_ceil(8)`
+/// * `padded_message_wires.len() == n_blocks * N_WORDS_PER_BLOCK`
+///
+/// ## Example
+///
+/// ```ignore
+/// populate_message_and_padded(
+///     &mut w,
+///     b"hello".as_ref(),
+///     &message_wires,
+///     &padded_message_wires,
+///     1024,  // max message length
+///     8,     // (1024 + 1).div_ceil(136)
+/// );
+/// ```
+pub fn populate_message_and_padded(
+	w: &mut WitnessFiller<'_>,
+	message_bytes: &[u8],
+	message_wires: &[Wire],
+	padded_message_wires: &[Wire],
+	max_len_bytes: usize,
+	n_blocks: usize,
+) {
+	assert!(
+		message_bytes.len() <= max_len_bytes,
+		"Message length {} exceeds maximum {}",
+		message_bytes.len(),
+		max_len_bytes
+	);
+
+	// Populate message wires from input bytes
+	let n_message_words = max_len_bytes.div_ceil(8);
+	for i in 0..n_message_words {
+		if i < message_wires.len() {
+			let word = if i * 8 < message_bytes.len() {
 				// to handle messages that are not multiples of 64, bytes are copied into
 				// a little endian byte array and then converted to a u64
 				let start = i * 8;
-				let end = ((i + 1) * 8).min(bytes.len());
+				let end = ((i + 1) * 8).min(message_bytes.len());
 				let mut word_bytes = [0u8; 8];
-				word_bytes[..end - start].copy_from_slice(&bytes[start..end]);
-				let word = u64::from_le_bytes(word_bytes);
-				words.push(word);
-			}
+				word_bytes[..end - start].copy_from_slice(&message_bytes[start..end]);
+				u64::from_le_bytes(word_bytes)
+			} else {
+				0
+			};
+			w[message_wires[i]] = Word(word);
 		}
+	}
 
-		words
+	// Create padded message
+	let mut padded_bytes = vec![0u8; n_blocks * RATE_BYTES];
+	padded_bytes[..message_bytes.len()].copy_from_slice(message_bytes);
+
+	let msg_len = message_bytes.len();
+	let num_full_blocks = msg_len / RATE_BYTES;
+	let padding_block_start = num_full_blocks * RATE_BYTES;
+
+	padded_bytes[msg_len] = 0x01;
+
+	let padding_block_end = padding_block_start + RATE_BYTES - 1;
+	padded_bytes[padding_block_end] |= 0x80;
+
+	// Populate padded message wires
+	for block_idx in 0..n_blocks {
+		for (i, chunk) in padded_bytes[block_idx * RATE_BYTES..(block_idx + 1) * RATE_BYTES]
+			.chunks(8)
+			.enumerate()
+		{
+			let word = u64::from_le_bytes(chunk.try_into().unwrap());
+			w[padded_message_wires[block_idx * N_WORDS_PER_BLOCK + i]] = Word(word);
+		}
 	}
 }
 
@@ -436,5 +558,124 @@ mod tests {
 		let max_message_len = 1024;
 		let expected_digest = keccak_crate(&message);
 		validate_keccak_circuit(&message, expected_digest, max_message_len);
+	}
+
+	/// Test the standalone build_circuit function
+	#[test]
+	fn test_standalone_build_circuit() {
+		use binius_core::word::Word;
+		use sha3::{Digest, Keccak256};
+
+		let message_bytes = b"Testing build_circuit";
+		let max_len_bytes = 256usize;
+		let n_blocks = (max_len_bytes + 1).div_ceil(RATE_BYTES);
+
+		// Create a circuit with the necessary wires
+		let b = CircuitBuilder::new();
+		let len = b.add_witness();
+		let digest: [Wire; N_WORDS_PER_DIGEST] = std::array::from_fn(|_| b.add_inout());
+		let n_message_words = max_len_bytes.div_ceil(8);
+		let message: Vec<Wire> = (0..n_message_words).map(|_| b.add_inout()).collect();
+		let padded_message: Vec<Wire> = (0..n_blocks * super::N_WORDS_PER_BLOCK)
+			.map(|_| b.add_witness())
+			.collect();
+
+		// Call build_circuit directly (without creating the struct)
+		Keccak::build_circuit(&b, len, digest, &message, &padded_message);
+
+		let circuit = b.build();
+		let mut w = circuit.new_witness_filler();
+
+		// Populate witness values manually
+		w[len] = Word(message_bytes.len() as u64);
+
+		// Populate message and padded message
+		super::populate_message_and_padded(
+			&mut w,
+			message_bytes,
+			&message,
+			&padded_message,
+			max_len_bytes,
+			n_blocks,
+		);
+
+		// Calculate expected digest using the reference implementation
+		let mut hasher = Keccak256::new();
+		hasher.update(message_bytes);
+		let expected_digest: [u8; 32] = hasher.finalize().into();
+
+		// Populate digest witness
+		for (i, bytes) in expected_digest.chunks(8).enumerate() {
+			let word = u64::from_le_bytes(bytes.try_into().unwrap());
+			w[digest[i]] = Word(word);
+		}
+
+		// Verify the circuit constraints are satisfied
+		circuit.populate_wire_witness(&mut w).unwrap();
+		let cs = circuit.constraint_system();
+		verify_constraints(cs, &w.into_value_vec()).unwrap();
+	}
+
+	/// Test the standalone populate_message_and_padded function
+	#[test]
+	fn test_standalone_populate_function() {
+		use binius_core::word::Word;
+
+		use crate::compiler::CircuitBuilder;
+
+		let message_bytes = b"Hello, Keccak!";
+		let max_len_bytes = 256usize;
+		let n_blocks = (max_len_bytes + 1).div_ceil(RATE_BYTES);
+
+		// Create a circuit with the necessary wires
+		let b = CircuitBuilder::new();
+		let n_message_words = max_len_bytes.div_ceil(8);
+		let message_wires: Vec<Wire> = (0..n_message_words).map(|_| b.add_witness()).collect();
+		let padded_message_wires: Vec<Wire> = (0..n_blocks * super::N_WORDS_PER_BLOCK)
+			.map(|_| b.add_witness())
+			.collect();
+
+		let circuit = b.build();
+		let mut w = circuit.new_witness_filler();
+
+		// Call the standalone function directly
+		super::populate_message_and_padded(
+			&mut w,
+			message_bytes,
+			&message_wires,
+			&padded_message_wires,
+			max_len_bytes,
+			n_blocks,
+		);
+
+		// Verify the message was populated correctly
+		circuit.populate_wire_witness(&mut w).unwrap();
+
+		// Check first word contains "Hello, K"
+		assert_eq!(w[message_wires[0]], Word(u64::from_le_bytes(*b"Hello, K")));
+		// Check second word contains "eccak!\0\0"
+		let mut expected = [0u8; 8];
+		expected[..6].copy_from_slice(b"eccak!");
+		assert_eq!(w[message_wires[1]], Word(u64::from_le_bytes(expected)));
+
+		// Check padding was applied correctly
+		// First padded word should match first message word
+		assert_eq!(w[padded_message_wires[0]], Word(u64::from_le_bytes(*b"Hello, K")));
+
+		// The message is 14 bytes, so byte 14 should have 0x01
+		let padded_word_idx = 14 / 8; // Word containing byte 14
+		let padded_byte_offset = 14 % 8; // Offset within that word
+		let padded_word_value = w[padded_message_wires[padded_word_idx]].0;
+		let padded_bytes = padded_word_value.to_le_bytes();
+		assert_eq!(
+			padded_bytes[padded_byte_offset], 0x01,
+			"Padding byte 0x01 not found at position 14"
+		);
+
+		// Last byte of the rate block should have 0x80 bit set
+		let last_word_idx = super::N_WORDS_PER_BLOCK - 1;
+		let last_word_value = w[padded_message_wires[last_word_idx]].0;
+		let last_word_bytes = last_word_value.to_le_bytes();
+		assert_eq!(last_word_bytes[7] & 0x80, 0x80, "0x80 bit not set in last byte of rate block");
 	}
 }
