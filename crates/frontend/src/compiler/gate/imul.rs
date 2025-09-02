@@ -2,7 +2,7 @@
 //! Uses the MulConstraint: X * Y = (HI << 64) | LO
 
 use crate::compiler::{
-	constraint_builder::ConstraintBuilder,
+	constraint_builder::{ConstraintBuilder, sll},
 	gate::opcode::OpcodeShape,
 	gate_graph::{Gate, GateData, GateParam, Wire},
 };
@@ -27,6 +27,23 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 
 	// Create MulConstraint: X * Y = (HI << 64) | LO
 	builder.mul().a(*x).b(*y).hi(*hi).lo(*lo).build();
+
+	// Security fix: IntMul reduction proves x*y ≡ lo + 2^64*hi (mod 2^128-1), but we need (mod
+	// 2^128). Attack: If x=0 or y=0, malicious prover sets lo=hi=2^64-1, giving lo + 2^64*hi =
+	// 2^128-1 ≡ 0 (mod 2^128-1). This passes the IntMul check but violates the intended x*y = lo +
+	// 2^64*hi over integers.
+	//
+	// Fix: Check LSB multiplication x[0] * y[0] = lo[0].
+	// If x=0 or y=0, then x[0]*y[0] = 0, so lo[0] must be 0. But the attack has lo[0] = 1, failing
+	// this check.
+	//
+	// Implementation: Shift LSBs to MSB position for AND constraint.
+	builder
+		.and()
+		.a(sll(*x, 63))
+		.b(sll(*y, 63))
+		.c(sll(*lo, 63))
+		.build();
 }
 
 pub fn emit_eval_bytecode(
