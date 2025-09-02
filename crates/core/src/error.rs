@@ -10,4 +10,6 @@ pub enum ConstraintSystemError {
 		"the public input segment must be at least {MIN_WORDS_PER_SEGMENT} words, got: {pub_input_size}"
 	)]
 	PublicInputTooShort { pub_input_size: usize },
+	#[error("the data length doesn't match layout")]
+	ValueVecLenMismatch { expected: usize, actual: usize },
 }
