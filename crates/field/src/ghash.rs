@@ -504,8 +504,6 @@ impl BinaryField for BinaryField128bGhash {
 }
 
 impl TowerField for BinaryField128bGhash {
-	type Canonical = Self;
-
 	fn min_tower_level(self) -> usize {
 		match self {
 			Self::ZERO | Self::ONE => 0,

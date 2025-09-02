@@ -12,35 +12,11 @@ use crate::{
 		x86_64::{m128::m128_from_u128, simd::simd_arithmetic::TowerSimdType},
 	},
 	arithmetic_traits::{TaggedInvertOrZero, TaggedMul, TaggedPackedTransformationFactory},
-	is_aes_tower, is_canonical_tower,
+	is_aes_tower,
 	linear_transformation::{FieldLinearTransformation, Transformation},
 	packed::PackedBinaryField,
 	underlier::{Divisible, UnderlierType, WithUnderlier},
 };
-
-#[rustfmt::skip]
-pub(super) const TOWER_TO_AES_MAP: i64 = u64::from_le_bytes([
-	0b00111110,
-	0b10011000,
-	0b01001110,
-	0b10010110,
-	0b11101010,
-	0b01101010,
-	0b01010000,
-	0b00110001,
-]) as i64;
-
-#[rustfmt::skip]
-pub(super) const AES_TO_TOWER_MAP: i64 = u64::from_le_bytes([
-	0b00001100,
-	0b01110000,
-	0b10100010,
-	0b01110010,
-	0b00111110,
-	0b10000110,
-	0b11101000,
-	0b11010001,
-]) as i64;
 
 #[rustfmt::skip]
 pub const IDENTITY_MAP: i64 = u64::from_le_bytes([
@@ -60,12 +36,6 @@ pub(super) trait GfniType: Copy + TowerSimdType {
 	fn gf2p8affineinv_epi64_epi8(x: Self, a: Self) -> Self;
 }
 
-#[inline(always)]
-pub(super) fn linear_transform<T: GfniType>(x: T, map: i64) -> T {
-	let map = T::set_epi_64(map);
-	T::gf2p8affine_epi64_epi8(x, map)
-}
-
 impl<U: GfniType + UnderlierType, Scalar: BinaryField> TaggedMul<GfniStrategy>
 	for PackedPrimitiveType<U, Scalar>
 {
@@ -80,22 +50,14 @@ impl<U: GfniType + UnderlierType, Scalar: TowerField> TaggedInvertOrZero<GfniStr
 {
 	#[inline(always)]
 	fn invert_or_zero(self) -> Self {
-		assert!(is_aes_tower::<Scalar>() || is_canonical_tower::<Scalar>());
+		assert!(is_aes_tower::<Scalar>());
 		assert!(Scalar::N_BITS == 8);
 
-		let val_gfni = if is_canonical_tower::<Scalar>() {
-			linear_transform(self.to_underlier(), TOWER_TO_AES_MAP)
-		} else {
-			self.to_underlier()
-		};
+		let val_gfni = self.to_underlier();
 
 		// Calculate inversion and linear transformation to the original field with a single
 		// instruction
-		let transform_after = if is_canonical_tower::<Scalar>() {
-			U::set_epi_64(AES_TO_TOWER_MAP)
-		} else {
-			U::set_epi_64(IDENTITY_MAP)
-		};
+		let transform_after = U::set_epi_64(IDENTITY_MAP);
 		let inv_gfni = U::gf2p8affineinv_epi64_epi8(val_gfni, transform_after);
 
 		inv_gfni.into()
