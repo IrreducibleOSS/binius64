@@ -1,5 +1,7 @@
 //! Bytecode interpreter for circuit evaluation
 
+use std::array;
+
 use binius_core::{ValueIndex, ValueVec, Word};
 
 use crate::compiler::{circuit::PopulateError, hints::HintRegistry};
@@ -134,6 +136,9 @@ impl<'a> Interpreter<'a> {
 				0x63 => self.exec_assert_non_zero(ctx),
 				0x64 => self.exec_assert_false(ctx),
 				0x65 => self.exec_assert_true(ctx),
+
+				// High level intrinsics
+				0x70 => self.exec_keccakf1600(ctx),
 
 				// Hint calls
 				0x80 => self.exec_hint(ctx),
@@ -448,6 +453,61 @@ impl<'a> Interpreter<'a> {
 
 		if val & Word::MSB_ONE != Word::MSB_ONE {
 			ctx.note_assertion_failure(error_id, format!("{val:?} & MSB_ONE != MSB_ONE"));
+		}
+	}
+
+	fn exec_keccakf1600(&mut self, ctx: &mut ExecutionContext<'_>) {
+		let mut a: [Word; 25] = array::from_fn(|_| {
+			let reg = self.read_reg();
+			self.load(ctx, reg)
+		});
+
+		use super::gate::keccakf1600::{CONSTS, R};
+
+		fn idx(x: usize, y: usize) -> usize {
+			(x % 5) + 5 * (y % 5)
+		}
+
+		fn rot(amount: u32, value: Word) -> Word {
+			value.rotr(64 - amount)
+		}
+
+		// ι round constants occupy first 24 words of Keccakf1600 gate constants
+		for &round_constant in &CONSTS[..24] {
+			// θ
+			let c: [Word; 5] =
+				array::from_fn(|i| (0..5).fold(Word::ZERO, |acc, j| acc ^ a[idx(i, j)]));
+			let d: [Word; 5] = array::from_fn(|i| c[(i + 4) % 5] ^ rot(1, c[(i + 1) % 5]));
+
+			for i in 0..25 {
+				a[i] = a[i] ^ d[i % 5];
+			}
+
+			// ρ & π
+			let mut b = [Word::ZERO; 25];
+			for x in 0..5 {
+				for y in 0..5 {
+					let i = idx(x, y);
+					b[idx(y, 2 * x + 3 * y)] = rot(R[i], a[i]);
+				}
+			}
+
+			// χ
+			for x in 0..5 {
+				for y in 0..5 {
+					let i = idx(x, y);
+					a[i] = b[i] ^ !b[idx(x + 1, y)] & b[idx(x + 2, y)];
+				}
+			}
+
+			// ι
+			a[0] = a[0] ^ round_constant;
+
+			// writeback
+			for val in a {
+				let reg = self.read_reg();
+				self.store(ctx, reg, val);
+			}
 		}
 	}
 

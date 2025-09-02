@@ -716,6 +716,21 @@ impl CircuitBuilder {
 		z
 	}
 
+	/// Keccak-f\[1600\] permutation.
+	///
+	/// Takes 25 wires representing 5x5x64 state in lane order (column major, `i = x + 5*y`).
+	/// Outputs 25 wires representing post-permutation state.
+	///
+	/// # Cost
+	///
+	/// 600 AND constraints (25 per each round χ step for 24 rounds, which is optimal)
+	pub fn keccakf1600(&self, inputs: [Wire; 25]) -> [Wire; 25] {
+		let outputs = array::from_fn(|_| self.add_internal());
+		let mut graph = self.graph_mut();
+		graph.emit_gate(self.current_path, Opcode::Keccakf1600, inputs, outputs);
+		outputs
+	}
+
 	/// Select operation.
 	///
 	/// Returns `t` if MSB(cond) is 1, otherwise returns `f`.

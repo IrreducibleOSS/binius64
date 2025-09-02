@@ -24,10 +24,12 @@ impl Permutation {
 	///
 	/// ## Arguments
 	///
-	/// * `b` - The circuit builder to use.
-	pub fn new(b: &CircuitBuilder, input_state: State) -> Self {
+	/// * `b`             - The circuit builder to use.
+	/// * `use_intrinsic` - Use `Keccakf1600` opcode instead of a circuit of more primitive gates.
+	/// * `input_state`   - a Keccak-f\[1600\] state, in lane order (column major, `i = x + 5*y`).
+	pub fn new(b: &CircuitBuilder, use_intrinsic: bool, input_state: State) -> Self {
 		let mut output_state = input_state;
-		Self::keccak_f1600(b, &mut output_state.words);
+		Self::keccak_f1600(b, use_intrinsic, &mut output_state.words);
 
 		Self {
 			input_state,
@@ -47,15 +49,21 @@ impl Permutation {
 		}
 	}
 
-	/// Perform the Keccak f\[1600\] permutation.
+	/// Perform the Keccak-f\[1600\] permutation.
 	///
 	/// ## Arguments
 	///
 	/// * `b` - The circuit builder to use.
+	/// * `use_intrinsic` - Use `Keccakf1600` opcode instead of a circuit of more primitive gates.
 	/// * `state` - The state to perform the permutation on.
-	pub fn keccak_f1600(b: &CircuitBuilder, state: &mut [Wire; 25]) {
-		for round in 0..24 {
-			Self::keccak_permutation_round(b, state, round);
+	pub fn keccak_f1600(b: &CircuitBuilder, use_intrinsic: bool, state: &mut [Wire; 25]) {
+		if use_intrinsic {
+			let outputs = b.keccakf1600(*state);
+			*state = outputs;
+		} else {
+			for round in 0..24 {
+				Self::keccak_permutation_round(b, state, round)
+			}
 		}
 	}
 
@@ -151,7 +159,7 @@ mod tests {
 			words: std::array::from_fn(|_| builder.add_inout()),
 		};
 
-		let permutation = Permutation::new(&builder, input_words);
+		let permutation = Permutation::new(&builder, true, input_words);
 
 		let circuit = builder.build();
 
@@ -215,7 +223,11 @@ mod tests {
 		let mut rng = StdRng::seed_from_u64(0);
 		let input_state = rng.random::<[u64; 25]>();
 
-		validate_circuit_component(Permutation::keccak_f1600, keccak_f1600_reference, input_state);
+		validate_circuit_component(
+			|builder, state| Permutation::keccak_f1600(builder, true, state),
+			keccak_f1600_reference,
+			input_state,
+		);
 	}
 
 	#[test]

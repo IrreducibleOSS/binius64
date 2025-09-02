@@ -48,6 +48,30 @@ impl Keccak {
 		digest: [Wire; N_WORDS_PER_DIGEST],
 		message: Vec<Wire>,
 	) -> Self {
+		let use_intrinsic = true;
+		Self::new_with_intrinsic(b, use_intrinsic, len_bytes, digest, message)
+	}
+
+	/// Create a new keccak circuit using the circuit builder
+	///
+	/// # Arguments
+	///
+	/// * `builder` - circuit builder object
+	/// * `use_intrinsic` - use `Keccakf1600` opcode instead of a circuit of more primitive gates.
+	/// * `max_len` - max message length in bytes for this circuit instance
+	/// * `len` - wire representing the claimed input message length in bytes
+	/// * `digest` - array of 4 wires representing the claimed 256-bit output digest
+	/// * `message` - vector of wires representing the claimed input message
+	///
+	/// ## Preconditions
+	/// * max_len > 0
+	pub fn new_with_intrinsic(
+		b: &CircuitBuilder,
+		use_intrinsic: bool,
+		len_bytes: Wire,
+		digest: [Wire; N_WORDS_PER_DIGEST],
+		message: Vec<Wire>,
+	) -> Self {
 		let max_len_bytes = message.len() << 3;
 		// number of blocks needed for the maximum sized message
 		let n_blocks = (max_len_bytes + 1).div_ceil(RATE_BYTES);
@@ -74,7 +98,7 @@ impl Keccak {
 					b.bxor(state_in[i], padded_message[block_no * N_WORDS_PER_BLOCK + i]);
 			}
 
-			Permutation::keccak_f1600(b, &mut xored_state);
+			Permutation::keccak_f1600(b, use_intrinsic, &mut xored_state);
 
 			states.push(xored_state);
 		}

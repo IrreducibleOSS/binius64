@@ -65,7 +65,10 @@ fn bench_keccak_permutations(c: &mut Criterion) {
 	println!("  Permutations: {}", n_permutations);
 	println!("=======================================\n");
 
-	let params = Params { n_permutations };
+	let params = Params {
+		n_permutations,
+		no_intrinsic: false,
+	};
 	let instance = Instance {};
 
 	// Setup phase - do this once outside the benchmark loop

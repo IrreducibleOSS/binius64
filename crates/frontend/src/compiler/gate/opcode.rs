@@ -36,6 +36,9 @@ pub enum Opcode {
 	// Extraction
 	ExtractByte,
 
+	// Keccak-f[1600]
+	Keccakf1600,
+
 	// Assertions
 	AssertEq,
 	AssertZero,
@@ -123,6 +126,9 @@ impl Opcode {
 
 			// Extraction
 			Opcode::ExtractByte => gate::extract_byte::shape(),
+
+			// Keccakf-f[1600]
+			Opcode::Keccakf1600 => gate::keccakf1600::shape(),
 
 			// Assertions (no outputs)
 			Opcode::AssertEq => gate::assert_eq::shape(),

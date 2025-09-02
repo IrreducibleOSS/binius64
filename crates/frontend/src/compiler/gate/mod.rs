@@ -31,6 +31,7 @@ pub mod icmp_eq;
 pub mod icmp_ult;
 pub mod imul;
 pub mod isub_bin_bout;
+pub mod keccakf1600;
 pub mod mod_inverse_hint;
 pub mod rotr;
 pub mod rotr32;
@@ -68,6 +69,7 @@ pub fn constrain(gate: Gate, graph: &GateGraph, builder: &mut ConstraintBuilder)
 		Opcode::IcmpUlt => icmp_ult::constrain(gate, data, builder),
 		Opcode::IcmpEq => icmp_eq::constrain(gate, data, builder),
 		Opcode::ExtractByte => extract_byte::constrain(gate, data, builder),
+		Opcode::Keccakf1600 => keccakf1600::constrain(gate, data, builder),
 		Opcode::Shr => shr::constrain(gate, data, builder),
 		Opcode::Shl => shl::constrain(gate, data, builder),
 		Opcode::Sar => sar::constrain(gate, data, builder),
@@ -130,6 +132,7 @@ pub fn emit_gate_bytecode(
 		Opcode::IcmpUlt => icmp_ult::emit_eval_bytecode(gate, data, builder, wire_to_reg),
 		Opcode::IcmpEq => icmp_eq::emit_eval_bytecode(gate, data, builder, wire_to_reg),
 		Opcode::ExtractByte => extract_byte::emit_eval_bytecode(gate, data, builder, wire_to_reg),
+		Opcode::Keccakf1600 => keccakf1600::emit_eval_bytecode(gate, data, builder, wire_to_reg),
 		Opcode::Shr => shr::emit_eval_bytecode(gate, data, builder, wire_to_reg),
 		Opcode::Shl => shl::emit_eval_bytecode(gate, data, builder, wire_to_reg),
 		Opcode::Sar => sar::emit_eval_bytecode(gate, data, builder, wire_to_reg),

@@ -21,6 +21,10 @@ pub struct Params {
 	/// Number of Keccak-f\[1600\] permutations to chain together
 	#[arg(short = 'n', long, default_value_t = 10)]
 	pub n_permutations: usize,
+
+	/// Do not use Keccakf1600 intrinsic opcode, build primitive gate circuit instead
+	#[arg(long)]
+	pub no_intrinsic: bool,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -42,7 +46,7 @@ impl ExampleCircuit for KeccakExample {
 		// Chain n permutations starting from initial state
 		let mut computed_state = initial_state;
 		for _ in 0..params.n_permutations {
-			Permutation::keccak_f1600(builder, &mut computed_state);
+			Permutation::keccak_f1600(builder, !params.no_intrinsic, &mut computed_state);
 		}
 
 		// Constrain computed final state to equal expected final state
