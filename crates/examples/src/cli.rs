@@ -1,14 +1,20 @@
-use std::{fs, path::Path};
+use std::{
+	fs,
+	path::{Path, PathBuf},
+};
 
 use anyhow::Result;
 use binius_core::constraint_system::{ValueVec, ValuesData};
-use binius_frontend::{compiler::CircuitBuilder, stat::CircuitStat};
+use binius_frontend::{
+	compiler::{CircuitBuilder, circuit::Circuit},
+	stat::CircuitStat,
+};
 use binius_utils::serialization::SerializeBytes;
 use clap::{Arg, Args, Command, FromArgMatches, Subcommand};
 #[cfg(feature = "perfetto")]
 use tracing_profile::{TraceFilenameBuilder, init_tracing_with_builder};
 
-use crate::{ExampleCircuit, prove_verify, setup};
+use crate::{ExampleCircuit, json_export};
 
 /// Serialize a value implementing `SerializeBytes` and write it to the given path.
 fn write_serialized<T: SerializeBytes>(value: &T, path: &str) -> Result<()> {
@@ -70,6 +76,10 @@ enum Commands {
 		/// Number of times to run the benchmark (default: 1 for no repetition)
 		#[arg(long, default_value = "1")]
 		repeat: usize,
+
+		/// Export metrics to JSON file (optional path, defaults to <benchmark>_metrics.json)
+		#[arg(long, value_name = "PATH")]
+		json: Option<Option<PathBuf>>,
 
 		#[command(flatten)]
 		params: CommandArgs,
@@ -136,6 +146,28 @@ where
 	E::Params: Args + Clone,
 	E::Instance: Args + Clone,
 {
+	/// Common arguments for prove operations (both default and explicit subcommand)
+	fn common_prove_args() -> Vec<Arg> {
+		vec![
+			Arg::new("repeat")
+				.long("repeat")
+				.value_name("COUNT")
+				.help("Number of times to run the benchmark (default: 1 for no repetition)")
+				.default_value("1")
+				.value_parser(clap::value_parser!(usize)),
+			Arg::new("json")
+				.long("json")
+				.value_name("PATH")
+				.help(
+					"Export metrics to JSON file (optional path, defaults to <benchmark>_metrics.json)",
+				)
+				.action(clap::ArgAction::Set)
+				.num_args(0..=1)
+				.require_equals(false)
+				.value_parser(clap::value_parser!(PathBuf)),
+		]
+	}
+
 	/// Create a new CLI for the given circuit example.
 	///
 	/// The `name` parameter sets the command name (shown in help and usage).
@@ -195,6 +227,12 @@ where
 					.default_value("1")
 					.value_parser(clap::value_parser!(u32).range(1..)),
 			);
+
+		// Add common prove arguments (--repeat and --json)
+		for arg in Self::common_prove_args() {
+			cmd = cmd.arg(arg);
+		}
+
 		cmd = E::Params::augment_args(cmd);
 		cmd = E::Instance::augment_args(cmd);
 		cmd
@@ -278,19 +316,14 @@ where
 		self
 	}
 
-	/// Enable repeat functionality with --repeat argument.
+	/// Enable repeat functionality with --repeat and --json arguments.
 	pub fn with_repeat(mut self) -> Self {
 		self.repeat_enabled = true;
 
-		// Add repeat argument to top-level command for default prove behavior
-		self.command = self.command.arg(
-			Arg::new("repeat")
-				.long("repeat")
-				.value_name("COUNT")
-				.help("Number of times to run the benchmark (default: 1 for no repetition)")
-				.default_value("1")
-				.value_parser(clap::value_parser!(usize)),
-		);
+		// Add common prove arguments to top-level command for default prove behavior
+		for arg in Self::common_prove_args() {
+			self.command = self.command.arg(arg);
+		}
 
 		self
 	}
@@ -323,10 +356,83 @@ where
 		}
 	}
 
+
+	/// Build circuit and example from parameters
+	fn build_circuit_and_example(params: E::Params) -> Result<(Circuit, E)> {
+		let build_scope = tracing::info_span!("Building circuit").entered();
+		let mut builder = CircuitBuilder::new();
+		let example = E::build(params, &mut builder)?;
+		let circuit = builder.build();
+		drop(build_scope);
+		Ok((circuit, example))
+	}
+
+	/// Generate witness from circuit, example, and instance
+	fn generate_witness(circuit: &Circuit, example: E, instance: E::Instance) -> Result<ValueVec> {
+		let witness_scope = tracing::info_span!("Generating witness").entered();
+		let mut filler = circuit.new_witness_filler();
+		tracing::info_span!("Input population")
+			.in_scope(|| example.populate_witness(instance, &mut filler))?;
+		tracing::info_span!("Circuit evaluation")
+			.in_scope(|| circuit.populate_wire_witness(&mut filler))?;
+		let witness = filler.into_value_vec();
+		drop(witness_scope);
+		Ok(witness)
+	}
+
+	/// Run single prove iteration with optional timing collection
+	fn run_single_prove_with_timing(
+		log_inv_rate: u32,
+		params: E::Params,
+		instance: E::Instance,
+		collect_timing: bool,
+	) -> Result<Option<json_export::ProveMetrics>> {
+		use std::time::Instant;
+
+		// Build the circuit
+		let build_start = if collect_timing {
+			Some(Instant::now())
+		} else {
+			None
+		};
+		let (circuit, example) = Self::build_circuit_and_example(params)?;
+
+		// Set up prover and verifier
+		let cs = circuit.constraint_system().clone();
+		let (verifier, prover) = crate::setup(cs, log_inv_rate as usize)?;
+		let build_time = build_start.map(|start| start.elapsed());
+
+		// Generate witness
+		let witness_start = if collect_timing {
+			Some(Instant::now())
+		} else {
+			None
+		};
+		let witness = Self::generate_witness(&circuit, example, instance)?;
+		let witness_time = witness_start.map(|start| start.elapsed());
+
+		// Prove and verify
+		if collect_timing {
+			let (prove_time, verify_time, proof_size) =
+				crate::prove_verify_timed(&verifier, &prover, witness)?;
+
+			Ok(Some(json_export::ProveMetrics {
+				build_time: build_time.unwrap(),
+				witness_time: witness_time.unwrap(),
+				prove_time,
+				verify_time,
+				proof_size,
+			}))
+		} else {
+			crate::prove_verify(&verifier, &prover, witness)?;
+			Ok(None)
+		}
+	}
+
 	fn run_prove(
 		matches: clap::ArgMatches,
 		repeat_enabled: bool,
-		#[allow(unused)] circuit_name: &str,
+		circuit_name: &str,
 	) -> Result<()> {
 		// Extract common arguments
 		let log_inv_rate = *matches
@@ -340,143 +446,146 @@ where
 			1
 		};
 
+		// Handle --json flag for metric export
+		let json_path = if repeat_enabled && matches.contains_id("json") {
+			Some(matches.get_one::<PathBuf>("json").cloned())
+		} else {
+			None
+		};
+
 		// Parse Params and Instance from matches
 		let params = E::Params::from_arg_matches(&matches)?;
 		let instance = E::Instance::from_arg_matches(&matches)?;
 
-		// Generate base builder once for this session
+		// Generate perfetto builder once for this session (same logic for JSON and non-JSON)
 		#[cfg(feature = "perfetto")]
-		let perfetto_path_builder = {
-			let mut builder = TraceFilenameBuilder::for_benchmark(circuit_name)
-				.output_dir("perfetto_traces")
-				.subdir(circuit_name)
-				.subdir_run_id()
-				.timestamp() // Add timestamp for uniqueness
-				.git_info() // Include git status
-				.platform(); // Include OS info
+		let perfetto_path_builder = if repeat_enabled {
+			Some({
+				let mut builder = TraceFilenameBuilder::for_benchmark(circuit_name)
+					.output_dir("perfetto_traces")
+					.timestamp()
+					.git_info()
+					.platform();
 
-			// Add parameter summary if available
-			if let Some(param_summary) = E::param_summary(&params) {
-				builder = builder.add("params", param_summary);
-			}
+				// Only add subdirectories if running multiple iterations
+				if repeat_count > 1 {
+					builder = builder.subdir(circuit_name).subdir_run_id();
+				}
 
-			builder
+				if let Some(param_summary) = E::param_summary(&params) {
+					builder = builder.add("params", param_summary);
+				}
+
+				builder
+			})
+		} else {
+			None
 		};
 
-		if repeat_enabled && repeat_count > 1 {
-			// Run multiple iterations with separate trace files
-			for i in 1..=repeat_count {
-				#[cfg(feature = "perfetto")]
-				let _tracing_guard = {
-					let perfetto_path = perfetto_path_builder.clone().iteration(i);
-					init_tracing_with_builder(perfetto_path).ok()
-				};
-
-				println!("Running iteration {}/{}...", i, repeat_count);
-				Self::run_single_prove(log_inv_rate, params.clone(), instance.clone())?;
-			}
-			println!("Done.");
-			Ok(())
+		let mut all_metrics = if json_path.is_some() {
+			Some(Vec::new())
 		} else {
-			// Single run
+			None
+		};
+
+		// Run iterations with unified logic
+		for i in 1..=repeat_count {
+			if repeat_enabled && repeat_count > 1 {
+				println!("Running iteration {}/{}...", i, repeat_count);
+			}
+
+			// Set up perfetto tracing for this iteration if needed
 			#[cfg(feature = "perfetto")]
-			let _tracing_guard = {
-				let perfetto_path = perfetto_path_builder.clone();
-				init_tracing_with_builder(perfetto_path)?
+			let _tracing_guard = if let Some(ref builder) = perfetto_path_builder {
+				let mut builder_for_iteration = builder.clone();
+				if repeat_count > 1 {
+					builder_for_iteration = builder_for_iteration.iteration(i);
+				}
+				init_tracing_with_builder(builder_for_iteration).ok()
+			} else {
+				None
 			};
 
-			Self::run_single_prove(log_inv_rate, params, instance)
+			// Run single prove - collect timing only if JSON export is needed
+			let collect_timing = all_metrics.is_some();
+			let prove_metrics = Self::run_single_prove_with_timing(
+				log_inv_rate,
+				params.clone(),
+				instance.clone(),
+				collect_timing,
+			)?;
+
+			// Store metrics if JSON export is requested
+			if let (Some(metrics), Some(prove_metrics)) = (&mut all_metrics, prove_metrics) {
+				metrics.push(json_export::RunMetrics {
+					iteration: if repeat_count > 1 { Some(i) } else { None },
+					build_ms: prove_metrics.build_time.as_secs_f64() * 1000.0,
+					witness_ms: prove_metrics.witness_time.as_secs_f64() * 1000.0,
+					prove_ms: prove_metrics.prove_time.as_secs_f64() * 1000.0,
+					verify_ms: prove_metrics.verify_time.as_secs_f64() * 1000.0,
+					proof_size_bytes: prove_metrics.proof_size,
+				});
+			}
 		}
-	}
 
-	fn run_single_prove(log_inv_rate: u32, params: E::Params, instance: E::Instance) -> Result<()> {
-		// Build the circuit
-		let build_scope = tracing::info_span!("Building circuit").entered();
-		let mut builder = CircuitBuilder::new();
-		let example = E::build(params, &mut builder)?;
-		let circuit = builder.build();
-		drop(build_scope);
+		if repeat_enabled && repeat_count > 1 {
+			println!("Done.");
+		}
 
-		// Set up prover and verifier
-		let cs = circuit.constraint_system().clone();
-		let (verifier, prover) = setup(cs, log_inv_rate as usize)?;
+		// Export metrics to JSON if requested
+		if let (Some(json_path_option), Some(all_metrics)) = (json_path, all_metrics) {
+			let json_path = json_path_option.unwrap_or_else(|| {
+				std::path::PathBuf::from(format!("{}_metrics.json", circuit_name))
+			});
 
-		// Population of the input to the witness and then evaluating the circuit.
-		let witness_population = tracing::info_span!("Generating witness").entered();
-		let mut filler = circuit.new_witness_filler();
-		tracing::info_span!("Input population")
-			.in_scope(|| example.populate_witness(instance, &mut filler))?;
-		tracing::info_span!("Circuit evaluation")
-			.in_scope(|| circuit.populate_wire_witness(&mut filler))?;
-		let witness = filler.into_value_vec();
-		drop(witness_population);
-
-		// Prove and verify
-		prove_verify(&verifier, &prover, witness)?;
+			json_export::export_metrics(
+				circuit_name,
+				E::param_summary(&params),
+				log_inv_rate,
+				all_metrics,
+				json_path,
+			)?;
+		}
 
 		Ok(())
+	}
+
+	/// Helper to run commands that only need circuit (no witness)
+	fn run_with_circuit<F>(matches: clap::ArgMatches, action: F) -> Result<()>
+	where
+		F: FnOnce(&Circuit) -> Result<()>,
+	{
+		let params = E::Params::from_arg_matches(&matches)?;
+		let (circuit, _example) = Self::build_circuit_and_example(params)?;
+		action(&circuit)
 	}
 
 	fn run_stat(matches: clap::ArgMatches) -> Result<()> {
-		// Parse Params from matches
-		let params = E::Params::from_arg_matches(&matches)?;
-
-		// Build the circuit
-		let mut builder = CircuitBuilder::new();
-		let _example = E::build(params, &mut builder)?;
-		let circuit = builder.build();
-
-		// Print statistics
-		let stat = CircuitStat::collect(&circuit);
-		print!("{}", stat);
-
-		Ok(())
+		Self::run_with_circuit(matches, |circuit| {
+			let stat = CircuitStat::collect(circuit);
+			print!("{}", stat);
+			Ok(())
+		})
 	}
 
 	fn run_composition(matches: clap::ArgMatches) -> Result<()> {
-		// Parse Params from matches
-		let params = E::Params::from_arg_matches(&matches)?;
-
-		// Build the circuit
-		let mut builder = CircuitBuilder::new();
-		let _example = E::build(params, &mut builder)?;
-		let circuit = builder.build();
-
-		// Print composition
-		let dump = circuit.simple_json_dump();
-		println!("{}", dump);
-
-		Ok(())
+		Self::run_with_circuit(matches, |circuit| {
+			let dump = circuit.simple_json_dump();
+			println!("{}", dump);
+			Ok(())
+		})
 	}
 
 	fn run_check_snapshot_impl(matches: clap::ArgMatches, circuit_name: &str) -> Result<()> {
-		// Parse Params from matches
-		let params = E::Params::from_arg_matches(&matches)?;
-
-		// Build the circuit
-		let mut builder = CircuitBuilder::new();
-		let _example = E::build(params, &mut builder)?;
-		let circuit = builder.build();
-
-		// Check snapshot
-		crate::snapshot::check_snapshot(circuit_name, &circuit)?;
-
-		Ok(())
+		Self::run_with_circuit(matches, |circuit| {
+			crate::snapshot::check_snapshot(circuit_name, circuit)
+		})
 	}
 
 	fn run_bless_snapshot_impl(matches: clap::ArgMatches, circuit_name: &str) -> Result<()> {
-		// Parse Params from matches
-		let params = E::Params::from_arg_matches(&matches)?;
-
-		// Build the circuit
-		let mut builder = CircuitBuilder::new();
-		let _example = E::build(params, &mut builder)?;
-		let circuit = builder.build();
-
-		// Bless snapshot
-		crate::snapshot::bless_snapshot(circuit_name, &circuit)?;
-
-		Ok(())
+		Self::run_with_circuit(matches, |circuit| {
+			crate::snapshot::bless_snapshot(circuit_name, circuit)
+		})
 	}
 
 	fn run_save(matches: clap::ArgMatches) -> Result<()> {
@@ -495,16 +604,9 @@ where
 		let params = E::Params::from_arg_matches(&matches)?;
 		let instance = E::Instance::from_arg_matches(&matches)?;
 
-		// Build circuit
-		let mut builder = CircuitBuilder::new();
-		let example = E::build(params, &mut builder)?;
-		let circuit = builder.build();
-
-		// Generate witness
-		let mut filler = circuit.new_witness_filler();
-		example.populate_witness(instance, &mut filler)?;
-		circuit.populate_wire_witness(&mut filler)?;
-		let witness: ValueVec = filler.into_value_vec();
+		// Build circuit and generate witness using helper functions
+		let (circuit, example) = Self::build_circuit_and_example(params)?;
+		let witness = Self::generate_witness(&circuit, example, instance)?;
 
 		// Conditionally write artifacts
 		if let Some(path) = cs_path.as_deref() {

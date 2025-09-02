@@ -1,6 +1,8 @@
 pub mod circuits;
 pub mod cli;
+pub mod json_export;
 pub mod snapshot;
+pub mod timing;
 
 use anyhow::Result;
 use binius_core::constraint_system::{ConstraintSystem, ValueVec};
@@ -10,7 +12,7 @@ use binius_verifier::{
 	Verifier,
 	config::StdChallenger,
 	hash::{StdCompression, StdDigest},
-	transcript::ProverTranscript,
+	transcript::{ProverTranscript, VerifierTranscript},
 };
 pub use cli::Cli;
 
@@ -33,6 +35,36 @@ pub fn prove_verify(verifier: &StdVerifier, prover: &StdProver, witness: ValueVe
 	verifier_transcript.finalize()?;
 
 	Ok(())
+}
+
+/// Same as prove_verify but returns separate timings and proof size
+pub fn prove_verify_timed(
+	verifier: &StdVerifier,
+	prover: &StdProver,
+	witness: ValueVec,
+) -> Result<(std::time::Duration, std::time::Duration, usize)> {
+	use std::time::Instant;
+
+	// Prove
+	let prove_start = Instant::now();
+	let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
+	prover.prove(witness.clone(), &mut prover_transcript)?;
+	let prove_time = prove_start.elapsed();
+
+	// Get proof size before consuming the transcript
+	// We need to clone the transcript's internal buffer to get the size
+	// since into_verifier() will consume it
+	let proof_bytes = prover_transcript.finalize();
+	let proof_size = proof_bytes.len();
+
+	// Create a new verifier transcript from the proof bytes
+	let verify_start = Instant::now();
+	let mut verifier_transcript = VerifierTranscript::new(StdChallenger::default(), proof_bytes);
+	verifier.verify(witness.public(), &mut verifier_transcript)?;
+	verifier_transcript.finalize()?;
+	let verify_time = verify_start.elapsed();
+
+	Ok((prove_time, verify_time, proof_size))
 }
 
 /// Trait for standardizing circuit examples in the Binius framework.
