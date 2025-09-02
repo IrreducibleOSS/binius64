@@ -436,6 +436,25 @@ impl<P: PackedField, Data: DerefMut<Target = [P]>> FieldBuffer<P, Data> {
 		Ok(())
 	}
 
+	/// Sets the new log length. If the new log length is bigger than the current log length,
+	/// the new values (in case when `self.log_len < new_log_len`) will be filled with
+	/// the values from the existing buffer.
+	///
+	/// # Throws
+	///
+	/// * `Error::IncorrectArgumentLength` if the new log length exceeds the buffer's capacity.
+	pub fn resize(&mut self, new_log_len: usize) -> Result<(), Error> {
+		if new_log_len > self.log_cap() {
+			return Err(Error::IncorrectArgumentLength {
+				arg: "new_log_len".to_string(),
+				expected: self.log_cap(),
+			});
+		}
+
+		self.log_len = new_log_len;
+		Ok(())
+	}
+
 	/// Split the buffer into mutable chunks of size `2^log_chunk_size`.
 	///
 	/// # Throws
@@ -1204,6 +1223,31 @@ mod tests {
 				assert!(buffer.get(j).unwrap().is_zero());
 			}
 		}
+	}
+
+	#[test]
+	fn test_resize() {
+		let mut buffer = FieldBuffer::<P>::zeros(4); // 16 elements
+
+		// Fill with test data
+		for i in 0..16 {
+			buffer.set(i, F::new(i as u128)).unwrap();
+		}
+
+		buffer.resize(3).unwrap();
+		assert_eq!(buffer.log_len(), 3);
+		assert_eq!(buffer.get(7).unwrap(), F::new(7));
+
+		buffer.resize(4).unwrap();
+		assert_eq!(buffer.log_len(), 4);
+		assert_eq!(buffer.get(15).unwrap(), F::new(15));
+
+		assert!(
+			matches!(buffer.resize(5), Err(Error::IncorrectArgumentLength { arg, expected }) if arg == "new_log_len" && expected == 4)
+		);
+
+		buffer.resize(2).unwrap();
+		assert_eq!(buffer.log_len(), 2);
 	}
 
 	#[test]
