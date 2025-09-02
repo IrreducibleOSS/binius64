@@ -274,6 +274,48 @@ cargo run --release --example my_circuit -- --help
 RUST_LOG=info cargo run --release --example my_circuit
 ```
 
+## CLI subcommands
+
+All example binaries share a common CLI with these subcommands:
+
+- prove (default): build the circuit, generate witness, create and verify a proof
+- stat: print circuit statistics
+- composition: output circuit composition as JSON
+- check-snapshot: compare current stats with the stored snapshot
+- bless-snapshot: update the stored snapshot with current stats
+- save: save artifacts to files (only those explicitly requested)
+
+### Save artifacts
+
+Use the save subcommand to write selected artifacts to disk. Nothing is written unless a corresponding path is provided.
+
+Flags:
+- --cs-path PATH: write the constraint system binary
+- --pub-witness-path PATH: write the public witness values binary
+- --non-pub-data-path PATH: write the non-public witness values binary
+
+Examples:
+
+```bash
+# Save only the constraint system
+cargo run --release --example my_circuit -- save --cs-path out/cs.bin
+
+# Save public values and non-public values
+cargo run --release --example my_circuit -- save \
+    --pub-witness-path out/public.bin \
+    --non-pub-data-path out/non_public.bin
+
+# Save all three
+cargo run --release --example my_circuit -- save \
+    --cs-path out/cs.bin \
+    --pub-witness-path out/public.bin \
+    --non-pub-data-path out/non_public.bin
+```
+
+Notes:
+- Public and non-public outputs are serialized using the versioned ValuesData format from core.
+- Parent directories are created automatically if they don’t exist.
+
 ## Adding to Cargo.toml
 
 Add your example to `crates/examples/Cargo.toml`:

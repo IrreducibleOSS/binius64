@@ -665,7 +665,7 @@ impl<'a> std::ops::Deref for ValuesData<'a> {
 ///
 /// The proof contains:
 /// - `data`: The actual proof transcript as bytes (zero-copy with Cow)
-/// - `challenger_type`: String identifying the challenger used (e.g., "HasherChallenger<Sha256>")
+/// - `challenger_type`: String identifying the challenger used (e.g., `"HasherChallenger<Sha256>"`)
 ///
 /// This enables complete cross-host verification where a proof generated on one
 /// machine can be serialized, transmitted, and verified on another machine with
