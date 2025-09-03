@@ -311,6 +311,14 @@ impl ConstraintSystem {
 			operand_name: &'static str,
 		) -> Result<(), ConstraintSystemError> {
 			for term in operand {
+				// check canonicity. SLL is the canonical form of the operand.
+				if term.amount == 0 && term.shift_variant != ShiftVariant::Sll {
+					return Err(ConstraintSystemError::NonCanonicalShift {
+						constraint_type,
+						constraint_index,
+						operand_name,
+					});
+				}
 				if term.amount >= 64 {
 					return Err(ConstraintSystemError::ShiftAmountTooLarge {
 						constraint_type,

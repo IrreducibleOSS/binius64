@@ -189,9 +189,27 @@ impl ShiftedWire {
 		let idx = wire_mapping[self.wire];
 		match self.shift {
 			Shift::None => ShiftedValueIndex::plain(idx),
-			Shift::Sll(n) => ShiftedValueIndex::sll(idx, n as usize),
-			Shift::Srl(n) => ShiftedValueIndex::srl(idx, n as usize),
-			Shift::Sar(n) => ShiftedValueIndex::sar(idx, n as usize),
+			Shift::Sll(n) => {
+				if n == 0 {
+					ShiftedValueIndex::plain(idx)
+				} else {
+					ShiftedValueIndex::sll(idx, n as usize)
+				}
+			}
+			Shift::Srl(n) => {
+				if n == 0 {
+					ShiftedValueIndex::plain(idx)
+				} else {
+					ShiftedValueIndex::srl(idx, n as usize)
+				}
+			}
+			Shift::Sar(n) => {
+				if n == 0 {
+					ShiftedValueIndex::plain(idx)
+				} else {
+					ShiftedValueIndex::sar(idx, n as usize)
+				}
+			}
 			Shift::Rotr(_) => {
 				unreachable!("Rotr should be expanded in expand_and_convert_operand()")
 			}
