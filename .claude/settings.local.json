@@ -48,7 +48,17 @@
       "Bash(./test_umod)",
       "Bash(./test_div_mod)",
       "Bash(./test_u32_div_mod:*)",
-      "Bash(cargo clippy:*)"
+      "Bash(cargo clippy:*)",
+      "Bash(timeout 10 cargo test -p binius-beamish test_keccak_full_rounds -- --nocapture)",
+      "Bash(gtimeout 10 cargo test -p binius-beamish test_keccak_full_rounds -- --nocapture)",
+      "Bash(./debug_eval)",
+      "Bash(./test_keccak_perf)",
+      "Bash(./test_keccak_params 4 1 false)",
+      "Bash(./test_keccak_params:*)",
+      "Bash(./compare_keccak)",
+      "Bash(./compare_rounds)",
+      "Bash(./trace_reuse)",
+      "Bash(./trace_traversal)"
     ],
     "deny": [],
     "ask": []
