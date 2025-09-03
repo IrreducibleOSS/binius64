@@ -227,7 +227,7 @@ fn round(
 /// # Arguments
 /// * `builder` - Circuit builder for constructing constraints
 /// * `message` - Input message as 32-bit words (4 bytes per wire) in little-endian format. Each
-///   wire must have the high 32 bits set to zero (enforced as a precondition).
+///   wire must have the high 32 bits set to zero (precondition).
 /// * `len_bytes` - The fixed length of the message in bytes (known at compile time)
 ///
 /// # Returns
@@ -237,6 +237,9 @@ fn round(
 /// # Panics
 /// * If `message.len()` does not equal exactly `len_bytes.div_ceil(4)`
 /// * If the message length in bits cannot fit in 32 bits
+///
+/// # Preconditions
+/// * The caller must constrain the `message` wires to have their high 32 bits set to zero.
 ///
 /// # Example
 /// ```rust,ignore
