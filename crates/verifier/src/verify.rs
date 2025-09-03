@@ -54,7 +54,7 @@ pub struct Verifier<MerkleHash, MerkleCompress> {
 impl<MerkleHash, MerkleCompress> Verifier<MerkleHash, MerkleCompress>
 where
 	MerkleHash: Digest + BlockSizeUser,
-	MerkleCompress: PseudoCompressionFunction<Output<MerkleHash>, 2> + Sync,
+	MerkleCompress: PseudoCompressionFunction<Output<MerkleHash>, 2>,
 	Output<MerkleHash>: DeserializeBytes,
 {
 	/// Constructs a verifier for a constraint system.

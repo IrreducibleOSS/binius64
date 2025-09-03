@@ -11,7 +11,7 @@ mod tests;
 ///
 /// This is separate from [`MerkleTreeScheme`] so that it may be implemented using a
 /// hardware-accelerated backend.
-pub trait MerkleTreeProver<T>: Sync {
+pub trait MerkleTreeProver<T> {
 	type Scheme: MerkleTreeScheme<T>;
 	/// Data generated during commitment required to generate opening proofs.
 	type Committed;

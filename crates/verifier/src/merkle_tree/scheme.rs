@@ -40,7 +40,7 @@ where
 	F: Field,
 	H: Digest + BlockSizeUser,
 	// TODO: Remove Sync trait here
-	C: PseudoCompressionFunction<Output<H>, 2> + Sync,
+	C: PseudoCompressionFunction<Output<H>, 2>,
 {
 	type Digest = Output<H>;
 
@@ -148,7 +148,7 @@ where
 // Merkle-tree-like folding
 fn fold_digests_vector_inplace<C, D>(compression: &C, digests: &mut [D]) -> Result<(), Error>
 where
-	C: PseudoCompressionFunction<D, 2> + Sync,
+	C: PseudoCompressionFunction<D, 2>,
 	D: Clone + Default + Send + Sync + Debug,
 {
 	if !digests.len().is_power_of_two() {
