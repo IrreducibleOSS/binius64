@@ -2,7 +2,6 @@ use std::array;
 
 use anyhow::Result;
 use binius_core::Word;
-use binius_examples::{Cli, ExampleCircuit};
 use binius_frontend::{
 	circuits::hash_based_sig::{
 		winternitz_ots::WinternitzSpec,
@@ -16,8 +15,10 @@ use binius_frontend::{
 use clap::Args;
 use rand::{RngCore, SeedableRng, rngs::StdRng};
 
+use crate::ExampleCircuit;
+
 /// Hash-based multi-signature verification example circuit
-struct HashBasedSigExample {
+pub struct HashBasedSigExample {
 	spec: WinternitzSpec,
 	tree_height: usize,
 	num_validators: usize,
@@ -29,23 +30,23 @@ struct HashBasedSigExample {
 	hashers: XmssMultisigHashers,
 }
 
-#[derive(Args, Debug)]
-struct Params {
+#[derive(Args, Debug, Clone)]
+pub struct Params {
 	/// Number of validators in the multi-signature
 	#[arg(short = 'n', long, default_value_t = 3)]
-	num_validators: usize,
+	pub num_validators: usize,
 
 	/// Height of the Merkle tree (2^height slots)
 	#[arg(short = 't', long, default_value_t = 3)]
-	tree_height: usize,
+	pub tree_height: usize,
 
 	/// Winternitz spec: 1 or 2
 	#[arg(short = 's', long, default_value_t = 1)]
-	spec: u8,
+	pub spec: u8,
 }
 
-#[derive(Args, Debug)]
-struct Instance {}
+#[derive(Args, Debug, Clone)]
+pub struct Instance {}
 
 impl ExampleCircuit for HashBasedSigExample {
 	type Params = Params;
@@ -113,11 +114,12 @@ impl ExampleCircuit for HashBasedSigExample {
 	}
 
 	fn populate_witness(&self, _instance: Instance, w: &mut WitnessFiller) -> Result<()> {
-		let mut rng = StdRng::seed_from_u64(0);
+		let mut rng = StdRng::seed_from_u64(42); // Fixed seed for benchmarking consistency
 
 		let mut param_bytes = vec![0u8; self.spec.domain_param_len];
 		rng.fill_bytes(&mut param_bytes);
 
+		// Fixed 32-byte message
 		let mut message_bytes = [0u8; 32];
 		rng.fill_bytes(&mut message_bytes);
 
@@ -193,12 +195,4 @@ impl ExampleCircuit for HashBasedSigExample {
 
 		Ok(())
 	}
-}
-
-fn main() -> Result<()> {
-	let _tracing_guard = tracing_profile::init_tracing()?;
-
-	Cli::<HashBasedSigExample>::new("hash_based_sig")
-		.about("Hash-based multi-signature (XMSS) verification example")
-		.run()
 }

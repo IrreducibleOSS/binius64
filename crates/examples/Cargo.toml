@@ -40,6 +40,10 @@ harness = false
 name = "blake2s"
 harness = false
 
+[[bench]]
+name = "hashsign"
+harness = false
+
 [features]
 default = ["rayon"]
 perfetto = ["tracing-profile/perfetto"]
