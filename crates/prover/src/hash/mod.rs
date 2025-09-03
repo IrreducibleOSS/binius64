@@ -1,5 +1,6 @@
 pub mod parallel_digest;
-#[allow(dead_code)]
-pub mod vision;
+
+pub mod vision_4;
+pub mod vision_6;
 
 pub use parallel_digest::ParallelDigest;
