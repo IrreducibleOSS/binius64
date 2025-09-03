@@ -4,13 +4,12 @@
 //!
 //! # Algorithm
 //!
-//! Computes the bitwise XOR using the identity: `x ^ y = ¬(x ∧ y)`.
-//! This is implemented as `(x ⊕ y) ∧ all-1 = z`.
+//! Computes the bitwise XOR using a linear constraint.
 //!
 //! # Constraints
 //!
-//! The gate generates 1 AND constraint:
-//! - `(x ⊕ y) ∧ all-1 = z`
+//! The gate generates 1 linear constraint:
+//! - `x ⊕ y = z`
 
 use binius_core::word::Word;
 
