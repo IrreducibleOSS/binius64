@@ -109,7 +109,9 @@ impl CircuitBuilder {
 	///
 	/// Must be called only once.
 	pub fn build(&self) -> Circuit {
+		let all_one = self.add_constant(Word::ALL_ONE);
 		let shared = self.shared.borrow_mut().take();
+
 		let Some(shared) = shared else {
 			panic!("CircuitBuilder::build called twice");
 		};
@@ -211,7 +213,7 @@ impl CircuitBuilder {
 		for (gate_id, _) in graph.gates.iter() {
 			gate::constrain(gate_id, &graph, &mut builder);
 		}
-		let (mut and_constraints, mut mul_constraints) = builder.build(&wire_mapping);
+		let (mut and_constraints, mut mul_constraints) = builder.build(&wire_mapping, all_one);
 
 		// Perform fusion if the corresponding feature flag is turned on.
 		if shared.opts.enable_gate_fusion {

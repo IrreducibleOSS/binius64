@@ -21,7 +21,7 @@
 use binius_core::word::Word;
 
 use crate::compiler::{
-	constraint_builder::{ConstraintBuilder, sll, srl, xor2},
+	constraint_builder::{ConstraintBuilder, rotr},
 	gate::opcode::OpcodeShape,
 	gate_graph::{Gate, GateData, GateParam, Wire},
 };
@@ -39,25 +39,18 @@ pub fn shape() -> OpcodeShape {
 
 pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) {
 	let GateParam {
-		constants,
 		inputs,
 		outputs,
 		imm,
 		..
 	} = data.gate_param();
-	let [mask64] = constants else { unreachable!() };
 	let [x] = inputs else { unreachable!() };
 	let [z] = outputs else { unreachable!() };
 	let [n] = imm else { unreachable!() };
 
-	// Constraint: Rotate left
-	// ((x << n) ⊕ (x >> (64-n))) ∧ MASK_64 = z
-	builder
-		.and()
-		.a(xor2(srl(*x, *n), sll(*x, 64 - *n)))
-		.b(*mask64)
-		.c(*z)
-		.build();
+	// Constraint: Rotate right (linear)
+	// rotr(x, n) = z
+	builder.linear().rhs(rotr(*x, *n)).dst(*z).build();
 }
 
 pub fn emit_eval_bytecode(
