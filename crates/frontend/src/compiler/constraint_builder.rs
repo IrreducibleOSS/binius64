@@ -83,10 +83,14 @@ fn expand_and_convert_operand(
 	for sw in operand {
 		match sw.shift {
 			Shift::Rotr(n) => {
-				// Expand rotr(w, n) => srl(w, n) ⊕ sll(w, 64-n)
 				let idx = wire_mapping[sw.wire];
-				result.push(ShiftedValueIndex::srl(idx, n as usize));
-				result.push(ShiftedValueIndex::sll(idx, (64 - n) as usize));
+				if n == 0 {
+					result.push(ShiftedValueIndex::plain(idx));
+				} else {
+					// Expand rotr(w, n) => srl(w, n) ⊕ sll(w, 64-n)
+					result.push(ShiftedValueIndex::srl(idx, n as usize));
+					result.push(ShiftedValueIndex::sll(idx, (64 - n) as usize));
+				}
 			}
 			_ => {
 				result.push(sw.to_shifted_value_index(wire_mapping));
@@ -452,5 +456,274 @@ impl From<Wire> for WireExprTerm {
 impl From<WireExprTerm> for WireExpr {
 	fn from(expr: WireExprTerm) -> Self {
 		WireExpr(smallvec![expr])
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use binius_core::constraint_system::ShiftVariant;
+	use cranelift_entity::EntityRef;
+
+	use super::*;
+
+	#[test]
+	fn test_rotr_zero_optimization_with_builder() {
+		// Test that rotr(w, 0) is optimized to plain(w) using the builder API
+		// and produces the expected final ConstraintSystem
+
+		// Setup wire mapping
+		let mut wire_mapping = SecondaryMap::new();
+		let wire_a = Wire::new(0);
+		let wire_b = Wire::new(1);
+		let wire_c = Wire::new(2);
+		let all_one_wire = Wire::new(3);
+
+		wire_mapping[wire_a] = ValueIndex(0);
+		wire_mapping[wire_b] = ValueIndex(1);
+		wire_mapping[wire_c] = ValueIndex(2);
+		wire_mapping[all_one_wire] = ValueIndex(3);
+
+		// Test case 1: Linear constraint with rotr(0)
+		// c = rotr(a, 0) ⊕ b
+		{
+			let mut builder = ConstraintBuilder::new();
+
+			// Build: c = rotr(a, 0) ⊕ b
+			builder
+				.linear()
+				.rhs(xor2(rotr(wire_a, 0), wire_b))
+				.dst(wire_c)
+				.build();
+
+			let (and_constraints, mul_constraints) = builder.build(&wire_mapping, all_one_wire);
+
+			// rotr(0) should be optimized to plain wire, so we expect:
+			// (a ⊕ b) & all_one = c
+			assert_eq!(and_constraints.len(), 1);
+			assert_eq!(mul_constraints.len(), 0);
+
+			let and_c = &and_constraints[0];
+
+			// Check operand a: should have plain(0) and plain(1)
+			assert_eq!(and_c.a.len(), 2);
+			assert!(
+				and_c
+					.a
+					.iter()
+					.any(|svi| svi.value_index == ValueIndex(0) && svi.amount == 0)
+			);
+			assert!(
+				and_c
+					.a
+					.iter()
+					.any(|svi| svi.value_index == ValueIndex(1) && svi.amount == 0)
+			);
+
+			// Check operand b: should be all_one
+			assert_eq!(and_c.b.len(), 1);
+			assert_eq!(and_c.b[0].value_index, ValueIndex(3));
+			assert_eq!(and_c.b[0].amount, 0);
+
+			// Check operand c: should be wire_c
+			assert_eq!(and_c.c.len(), 1);
+			assert_eq!(and_c.c[0].value_index, ValueIndex(2));
+			assert_eq!(and_c.c[0].amount, 0);
+		}
+
+		// Test case 2: Linear constraint with rotr(n) where n > 0
+		// c = rotr(a, 5) ⊕ b
+		{
+			let mut builder = ConstraintBuilder::new();
+
+			// Build: c = rotr(a, 5) ⊕ b
+			builder
+				.linear()
+				.rhs(xor2(rotr(wire_a, 5), wire_b))
+				.dst(wire_c)
+				.build();
+
+			let (and_constraints, mul_constraints) = builder.build(&wire_mapping, all_one_wire);
+
+			assert_eq!(and_constraints.len(), 1);
+			assert_eq!(mul_constraints.len(), 0);
+
+			let and_c = &and_constraints[0];
+
+			// rotr(5) should expand to srl(5) ⊕ sll(59)
+			// So operand a should have: srl(a, 5), sll(a, 59), plain(b)
+			assert_eq!(and_c.a.len(), 3);
+
+			// Check for srl(a, 5)
+			assert!(and_c.a.iter().any(|svi| {
+				svi.value_index == ValueIndex(0)
+					&& svi.amount == 5
+					&& matches!(svi.shift_variant, ShiftVariant::Slr)
+			}));
+
+			// Check for sll(a, 59)
+			assert!(and_c.a.iter().any(|svi| {
+				svi.value_index == ValueIndex(0)
+					&& svi.amount == 59
+					&& matches!(svi.shift_variant, ShiftVariant::Sll)
+			}));
+
+			// Check for plain(b)
+			assert!(
+				and_c
+					.a
+					.iter()
+					.any(|svi| svi.value_index == ValueIndex(1) && svi.amount == 0)
+			);
+		}
+	}
+
+	#[test]
+	fn test_rotr_in_and_constraint() {
+		// Test rotr in AND constraints: (a & rotr(b, 0)) ⊕ c = 0
+
+		let mut wire_mapping = SecondaryMap::new();
+		let wire_a = Wire::new(0);
+		let wire_b = Wire::new(1);
+		let wire_c = Wire::new(2);
+		let all_one_wire = Wire::new(3);
+
+		wire_mapping[wire_a] = ValueIndex(0);
+		wire_mapping[wire_b] = ValueIndex(1);
+		wire_mapping[wire_c] = ValueIndex(2);
+		wire_mapping[all_one_wire] = ValueIndex(3);
+
+		// Test with rotr(0)
+		{
+			let mut builder = ConstraintBuilder::new();
+
+			// Build: a & rotr(b, 0) ⊕ c = 0
+			builder.and().a(wire_a).b(rotr(wire_b, 0)).c(wire_c).build();
+
+			let (and_constraints, _) = builder.build(&wire_mapping, all_one_wire);
+
+			assert_eq!(and_constraints.len(), 1);
+			let and_c = &and_constraints[0];
+
+			// Check operand a: plain wire_a
+			assert_eq!(and_c.a.len(), 1);
+			assert_eq!(and_c.a[0].value_index, ValueIndex(0));
+			assert_eq!(and_c.a[0].amount, 0);
+
+			// Check operand b: should be plain wire_b (rotr(0) optimized)
+			assert_eq!(and_c.b.len(), 1);
+			assert_eq!(and_c.b[0].value_index, ValueIndex(1));
+			assert_eq!(and_c.b[0].amount, 0);
+
+			// Check operand c: plain wire_c
+			assert_eq!(and_c.c.len(), 1);
+			assert_eq!(and_c.c[0].value_index, ValueIndex(2));
+			assert_eq!(and_c.c[0].amount, 0);
+		}
+
+		// Test with rotr(8) - should expand
+		{
+			let mut builder = ConstraintBuilder::new();
+
+			// Build: a & rotr(b, 8) ⊕ c = 0
+			builder.and().a(wire_a).b(rotr(wire_b, 8)).c(wire_c).build();
+
+			let (and_constraints, _) = builder.build(&wire_mapping, all_one_wire);
+
+			assert_eq!(and_constraints.len(), 1);
+			let and_c = &and_constraints[0];
+
+			// Check operand b: should have srl(b, 8) and sll(b, 56)
+			assert_eq!(and_c.b.len(), 2);
+
+			assert!(and_c.b.iter().any(|svi| {
+				svi.value_index == ValueIndex(1)
+					&& svi.amount == 8
+					&& matches!(svi.shift_variant, ShiftVariant::Slr)
+			}));
+
+			assert!(and_c.b.iter().any(|svi| {
+				svi.value_index == ValueIndex(1)
+					&& svi.amount == 56
+					&& matches!(svi.shift_variant, ShiftVariant::Sll)
+			}));
+		}
+	}
+
+	#[test]
+	fn test_complex_expression_with_rotr() {
+		// Test a more complex expression: c = rotr(a, 0) ⊕ sll(b, 5) ⊕ rotr(a, 12)
+
+		let mut wire_mapping = SecondaryMap::new();
+		let wire_a = Wire::new(0);
+		let wire_b = Wire::new(1);
+		let wire_c = Wire::new(2);
+		let all_one_wire = Wire::new(3);
+
+		wire_mapping[wire_a] = ValueIndex(0);
+		wire_mapping[wire_b] = ValueIndex(1);
+		wire_mapping[wire_c] = ValueIndex(2);
+		wire_mapping[all_one_wire] = ValueIndex(3);
+
+		let mut builder = ConstraintBuilder::new();
+
+		// Build complex expression
+		builder
+			.linear()
+			.rhs(xor3(rotr(wire_a, 0), sll(wire_b, 5), rotr(wire_a, 12)))
+			.dst(wire_c)
+			.build();
+
+		let (and_constraints, mul_constraints) = builder.build(&wire_mapping, all_one_wire);
+
+		assert_eq!(and_constraints.len(), 1);
+		assert_eq!(mul_constraints.len(), 0);
+
+		let and_c = &and_constraints[0];
+
+		// Expected operand a components:
+		// - plain(a) from rotr(a, 0)
+		// - sll(b, 5)
+		// - srl(a, 12) from rotr(a, 12)
+		// - sll(a, 52) from rotr(a, 12)
+		assert_eq!(and_c.a.len(), 4);
+
+		// Check for plain(a) from rotr(0)
+		assert!(
+			and_c
+				.a
+				.iter()
+				.any(|svi| svi.value_index == ValueIndex(0) && svi.amount == 0),
+			"Should have plain(a) from rotr(a, 0)"
+		);
+
+		// Check for sll(b, 5)
+		assert!(
+			and_c.a.iter().any(|svi| {
+				svi.value_index == ValueIndex(1)
+					&& svi.amount == 5
+					&& matches!(svi.shift_variant, ShiftVariant::Sll)
+			}),
+			"Should have sll(b, 5)"
+		);
+
+		// Check for srl(a, 12) from rotr expansion
+		assert!(
+			and_c.a.iter().any(|svi| {
+				svi.value_index == ValueIndex(0)
+					&& svi.amount == 12
+					&& matches!(svi.shift_variant, ShiftVariant::Slr)
+			}),
+			"Should have srl(a, 12) from rotr(a, 12)"
+		);
+
+		// Check for sll(a, 52) from rotr expansion
+		assert!(
+			and_c.a.iter().any(|svi| {
+				svi.value_index == ValueIndex(0)
+					&& svi.amount == 52
+					&& matches!(svi.shift_variant, ShiftVariant::Sll)
+			}),
+			"Should have sll(a, 52) from rotr(a, 12)"
+		);
 	}
 }
