@@ -4,8 +4,8 @@
 //!
 //! # Constraints
 //!
-//! The gate generates 1 AND constraint:
-//! - `(x0 ⊕ x1 ⊕ ... ⊕ xn) ∧ all-1 = z`
+//! The gate generates 1 linear constraint:
+//! - `x0 ⊕ x1 ⊕ ... ⊕ xn = z`
 
 use binius_core::word::Word;
 

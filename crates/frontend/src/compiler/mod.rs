@@ -718,7 +718,7 @@ impl CircuitBuilder {
 
 	/// Select operation.
 	///
-	/// Returns `t` if MSB(cond) is 1, otherwise returns `f`.
+	/// Returns `t` if `cond` is true (MSB-bit set), otherwise returns `f`.
 	///
 	/// # Cost
 	///
