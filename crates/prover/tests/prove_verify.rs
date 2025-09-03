@@ -10,21 +10,26 @@ use binius_frontend::{
 	compiler,
 	compiler::Wire,
 };
-use binius_prover::Prover;
+use binius_prover::{
+	Prover, hash::vision_4::compression::VisionParallelCompression as VisionParallelCompression_4,
+};
 use binius_transcript::ProverTranscript;
 use binius_verifier::{
 	Verifier,
 	config::StdChallenger,
-	hash::{StdCompression, StdDigest},
+	hash::{StdDigest, vision_4::compression::VisionCompression as VisionCompression_4},
 };
 
 fn prove_verify(cs: ConstraintSystem, witness: ValueVec) {
 	const LOG_INV_RATE: usize = 1;
 
-	let verifier =
-		Verifier::<StdDigest, _>::setup(cs, LOG_INV_RATE, StdCompression::default()).unwrap();
+	let verifier = Verifier::<StdDigest, _>::setup(cs, LOG_INV_RATE, VisionCompression_4).unwrap();
 
-	let prover = Prover::<OptimalPackedB128, _, StdDigest>::setup(verifier.clone()).unwrap();
+	let prover = Prover::<OptimalPackedB128, _, StdDigest>::setup(
+		verifier.clone(),
+		VisionParallelCompression_4::default(),
+	)
+	.unwrap();
 
 	let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
 	prover

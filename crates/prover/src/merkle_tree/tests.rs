@@ -11,13 +11,17 @@ use binius_verifier::{
 };
 use rand::prelude::*;
 
-use crate::merkle_tree::{MerkleTreeProver, prover::BinaryMerkleTreeProver};
+use crate::{
+	hash::parallel_compression::ParallelCompressionAdaptor,
+	merkle_tree::{MerkleTreeProver, prover::BinaryMerkleTreeProver},
+};
 
 #[test]
 fn test_binary_merkle_vcs_commit_prove_open_correctly() {
 	let mut rng = StdRng::seed_from_u64(0);
 
-	let mr_prover = BinaryMerkleTreeProver::<_, StdDigest, _>::new(StdCompression::default());
+	let parallel_compression = ParallelCompressionAdaptor::new(StdCompression::default());
+	let mr_prover = BinaryMerkleTreeProver::<_, StdDigest, _>::new(parallel_compression);
 
 	let data = random_scalars::<B128>(&mut rng, 16);
 	let (commitment, tree) = mr_prover.commit(&data, 1).unwrap();
@@ -49,7 +53,8 @@ fn test_binary_merkle_vcs_commit_prove_open_correctly() {
 fn test_binary_merkle_vcs_commit_layer_prove_open_correctly() {
 	let mut rng = StdRng::seed_from_u64(0);
 
-	let mr_prover = BinaryMerkleTreeProver::<_, StdDigest, _>::new(StdCompression::default());
+	let parallel_compression = ParallelCompressionAdaptor::new(StdCompression::default());
+	let mr_prover = BinaryMerkleTreeProver::<_, StdDigest, _>::new(parallel_compression);
 
 	let data = random_scalars::<B128>(&mut rng, 32);
 	let (commitment, tree) = mr_prover.commit(&data, 1).unwrap();
@@ -87,7 +92,8 @@ fn test_binary_merkle_vcs_commit_layer_prove_open_correctly() {
 fn test_binary_merkle_vcs_verify_vector() {
 	let mut rng = StdRng::seed_from_u64(0);
 
-	let mr_prover = BinaryMerkleTreeProver::<_, StdDigest, _>::new(StdCompression::default());
+	let parallel_compression = ParallelCompressionAdaptor::new(StdCompression::default());
+	let mr_prover = BinaryMerkleTreeProver::<_, StdDigest, _>::new(parallel_compression);
 
 	let data = random_scalars::<B128>(&mut rng, 4);
 	let (commitment, _) = mr_prover.commit(&data, 1).unwrap();

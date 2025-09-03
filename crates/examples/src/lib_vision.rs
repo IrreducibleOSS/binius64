@@ -5,27 +5,24 @@ pub mod snapshot;
 use anyhow::Result;
 use binius_core::constraint_system::{ConstraintSystem, ValueVec};
 use binius_frontend::compiler::{CircuitBuilder, circuit::WitnessFiller};
-use binius_prover::{
-	OptimalPackedB128, Prover, hash::parallel_compression::ParallelCompressionAdaptor,
-};
+use binius_prover::hash::vision_4::compression::VisionParallelCompression as VisionParallelCompression_4;
+use binius_prover::{OptimalPackedB128, Prover};
+use binius_verifier::hash::vision_4::compression::VisionCompression as VisionCompression_4;
 use binius_verifier::{
-	Verifier,
-	config::StdChallenger,
-	hash::{StdCompression, StdDigest},
-	transcript::ProverTranscript,
+	Verifier, config::StdChallenger, hash::StdDigest, transcript::ProverTranscript,
 };
 pub use cli::Cli;
 
-pub type StdVerifier = Verifier<StdDigest, StdCompression>;
-pub type StdProver =
-	Prover<OptimalPackedB128, ParallelCompressionAdaptor<StdCompression>, StdDigest>;
+pub type StdVerifier = Verifier<StdDigest, VisionCompression_4>;
+pub type StdProver = Prover<OptimalPackedB128, VisionParallelCompression_4, StdDigest>;
 
 pub fn setup(cs: ConstraintSystem, log_inv_rate: usize) -> Result<(StdVerifier, StdProver)> {
 	let _setup_guard = tracing::info_span!("Setup", log_inv_rate).entered();
-	let verifier = Verifier::<StdDigest, _>::setup(cs, log_inv_rate, StdCompression::default())?;
+	let verifier =
+		Verifier::<StdDigest, _>::setup(cs, log_inv_rate, VisionCompression_4::default())?;
 	let prover = Prover::<OptimalPackedB128, _, StdDigest>::setup(
 		verifier.clone(),
-		ParallelCompressionAdaptor::new(StdCompression::default()),
+		VisionParallelCompression_4::default(),
 	)?;
 	Ok((verifier, prover))
 }

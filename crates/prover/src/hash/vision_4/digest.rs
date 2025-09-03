@@ -10,7 +10,7 @@ use binius_verifier::hash::vision_4::{
 };
 use digest::Output;
 
-use super::{super::parallel_digest::MultiDigest, parallel::parallel_permutation};
+use super::{super::parallel_digest::MultiDigest, permutation::batch_permutation};
 
 /// A Vision hasher with state size M=4 suited for parallelization.
 ///
@@ -62,7 +62,7 @@ impl<const N: usize, const MN: usize> VisionHasherMultiDigest<N, MN> {
 			}
 		}
 
-		parallel_permutation::<N, MN>(states, scratchpad);
+		batch_permutation::<N, MN>(states, scratchpad);
 	}
 	fn finalize(&mut self, out: &mut [MaybeUninit<digest::Output<VisionHasherDigest>>; N]) {
 		if self.filled_bytes != 0 {

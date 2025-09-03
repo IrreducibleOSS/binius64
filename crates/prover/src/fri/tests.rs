@@ -22,7 +22,10 @@ use binius_verifier::{
 use rand::prelude::*;
 
 use super::{CommitOutput, FRIFolder, FoldRoundOutput, commit_interleaved};
-use crate::merkle_tree::{MerkleTreeProver, prover::BinaryMerkleTreeProver};
+use crate::{
+	hash::parallel_compression::ParallelCompressionAdaptor,
+	merkle_tree::{MerkleTreeProver, prover::BinaryMerkleTreeProver},
+};
 
 fn test_commit_prove_verify_success<F, FA, P>(
 	log_dimension: usize,
@@ -36,7 +39,8 @@ fn test_commit_prove_verify_success<F, FA, P>(
 {
 	let mut rng = StdRng::seed_from_u64(0);
 
-	let merkle_prover = BinaryMerkleTreeProver::<_, StdDigest, _>::new(StdCompression::default());
+	let parallel_compression = ParallelCompressionAdaptor::new(StdCompression::default());
+	let merkle_prover = BinaryMerkleTreeProver::<_, StdDigest, _>::new(parallel_compression);
 
 	let committed_rs_code = ReedSolomonCode::<FA>::new(log_dimension, log_inv_rate).unwrap();
 
