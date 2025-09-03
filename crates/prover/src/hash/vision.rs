@@ -4,7 +4,7 @@ use std::{array, mem::MaybeUninit};
 
 use binius_field::{BinaryField128bGhash as Ghash, Field};
 use binius_utils::SerializeBytes;
-use binius_verifier::hash::vision::{
+use binius_verifier::hash::vision_4::{
 	M,
 	digest::{PADDING_BLOCK, RATE_AS_U8, VisionHasherDigest, fill_padding},
 };

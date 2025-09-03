@@ -4,11 +4,12 @@ use binius_field::{BinaryField128bGhash as Ghash, Field};
 use binius_utils::{DeserializeBytes, SerializeBytes};
 use digest::{
 	FixedOutput, FixedOutputReset, HashMarker, OutputSizeUser, Reset, Update, consts::U32,
+	core_api::BlockSizeUser,
 };
 
 use super::{constants::M, permutation::permutation};
 
-const RATE_AS_U128: usize = 2;
+pub const RATE_AS_U128: usize = 2;
 pub const RATE_AS_U8: usize = RATE_AS_U128 * std::mem::size_of::<u128>();
 
 const PADDING_START: u8 = 0x80;
@@ -108,6 +109,10 @@ impl Update for VisionHasherDigest {
 
 impl OutputSizeUser for VisionHasherDigest {
 	type OutputSize = U32;
+}
+
+impl BlockSizeUser for VisionHasherDigest {
+	type BlockSize = U32;
 }
 
 impl FixedOutput for VisionHasherDigest {
