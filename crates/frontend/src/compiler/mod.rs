@@ -368,6 +368,22 @@ impl CircuitBuilder {
 		z
 	}
 
+	/// Fused AND-XOR operation.
+	///
+	/// Computes (x & y) ^ w in a single gate.
+	///
+	/// Returns z = (x & y) ^ w
+	///
+	/// # Cost
+	///
+	/// 1 AND constraint.
+	pub fn fax(&self, x: Wire, y: Wire, w: Wire) -> Wire {
+		let z = self.add_internal();
+		let mut graph = self.graph_mut();
+		graph.emit_gate(self.current_path, Opcode::Fax, [x, y, w], [z]);
+		z
+	}
+
 	pub fn iadd_32(&self, a: Wire, b: Wire) -> Wire {
 		let z = self.add_internal();
 		let mut graph = self.graph_mut();
