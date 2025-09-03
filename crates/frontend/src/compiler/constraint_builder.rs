@@ -124,7 +124,7 @@ pub struct WireMulConstraint {
 /// LINEAR constraint using Wire references
 pub struct WireLinearConstraint {
 	pub rhs: WireOperand,
-	pub dst: WireOperand,
+	pub dst: Wire,
 }
 
 impl WireLinearConstraint {
@@ -133,10 +133,11 @@ impl WireLinearConstraint {
 		wire_mapping: &SecondaryMap<Wire, ValueIndex>,
 		all_ones: ValueIndex,
 	) -> AndConstraint {
+		let dst = wire_mapping[self.dst];
 		AndConstraint {
 			a: expand_and_convert_operand(self.rhs, wire_mapping),
 			b: vec![ShiftedValueIndex::plain(all_ones)],
-			c: expand_and_convert_operand(self.dst, wire_mapping),
+			c: vec![ShiftedValueIndex::plain(dst)],
 		}
 	}
 }
@@ -250,7 +251,7 @@ pub struct MulConstraintBuilder<'a> {
 pub struct LinearConstraintBuilder<'a> {
 	builder: &'a mut ConstraintBuilder,
 	rhs: WireOperand,
-	dst: WireOperand,
+	dst: Option<Wire>,
 }
 
 impl<'a> MulConstraintBuilder<'a> {
@@ -299,7 +300,7 @@ impl<'a> LinearConstraintBuilder<'a> {
 		Self {
 			builder,
 			rhs: Vec::new(),
-			dst: Vec::new(),
+			dst: None,
 		}
 	}
 
@@ -310,16 +311,18 @@ impl<'a> LinearConstraintBuilder<'a> {
 	}
 
 	/// Set the DST operand (destination wire)
-	pub fn dst(mut self, expr: impl Into<WireExpr>) -> Self {
-		self.dst = expr.into().to_operand();
+	pub fn dst(mut self, wire: Wire) -> Self {
+		self.dst = Some(wire);
 		self
 	}
 
-	/// Finalize and add the linear constraint
+	/// Finalize and add the linear constraint.
+	///
+	/// Panics if `dst` wasn't assigned.
 	pub fn build(self) {
 		self.builder.linear_constraints.push(WireLinearConstraint {
 			rhs: self.rhs,
-			dst: self.dst,
+			dst: self.dst.expect("dst wire must be assigned"),
 		});
 	}
 }
