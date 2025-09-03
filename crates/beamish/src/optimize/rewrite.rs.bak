@@ -63,10 +63,10 @@ fn rewrite_expression_impl(expr: &ExprNode, config: &OptConfig) -> ExprNode {
             if config.xor_ones_elimination {
                 match (a.as_ref(), b.as_ref()) {
                     (ExprNode::Constant(0xFFFFFFFFFFFFFFFF), _) => {
-                        return ExprNode::Not(Box::new(rewrite_expression_impl(b, config)));
+                        return ExprNode::Not(Rc::new(rewrite_expression_impl(b, config)));
                     }
                     (_, ExprNode::Constant(0xFFFFFFFFFFFFFFFF)) => {
-                        return ExprNode::Not(Box::new(rewrite_expression_impl(a, config)));
+                        return ExprNode::Not(Rc::new(rewrite_expression_impl(a, config)));
                     }
                     _ => {}
                 }
@@ -81,8 +81,8 @@ fn rewrite_expression_impl(expr: &ExprNode, config: &OptConfig) -> ExprNode {
             
             // Default: recurse on children
             ExprNode::Xor(
-                Box::new(rewrite_expression_impl(a, config)),
-                Box::new(rewrite_expression_impl(b, config))
+                Rc::new(rewrite_expression_impl(a, config)),
+                Rc::new(rewrite_expression_impl(b, config))
             )
         }
         
@@ -119,8 +119,8 @@ fn rewrite_expression_impl(expr: &ExprNode, config: &OptConfig) -> ExprNode {
             
             // Default: recurse on children
             ExprNode::And(
-                Box::new(rewrite_expression_impl(a, config)),
-                Box::new(rewrite_expression_impl(b, config))
+                Rc::new(rewrite_expression_impl(a, config)),
+                Rc::new(rewrite_expression_impl(b, config))
             )
         }
         
@@ -153,8 +153,8 @@ fn rewrite_expression_impl(expr: &ExprNode, config: &OptConfig) -> ExprNode {
             
             // Default: recurse on children
             ExprNode::Or(
-                Box::new(rewrite_expression_impl(a, config)),
-                Box::new(rewrite_expression_impl(b, config))
+                Rc::new(rewrite_expression_impl(a, config)),
+                Rc::new(rewrite_expression_impl(b, config))
             )
         }
         
@@ -177,7 +177,7 @@ fn rewrite_expression_impl(expr: &ExprNode, config: &OptConfig) -> ExprNode {
             }
             
             // Default: recurse on child
-            ExprNode::Not(Box::new(rewrite_expression_impl(inner, config)))
+            ExprNode::Not(Rc::new(rewrite_expression_impl(inner, config)))
         }
         
         
@@ -185,74 +185,74 @@ fn rewrite_expression_impl(expr: &ExprNode, config: &OptConfig) -> ExprNode {
         ExprNode::Witness(v) => ExprNode::Witness(*v),
         ExprNode::Constant(c) => ExprNode::Constant(*c),
         ExprNode::Shl(a, amt) => {
-            ExprNode::Shl(Box::new(rewrite_expression_impl(a, config)), *amt)
+            ExprNode::Shl(Rc::new(rewrite_expression_impl(a, config)), *amt)
         }
         ExprNode::Shr(a, amt) => {
-            ExprNode::Shr(Box::new(rewrite_expression_impl(a, config)), *amt)
+            ExprNode::Shr(Rc::new(rewrite_expression_impl(a, config)), *amt)
         }
         ExprNode::Sar(a, amt) => {
-            ExprNode::Sar(Box::new(rewrite_expression_impl(a, config)), *amt)
+            ExprNode::Sar(Rc::new(rewrite_expression_impl(a, config)), *amt)
         }
         ExprNode::Rol(a, amt) => {
-            ExprNode::Rol(Box::new(rewrite_expression_impl(a, config)), *amt)
+            ExprNode::Rol(Rc::new(rewrite_expression_impl(a, config)), *amt)
         }
         ExprNode::Ror(a, amt) => {
-            ExprNode::Ror(Box::new(rewrite_expression_impl(a, config)), *amt)
+            ExprNode::Ror(Rc::new(rewrite_expression_impl(a, config)), *amt)
         }
         ExprNode::Add32(a, b) => {
             ExprNode::Add32(
-                Box::new(rewrite_expression_impl(a, config)),
-                Box::new(rewrite_expression_impl(b, config))
+                Rc::new(rewrite_expression_impl(a, config)),
+                Rc::new(rewrite_expression_impl(b, config))
             )
         }
         ExprNode::Add64(a, b) => {
             ExprNode::Add64(
-                Box::new(rewrite_expression_impl(a, config)),
-                Box::new(rewrite_expression_impl(b, config))
+                Rc::new(rewrite_expression_impl(a, config)),
+                Rc::new(rewrite_expression_impl(b, config))
             )
         }
         ExprNode::Sub32(a, b) => {
             ExprNode::Sub32(
-                Box::new(rewrite_expression_impl(a, config)),
-                Box::new(rewrite_expression_impl(b, config))
+                Rc::new(rewrite_expression_impl(a, config)),
+                Rc::new(rewrite_expression_impl(b, config))
             )
         }
         ExprNode::Sub64(a, b) => {
             ExprNode::Sub64(
-                Box::new(rewrite_expression_impl(a, config)),
-                Box::new(rewrite_expression_impl(b, config))
+                Rc::new(rewrite_expression_impl(a, config)),
+                Rc::new(rewrite_expression_impl(b, config))
             )
         }
         ExprNode::Mul32(a, b) => {
             ExprNode::Mul32(
-                Box::new(rewrite_expression_impl(a, config)),
-                Box::new(rewrite_expression_impl(b, config))
+                Rc::new(rewrite_expression_impl(a, config)),
+                Rc::new(rewrite_expression_impl(b, config))
             )
         }
         ExprNode::Mul64(a, b) => {
             ExprNode::Mul64(
-                Box::new(rewrite_expression_impl(a, config)),
-                Box::new(rewrite_expression_impl(b, config))
+                Rc::new(rewrite_expression_impl(a, config)),
+                Rc::new(rewrite_expression_impl(b, config))
             )
         }
         ExprNode::Mux(cond, t, f) => {
             ExprNode::Mux(
-                Box::new(rewrite_expression_impl(cond, config)),
-                Box::new(rewrite_expression_impl(t, config)),
-                Box::new(rewrite_expression_impl(f, config))
+                Rc::new(rewrite_expression_impl(cond, config)),
+                Rc::new(rewrite_expression_impl(t, config)),
+                Rc::new(rewrite_expression_impl(f, config))
             )
         }
         ExprNode::Equal(a, b) => {
             ExprNode::Equal(
-                Box::new(rewrite_expression_impl(a, config)),
-                Box::new(rewrite_expression_impl(b, config))
+                Rc::new(rewrite_expression_impl(a, config)),
+                Rc::new(rewrite_expression_impl(b, config))
             )
         }
         
         ExprNode::BlackBox { compute, inputs } => {
             // Process inputs recursively, but keep compute function unchanged
-            let rewritten_inputs: Vec<Box<ExprNode>> = inputs.iter()
-                .map(|input| Box::new(rewrite_expression_impl(input, config)))
+            let rewritten_inputs: Vec<Rc<ExprNode>> = inputs.iter()
+                .map(|input| Rc::new(rewrite_expression_impl(input, config)))
                 .collect();
             ExprNode::BlackBox {
                 compute: *compute,
@@ -370,7 +370,7 @@ fn detect_conditional_select_pattern(expr: &ExprNode) -> Option<(Box<ExprNode>, 
 }
 
 /// Try to cancel common XOR terms
-fn try_cancel_xor_terms(left: &Box<ExprNode>, right: &Box<ExprNode>) -> Option<ExprNode> {
+fn try_cancel_xor_terms(left: &Rc<ExprNode>, right: &Rc<ExprNode>) -> Option<ExprNode> {
     // Collect all XOR terms from both sides
     let left_terms = collect_xor_terms(left);
     let right_terms = collect_xor_terms(right);
@@ -400,20 +400,20 @@ fn try_cancel_xor_terms(left: &Box<ExprNode>, right: &Box<ExprNode>) -> Option<E
 }
 
 /// Collect all terms in a XOR chain
-fn collect_xor_terms(expr: &ExprNode) -> Vec<Box<ExprNode>> {
+fn collect_xor_terms(expr: &ExprNode) -> Vec<Rc<ExprNode>> {
     match expr {
         ExprNode::Xor(a, b) => {
             let mut terms = collect_xor_terms(a);
             terms.extend(collect_xor_terms(b));
             terms
         }
-        _ => vec![Box::new(expr.clone())],
+        _ => vec![Rc::new(expr.clone())],
     }
 }
 
 /// Rebuild XOR expression from terms
-fn rebuild_xor_from_terms(left_terms: &[Box<ExprNode>], right_terms: &[Box<ExprNode>]) -> ExprNode {
-    let all_terms: Vec<Box<ExprNode>> = left_terms.iter()
+fn rebuild_xor_from_terms(left_terms: &[Rc<ExprNode>], right_terms: &[Rc<ExprNode>]) -> ExprNode {
+    let all_terms: Vec<Rc<ExprNode>> = left_terms.iter()
         .chain(right_terms.iter())
         .cloned()
         .collect();
@@ -426,7 +426,7 @@ fn rebuild_xor_from_terms(left_terms: &[Box<ExprNode>], right_terms: &[Box<ExprN
         // Build left-associative XOR chain
         let mut result = (*all_terms[0]).clone();
         for term in &all_terms[1..] {
-            result = ExprNode::Xor(Box::new(result), term.clone());
+            result = ExprNode::Xor(Rc::new(result), term.clone());
         }
         result
     }

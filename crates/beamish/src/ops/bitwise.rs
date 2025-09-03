@@ -85,55 +85,5 @@ pub fn shr32(expr: &Expr<crate::types::U32>, amount: u8) -> Expr<crate::types::U
     shr(expr, amount)
 }
 
-// Method-style operations for chaining
-impl<T: BitType> Expr<T> {
-    /// XOR with another expression
-    pub fn xor(&self, other: &Expr<T>) -> Expr<T> {
-        xor(self, other)
-    }
-    
-    /// AND with another expression
-    pub fn and(&self, other: &Expr<T>) -> Expr<T> {
-        and(self, other)
-    }
-    
-    /// OR with another expression
-    pub fn or(&self, other: &Expr<T>) -> Expr<T> {
-        or(self, other)
-    }
-    
-    /// NOT this expression
-    pub fn not(&self) -> Expr<T> {
-        not(self)
-    }
-    
-    /// Logical shift left
-    pub fn shl(&self, amount: u8) -> Expr<T> {
-        shl(self, amount)
-    }
-    
-    /// Logical shift right
-    pub fn shr(&self, amount: u8) -> Expr<T> {
-        shr(self, amount)
-    }
-    
-    /// Arithmetic shift right
-    pub fn sar(&self, amount: u8) -> Expr<T> {
-        sar(self, amount)
-    }
-    
-    /// Rotate left
-    pub fn rol(&self, amount: u8) -> Expr<T> {
-        rol(self, amount)
-    }
-    
-    /// Rotate right
-    pub fn ror(&self, amount: u8) -> Expr<T> {
-        ror(self, amount)
-    }
-    
-    /// Assert this expression equals another
-    pub fn equals(&self, other: &Expr<T>) -> Expr<T> {
-        eq(self, other)
-    }
-}
+// Note: Method-style operations removed as they don't work well with value-based API
+// Use the free functions instead: xor(a, b) rather than a.xor(b)

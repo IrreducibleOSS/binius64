@@ -24,8 +24,8 @@ pub struct DelayedBindingBuilder {
     /// Cache of already-computed expressions to enable sharing
     expr_cache: HashMap<*const ExprNode, Operand>,
     
-    /// Optimization templates
-    templates: Vec<Box<dyn crate::optimize::templates::ConstraintTemplate>>,
+    // Optimization templates temporarily disabled
+    // templates: Vec<Box<dyn crate::optimize::templates::ConstraintTemplate>>,
 }
 
 impl Default for DelayedBindingBuilder {
@@ -41,17 +41,18 @@ impl DelayedBindingBuilder {
             constraints: Vec::new(),
             next_temp: 1000, // Start temp IDs at 1000
             expr_cache: HashMap::new(),
-            templates: Vec::new(),
+            // templates: Vec::new(),
         }
     }
     
-    /// Add a template for optimization
-    pub fn add_template(&mut self, template: Box<dyn crate::optimize::templates::ConstraintTemplate>) {
-        self.templates.push(template);
-    }
+    // Temporarily disabled optimization templates
+    // /// Add a template for optimization
+    // pub fn add_template(&mut self, template: Box<dyn crate::optimize::templates::ConstraintTemplate>) {
+    //     self.templates.push(template);
+    // }
     
     /// Generate constraints for an expression
-    pub fn build(mut self, expr: &Rc<ExprNode>) -> Vec<Constraint> {
+    pub fn build(mut self, expr: &std::rc::Rc<ExprNode>) -> Vec<Constraint> {
         // Build the expression - result is an operand
         let _result = self.build_expr(expr);
         
@@ -65,24 +66,24 @@ impl DelayedBindingBuilder {
     }
     
     /// Build an expression, returning its operand representation
-    fn build_expr(&mut self, expr: &Rc<ExprNode>) -> Operand {
+    fn build_expr(&mut self, expr: &std::rc::Rc<ExprNode>) -> Operand {
         // Check cache first
         let expr_ptr = expr.as_ref() as *const ExprNode;
         if let Some(cached) = self.expr_cache.get(&expr_ptr) {
             return cached.clone();
         }
         
-        // Check templates for multi-constraint patterns
-        for template in &self.templates {
-            if template.matches(expr.as_ref()) {
-                if let Some(constraints) = template.generate(expr.as_ref(), &mut self.next_temp) {
-                    // Template handled it, add constraints
-                    self.constraints.extend(constraints);
-                    // Return a temporary for the result (template should have allocated it)
-                    return Operand::from_value(self.next_temp - 1);
-                }
-            }
-        }
+        // Temporarily disabled template matching
+        // for template in &self.templates {
+        //     if template.matches(expr.as_ref()) {
+        //         if let Some(constraints) = template.generate(expr.as_ref(), &mut self.next_temp) {
+        //             // Template handled it, add constraints
+        //             self.constraints.extend(constraints);
+        //             // Return a temporary for the result (template should have allocated it)
+        //             return Operand::from_value(self.next_temp - 1);
+        //         }
+        //     }
+        // }
         
         let result = match expr.as_ref() {
             ExprNode::Witness(id) => Operand::from_value(*id),

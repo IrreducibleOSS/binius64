@@ -58,10 +58,6 @@ fn rotl64(x: &Expr<U64>, n: u32) -> Expr<U64> {
         let lo = shr(x, 32);
         let hi = shl(x, 32);
         xor(&lo, &hi)
-    } else if n < 32 {
-        let left = shl(x, n as u8);
-        let right = shr(x, (64 - n) as u8);
-        xor(&left, &right)
     } else {
         let left = shl(x, n as u8);
         let right = shr(x, (64 - n) as u8);

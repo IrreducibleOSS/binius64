@@ -7,7 +7,7 @@ pub mod constraints;
 pub mod generate;
 pub mod compute;
 pub mod reference;
-pub mod optimize;
+// pub mod optimize; // Temporarily disabled until Box->Rc conversion
 pub mod circuits;
 
 // Re-export core types and functions

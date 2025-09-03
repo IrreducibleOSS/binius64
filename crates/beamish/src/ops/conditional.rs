@@ -200,7 +200,10 @@ pub fn cond_and<T: BitType>(a: &Expr<T>, b: &Expr<T>) -> Expr<T> {
 /// # Implementation
 /// Uses De Morgan's law: a OR b = NOT(NOT(a) AND NOT(b))
 pub fn cond_or<T: BitType>(a: &Expr<T>, b: &Expr<T>) -> Expr<T> {
-    not(&and(&not(a), &not(b)))
+    let not_a = not(a);
+    let not_b = not(b);
+    let and_not = and(&not_a, &not_b);
+    not(&and_not)
 }
 
 /// Logical NOT of condition
@@ -237,7 +240,7 @@ mod tests {
     use super::*;
     use crate::types::U64;
     use crate::compute::expressions::ExpressionEvaluator;
-    use crate::optimize::OptConfig;
+    // use crate::optimize::OptConfig; // Temporarily disabled
     use crate::constraints::to_constraints;
     
     #[test]
@@ -474,9 +477,8 @@ mod tests {
         
         let result = select(&cond, &a, &b);
         
-        let mut config = OptConfig::none_enabled();
-        config.canonicalize_enabled = false;
-        let constraints = to_constraints(&result, &config);
+        // Temporarily disabled optimization configuration
+        let constraints = to_constraints(&result);
         
         // Should generate exactly 1 AND constraint for the select
         let and_count = constraints.iter().filter(|c| {

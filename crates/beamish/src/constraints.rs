@@ -2,7 +2,7 @@
 
 
 use crate::expr::Expr;
-use crate::optimize::OptConfig;
+// use crate::optimize::OptConfig; // Temporarily disabled
 use std::fmt;
 use log::debug;
 
@@ -148,12 +148,15 @@ pub enum Constraint {
 /// Convert an expression to constraints with optimization configuration
 /// This generates constraints that compute the expression
 /// PANICS if the expression cannot be compiled to constraints (e.g., pure XOR/NOT/rotation)
-pub fn to_constraints<T>(expr: &Expr<T>, config: &OptConfig) -> Vec<Constraint> {
+pub fn to_constraints<T>(expr: &Expr<T>) -> Vec<Constraint> {
     debug!("");
     debug!(" CONSTRAINT TRANSLATION (Delayed Binding) ");
     debug!("INPUT:  {}", expr);
     
-    let constraints = crate::optimize::optimize_and_generate(&expr.inner, config);
+    // Temporarily use direct constraint generation without optimization
+    use crate::generate::delayed_binding::DelayedBindingBuilder;
+    let builder = DelayedBindingBuilder::new();
+    let constraints = builder.build(&expr.inner);
     
     // If no constraints were generated, the expression is purely operandic
     if constraints.is_empty() {
@@ -172,5 +175,5 @@ pub fn to_constraints<T>(expr: &Expr<T>, config: &OptConfig) -> Vec<Constraint> 
 
 /// Convert an expression to constraints with default configuration (all optimizations)
 pub fn to_constraints_default<T>(expr: &Expr<T>) -> Vec<Constraint> {
-    to_constraints(expr, &OptConfig::default())
+    to_constraints(expr)
 }

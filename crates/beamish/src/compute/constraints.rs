@@ -14,6 +14,9 @@ pub struct ConstraintValidator {
     
     /// Temporary values computed during constraint generation
     temp_values: HashMap<u32, u64>,
+    
+    /// Expression evaluation cache to avoid re-computing shared nodes
+    eval_cache: HashMap<*const ExprNode, u64>,
 }
 
 impl ConstraintValidator {
@@ -22,6 +25,7 @@ impl ConstraintValidator {
         Self {
             witness_values,
             temp_values: HashMap::new(),
+            eval_cache: HashMap::new(),
         }
     }
     
@@ -51,6 +55,22 @@ impl ConstraintValidator {
     
     /// Evaluate an expression tree and populate temp values
     pub fn evaluate_expr(&mut self, expr: &ExprNode) -> u64 {
+        // Check cache first
+        let expr_ptr = expr as *const ExprNode;
+        if let Some(&cached) = self.eval_cache.get(&expr_ptr) {
+            return cached;
+        }
+        
+        // Compute the value
+        let result = self.evaluate_expr_uncached(expr);
+        
+        // Cache the result
+        self.eval_cache.insert(expr_ptr, result);
+        result
+    }
+    
+    /// Internal uncached evaluation - does the actual computation
+    fn evaluate_expr_uncached(&mut self, expr: &ExprNode) -> u64 {
         match expr {
             ExprNode::Witness(id) => self.get_value(*id),
             

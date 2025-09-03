@@ -6,7 +6,7 @@ mod tests {
     use crate::types::U64;
     use crate::compute::expressions::ExpressionEvaluator;
     use crate::circuits::keccak::keccak::{keccak_f, STATE_SIZE, ROUNDS, RC, R, idx};
-    use crate::optimize::OptConfig;
+    // use crate::optimize::OptConfig; // Temporarily disabled
     use crate::constraints::to_constraints;
     
     /// Reference Keccak implementation for testing
@@ -267,9 +267,8 @@ mod tests {
             }
             
             // Generate constraints
-            let mut config = OptConfig::none_enabled();
-            config.canonicalize_enabled = false;
-            let constraints = to_constraints(&combined, &config);
+            // Temporarily use default constraint generation without optimization
+            let constraints = to_constraints(&combined);
             
             // Count constraint types
             let mut and_count = 0;
