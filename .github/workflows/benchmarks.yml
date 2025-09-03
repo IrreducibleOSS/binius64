@@ -116,7 +116,7 @@ jobs:
       - name: Run benchmarks
         run: |
           RUN_ID="${{ needs.setup.outputs.timestamp }}-$(git rev-parse --short HEAD)"
-          
+
           python3 .github/scripts/run_benchmarks.py \
             --runs ${{ needs.setup.outputs.runs }} \
             --run-id "$RUN_ID" \
@@ -149,7 +149,7 @@ jobs:
             BRANCH_PATH="branch-${BRANCH_NAME//\//-}"
           fi
 
-          aws s3 cp "perfetto_traces/" "${{ secrets.PERFETTO_BUCKET }}/traces/monbijou/${BRANCH_PATH}/" --recursive
+          aws s3 cp "perfetto_traces/" "${{ secrets.PERFETTO_BUCKET }}/traces/binius64/${BRANCH_PATH}/" --recursive
 
           echo "BRANCH_PATH=${BRANCH_PATH}" >> $GITHUB_ENV
 
@@ -159,23 +159,23 @@ jobs:
           import os
           import urllib.parse
           from pathlib import Path
-          
+
           perfetto_host = "https://perfetto.irreducible.com"
           branch_path = os.environ["BRANCH_PATH"]
           run_id = os.environ.get("RUN_ID", "")
           runs = int("${{ needs.setup.outputs.runs }}")
-          
+
           print(f"## 📊 Perfetto Traces for ${{ matrix.instance.name }}")
           print()
-          
+
           traces_dir = Path("perfetto_traces")
           for bench_dir in sorted(traces_dir.glob("*/*")):
               if not bench_dir.is_dir():
                   continue
               benchmark = bench_dir.parent.name
-              
+
               print(f"### {benchmark}")
-              
+
               for mode in ["multi-fusion", "multi", "single-fusion", "single"]:
                   traces = sorted(bench_dir.glob(f"{mode}-run*.perfetto-trace"))
                   if traces:
@@ -183,7 +183,7 @@ jobs:
                       for run in range(1, runs + 1):
                           trace = next((t for t in traces if f"run{run}-" in t.name), None)
                           if trace:
-                              s3_key = f"traces/monbijou/{branch_path}/{benchmark}/{bench_dir.name}/{trace.name}"
+                              s3_key = f"traces/binius64/{branch_path}/{benchmark}/{bench_dir.name}/{trace.name}"
                               trace_url = f"{perfetto_host}/{s3_key}"
                               encoded = urllib.parse.quote_plus(trace_url)
                               ui_url = f"{perfetto_host}/#!/?url={encoded}"
@@ -203,14 +203,14 @@ jobs:
           import subprocess
           import statistics
           from pathlib import Path
-          
+
           def parse_time(s):
               m = re.match(r'([\d.]+)\s*(s|ms)', s)
               if m:
                   val = float(m.group(1))
                   return val * 1000 if m.group(2) == 's' else val
               return None
-          
+
           metrics = {
               "timestamp": "${{ needs.setup.outputs.timestamp }}",
               "commit": subprocess.check_output(["git", "rev-parse", "--short", "HEAD"]).decode().strip(),
@@ -218,36 +218,36 @@ jobs:
               "machine": "${{ matrix.instance.name }}",
               "benchmarks": {}
           }
-          
+
           proving_pattern = r'Proving \[ ([\d.]+(?:s|ms))'
           verifying_pattern = r'Verifying \[ ([\d.]+(?:s|ms))'
-          
+
           for log_file in Path("benchmark_logs").glob("*.log"):
               parts = log_file.stem.split("_", 1)
               if len(parts) == 2:
                   bench, mode = parts
                   if bench not in metrics["benchmarks"]:
                       metrics["benchmarks"][bench] = {}
-                  
+
                   with open(log_file) as f:
                       content = re.sub(r'\x1b\[[0-9;]*m', '', f.read())
-                      
+
                       proving = [parse_time(m) for m in re.findall(proving_pattern, content)]
                       proving = [t for t in proving if t]
-                      
-                      verifying = [parse_time(m) for m in re.findall(verifying_pattern, content)] 
+
+                      verifying = [parse_time(m) for m in re.findall(verifying_pattern, content)]
                       verifying = [t for t in verifying if t]
-                      
+
                       metrics["benchmarks"][bench][mode] = {
                           "proving_avg_ms": round(statistics.mean(proving), 2) if proving else None,
                           "proving_std_ms": round(statistics.stdev(proving), 2) if len(proving) > 1 else None,
                           "verifying_avg_ms": round(statistics.mean(verifying), 2) if verifying else None,
                           "verifying_std_ms": round(statistics.stdev(verifying), 2) if len(verifying) > 1 else None
                       }
-          
+
           with open("benchmark_metrics.json", "w") as f:
               json.dump(metrics, f, indent=2)
-          
+
           print("## 📊 Benchmark Performance Metrics")
           print("```json")
           print(json.dumps(metrics, indent=2))

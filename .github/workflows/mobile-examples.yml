@@ -170,7 +170,7 @@ jobs:
       - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::788825212508:role/GitHubMonbijouRole
+          role-to-assume: ${{ secrets.AWS_UPLOAD_ROLE }}
           role-session-name: github-actions-mobile-examples-${{ matrix.device-pool }}
           aws-region: us-west-2
 
