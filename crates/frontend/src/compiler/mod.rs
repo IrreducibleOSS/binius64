@@ -227,6 +227,10 @@ impl CircuitBuilder {
 
 		let cs =
 			ConstraintSystem::new(constants, value_vec_layout, and_constraints, mul_constraints);
+		if cfg!(debug_assertions) {
+			// Validate that the resulting constraint system has a good shape.
+			cs.validate().unwrap();
+		}
 
 		// Build evaluation form
 		let eval_form =
