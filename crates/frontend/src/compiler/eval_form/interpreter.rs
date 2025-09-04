@@ -15,8 +15,6 @@ pub struct AssertionFailure {
 /// Execution context holds a reference to ValueVec during execution
 pub struct ExecutionContext<'a> {
 	value_vec: &'a mut ValueVec,
-	/// The scratch space.
-	scratch: Vec<Word>,
 	/// Assertion failures recorded during the evaluation of the circuit.
 	///
 	/// This list is capped by [`MAX_ASSERTION_FAILURES`].
@@ -26,10 +24,9 @@ pub struct ExecutionContext<'a> {
 }
 
 impl<'a> ExecutionContext<'a> {
-	pub fn new(value_vec: &'a mut ValueVec, scratch: Vec<Word>) -> Self {
+	pub fn new(value_vec: &'a mut ValueVec) -> Self {
 		Self {
 			value_vec,
-			scratch,
 			assertion_failures: Vec::new(),
 			assertion_count: 0,
 		}
@@ -80,12 +77,8 @@ impl<'a> Interpreter<'a> {
 		}
 	}
 
-	pub fn run_with_value_vec(
-		&mut self,
-		value_vec: &mut ValueVec,
-		scratch: Vec<Word>,
-	) -> Result<(), PopulateError> {
-		let mut ctx = ExecutionContext::new(value_vec, scratch);
+	pub fn run_with_value_vec(&mut self, value_vec: &mut ValueVec) -> Result<(), PopulateError> {
+		let mut ctx = ExecutionContext::new(value_vec);
 		self.run(&mut ctx)?;
 		ctx.check_assertions()
 	}
@@ -486,19 +479,11 @@ impl<'a> Interpreter<'a> {
 	}
 
 	fn load(&self, ctx: &ExecutionContext<'_>, reg: u32) -> Word {
-		if let Some(scratch_reg) = as_scratch_reg(reg) {
-			ctx.scratch[scratch_reg as usize]
-		} else {
-			ctx.value_vec[ValueIndex(reg)]
-		}
+		ctx.value_vec[ValueIndex(reg)]
 	}
 
 	fn store(&self, ctx: &mut ExecutionContext<'_>, reg: u32, value: Word) {
-		if let Some(scratch_reg) = as_scratch_reg(reg) {
-			ctx.scratch[scratch_reg as usize] = value;
-		} else {
-			ctx.value_vec.set(reg as usize, value);
-		}
+		ctx.value_vec.set(reg as usize, value);
 	}
 
 	// Bytecode reading helpers
@@ -527,13 +512,5 @@ impl<'a> Interpreter<'a> {
 
 	fn read_reg(&mut self) -> u32 {
 		self.read_u32()
-	}
-}
-
-fn as_scratch_reg(reg: u32) -> Option<u32> {
-	if reg & 0x8000_0000 != 0 {
-		Some(reg & 0x7FFF_FFFF)
-	} else {
-		None
 	}
 }

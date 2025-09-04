@@ -128,7 +128,7 @@ where
 			"prove",
 			operation = "prove",
 			perfetto_category = "operation",
-			n_witness_words = cs.value_vec_layout.total_len,
+			n_witness_words = cs.value_vec_layout.committed_total_len,
 			n_bitand = cs.and_constraints.len(),
 			n_intmul = cs.mul_constraints.len(),
 		)

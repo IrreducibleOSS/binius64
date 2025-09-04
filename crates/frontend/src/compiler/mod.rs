@@ -130,16 +130,16 @@ impl CircuitBuilder {
 			gate_fusion::run_pass(&mut builder, all_one);
 		}
 
+		let constrained_wires = builder.mark_used_wires();
+
 		// Allocate a place for each wire in the value vec layout.
 		//
 		// This gives us mappings from wires into the value indices, as well as the constant
 		// portion of the value vec.
 		let value_vec_alloc::Assignment {
 			wire_mapping,
-			scratch_mapping,
 			value_vec_layout,
 			constants,
-			n_scratch,
 		} = {
 			let mut value_vec_alloc = value_vec_alloc::Alloc::new();
 			for (wire, wire_data) in graph.wires.iter() {
@@ -149,13 +149,28 @@ impl CircuitBuilder {
 					}
 					WireKind::Inout => value_vec_alloc.add_inout(wire),
 					WireKind::Witness => value_vec_alloc.add_witness(wire),
-					WireKind::Internal => value_vec_alloc.add_internal(wire),
-					WireKind::Scratch => value_vec_alloc.add_scratch(wire),
+					WireKind::Internal | WireKind::Scratch => {
+						// Unlike inout and witness those two are not declared by the user and thus
+						// are not required to appear in the value vec.
+						//
+						// Therefore, we ignore the initial designation internal <=> scratch and
+						// instead we look whether a wire is referenced in the constraint system
+						// or not. If it is referenced then we declare it as internal and put into
+						// the private section (witness). If it's not referenced we declare it as
+						// a scratch value.
+						//
+						// Note that the concept of wire kind outlived it's lifetime and should be
+						// reworked. This is left for the future.
+						if constrained_wires.contains(wire) {
+							value_vec_alloc.add_internal(wire);
+						} else {
+							value_vec_alloc.add_scratch(wire);
+						}
+					}
 				}
 			}
 			value_vec_alloc.into_assignment()
 		};
-
 		let (and_constraints, mul_constraints) = builder.build(&wire_mapping, all_one);
 
 		let cs =
@@ -166,8 +181,7 @@ impl CircuitBuilder {
 		}
 
 		// Build evaluation form
-		let eval_form =
-			eval_form::EvalForm::build(&graph, &wire_mapping, &scratch_mapping, n_scratch);
+		let eval_form = eval_form::EvalForm::build(&graph, &wire_mapping);
 
 		Circuit::new(graph, cs, wire_mapping, eval_form)
 	}

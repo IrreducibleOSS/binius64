@@ -114,7 +114,7 @@ where
 	let r_s = r_jr_s.split_off(LOG_WORD_SIZE_BITS);
 	let r_j = r_jr_s;
 
-	let log_word_count = strict_log_2(constraint_system.value_vec_layout.total_len)
+	let log_word_count = strict_log_2(constraint_system.value_vec_layout.committed_total_len)
 		.expect("constraints preprocessed");
 	let inout_n_vars = strict_log_2(constraint_system.value_vec_layout.offset_witness)
 		.expect("constraints preprocessed");

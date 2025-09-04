@@ -23,7 +23,7 @@ impl CircuitStat {
 			n_eval_insn: circuit.n_eval_insn(),
 			n_and_constraints: cs.n_and_constraints(),
 			n_mul_constraints: cs.n_mul_constraints(),
-			value_vec_len: cs.value_vec_layout.total_len,
+			value_vec_len: cs.value_vec_layout.committed_total_len,
 			n_const: cs.value_vec_layout.n_const,
 			n_inout: cs.value_vec_layout.n_inout,
 			n_witness: cs.value_vec_layout.n_witness,

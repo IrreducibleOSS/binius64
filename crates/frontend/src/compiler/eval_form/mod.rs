@@ -7,7 +7,7 @@ mod builder;
 mod const_eval;
 mod interpreter;
 
-use binius_core::{ValueIndex, ValueVec, Word};
+use binius_core::{ValueIndex, ValueVec};
 pub use builder::BytecodeBuilder;
 pub use const_eval::{evaluate_constant_gate, evaluate_gate_constants};
 use cranelift_entity::SecondaryMap;
@@ -24,8 +24,6 @@ use crate::compiler::{
 pub struct EvalForm {
 	/// Compiled bytecode instructions
 	bytecode: Vec<u8>,
-	/// Number of scratch registers needed
-	n_scratch: usize,
 	/// Number of evaluation instructions
 	n_eval_insn: usize,
 	/// Registered hint handlers
@@ -37,22 +35,13 @@ impl EvalForm {
 	pub(crate) fn build(
 		gate_graph: &GateGraph,
 		wire_mapping: &SecondaryMap<Wire, ValueIndex>,
-		scratch_mapping: &SecondaryMap<Wire, u32>,
-		n_scratch: usize,
 	) -> Self {
 		let mut builder = BytecodeBuilder::new();
 		let mut hint_registry = HintRegistry::new();
 
 		// Combined wire to register mapping
 		let wire_to_reg = |wire: Wire| -> u32 {
-			// IMPORTANT: SecondaryMap returns default value (0) for non-existent keys!
-			// We need to check if the value has the high bit set to know if it's a real scratch
-			// register
-			let scratch_reg = scratch_mapping[wire];
-			if scratch_reg & 0x8000_0000 != 0 {
-				// This is a real scratch register (high bit is set)
-				scratch_reg // Already has high bit set
-			} else if let Some(&ValueIndex(idx)) = wire_mapping.get(wire) {
+			if let Some(&ValueIndex(idx)) = wire_mapping.get(wire) {
 				idx // ValueVec index
 			} else {
 				panic!("Wire {wire:?} not mapped");
@@ -72,10 +61,8 @@ impl EvalForm {
 		}
 
 		let (bytecode, n_eval_insn) = builder.finalize();
-
 		EvalForm {
 			bytecode,
-			n_scratch,
 			n_eval_insn,
 			hint_registry,
 		}
@@ -83,10 +70,8 @@ impl EvalForm {
 
 	/// Execute the evaluation form to populate witness values
 	pub fn evaluate(&self, value_vec: &mut ValueVec) -> Result<(), PopulateError> {
-		let scratch = vec![Word::ZERO; self.n_scratch];
-
 		let mut interpreter = interpreter::Interpreter::new(&self.bytecode, &self.hint_registry);
-		interpreter.run_with_value_vec(value_vec, scratch)?;
+		interpreter.run_with_value_vec(value_vec)?;
 
 		Ok(())
 	}

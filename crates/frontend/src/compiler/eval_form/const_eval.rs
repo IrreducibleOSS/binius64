@@ -29,11 +29,6 @@ fn create_wire_mapping(gate_param: &GateParam) -> (std::collections::HashMap<Wir
 	map_wires(gate_param.outputs);
 	map_wires(gate_param.aux);
 
-	// Scratch wires use separate index space with high bit set
-	for (i, &wire) in gate_param.scratch.iter().enumerate() {
-		wire_mapping.insert(wire, i as u32 | 0x8000_0000);
-	}
-
 	(wire_mapping, wire_index)
 }
 
@@ -46,7 +41,8 @@ fn setup_value_vec(shape: &OpcodeShape, concrete_inputs: &[Word], wire_count: u3
 		n_internal: wire_count as usize,
 		offset_inout: shape.const_in.len(),
 		offset_witness: shape.const_in.len(),
-		total_len: wire_count as usize,
+		committed_total_len: wire_count as usize,
+		n_scratch: 0,
 	};
 	let mut value_vec = ValueVec::new(layout);
 
@@ -114,10 +110,9 @@ pub fn evaluate_constant_gate(
 	let (bytecode, _) = builder.finalize();
 
 	// Run evaluation
-	let scratch = vec![Word::ZERO; shape.n_scratch];
 	let mut interpreter = Interpreter::new(&bytecode, &hint_registry);
 	interpreter
-		.run_with_value_vec(&mut value_vec, scratch)
+		.run_with_value_vec(&mut value_vec)
 		.map_err(|e| format!("Constant evaluation failed: {:?}", e))?;
 
 	// Extract and return output values
