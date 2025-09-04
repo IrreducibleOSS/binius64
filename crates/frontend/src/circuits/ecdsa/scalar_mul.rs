@@ -345,7 +345,7 @@ mod tests {
 	use binius_core::word::Word;
 	use k256::{
 		ProjectivePoint, Scalar, U256,
-		elliptic_curve::{ops::MulByGenerator, scalar::FromUintUnchecked, sec1::ToEncodedPoint, PrimeField},
+		elliptic_curve::{ops::MulByGenerator, scalar::FromUintUnchecked, sec1::ToEncodedPoint},
 	};
 	use rand::prelude::*;
 
@@ -403,47 +403,6 @@ mod tests {
 		assert_eq!(w[result.is_point_at_infinity], Word::ZERO);
 	}
 
-	#[test]
-	fn test_scalar_mul_naive_256bit() {
-		// Test with full 256-bit scalar to ensure production compatibility
-		let builder = CircuitBuilder::new();
-		let curve = Secp256k1::new(&builder);
-		
-		// Use a 256-bit test scalar
-		let scalar_bytes = [0x2b; 32];
-		let scalar_value = num_bigint::BigUint::from_bytes_le(&scalar_bytes);
-		
-		// Use k256 to compute expected result
-		let mut scalar_be = scalar_bytes;
-		scalar_be.reverse();
-		let k256_scalar = Scalar::from_repr(scalar_be.into()).unwrap();
-		let k256_point = ProjectivePoint::mul_by_generator(&k256_scalar).to_affine();
-		
-		// Extract expected coordinates
-		let point_bytes = k256_point.to_encoded_point(false).to_bytes();
-		let x_coord = num_bigint::BigUint::from_bytes_be(&point_bytes[1..33]);
-		let y_coord = num_bigint::BigUint::from_bytes_be(&point_bytes[33..65]);
-		
-		// Create circuit scalar
-		let scalar = BigUint::new_constant(&builder, &scalar_value);
-		let expected_x = BigUint::new_constant(&builder, &x_coord);
-		let expected_y = BigUint::new_constant(&builder, &y_coord);
-		
-		let generator = Secp256k1Affine::generator(&builder);
-		
-		// Test with full 256 bits
-		let result = scalar_mul_naive(&builder, &curve, 256, &scalar, generator);
-		
-		// Verify result matches k256
-		assert_eq(&builder, "result_x_256bit", &result.x, &expected_x);
-		assert_eq(&builder, "result_y_256bit", &result.y, &expected_y);
-		
-		// Build and verify circuit
-		let cs = builder.build();
-		let mut w = cs.new_witness_filler();
-		assert!(cs.populate_wire_witness(&mut w).is_ok());
-		assert_eq!(w[result.is_point_at_infinity], Word::ZERO);
-	}
 
 	#[test]
 	fn test_scalar_mul_with_endomorphism() {

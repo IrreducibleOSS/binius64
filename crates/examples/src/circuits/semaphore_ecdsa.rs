@@ -2,7 +2,7 @@ use anyhow::{Result, ensure};
 use binius_frontend::{
     circuits::semaphore_ecdsa::{
         SemaphoreProofECDSA, 
-        circuit::IdentityECDSA,
+        IdentityECDSA,
         MerkleTree,
     },
     compiler::{CircuitBuilder, circuit::WitnessFiller},
@@ -117,8 +117,7 @@ impl ExampleCircuit for SemaphoreExample {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use binius_frontend::circuits::semaphore_ecdsa::circuit::IdentityECDSA;
+    use binius_frontend::circuits::semaphore_ecdsa::reference::IdentityECDSA;
 
     #[test]
     fn test_examples_crate_identity_commitment() {

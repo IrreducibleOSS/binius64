@@ -1,33 +1,70 @@
-//! Reference implementation of Semaphore protocol for testing.
+//! Reference implementation of ECDSA Semaphore protocol for testing.
 //!
-//! This module provides a pure Rust implementation of the Semaphore protocol
-//! that serves as the ground truth for circuit testing. It uses Keccak-256 as the
-//! hash function and can be easily adapted to use Poseidon later.
+//! This module provides a pure Rust implementation of the ECDSA Semaphore protocol
+//! that serves as the ground truth for circuit testing.
 
 use sha3::{Keccak256, Digest};
+use k256::{
+    elliptic_curve::{sec1::ToEncodedPoint, PrimeField},
+    ProjectivePoint, Scalar,
+};
 
-/// Represents a Semaphore identity with secret components.
-#[derive(Debug, Clone)]
-pub struct Identity {
-    /// Secret trapdoor value (256 bits)
-    pub trapdoor: [u8; 32],
-    /// Secret nullifier value (256 bits)
-    pub nullifier: [u8; 32],
+/// Computes secp256k1 public key coordinates.
+/// Takes LE scalar bytes, converts to BE for k256, then returns LE coordinate bytes.
+fn compute_public_key_coords(secret_scalar: &[u8; 32]) -> ([u8; 32], [u8; 32]) {
+    // Validate non-zero scalar to avoid point at infinity
+    assert!(secret_scalar.iter().any(|&b| b != 0), "Secret scalar must be non-zero");
+    
+    // secret_scalar is LE from circuit, but k256 needs BE
+    let mut scalar_be = *secret_scalar;
+    scalar_be.reverse();
+    
+    let scalar = Scalar::from_repr(scalar_be.into()).expect("Invalid scalar");
+    let public_key_point = ProjectivePoint::GENERATOR * scalar;
+    let affine_point = public_key_point.to_affine();
+    let encoded = affine_point.to_encoded_point(false);
+    
+    if let k256::elliptic_curve::sec1::Coordinates::Uncompressed { x, y } = encoded.coordinates() {
+        let mut x_coord: [u8; 32] = (*x).into();
+        let mut y_coord: [u8; 32] = (*y).into();
+        
+        // k256 returns BE, but circuit expects LE
+        x_coord.reverse(); 
+        y_coord.reverse();
+        
+        (x_coord, y_coord)
+    } else {
+        panic!("Expected uncompressed coordinates");
+    }
 }
 
-impl Identity {
-    /// Creates a new identity with the given secrets.
-    pub fn new(trapdoor: [u8; 32], nullifier: [u8; 32]) -> Self {
-        Self { trapdoor, nullifier }
+/// ECDSA identity using secp256k1 private key
+pub struct IdentityECDSA {
+    pub secret_scalar: [u8; 32],
+}
+
+impl IdentityECDSA {
+    pub fn new(secret_scalar: [u8; 32]) -> Self {
+        Self { secret_scalar }
     }
     
-    /// Computes the identity commitment.
-    /// 
-    /// commitment = Keccak256(trapdoor || nullifier)
     pub fn commitment(&self) -> [u8; 32] {
+        let (x_coord, y_coord) = compute_public_key_coords(&self.secret_scalar);
+        
+        // Direct byte concatenation - coordinates are already in correct LE format
+        let mut message_bytes = Vec::with_capacity(64);
+        message_bytes.extend_from_slice(&x_coord);
+        message_bytes.extend_from_slice(&y_coord);
+        
         let mut hasher = Keccak256::new();
-        hasher.update(self.trapdoor);
-        hasher.update(self.nullifier);
+        hasher.update(&message_bytes);
+        hasher.finalize().into()
+    }
+    
+    pub fn nullifier(&self, scope: &[u8]) -> [u8; 32] {
+        let mut hasher = Keccak256::new();
+        hasher.update(scope);
+        hasher.update(self.secret_scalar);
         hasher.finalize().into()
     }
 }
@@ -49,40 +86,38 @@ impl MerkleTree {
         }
     }
     
-    /// Adds an identity commitment to the tree.
-    pub fn add_leaf(&mut self, commitment: [u8; 32]) {
-        let max_leaves = 1 << self.height;
-        assert!(self.leaves.len() < max_leaves, "Tree is full");
-        self.leaves.push(commitment);
+    /// Adds a leaf (identity commitment) to the tree.
+    pub fn add_leaf(&mut self, leaf: [u8; 32]) {
+        self.leaves.push(leaf);
     }
     
-    /// Computes the Merkle root.
+    /// Computes the root of the Merkle tree.
     pub fn root(&self) -> [u8; 32] {
         if self.leaves.is_empty() {
             return [0u8; 32];
         }
         
-        // Pad with zeros to next power of 2
-        let mut nodes = self.leaves.clone();
-        let target_size = 1 << self.height;
-        nodes.resize(target_size, [0u8; 32]);
+        // Start with leaves, padding with zeros if needed
+        let mut level = self.leaves.clone();
+        let max_leaves = 1 << self.height;
+        level.resize(max_leaves, [0u8; 32]);
         
-        // Build tree level by level
-        while nodes.len() > 1 {
+        // Build tree bottom-up
+        while level.len() > 1 {
             let mut next_level = Vec::new();
-            for i in (0..nodes.len()).step_by(2) {
-                let left = &nodes[i];
-                let right = if i + 1 < nodes.len() {
-                    &nodes[i + 1]
-                } else {
-                    &[0u8; 32]
-                };
-                next_level.push(hash_merkle_node(left, right));
+            for i in (0..level.len()).step_by(2) {
+                let left = level[i];
+                let right = if i + 1 < level.len() { level[i + 1] } else { [0u8; 32] };
+                
+                let mut hasher = Keccak256::new();
+                hasher.update(left);
+                hasher.update(right);
+                next_level.push(hasher.finalize().into());
             }
-            nodes = next_level;
+            level = next_level;
         }
         
-        nodes[0]
+        level[0]
     }
     
     /// Generates a Merkle proof for a leaf at the given index.
@@ -90,156 +125,116 @@ impl MerkleTree {
         assert!(leaf_index < self.leaves.len(), "Leaf index out of bounds");
         
         let mut siblings = Vec::new();
-        let mut nodes = self.leaves.clone();
-        let target_size = 1 << self.height;
-        nodes.resize(target_size, [0u8; 32]);
+        let mut level = self.leaves.clone();
+        let max_leaves = 1 << self.height;
+        level.resize(max_leaves, [0u8; 32]);
         
-        let mut index = leaf_index;
+        let mut current_index = leaf_index;
         
         // Collect siblings at each level
-        while nodes.len() > 1 {
-            let sibling_index = if index % 2 == 0 { index + 1 } else { index - 1 };
-            let sibling = if sibling_index < nodes.len() {
-                nodes[sibling_index]
+        for _ in 0..self.height {
+            let sibling_index = current_index ^ 1; // XOR with 1 to get sibling
+            let sibling = if sibling_index < level.len() {
+                level[sibling_index]
             } else {
                 [0u8; 32]
             };
             siblings.push(sibling);
             
-            // Move to next level
+            // Compute next level
             let mut next_level = Vec::new();
-            for i in (0..nodes.len()).step_by(2) {
-                let left = &nodes[i];
-                let right = if i + 1 < nodes.len() {
-                    &nodes[i + 1]
-                } else {
-                    &[0u8; 32]
-                };
-                next_level.push(hash_merkle_node(left, right));
+            for i in (0..level.len()).step_by(2) {
+                let left = level[i];
+                let right = if i + 1 < level.len() { level[i + 1] } else { [0u8; 32] };
+                
+                let mut hasher = Keccak256::new();
+                hasher.update(left);
+                hasher.update(right);
+                next_level.push(hasher.finalize().into());
             }
-            nodes = next_level;
-            index /= 2;
+            
+            level = next_level;
+            current_index /= 2;
         }
         
         MerkleProof {
             leaf: self.leaves[leaf_index],
             leaf_index,
             siblings,
-            root: nodes[0],
+            root: level[0],
         }
     }
 }
 
-/// Merkle proof for group membership.
+/// Merkle proof for a specific leaf.
 #[derive(Debug, Clone)]
 pub struct MerkleProof {
     /// The leaf value being proved
     pub leaf: [u8; 32],
     /// Index of the leaf in the tree
     pub leaf_index: usize,
-    /// Sibling hashes along the path to root
+    /// Sibling nodes needed to compute the root
     pub siblings: Vec<[u8; 32]>,
-    /// Expected root hash
+    /// The computed root
     pub root: [u8; 32],
 }
 
 impl MerkleProof {
-    /// Verifies the Merkle proof.
-    pub fn verify(&self) -> bool {
+    /// Verifies that this proof is valid for the given root.
+    pub fn verify(&self, expected_root: &[u8; 32]) -> bool {
         let mut current = self.leaf;
         let mut index = self.leaf_index;
         
         for sibling in &self.siblings {
-            current = if index % 2 == 0 {
-                hash_merkle_node(&current, sibling)
+            let (left, right) = if index % 2 == 0 {
+                (current, *sibling)
             } else {
-                hash_merkle_node(sibling, &current)
+                (*sibling, current)
             };
+            
+            let mut hasher = Keccak256::new();
+            hasher.update(left);
+            hasher.update(right);
+            current = hasher.finalize().into();
+            
             index /= 2;
         }
         
-        current == self.root
+        current == *expected_root
     }
 }
 
-/// Hashes two Merkle tree nodes.
-fn hash_merkle_node(left: &[u8; 32], right: &[u8; 32]) -> [u8; 32] {
-    let mut hasher = Keccak256::new();
-    hasher.update(left);
-    hasher.update(right);
-    hasher.finalize().into()
-}
-
-/// Generates a nullifier for a given scope and identity.
-///
-/// nullifier = Keccak256(scope || identity_nullifier)
-pub fn generate_nullifier(scope: &[u8], identity_nullifier: &[u8; 32]) -> [u8; 32] {
-    let mut hasher = Keccak256::new();
-    hasher.update(scope);
-    hasher.update(identity_nullifier);
-    hasher.finalize().into()
-}
-
-/// Complete Semaphore proof generation.
-pub struct SemaphoreProof {
-    /// The message being signaled
+/// Reference implementation of Semaphore proof with ECDSA
+pub struct SemaphoreProofECDSA {
     pub message: Vec<u8>,
-    /// The scope for this signal
     pub scope: Vec<u8>,
-    /// The Merkle root of the group
-    pub merkle_root: [u8; 32],
-    /// The nullifier (prevents double-signaling)
     pub nullifier: [u8; 32],
+    pub merkle_proof: MerkleProof,
 }
 
-impl SemaphoreProof {
-    /// Generates a Semaphore proof.
+impl SemaphoreProofECDSA {
+    /// Generates a proof for the given identity and parameters
     pub fn generate(
-        identity: &Identity,
-        merkle_proof: &MerkleProof,
-        message: Vec<u8>,
-        scope: Vec<u8>,
+        identity: &IdentityECDSA,
+        tree: &MerkleTree,
+        leaf_index: usize,
+        message: &[u8],
+        scope: &[u8],
     ) -> Self {
-        // Verify the identity is in the group
-        assert_eq!(identity.commitment(), merkle_proof.leaf);
-        assert!(merkle_proof.verify());
-        
-        // Generate nullifier
-        let nullifier = generate_nullifier(&scope, &identity.nullifier);
+        let nullifier = identity.nullifier(scope);
+        let merkle_proof = tree.proof(leaf_index);
         
         Self {
-            message,
-            scope,
-            merkle_root: merkle_proof.root,
+            message: message.to_vec(),
+            scope: scope.to_vec(),
             nullifier,
+            merkle_proof,
         }
     }
     
-    /// Verifies a Semaphore proof (without the ZK part).
-    /// In the actual circuit, this verification happens inside the ZK proof.
-    pub fn verify(&self, merkle_proof: &MerkleProof, identity: &Identity) -> bool {
-        // Check identity commitment matches leaf
-        if identity.commitment() != merkle_proof.leaf {
-            return false;
-        }
-        
-        // Check Merkle proof
-        if !merkle_proof.verify() {
-            return false;
-        }
-        
-        // Check Merkle root matches
-        if merkle_proof.root != self.merkle_root {
-            return false;
-        }
-        
-        // Check nullifier is correct
-        let expected_nullifier = generate_nullifier(&self.scope, &identity.nullifier);
-        if expected_nullifier != self.nullifier {
-            return false;
-        }
-        
-        true
+    /// Verifies the proof against the expected Merkle root
+    pub fn verify(&self, merkle_root: &[u8; 32]) -> bool {
+        self.merkle_proof.verify(merkle_root)
     }
 }
 
@@ -248,8 +243,8 @@ mod tests {
     use super::*;
     
     #[test]
-    fn test_identity_commitment() {
-        let identity = Identity::new([1u8; 32], [2u8; 32]);
+    fn test_ecdsa_identity_commitment() {
+        let identity = IdentityECDSA::new([42u8; 32]);
         let commitment = identity.commitment();
         
         // Commitment should be deterministic
@@ -257,30 +252,44 @@ mod tests {
         assert_eq!(commitment, commitment2);
         
         // Different identity should have different commitment
-        let identity2 = Identity::new([3u8; 32], [4u8; 32]);
+        let identity2 = IdentityECDSA::new([43u8; 32]);
         assert_ne!(commitment, identity2.commitment());
+    }
+    
+    #[test]
+    fn test_ecdsa_nullifier_generation() {
+        let identity = IdentityECDSA::new([42u8; 32]);
+        
+        // Same scope produces same nullifier
+        let null1 = identity.nullifier(b"scope1");
+        let null2 = identity.nullifier(b"scope1");
+        assert_eq!(null1, null2);
+        
+        // Different scopes produce different nullifiers
+        let null3 = identity.nullifier(b"scope2");
+        assert_ne!(null1, null3);
     }
     
     #[test]
     fn test_merkle_tree_single_leaf() {
         let mut tree = MerkleTree::new(1);
-        let identity = Identity::new([1u8; 32], [2u8; 32]);
+        let identity = IdentityECDSA::new([42u8; 32]);
         tree.add_leaf(identity.commitment());
         
         let root = tree.root();
         let proof = tree.proof(0);
         
-        assert!(proof.verify());
+        assert_eq!(proof.leaf, identity.commitment());
         assert_eq!(proof.root, root);
+        assert!(proof.verify(&root));
     }
     
     #[test]
     fn test_merkle_tree_multiple_leaves() {
-        let mut tree = MerkleTree::new(3); // Height 3 = up to 8 leaves
+        let mut tree = MerkleTree::new(3);
         
-        // Add 5 identities
         for i in 0..5 {
-            let identity = Identity::new([i as u8; 32], [(i + 100) as u8; 32]);
+            let identity = IdentityECDSA::new([(i + 1) as u8; 32]);
             tree.add_leaf(identity.commitment());
         }
         
@@ -289,91 +298,37 @@ mod tests {
         // Verify proof for each leaf
         for i in 0..5 {
             let proof = tree.proof(i);
-            assert!(proof.verify());
-            assert_eq!(proof.root, root);
+            assert!(proof.verify(&root));
         }
     }
     
     #[test]
-    fn test_nullifier_generation() {
-        let identity = Identity::new([1u8; 32], [2u8; 32]);
-        let scope1 = b"voting_event_1";
-        let scope2 = b"voting_event_2";
-        
-        let nullifier1 = generate_nullifier(scope1, &identity.nullifier);
-        let nullifier2 = generate_nullifier(scope2, &identity.nullifier);
-        
-        // Same scope should produce same nullifier
-        let nullifier1_again = generate_nullifier(scope1, &identity.nullifier);
-        assert_eq!(nullifier1, nullifier1_again);
-        
-        // Different scopes should produce different nullifiers
-        assert_ne!(nullifier1, nullifier2);
-    }
-    
-    #[test]
     fn test_semaphore_proof_generation_and_verification() {
-        // Setup: Create a group with 3 members
+        // Setup
+        let identity1 = IdentityECDSA::new([1u8; 32]);
+        let identity2 = IdentityECDSA::new([2u8; 32]);
+        let identity3 = IdentityECDSA::new([3u8; 32]);
+        
         let mut tree = MerkleTree::new(2);
-        
-        let identity1 = Identity::new([1u8; 32], [101u8; 32]);
-        let identity2 = Identity::new([2u8; 32], [102u8; 32]);
-        let identity3 = Identity::new([3u8; 32], [103u8; 32]);
-        
         tree.add_leaf(identity1.commitment());
         tree.add_leaf(identity2.commitment());
         tree.add_leaf(identity3.commitment());
         
-        // Member 2 generates a proof
-        let merkle_proof = tree.proof(1); // Index 1 = identity2
-        let message = b"I vote YES".to_vec();
-        let scope = b"proposal_42".to_vec();
+        let root = tree.root();
         
-        let proof = SemaphoreProof::generate(
-            &identity2,
-            &merkle_proof,
-            message.clone(),
-            scope.clone(),
-        );
+        // Generate proof for identity2
+        let message = b"vote yes";
+        let scope = b"proposal1";
+        let proof = SemaphoreProofECDSA::generate(&identity2, &tree, 1, message, scope);
         
-        // Verify the proof
-        assert!(proof.verify(&merkle_proof, &identity2));
+        // Verify proof
+        assert!(proof.verify(&root));
+        assert_eq!(proof.nullifier, identity2.nullifier(scope));
+        assert_eq!(proof.message, message);
+        assert_eq!(proof.scope, scope);
         
-        // Verify nullifier prevents double-signaling
-        let nullifier1 = proof.nullifier;
-        let proof2 = SemaphoreProof::generate(
-            &identity2,
-            &merkle_proof,
-            b"I vote NO".to_vec(), // Different message
-            scope.clone(), // Same scope
-        );
-        assert_eq!(nullifier1, proof2.nullifier); // Same nullifier!
-    }
-    
-    #[test]
-    fn test_different_scopes_allow_multiple_signals() {
-        let mut tree = MerkleTree::new(1);
-        let identity = Identity::new([1u8; 32], [2u8; 32]);
-        tree.add_leaf(identity.commitment());
-        
-        let merkle_proof = tree.proof(0);
-        
-        // Same user, different scopes
-        let proof1 = SemaphoreProof::generate(
-            &identity,
-            &merkle_proof,
-            b"vote1".to_vec(),
-            b"proposal_1".to_vec(),
-        );
-        
-        let proof2 = SemaphoreProof::generate(
-            &identity,
-            &merkle_proof,
-            b"vote2".to_vec(),
-            b"proposal_2".to_vec(),
-        );
-        
-        // Different scopes = different nullifiers
-        assert_ne!(proof1.nullifier, proof2.nullifier);
+        // Different scope should produce different nullifier
+        let proof2 = SemaphoreProofECDSA::generate(&identity2, &tree, 1, message, b"proposal2");
+        assert_ne!(proof.nullifier, proof2.nullifier);
     }
 }

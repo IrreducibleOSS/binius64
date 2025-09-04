@@ -381,21 +381,6 @@ impl<'a> Interpreter<'a> {
 		let val2 = self.load(ctx, src2);
 
 		if val1 != val2 {
-			// Enhanced debug logging for Semaphore ECDSA debugging  
-			eprintln!("=== REGULAR ASSERTION FAILURE DEBUG ===");
-			eprintln!("Error ID: {:#x}", error_id);
-			eprintln!("Source1 register: {}, value: {:#018x}", src1, val1.0);
-			eprintln!("Source2 register: {}, value: {:#018x}", src2, val2.0);
-			eprintln!("PC (program counter): {}", self.pc);
-			
-			// Special pattern analysis
-			if val1.0 == 1 && val2.0 == 0 {
-				eprintln!("PATTERN: Boolean mismatch (expected 0, got 1)");
-			} else if val1.0 == 0x2b2b2b2b2b2b2b2b {
-				eprintln!("PATTERN: Secret scalar 0x2b pattern detected");
-			}
-			eprintln!("========================================");
-			
 			ctx.note_assertion_failure(error_id, format!("{val1:?} != {val2:?}"));
 		}
 	}
@@ -414,24 +399,6 @@ impl<'a> Interpreter<'a> {
 			let val2 = self.load(ctx, src2);
 
 			if val1 != val2 {
-				// Enhanced debug logging for Semaphore ECDSA debugging
-				eprintln!("=== ASSERTION FAILURE DEBUG ===");
-				eprintln!("Error ID: {:#x}", error_id);
-				eprintln!("Condition register: {}, value: {:#018x}", cond, cond_val.0);
-				eprintln!("Source1 register: {}, value: {:#018x}", src1, val1.0);
-				eprintln!("Source2 register: {}, value: {:#018x}", src2, val2.0);
-				eprintln!("PC (program counter): {}", self.pc);
-				
-				// Special pattern analysis for our known failures
-				if val1.0 == 1 && val2.0 == 0 {
-					eprintln!("PATTERN: Boolean mismatch (expected 0, got 1)");
-				} else if val1.0 == 1 && val2.0 == 0x2b2b2b2b2b2b2b2b {
-					eprintln!("PATTERN: Secret scalar vs 1 mismatch (secret=0x2b pattern)");
-				} else if val1.0 == 0x2b2b2b2b2b2b2b2b {
-					eprintln!("PATTERN: Secret scalar 0x2b pattern detected");
-				}
-				eprintln!("================================");
-				
 				ctx.note_assertion_failure(
 					error_id,
 					format!("conditional assert: {val1:?} != {val2:?}"),

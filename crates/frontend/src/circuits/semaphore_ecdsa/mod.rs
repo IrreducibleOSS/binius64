@@ -16,5 +16,8 @@ pub mod reference;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod scaling_test;
+
 pub use circuit::SemaphoreProofECDSA;
-pub use reference::{MerkleTree, MerkleProof};
+pub use reference::{IdentityECDSA, MerkleTree, MerkleProof};

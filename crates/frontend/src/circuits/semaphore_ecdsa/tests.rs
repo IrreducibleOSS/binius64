@@ -3,16 +3,22 @@
 #[cfg(test)]
 mod test_semaphore_ecdsa {
     use crate::{
-        circuits::semaphore_ecdsa::circuit::{SemaphoreProofECDSA, IdentityECDSA},
+        circuits::semaphore_ecdsa::{
+            circuit::SemaphoreProofECDSA,
+            reference::{IdentityECDSA, MerkleTree},
+        },
         compiler::CircuitBuilder,
     };
-    use crate::circuits::semaphore_ecdsa::reference::MerkleTree;
     
     /// Helper to create a Merkle tree with ECDSA identities
     fn create_tree_with_ecdsa_identities(identities: &[IdentityECDSA]) -> MerkleTree {
-        let mut tree = MerkleTree::new(
-            (identities.len() as f64).log2().ceil() as usize
-        );
+        let height = if identities.is_empty() {
+            0
+        } else {
+            std::cmp::max(1, (identities.len() as f64).log2().ceil() as usize)
+        };
+        
+        let mut tree = MerkleTree::new(height);
         
         for identity in identities {
             tree.add_leaf(identity.commitment());
