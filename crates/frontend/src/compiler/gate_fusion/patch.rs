@@ -5,6 +5,7 @@ use crate::compiler::{
 	Wire,
 	constraint_builder::{
 		ConstraintBuilder, Shift, ShiftedWire, WireAndConstraint, WireMulConstraint, WireOperand,
+		WireZeroConstraint,
 	},
 	gate_fusion::legraph::ConstraintRef,
 };
@@ -19,12 +20,13 @@ pub struct Patch {
 	/// The constraint set that is going to be replaced with this one.
 	subsumes: Vec<ConstraintRef>,
 	/// The new constraints that is going to be added to the graph.
-	added: AndOrMulConstraint,
+	added: AndOrMulOrZeroConstraint,
 }
 
-enum AndOrMulConstraint {
+enum AndOrMulOrZeroConstraint {
 	And(WireAndConstraint),
 	Mul(WireMulConstraint),
+	Zero(WireZeroConstraint),
 }
 
 /// Apply the given patches to the constraint builder given.
@@ -33,13 +35,21 @@ pub fn apply_patches(cb: &mut ConstraintBuilder, patches: Vec<Patch>) {
 	subsumes.reserve(patches.len());
 	let mut new_and_constraints = Vec::new();
 	let mut new_mul_constraints = Vec::new();
+	let mut new_zero_constraints = Vec::new();
 
 	// Collect all subsumed constraints and new constraints to add
 	for patch in patches {
 		subsumes.extend(patch.subsumes);
 		match patch.added {
-			AndOrMulConstraint::And(and_constraint) => new_and_constraints.push(and_constraint),
-			AndOrMulConstraint::Mul(mul_constraint) => new_mul_constraints.push(mul_constraint),
+			AndOrMulOrZeroConstraint::And(and_constraint) => {
+				new_and_constraints.push(and_constraint)
+			}
+			AndOrMulOrZeroConstraint::Mul(mul_constraint) => {
+				new_mul_constraints.push(mul_constraint)
+			}
+			AndOrMulOrZeroConstraint::Zero(zero_constraint) => {
+				new_zero_constraints.push(zero_constraint)
+			}
 		}
 	}
 
@@ -87,6 +97,7 @@ pub fn apply_patches(cb: &mut ConstraintBuilder, patches: Vec<Patch>) {
 	// Add the new constraints
 	cb.and_constraints.extend(new_and_constraints);
 	cb.mul_constraints.extend(new_mul_constraints);
+	cb.zero_constraints.extend(new_zero_constraints);
 }
 
 /// Builds a list of patches that would remove the inlined linear definitions and potentially
@@ -132,14 +143,14 @@ fn build_non_lin_patch(
 			let a = process_operand(leg, &mut subsumes, &cb.and_constraints[index].a);
 			let b = process_operand(leg, &mut subsumes, &cb.and_constraints[index].b);
 			let c = process_operand(leg, &mut subsumes, &cb.and_constraints[index].c);
-			AndOrMulConstraint::And(WireAndConstraint { a, b, c })
+			AndOrMulOrZeroConstraint::And(WireAndConstraint { a, b, c })
 		}
 		ConstraintRef::Mul { index } => {
 			let a = process_operand(leg, &mut subsumes, &cb.mul_constraints[index].a);
 			let b = process_operand(leg, &mut subsumes, &cb.mul_constraints[index].b);
 			let lo = process_operand(leg, &mut subsumes, &cb.mul_constraints[index].lo);
 			let hi = process_operand(leg, &mut subsumes, &cb.mul_constraints[index].hi);
-			AndOrMulConstraint::Mul(WireMulConstraint { a, b, lo, hi })
+			AndOrMulOrZeroConstraint::Mul(WireMulConstraint { a, b, lo, hi })
 		}
 		ConstraintRef::Linear { .. } => unreachable!(),
 	};
@@ -161,7 +172,7 @@ fn build_non_lin_patch(
 fn build_committed_lin_def_patch(
 	_cb: &ConstraintBuilder,
 	leg: &LeGraph,
-	all_one: Wire,
+	_all_one: Wire,
 	root: Wire,
 ) -> Patch {
 	// `subsumes` is a list of constraints that become redundant with application of this patch.
@@ -169,22 +180,16 @@ fn build_committed_lin_def_patch(
 	let mut subsumes = vec![leg.lin_def_constraint_ref(root)];
 
 	let old_operand = leg.lin_def(root);
-	let new_operand = process_operand(leg, &mut subsumes, old_operand);
+	let mut new_operand = process_operand(leg, &mut subsumes, old_operand);
+	new_operand.push(ShiftedWire {
+		wire: root,
+		shift: Shift::None,
+	});
 
 	// Create an AND constraint that enforces: root = new_operand
 	Patch {
 		subsumes,
-		added: AndOrMulConstraint::And(WireAndConstraint {
-			a: new_operand,
-			b: vec![ShiftedWire {
-				wire: all_one,
-				shift: Shift::None,
-			}],
-			c: vec![ShiftedWire {
-				wire: root,
-				shift: Shift::None,
-			}],
-		}),
+		added: AndOrMulOrZeroConstraint::Zero(WireZeroConstraint { a: new_operand }),
 	}
 }
 
@@ -357,7 +362,7 @@ mod tests {
 		let all_one = w(9);
 		let patch = super::build_committed_lin_def_patch(&cb_single, &leg, all_one, w(3));
 		match patch.added {
-			AndOrMulConstraint::And(ref andc) => {
+			AndOrMulOrZeroConstraint::And(ref andc) => {
 				// b must be exactly [all_one]
 				assert_eq!(andc.b.len(), 1);
 				assert_eq!(andc.b[0].wire, all_one);
@@ -741,7 +746,7 @@ mod tests {
 		let patches = vec![
 			Patch {
 				subsumes: vec![ConstraintRef::And { index: 1 }],
-				added: AndOrMulConstraint::And(WireAndConstraint {
+				added: AndOrMulOrZeroConstraint::And(WireAndConstraint {
 					a: vec![ShiftedWire {
 						wire: w(30),
 						shift: Shift::None,
@@ -758,7 +763,7 @@ mod tests {
 			},
 			Patch {
 				subsumes: vec![ConstraintRef::Linear { index: 0 }],
-				added: AndOrMulConstraint::And(WireAndConstraint {
+				added: AndOrMulOrZeroConstraint::And(WireAndConstraint {
 					a: vec![ShiftedWire {
 						wire: w(33),
 						shift: Shift::None,
@@ -775,7 +780,7 @@ mod tests {
 			},
 			Patch {
 				subsumes: vec![ConstraintRef::Mul { index: 0 }],
-				added: AndOrMulConstraint::Mul(WireMulConstraint {
+				added: AndOrMulOrZeroConstraint::Mul(WireMulConstraint {
 					a: vec![ShiftedWire {
 						wire: w(36),
 						shift: Shift::None,

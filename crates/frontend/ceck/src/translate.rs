@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use binius_core::{
 	constraint_system::{
 		AndConstraint, ConstraintSystem, MulConstraint, Operand, ShiftedValueIndex, ValueIndex,
-		ValueVecLayout,
+		ValueVecLayout, ZeroConstraint,
 	},
 	word::Word,
 };
@@ -48,6 +48,9 @@ impl Context {
 					self.preprocess_operand(b);
 					self.preprocess_operand(hi);
 					self.preprocess_operand(lo);
+				}
+				Constraint::Zero { zero } => {
+					self.preprocess_operand(zero);
 				}
 			}
 		}
@@ -119,6 +122,7 @@ impl Context {
 	pub fn build(&self, cs: &ConstraintSet) -> ConstraintSystem {
 		let mut and_constraints = Vec::new();
 		let mut mul_constraints = Vec::new();
+		let mut zero_constraints = Vec::new();
 
 		for constraint in &cs.constraints {
 			match constraint {
@@ -139,6 +143,10 @@ impl Context {
 					};
 					mul_constraints.push(mul_constraint);
 				}
+				Constraint::Zero { zero } => {
+					let zero_constraint = ZeroConstraint(self.convert_operand(zero));
+					zero_constraints.push(zero_constraint);
+				}
 			}
 		}
 
@@ -149,6 +157,7 @@ impl Context {
 			self.value_vec_layout.clone().unwrap(),
 			and_constraints,
 			mul_constraints,
+			zero_constraints,
 		)
 	}
 

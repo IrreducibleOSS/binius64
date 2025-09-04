@@ -1,6 +1,8 @@
 // Copyright 2025 Irreducible Inc.
 
-use binius_verifier::protocols::shift::{BITAND_ARITY, INTMUL_ARITY, SHIFT_VARIANT_COUNT};
+use binius_verifier::protocols::shift::{
+	BITAND_ARITY, INTMUL_ARITY, SHIFT_VARIANT_COUNT, ZERO_ARITY,
+};
 
 mod error;
 mod key_collection;

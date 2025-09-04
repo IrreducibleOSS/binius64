@@ -27,7 +27,8 @@ operand  = { xor_expr | term }
 // Constraints
 and_constraint = { "(" ~ "and" ~ operand ~ operand ~ operand ~ ")" }
 mul_constraint = { "(" ~ "mul" ~ operand ~ operand ~ operand ~ operand ~ ")" }
-constraint     = { and_constraint | mul_constraint }
+zero_constraint = { "(" ~ "zero" ~ operand ~ ")" }
+constraint     = { and_constraint | mul_constraint | zero_constraint }
 
 // Top level constraint set
 constraint_set = { "(" ~ "constraint_set" ~ constraint* ~ ")" }

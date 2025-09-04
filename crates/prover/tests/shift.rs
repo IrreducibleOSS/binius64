@@ -263,10 +263,17 @@ fn test_shift_prove_and_verify() {
 				.map(F::new)
 				.collect::<Vec<_>>()
 		};
+		let r_x_prime_zeros = {
+			let log_zeros_constraint_count = strict_log_2(cs.zero_constraints.len()).unwrap();
+			(0..log_zeros_constraint_count as u128)
+				.map(F::new)
+				.collect::<Vec<_>>()
+		};
 
 		// Sample univaraite eval point
 		let r_zhat_prime_bitand = F::random(&mut rng);
 		let r_zhat_prime_intmul = F::random(&mut rng);
+		let r_zhat_prime_zeros = F::random(&mut rng);
 
 		let bitand_evals = compute_bitand_images(&cs.and_constraints, &value_vec).map(|image| {
 			evaluate_image(
@@ -300,6 +307,11 @@ fn test_shift_prove_and_verify() {
 			r_zhat_prime: r_zhat_prime_intmul,
 			r_x_prime: r_x_prime_intmul.clone(),
 		};
+		let prover_zeros_data = OperatorData {
+			evals: vec![F::ZERO],
+			r_zhat_prime: r_zhat_prime_zeros,
+			r_x_prime: r_x_prime_zeros.clone(),
+		};
 
 		let inout_n_vars = strict_log_2(cs.value_vec_layout.offset_witness).unwrap();
 
@@ -309,6 +321,7 @@ fn test_shift_prove_and_verify() {
 			value_vec.combined_witness(),
 			prover_bitand_data.clone(),
 			prover_intmul_data.clone(),
+			prover_zeros_data.clone(),
 			&mut prover_transcript,
 		)
 		.unwrap();
@@ -320,10 +333,17 @@ fn test_shift_prove_and_verify() {
 			VerifierOperatorData::new(r_zhat_prime_bitand, r_x_prime_bitand, bitand_evals);
 		let verifier_intmul_data =
 			VerifierOperatorData::new(r_zhat_prime_intmul, r_x_prime_intmul, intmul_evals);
+		let verifier_zeros_data =
+			VerifierOperatorData::new(r_zhat_prime_zeros, r_x_prime_zeros, [F::ZERO]);
 
-		let verifier_output =
-			verify(&cs, verifier_bitand_data, verifier_intmul_data, &mut verifier_transcript)
-				.unwrap();
+		let verifier_output = verify(
+			&cs,
+			verifier_bitand_data,
+			verifier_intmul_data,
+			verifier_zeros_data,
+			&mut verifier_transcript,
+		)
+		.unwrap();
 
 		// Compute the expected public input evaluation
 		let (z_coords, remaining) = verifier_output.eval_point.split_at(LOG_WORD_SIZE_BITS);

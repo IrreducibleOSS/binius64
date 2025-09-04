@@ -54,21 +54,27 @@ pub fn prove_phase_1<F, P: PackedField<Scalar = F>, C: Challenger>(
 	words: &[Word],
 	bitand_data: &PreparedOperatorData<F>,
 	intmul_data: &PreparedOperatorData<F>,
+	zeros_data: &PreparedOperatorData<F>,
 	transcript: &mut ProverTranscript<C>,
 ) -> Result<SumcheckOutput<F>, Error>
 where
 	F: BinaryField + From<AESTowerField8b> + WithUnderlier<Underlier: UnderlierWithBitOps>,
 {
-	let [g_triplet_bitand, g_triplet_intmul]: [MultilinearTriplet<P>; 2] =
-		build_g_triplet(words, key_collection, bitand_data, intmul_data)?;
+	let [g_triplet_bitand, g_triplet_intmul, g_triplet_zeros]: [MultilinearTriplet<P>; 3] =
+		build_g_triplet(words, key_collection, bitand_data, intmul_data, zeros_data)?;
 
 	let h_triplet_bitand = build_h_triplet(bitand_data.r_zhat_prime)?;
 	let h_triplet_intmul = build_h_triplet(intmul_data.r_zhat_prime)?;
+	let h_triplet_zeros = build_h_triplet(zeros_data.r_zhat_prime)?;
 
 	run_phase_1_sumcheck(
-		[g_triplet_bitand, g_triplet_intmul],
-		[h_triplet_bitand, h_triplet_intmul],
-		[bitand_data.batched_eval(), intmul_data.batched_eval()],
+		[g_triplet_bitand, g_triplet_intmul, g_triplet_zeros],
+		[h_triplet_bitand, h_triplet_intmul, h_triplet_zeros],
+		[
+			bitand_data.batched_eval(),
+			intmul_data.batched_eval(),
+			zeros_data.batched_eval(),
+		],
 		transcript,
 	)
 }
@@ -210,10 +216,11 @@ fn build_g_triplet<
 	key_collection: &KeyCollection,
 	bitand_operator_data: &PreparedOperatorData<F>,
 	intmul_operator_data: &PreparedOperatorData<F>,
-) -> Result<[MultilinearTriplet<P>; 2], Error> {
+	zero_operator_data: &PreparedOperatorData<F>,
+) -> Result<[MultilinearTriplet<P>; 3], Error> {
 	const ACC_SIZE: usize = SHIFT_VARIANT_COUNT * (1 << LOG_LEN);
 
-	let (bitand_multilinears, intmul_multilinears) = words
+	let (bitand_multilinears, intmul_multilinears, zero_multilinears) = words
 		.par_iter()
 		.zip(key_collection.key_ranges.par_iter())
 		.fold(
@@ -221,15 +228,18 @@ fn build_g_triplet<
 				(
 					vec![F::ZERO; ACC_SIZE].into_boxed_slice(),
 					vec![F::ZERO; ACC_SIZE].into_boxed_slice(),
+					vec![F::ZERO; ACC_SIZE].into_boxed_slice(),
 				)
 			},
-			|(mut bitand_multilinears, mut intmul_multilinears), (word, Range { start, end })| {
+			|(mut bitand_multilinears, mut intmul_multilinears, mut zero_multilinears),
+			 (word, Range { start, end })| {
 				let keys = &key_collection.keys[*start as usize..*end as usize];
 
 				for key in keys {
 					let (operator_data, accumulators) = match key.operation {
 						Operation::BitwiseAnd => (bitand_operator_data, &mut bitand_multilinears),
 						Operation::IntegerMul => (intmul_operator_data, &mut intmul_multilinears),
+						Operation::Zero => (zero_operator_data, &mut zero_multilinears),
 					};
 
 					let acc = key.accumulate(&key_collection.constraint_indices, operator_data);
@@ -261,7 +271,7 @@ fn build_g_triplet<
 					}
 				}
 
-				(bitand_multilinears, intmul_multilinears)
+				(bitand_multilinears, intmul_multilinears, zero_multilinears)
 			},
 		)
 		.reduce(
@@ -269,23 +279,29 @@ fn build_g_triplet<
 				(
 					vec![F::ZERO; ACC_SIZE].into_boxed_slice(),
 					vec![F::ZERO; ACC_SIZE].into_boxed_slice(),
+					vec![F::ZERO; ACC_SIZE].into_boxed_slice(),
 				)
 			},
-			|(mut acc_bitand, mut acc_intmul), (local_bitand, local_intmul)| {
+			|(mut acc_bitand, mut acc_intmul, mut acc_zero),
+			 (local_bitand, local_intmul, local_zero)| {
 				izip!(acc_bitand.iter_mut(), local_bitand.iter()).for_each(|(acc, local)| {
 					*acc += *local;
 				});
 				izip!(acc_intmul.iter_mut(), local_intmul.iter()).for_each(|(acc, local)| {
 					*acc += *local;
 				});
-				(acc_bitand, acc_intmul)
+				izip!(acc_zero.iter_mut(), local_zero.iter()).for_each(|(acc, local)| {
+					*acc += *local;
+				});
+				(acc_bitand, acc_intmul, acc_zero)
 			},
 		);
 
 	let bitand_triplet = build_multilinear_triplet_for_operator(&bitand_multilinears)?;
 	let intmul_triplet = build_multilinear_triplet_for_operator(&intmul_multilinears)?;
+	let zero_triplet = build_multilinear_triplet_for_operator(&zero_multilinears)?;
 
-	Ok([bitand_triplet, intmul_triplet])
+	Ok([bitand_triplet, intmul_triplet, zero_triplet])
 }
 
 /// Builds a multilinear triplet for a single operation by combining its operand multilinears.

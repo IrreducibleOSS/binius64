@@ -1,4 +1,7 @@
-use binius_core::constraint_system::{AndConstraint, MulConstraint, ShiftedValueIndex, ValueIndex};
+use binius_core::{
+	ZeroConstraint,
+	constraint_system::{AndConstraint, MulConstraint, ShiftedValueIndex, ValueIndex},
+};
 use cranelift_entity::{EntitySet, SecondaryMap};
 use smallvec::{SmallVec, smallvec};
 
@@ -9,6 +12,7 @@ pub struct ConstraintBuilder {
 	pub and_constraints: Vec<WireAndConstraint>,
 	pub mul_constraints: Vec<WireMulConstraint>,
 	pub linear_constraints: Vec<WireLinearConstraint>,
+	pub zero_constraints: Vec<WireZeroConstraint>,
 }
 
 impl ConstraintBuilder {
@@ -17,6 +21,7 @@ impl ConstraintBuilder {
 			and_constraints: Vec::new(),
 			mul_constraints: Vec::new(),
 			linear_constraints: Vec::new(),
+			zero_constraints: Vec::new(),
 		}
 	}
 
@@ -42,7 +47,7 @@ impl ConstraintBuilder {
 		self,
 		wire_mapping: &SecondaryMap<Wire, ValueIndex>,
 		all_one: Wire,
-	) -> (Vec<AndConstraint>, Vec<MulConstraint>) {
+	) -> (Vec<AndConstraint>, Vec<MulConstraint>, Vec<ZeroConstraint>) {
 		let mut and_constraints = self
 			.and_constraints
 			.into_iter()
@@ -64,7 +69,13 @@ impl ConstraintBuilder {
 			}
 		}
 
-		(and_constraints, mul_constraints)
+		let zero_constraints = self
+			.zero_constraints
+			.into_iter()
+			.map(|c| c.into_constraint(wire_mapping))
+			.collect();
+
+		(and_constraints, mul_constraints, zero_constraints)
 	}
 
 	pub fn mark_used_wires(&self) -> EntitySet<Wire> {
@@ -77,6 +88,9 @@ impl ConstraintBuilder {
 		}
 		for lc in &self.linear_constraints {
 			lc.mark_used(&mut used_set);
+		}
+		for zc in &self.zero_constraints {
+			zc.mark_used(&mut used_set);
 		}
 		used_set
 	}
@@ -112,6 +126,19 @@ fn expand_and_convert_operand(
 		}
 	}
 	result
+}
+
+pub struct WireZeroConstraint {
+	pub a: WireOperand,
+}
+impl WireZeroConstraint {
+	fn into_constraint(self, wire_mapping: &SecondaryMap<Wire, ValueIndex>) -> ZeroConstraint {
+		ZeroConstraint(expand_and_convert_operand(self.a, wire_mapping))
+	}
+
+	fn mark_used(&self, used_set: &mut EntitySet<Wire>) {
+		mark_used(&self.a, used_set);
+	}
 }
 
 /// AND constraint using Wire references
@@ -593,7 +620,8 @@ mod tests {
 				.dst(wire_c)
 				.build();
 
-			let (and_constraints, mul_constraints) = builder.build(&wire_mapping, all_one_wire);
+			let (and_constraints, mul_constraints, _zero_constraints) =
+				builder.build(&wire_mapping, all_one_wire);
 
 			// rotr(0) should be optimized to plain wire, so we expect:
 			// (a ⊕ b) & all_one = c
@@ -640,7 +668,8 @@ mod tests {
 				.dst(wire_c)
 				.build();
 
-			let (and_constraints, mul_constraints) = builder.build(&wire_mapping, all_one_wire);
+			let (and_constraints, mul_constraints, _zero_constraints) =
+				builder.build(&wire_mapping, all_one_wire);
 
 			assert_eq!(and_constraints.len(), 1);
 			assert_eq!(mul_constraints.len(), 0);
@@ -697,7 +726,7 @@ mod tests {
 			// Build: a & rotr(b, 0) ⊕ c = 0
 			builder.and().a(wire_a).b(rotr(wire_b, 0)).c(wire_c).build();
 
-			let (and_constraints, _) = builder.build(&wire_mapping, all_one_wire);
+			let (and_constraints, _, _) = builder.build(&wire_mapping, all_one_wire);
 
 			assert_eq!(and_constraints.len(), 1);
 			let and_c = &and_constraints[0];
@@ -725,7 +754,7 @@ mod tests {
 			// Build: a & rotr(b, 8) ⊕ c = 0
 			builder.and().a(wire_a).b(rotr(wire_b, 8)).c(wire_c).build();
 
-			let (and_constraints, _) = builder.build(&wire_mapping, all_one_wire);
+			let (and_constraints, _, _) = builder.build(&wire_mapping, all_one_wire);
 
 			assert_eq!(and_constraints.len(), 1);
 			let and_c = &and_constraints[0];
@@ -771,7 +800,8 @@ mod tests {
 			.dst(wire_c)
 			.build();
 
-		let (and_constraints, mul_constraints) = builder.build(&wire_mapping, all_one_wire);
+		let (and_constraints, mul_constraints, _zero_constraints) =
+			builder.build(&wire_mapping, all_one_wire);
 
 		assert_eq!(and_constraints.len(), 1);
 		assert_eq!(mul_constraints.len(), 0);

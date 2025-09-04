@@ -1,7 +1,7 @@
 // Copyright 2025 Irreducible Inc.
 
 use binius_core::{constraint_system::ConstraintSystem, word::Word};
-use binius_field::{AESTowerField8b as B8, BinaryField};
+use binius_field::{AESTowerField8b as B8, BinaryField, Field};
 use binius_math::{
 	BinarySubspace, FieldBuffer,
 	inner_product::inner_product_subfield,
@@ -215,6 +215,14 @@ where
 		};
 		drop(intmul_guard);
 
+		// [phase] Verify Zeros - zero constraint verification
+		let zeros_claim = {
+			let r_zhat_prime = transcript.sample();
+			let log_n_constraints = checked_log_2(self.constraint_system.n_zero_constraints());
+			let r_x_prime = transcript.sample_vec(log_n_constraints);
+			OperatorData::new(r_zhat_prime, r_x_prime, [B128::ZERO])
+		};
+
 		// [phase] Verify Shift Reduction - shift operations and constraint validation
 		let constraint_guard = tracing::info_span!(
 			"[phase] Verify Shift Reduction",
@@ -226,7 +234,13 @@ where
 			witness_eval,
 			public_eval,
 			eval_point,
-		} = verify_shift_reduction(self.constraint_system(), bitand_claim, intmul_claim, transcript)?;
+		} = verify_shift_reduction(
+			self.constraint_system(),
+			bitand_claim,
+			intmul_claim,
+			zeros_claim,
+			transcript,
+		)?;
 		drop(constraint_guard);
 
 		// [phase] Verify Public Input - public input verification

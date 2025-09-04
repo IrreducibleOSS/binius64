@@ -10,7 +10,10 @@ use binius_transcript::{
 use binius_utils::checked_arithmetics::strict_log_2;
 use itertools::Itertools;
 
-use super::{BITAND_ARITY, INTMUL_ARITY, error::Error, evaluate_monster_multilinear_for_operation};
+use super::{
+	BITAND_ARITY, INTMUL_ARITY, ZERO_ARITY, error::Error,
+	evaluate_monster_multilinear_for_operation,
+};
 use crate::{
 	config::LOG_WORD_SIZE_BITS,
 	protocols::{
@@ -92,6 +95,7 @@ pub fn verify<F, C: Challenger>(
 	constraint_system: &ConstraintSystem,
 	mut bitand_data: OperatorData<F, BITAND_ARITY>,
 	mut intmul_data: OperatorData<F, INTMUL_ARITY>,
+	mut zeros_data: OperatorData<F, ZERO_ARITY>,
 	transcript: &mut VerifierTranscript<C>,
 ) -> Result<VerifyOutput<F>, Error>
 where
@@ -99,8 +103,9 @@ where
 {
 	bitand_data.lambda = transcript.sample();
 	intmul_data.lambda = transcript.sample();
+	zeros_data.lambda = transcript.sample();
 
-	let eval = bitand_data.batched_eval() + intmul_data.batched_eval();
+	let eval = bitand_data.batched_eval() + intmul_data.batched_eval() + zeros_data.batched_eval();
 
 	let SumcheckOutput {
 		eval: gamma,
@@ -168,7 +173,21 @@ where
 		)
 	}?;
 
-	if monster_eval != expected_monster_eval_for_bitand + expected_monster_eval_for_intmul {
+	// Compute expected monster eval for zeros
+	let expected_monster_eval_for_zeros = {
+		let zeros = constraint_system
+			.zero_constraints
+			.iter()
+			.map(|zc| &zc.0)
+			.collect::<Vec<_>>();
+		evaluate_monster_multilinear_for_operation(vec![zeros], zeros_data, &r_j, &r_s, &r_y)
+	}?;
+
+	if monster_eval
+		!= expected_monster_eval_for_bitand
+			+ expected_monster_eval_for_intmul
+			+ expected_monster_eval_for_zeros
+	{
 		return Err(Error::VerificationFailure);
 	}
 

@@ -171,10 +171,16 @@ impl CircuitBuilder {
 			}
 			value_vec_alloc.into_assignment()
 		};
-		let (and_constraints, mul_constraints) = builder.build(&wire_mapping, all_one);
+		let (and_constraints, mul_constraints, zero_constraints) =
+			builder.build(&wire_mapping, all_one);
 
-		let cs =
-			ConstraintSystem::new(constants, value_vec_layout, and_constraints, mul_constraints);
+		let cs = ConstraintSystem::new(
+			constants,
+			value_vec_layout,
+			and_constraints,
+			mul_constraints,
+			zero_constraints,
+		);
 		if cfg!(debug_assertions) {
 			// Validate that the resulting constraint system has a good shape.
 			cs.validate().unwrap();

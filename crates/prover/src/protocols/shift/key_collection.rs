@@ -5,13 +5,13 @@ use std::{iter, mem, ops::Range};
 use binius_core::{
 	ShiftVariant,
 	constraint_system::{
-		AndConstraint, ConstraintSystem, MulConstraint, Operand, ShiftedValueIndex,
+		AndConstraint, ConstraintSystem, MulConstraint, Operand, ShiftedValueIndex, ZeroConstraint,
 	},
 	consts::LOG_WORD_SIZE_BITS,
 };
 use binius_field::Field;
 
-use super::{BITAND_ARITY, INTMUL_ARITY, PreparedOperatorData};
+use super::{BITAND_ARITY, INTMUL_ARITY, PreparedOperatorData, ZERO_ARITY};
 
 /// Represents the type of operations handled by the shift protocol.
 ///
@@ -30,6 +30,7 @@ use super::{BITAND_ARITY, INTMUL_ARITY, PreparedOperatorData};
 pub enum Operation {
 	BitwiseAnd,
 	IntegerMul,
+	Zero,
 }
 
 /// A `Key` specifies an operation, an identifier for a 2D matrix, and a range of constraint
@@ -239,6 +240,7 @@ pub fn build_key_collection(cs: &ConstraintSystem) -> KeyCollection {
 		[|c| &c.a, |c| &c.b, |c| &c.c];
 	let intmul_operand_getters: [fn(&MulConstraint) -> &Operand; INTMUL_ARITY] =
 		[|c| &c.a, |c| &c.b, |c| &c.lo, |c| &c.hi];
+	let zeros_operand_getter: [fn(&ZeroConstraint) -> &Operand; ZERO_ARITY] = [|c| &c.0];
 
 	bitand_operand_getters
 		.iter()
@@ -260,6 +262,18 @@ pub fn build_key_collection(cs: &ConstraintSystem) -> KeyCollection {
 				Operation::IntegerMul,
 				operand_idx,
 				cs.mul_constraints.iter().map(get_operand),
+				&mut builder_key_lists,
+			);
+		});
+
+	zeros_operand_getter
+		.iter()
+		.enumerate()
+		.for_each(|(operand_idx, get_operand)| {
+			update_with_operand(
+				Operation::Zero,
+				operand_idx,
+				cs.zero_constraints.iter().map(get_operand),
 				&mut builder_key_lists,
 			);
 		});

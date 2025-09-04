@@ -251,12 +251,38 @@ impl DeserializeBytes for MulConstraint {
 	}
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct ZeroConstraint(pub Operand);
+
+impl ZeroConstraint {
+	pub fn plain(operand: impl IntoIterator<Item = ValueIndex>) -> ZeroConstraint {
+		ZeroConstraint(operand.into_iter().map(ShiftedValueIndex::plain).collect())
+	}
+}
+
+impl SerializeBytes for ZeroConstraint {
+	fn serialize(&self, mut write_buf: impl BufMut) -> Result<(), SerializationError> {
+		self.0.serialize(&mut write_buf)
+	}
+}
+
+impl DeserializeBytes for ZeroConstraint {
+	fn deserialize(mut read_buf: impl Buf) -> Result<Self, SerializationError>
+	where
+		Self: Sized,
+	{
+		let operand = Vec::<ShiftedValueIndex>::deserialize(&mut read_buf)?;
+		Ok(ZeroConstraint(operand))
+	}
+}
+
 #[derive(Debug, Clone)]
 pub struct ConstraintSystem {
 	pub value_vec_layout: ValueVecLayout,
 	pub constants: Vec<Word>,
 	pub and_constraints: Vec<AndConstraint>,
 	pub mul_constraints: Vec<MulConstraint>,
+	pub zero_constraints: Vec<ZeroConstraint>,
 }
 
 impl ConstraintSystem {
@@ -270,6 +296,7 @@ impl ConstraintSystem {
 		value_vec_layout: ValueVecLayout,
 		and_constraints: Vec<AndConstraint>,
 		mul_constraints: Vec<MulConstraint>,
+		zero_constraints: Vec<ZeroConstraint>,
 	) -> Self {
 		assert_eq!(constants.len(), value_vec_layout.n_const);
 		ConstraintSystem {
@@ -277,6 +304,7 @@ impl ConstraintSystem {
 			value_vec_layout,
 			and_constraints,
 			mul_constraints,
+			zero_constraints,
 		}
 	}
 
@@ -364,11 +392,15 @@ impl ConstraintSystem {
 			cmp::max(consts::MIN_AND_CONSTRAINTS, self.and_constraints.len()).next_power_of_two();
 		let mul_target_size =
 			cmp::max(consts::MIN_MUL_CONSTRAINTS, self.mul_constraints.len()).next_power_of_two();
+		let zeros_target_size =
+			cmp::max(consts::MIN_ZERO_CONSTRAINTS, self.zero_constraints.len()).next_power_of_two();
 
 		self.and_constraints
 			.resize_with(and_target_size, AndConstraint::default);
 		self.mul_constraints
 			.resize_with(mul_target_size, MulConstraint::default);
+		self.zero_constraints
+			.resize_with(zeros_target_size, ZeroConstraint::default);
 
 		Ok(())
 	}
@@ -381,12 +413,20 @@ impl ConstraintSystem {
 		self.mul_constraints.push(mul_constraint);
 	}
 
+	pub fn add_zero_constraint(&mut self, zero_constraint: ZeroConstraint) {
+		self.zero_constraints.push(zero_constraint);
+	}
+
 	pub fn n_and_constraints(&self) -> usize {
 		self.and_constraints.len()
 	}
 
 	pub fn n_mul_constraints(&self) -> usize {
 		self.mul_constraints.len()
+	}
+
+	pub fn n_zero_constraints(&self) -> usize {
+		self.zero_constraints.len()
 	}
 
 	/// The total length of the [`ValueVec`] expected by this constraint system.
@@ -426,7 +466,8 @@ impl DeserializeBytes for ConstraintSystem {
 		let value_vec_layout = ValueVecLayout::deserialize(&mut read_buf)?;
 		let constants = Vec::<Word>::deserialize(&mut read_buf)?;
 		let and_constraints = Vec::<AndConstraint>::deserialize(&mut read_buf)?;
-		let mul_constraints = Vec::<MulConstraint>::deserialize(read_buf)?;
+		let mul_constraints = Vec::<MulConstraint>::deserialize(&mut read_buf)?;
+		let zero_constraints = Vec::<ZeroConstraint>::deserialize(read_buf)?;
 
 		if constants.len() != value_vec_layout.n_const {
 			return Err(SerializationError::InvalidConstruction {
@@ -439,6 +480,7 @@ impl DeserializeBytes for ConstraintSystem {
 			constants,
 			and_constraints,
 			mul_constraints,
+			zero_constraints,
 		})
 	}
 }
@@ -942,7 +984,15 @@ mod serialization_tests {
 			lo: vec![ShiftedValueIndex::plain(ValueIndex(3))],
 		}];
 
-		ConstraintSystem::new(constants, value_vec_layout, and_constraints, mul_constraints)
+		let zero_constraints = vec![];
+
+		ConstraintSystem::new(
+			constants,
+			value_vec_layout,
+			and_constraints,
+			mul_constraints,
+			zero_constraints,
+		)
 	}
 
 	#[test]
@@ -1764,6 +1814,7 @@ mod serialization_tests {
 			},
 			vec![],
 			vec![],
+			vec![],
 		);
 
 		// Add constraint that references padding (index 2 is padding between const and inout)
@@ -1800,6 +1851,7 @@ mod serialization_tests {
 				committed_total_len: 16,
 				n_scratch: 0,
 			},
+			vec![],
 			vec![],
 			vec![],
 		);
@@ -1968,6 +2020,7 @@ mod serialization_tests {
 			},
 			vec![],
 			vec![],
+			vec![],
 		);
 
 		// Add AND constraint that references an out-of-range index
@@ -2011,6 +2064,7 @@ mod serialization_tests {
 				committed_total_len: 16,
 				n_scratch: 0,
 			},
+			vec![],
 			vec![],
 			vec![],
 		);
@@ -2060,6 +2114,7 @@ mod serialization_tests {
 				committed_total_len: 16,
 				n_scratch: 0,
 			},
+			vec![],
 			vec![],
 			vec![],
 		);

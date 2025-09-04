@@ -111,7 +111,9 @@ impl RandBlast {
 
 #[cfg(test)]
 mod tests {
-	use binius_core::constraint_system::{AndConstraint, ValueIndex, ValueVecLayout};
+	use binius_core::constraint_system::{
+		AndConstraint, ValueIndex, ValueVecLayout, ZeroConstraint,
+	};
 
 	use super::*;
 
@@ -130,24 +132,24 @@ mod tests {
 			committed_total_len: 8, // next power of 2 after all values
 			n_scratch: 0,
 		};
-		// Both implement: v0 & v1 ^ v2 = 0
-		let constraint = AndConstraint::plain_abc(
-			vec![ValueIndex(2)], // v0
-			vec![ValueIndex(3)], // v1
-			vec![ValueIndex(4)], // v2
+		// Both implement: v0 & v1 = v2
+		let constraint = ZeroConstraint::plain(
+			[ValueIndex(2), ValueIndex(3), ValueIndex(4)], // v0, v1, v2
 		);
 
 		let lhs = ConstraintSystem::new(
 			vec![Word(0), Word(u64::MAX)],
 			value_vec_layout.clone(),
-			vec![constraint.clone()],
 			vec![],
+			vec![],
+			vec![constraint.clone()],
 		);
 		let rhs = ConstraintSystem::new(
 			vec![Word(0), Word(u64::MAX)],
 			value_vec_layout,
-			vec![constraint],
 			vec![],
+			vec![],
+			vec![constraint],
 		);
 
 		let mut blaster = RandBlast::new(0);
@@ -192,11 +194,13 @@ mod tests {
 			value_vec_layout.clone(),
 			vec![lhs_constraint],
 			vec![],
+			vec![],
 		);
 		let rhs = ConstraintSystem::new(
 			vec![Word(0), Word(u64::MAX)],
 			value_vec_layout,
 			vec![rhs_constraint],
+			vec![],
 			vec![],
 		);
 
