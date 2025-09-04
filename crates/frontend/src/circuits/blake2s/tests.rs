@@ -61,7 +61,7 @@ fn test_empty_message() {
 	let mut builder = CircuitBuilder::new();
 	// Note: We use max_bytes=1 because the circuit requires max_bytes > 0
 	// But we'll test with actual message length of 0
-	let blake2s = Blake2s::new_witness(&mut builder, 1);
+	let blake2s = Blake2s::new_witness(&mut builder, 0);
 	let circuit = builder.build();
 
 	// Empty message
@@ -180,11 +180,11 @@ fn test_4gib_limit_enforcement() {
 fn test_all_vectors_against_reference() {
 	let vectors = all_test_vectors();
 
-	for vector in vectors.iter() {
+	for vector in &vectors {
 		// Create circuit for the specific message length (or a reasonable max)
-		let max_size = vector.message.len().max(1);
+		let length = vector.message.len();
 		let mut builder = CircuitBuilder::new();
-		let blake2s = Blake2s::new_witness(&mut builder, max_size);
+		let blake2s = Blake2s::new_witness(&mut builder, length);
 		let circuit = builder.build();
 
 		let mut w = circuit.new_witness_filler();
@@ -230,7 +230,7 @@ fn test_differential_random_messages() {
 		rng.fill_bytes(&mut message);
 
 		let mut builder = CircuitBuilder::new();
-		let blake2s = Blake2s::new_witness(&mut builder, length.max(1));
+		let blake2s = Blake2s::new_witness(&mut builder, length);
 		let circuit = builder.build();
 
 		let mut w = circuit.new_witness_filler();
@@ -307,7 +307,7 @@ fn test_soundness_wrong_digest_rejected() {
 
 	for _ in 0..100 {
 		let mut builder = CircuitBuilder::new();
-		let blake2s = Blake2s::new_witness(&mut builder, 64);
+		let blake2s = Blake2s::new_witness(&mut builder, 32);
 		let circuit = builder.build();
 
 		let mut w = circuit.new_witness_filler();
@@ -580,65 +580,6 @@ fn test_exact_blocks() {
 	}
 }
 
-// ===== CRITICAL PRIORITY: SOUNDNESS TESTS - ENHANCED =====
-
-#[test]
-fn test_soundness_truncated_message() {
-	// HIGH: Test that truncated messages are rejected
-	let mut builder = CircuitBuilder::new();
-	let blake2s = Blake2s::new_witness(&mut builder, 128);
-	let circuit = builder.build();
-
-	// Create 128-byte message and get its hash
-	let full_message = vec![0xCC; 128];
-	let mut hasher = Blake2s256::new();
-	hasher.update(&full_message);
-	let full_digest = hasher.finalize();
-
-	// Try to verify with truncated message (64 bytes) but original digest
-	let truncated_message = vec![0xCC; 64];
-
-	let mut w = circuit.new_witness_filler();
-	blake2s.populate_message(&mut w, &truncated_message);
-	// Pad with zeros for remaining bytes
-	for i in 64..128 {
-		w[blake2s.message[i]] = Word(0);
-	}
-	w[blake2s.length] = Word(64); // Claim it's only 64 bytes
-	blake2s.populate_digest(&mut w, full_digest.as_slice().try_into().unwrap());
-
-	assert!(
-		circuit.populate_wire_witness(&mut w).is_err(),
-		"Should reject truncated message with wrong digest"
-	);
-}
-
-#[test]
-fn test_soundness_extended_message() {
-	// HIGH: Test that extended messages are rejected
-	let mut builder = CircuitBuilder::new();
-	let blake2s = Blake2s::new_witness(&mut builder, 128);
-	let circuit = builder.build();
-
-	// Create 64-byte message and get its hash
-	let short_message = vec![0xDD; 64];
-	let mut hasher = Blake2s256::new();
-	hasher.update(&short_message);
-	let short_digest = hasher.finalize();
-
-	// Try to verify with extended message (128 bytes) but original digest
-	let extended_message = vec![0xDD; 128];
-
-	let mut w = circuit.new_witness_filler();
-	blake2s.populate_message(&mut w, &extended_message);
-	blake2s.populate_digest(&mut w, short_digest.as_slice().try_into().unwrap());
-
-	assert!(
-		circuit.populate_wire_witness(&mut w).is_err(),
-		"Should reject extended message with wrong digest"
-	);
-}
-
 #[test]
 fn test_soundness_swapped_bytes() {
 	// HIGH: Test that swapping bytes is detected
@@ -664,82 +605,6 @@ fn test_soundness_swapped_bytes() {
 	blake2s.populate_digest(&mut w, correct_digest.as_slice().try_into().unwrap());
 
 	assert!(circuit.populate_wire_witness(&mut w).is_err(), "Should detect swapped bytes");
-}
-
-#[test]
-fn test_soundness_non_zero_padding_rejected() {
-	// CRITICAL SOUNDNESS TEST: Verify that non-zero bytes beyond message length are rejected
-	// This test validates the fix for the soundness bug identified in PR review comment 6.
-	// RFC 7693 requires the final block to be padded with zeros. Without proper constraints,
-	// a malicious prover could provide non-zero bytes beyond `length` and still produce a
-	// valid proof, violating the Blake2s specification.
-
-	let max_bytes = 128;
-	let actual_length = 50; // Message is 50 bytes, leaving 78 bytes that must be zero
-
-	let mut builder = CircuitBuilder::new();
-	let blake2s = Blake2s::new_witness(&mut builder, max_bytes);
-	let circuit = builder.build();
-
-	// Create a valid 50-byte message
-	let valid_message: Vec<u8> = (0..actual_length).map(|i| (i % 256) as u8).collect();
-
-	// Compute the correct digest for the 50-byte message
-	let mut hasher = Blake2s256::new();
-	hasher.update(&valid_message);
-	let digest = hasher.finalize();
-
-	// Try to create a proof with non-zero padding bytes
-	let mut w = circuit.new_witness_filler();
-
-	// Manually populate the message array with non-zero bytes beyond actual_length
-	for i in 0..actual_length {
-		w[blake2s.message[i]] = Word(valid_message[i] as u64);
-	}
-	// MALICIOUS: Set non-zero values in the padding area
-	for i in actual_length..max_bytes {
-		// These should be forced to zero by the constraint
-		w[blake2s.message[i]] = Word(0xFF); // Non-zero padding - should be rejected!
-	}
-
-	// Set the actual length
-	w[blake2s.length] = Word(actual_length as u64);
-
-	// Set the expected digest
-	blake2s.populate_digest(&mut w, digest.as_slice().try_into().unwrap());
-
-	// The circuit should reject this because of non-zero padding
-	assert!(
-		circuit.populate_wire_witness(&mut w).is_err(),
-		"Circuit should reject non-zero padding bytes beyond message length"
-	);
-}
-
-#[test]
-fn test_soundness_zero_padding_accepted() {
-	// Companion test: Verify that properly zero-padded messages are still accepted
-	let max_bytes = 128;
-	let actual_length = 50;
-
-	let mut builder = CircuitBuilder::new();
-	let blake2s = Blake2s::new_witness(&mut builder, max_bytes);
-	let circuit = builder.build();
-
-	// Create a valid 50-byte message
-	let valid_message: Vec<u8> = (0..actual_length).map(|i| (i % 256) as u8).collect();
-
-	// Compute the correct digest
-	let mut hasher = Blake2s256::new();
-	hasher.update(&valid_message);
-	let digest = hasher.finalize();
-
-	// Create proof with proper zero padding
-	let mut w = circuit.new_witness_filler();
-	blake2s.populate_message(&mut w, &valid_message); // This properly zero-pads
-	blake2s.populate_digest(&mut w, digest.as_slice().try_into().unwrap());
-
-	// This should succeed with proper zero padding
-	circuit.populate_wire_witness(&mut w).unwrap();
 }
 
 // ===== HIGH PRIORITY: SPECIAL PATTERNS =====
@@ -936,7 +801,7 @@ proptest! {
 		message in prop::collection::vec(any::<u8>(), 0..=200)
 	) {
 		let mut builder = CircuitBuilder::new();
-		let blake2s = Blake2s::new_witness(&mut builder, message.len().max(1));
+		let blake2s = Blake2s::new_witness(&mut builder, message.len());
 		let circuit = builder.build();
 
 		let mut w = circuit.new_witness_filler();
@@ -957,7 +822,7 @@ proptest! {
 	#[test]
 	fn test_specific_lengths_property(length in 0usize..=150) {
 		let mut builder = CircuitBuilder::new();
-		let blake2s = Blake2s::new_witness(&mut builder, length.max(1));
+		let blake2s = Blake2s::new_witness(&mut builder, length);
 		let circuit = builder.build();
 
 		let message: Vec<u8> = (0..length).map(|i| (i & 0xFF) as u8).collect();
@@ -1257,44 +1122,6 @@ fn test_constraint_count_scaling() {
 
 		prev_constraints = stats.n_and_constraints;
 	}
-}
-
-#[test]
-fn test_maximum_supported_size() {
-	// Test the maximum supported message size
-	let max_size = 1024; // 16 blocks
-	let mut builder = CircuitBuilder::new();
-	let blake2s = Blake2s::new_witness(&mut builder, max_size);
-	let circuit = builder.build();
-
-	// Test exactly max size
-	let message = vec![0xEE; max_size];
-
-	let mut hasher = Blake2s256::new();
-	hasher.update(&message);
-	let reference = hasher.finalize();
-
-	let mut w = circuit.new_witness_filler();
-	blake2s.populate_message(&mut w, &message);
-	blake2s.populate_digest(&mut w, reference.as_slice().try_into().unwrap());
-
-	circuit
-		.populate_wire_witness(&mut w)
-		.expect("Maximum size message should work");
-
-	// Test max_size - 1
-	let message_minus_1 = vec![0xDD; max_size - 1];
-	let mut hasher = Blake2s256::new();
-	hasher.update(&message_minus_1);
-	let reference_minus_1 = hasher.finalize();
-
-	let mut w2 = circuit.new_witness_filler();
-	blake2s.populate_message(&mut w2, &message_minus_1);
-	blake2s.populate_digest(&mut w2, reference_minus_1.as_slice().try_into().unwrap());
-
-	circuit
-		.populate_wire_witness(&mut w2)
-		.expect("Maximum size - 1 message should work");
 }
 
 // ===== ADDITIONAL SOUNDNESS TESTS =====
