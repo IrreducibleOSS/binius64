@@ -12,6 +12,17 @@ use crate::{
 	sha256::sha256_fixed,
 };
 
+/// Convert 20-byte address payload into five little-endian u32 words (circuit witness layout).
+pub fn addr_bytes_to_le_words(addr: &[u8; 20]) -> [u32; 5] {
+	[
+		u32::from_le_bytes([addr[0], addr[1], addr[2], addr[3]]),
+		u32::from_le_bytes([addr[4], addr[5], addr[6], addr[7]]),
+		u32::from_le_bytes([addr[8], addr[9], addr[10], addr[11]]),
+		u32::from_le_bytes([addr[12], addr[13], addr[14], addr[15]]),
+		u32::from_le_bytes([addr[16], addr[17], addr[18], addr[19]]),
+	]
+}
+
 /// Builds a circuit that proves knowledge of a Bitcoin private key corresponding to a P2PKH
 /// address.
 ///
@@ -125,33 +136,42 @@ pub fn compress_pubkey(builder: &CircuitBuilder, x: &BigUint, y: &BigUint) -> Ve
 #[cfg(test)]
 mod tests {
 	use binius_core::{verify::verify_constraints, word::Word};
-	use rand::{RngCore, SeedableRng, rngs::StdRng};
+	use bitcoin::PublicKey;
+	use bitcoin_hashes::Hash;
+	use proptest::prelude::RngCore;
+	use rand::{SeedableRng, rngs::StdRng};
 
 	use super::*;
 
-	// Utility: compute compressed SEC1 public key bytes from a full 32-byte private key using k256
-	fn compressed_pubkey_from_scalar_bytes(private_key: [u8; 32]) -> [u8; 33] {
+	/// This is a reference function reused by tests and examples
+	/// Compute compressed SEC1 public key from a 32-byte big-endian private key.
+	/// Panics if the scalar is zero.
+	pub fn compressed_pubkey_from_be_sk(sk_be: [u8; 32]) -> [u8; 33] {
 		use k256::{
-			FieldBytes, ProjectivePoint, Scalar, U256,
-			elliptic_curve::{
-				ops::{MulByGenerator, Reduce},
-				sec1::ToEncodedPoint,
-			},
+			ProjectivePoint, Scalar,
+			elliptic_curve::{ops::MulByGenerator, sec1::ToEncodedPoint},
 		};
-		let field_bytes = FieldBytes::from(private_key);
-		let scalar = <Scalar as Reduce<U256>>::reduce_bytes(&field_bytes);
-		let affine = ProjectivePoint::mul_by_generator(&scalar).to_affine();
-		let compressed = affine.to_encoded_point(true);
+
+		// Interpret big-endian bytes as scalar mod curve order via Horner's method
+		let mut s = Scalar::from(0u64);
+		let base = Scalar::from(256u64);
+		for &b in &sk_be {
+			s = s * base + Scalar::from(b as u64);
+		}
+		assert!(!bool::from(s.is_zero()), "private key must be non-zero");
+
+		let affine = ProjectivePoint::mul_by_generator(&s).to_affine();
+		let ep = affine.to_encoded_point(true);
 		let mut out = [0u8; 33];
-		out.copy_from_slice(compressed.as_bytes());
+		out.copy_from_slice(ep.as_bytes());
 		out
 	}
 
-	// Utility: generate a (private key, compressed pubkey) pair with full 32-byte randomness
-	fn gen_priv_pub_pair_from_rng(mut rng: impl RngCore) -> ([u8; 32], [u8; 33]) {
+	/// Convenience to produce a random pair (privkey_be, compressed_pubkey)
+	pub fn gen_priv_pub_pair_from_rng(mut rng: impl RngCore) -> ([u8; 32], [u8; 33]) {
 		let mut sk_be = [0u8; 32];
 		rng.fill_bytes(&mut sk_be);
-		let pk_comp = compressed_pubkey_from_scalar_bytes(sk_be);
+		let pk_comp = compressed_pubkey_from_be_sk(sk_be);
 		(sk_be, pk_comp)
 	}
 
@@ -161,8 +181,6 @@ mod tests {
 		assert_circuit_matches_priv_pub_pair(private_key_be, compressed_pubkey);
 
 		// 2) Check the full P2PKH circuit (SHA256 then RIPEMD160 on compressed pubkey)
-		use bitcoin::{PublicKey, hashes::Hash};
-
 		let builder = CircuitBuilder::new();
 		let private_key = BigUint::new_witness(&builder, 4);
 		let expected_address: [Wire; 5] = std::array::from_fn(|_| builder.add_witness());
@@ -189,7 +207,7 @@ mod tests {
 		let public_key =
 			PublicKey::from_slice(&compressed_pubkey).expect("Invalid compressed public key");
 		let pubkey_hash = public_key.pubkey_hash();
-		let addr_bytes: [u8; 20] = *pubkey_hash.as_byte_array();
+		let addr_bytes: [u8; 20] = pubkey_hash.to_byte_array();
 		for i in 0..5 {
 			let start = i * 4;
 			let v = u32::from_le_bytes([
