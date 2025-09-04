@@ -52,10 +52,15 @@ impl Keccak {
 		message: Vec<Wire>,
 	) -> Self {
 		let max_len_bytes = message.len() << 3;
-		
+
 		assert!(!message.is_empty(), "Keccak message wires cannot be empty");
-		assert!(max_len_bytes > 0, "Keccak max message length must be > 0, got {} bytes from {} wires", max_len_bytes, message.len());
-		
+		assert!(
+			max_len_bytes > 0,
+			"Keccak max message length must be > 0, got {} bytes from {} wires",
+			max_len_bytes,
+			message.len()
+		);
+
 		// number of blocks needed for the maximum sized message
 		let n_blocks = (max_len_bytes + 1).div_ceil(RATE_BYTES);
 
@@ -247,7 +252,10 @@ impl Keccak {
 		assert!(
 			message_bytes.len() <= max_capacity,
 			"Message length {} exceeds maximum capacity {} (allocated {} wires × 8 = {} bytes)",
-			message_bytes.len(), max_capacity, self.message.len(), self.message.len() * 8
+			message_bytes.len(),
+			max_capacity,
+			self.message.len(),
+			self.message.len() * 8
 		);
 
 		// populate message words from input bytes

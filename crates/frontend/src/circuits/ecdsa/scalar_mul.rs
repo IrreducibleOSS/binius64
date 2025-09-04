@@ -403,7 +403,6 @@ mod tests {
 		assert_eq!(w[result.is_point_at_infinity], Word::ZERO);
 	}
 
-
 	#[test]
 	fn test_scalar_mul_with_endomorphism() {
 		let builder = CircuitBuilder::new();

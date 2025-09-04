@@ -20,4 +20,4 @@ mod tests;
 mod scaling_test;
 
 pub use circuit::SemaphoreProofECDSA;
-pub use reference::{IdentityECDSA, MerkleTree, MerkleProof};
+pub use reference::{IdentityECDSA, MerkleProof, MerkleTree};
