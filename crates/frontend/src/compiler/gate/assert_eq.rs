@@ -1,20 +1,19 @@
 //! Equality assertion.
 //!
-//! Enforces `x = y` using an AND constraint.
+//! Enforces `x = y` using a ZERO constraint.
 //!
 //! # Algorithm
 //!
 //! Uses the property that `x = y` iff `x ^ y = 0`.
-//! This is enforced as `(x ⊕ y) ∧ all-1 = 0`.
+//! This is enforced as `x ⊕ y = 0`.
 //!
 //! # Constraints
 //!
-//! The gate generates 1 AND constraint:
-//! - `(x ⊕ y) ∧ all-1 = 0`
-use binius_core::word::Word;
+//! The gate generates 1 ZERO constraint:
+//! - `x ⊕ y = 0`
 
 use crate::compiler::{
-	constraint_builder::{ConstraintBuilder, empty, xor2},
+	constraint_builder::{ConstraintBuilder, xor2},
 	gate::opcode::OpcodeShape,
 	gate_graph::{Gate, GateData, GateParam, Wire},
 	pathspec::PathSpec,
@@ -22,7 +21,7 @@ use crate::compiler::{
 
 pub fn shape() -> OpcodeShape {
 	OpcodeShape {
-		const_in: &[Word::ALL_ONE],
+		const_in: &[],
 		n_in: 2,
 		n_out: 0,
 		n_aux: 0,
@@ -32,14 +31,11 @@ pub fn shape() -> OpcodeShape {
 }
 
 pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) {
-	let GateParam {
-		constants, inputs, ..
-	} = data.gate_param();
-	let [all_one] = constants else { unreachable!() };
+	let GateParam { inputs, .. } = data.gate_param();
 	let [x, y] = inputs else { unreachable!() };
 
-	// Constraint: (x ⊕ y) ∧ all-1 = 0
-	builder.and().a(xor2(*x, *y)).b(*all_one).c(empty()).build();
+	// Constraint: x ⊕ y = 0
+	builder.zero().xor(xor2(*x, *y)).build();
 }
 
 pub fn emit_eval_bytecode(

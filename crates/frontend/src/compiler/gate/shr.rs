@@ -42,9 +42,9 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 	let [z] = outputs else { unreachable!() };
 	let [n] = imm else { unreachable!() };
 
-	// Constraint: Logical right shift (linear)
+	// Constraint: Logical right shift
 	// (x >> n) = z
-	builder.linear().rhs(srl(*x, *n)).dst(*z).build();
+	builder.zero().xor(srl(*x, *n)).xor(*z).build();
 }
 
 pub fn emit_eval_bytecode(

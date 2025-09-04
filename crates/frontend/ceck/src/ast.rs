@@ -53,6 +53,9 @@ pub enum Constraint {
 		hi: OperandExpr,
 		lo: OperandExpr,
 	},
+	Zero {
+		zero: OperandExpr,
+	},
 }
 
 #[derive(Debug, Clone)]

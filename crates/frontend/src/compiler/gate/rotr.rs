@@ -48,9 +48,9 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 	let [z] = outputs else { unreachable!() };
 	let [n] = imm else { unreachable!() };
 
-	// Constraint: Rotate right (linear)
+	// Constraint: Rotate right
 	// rotr(x, n) = z
-	builder.linear().rhs(rotr(*x, *n)).dst(*z).build();
+	builder.zero().xor(rotr(*x, *n)).xor(*z).build();
 }
 
 pub fn emit_eval_bytecode(

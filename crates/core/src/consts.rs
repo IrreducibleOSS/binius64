@@ -28,6 +28,10 @@ pub const MIN_AND_CONSTRAINTS: usize = 8;
 /// This is a protocol requirement for the constraint system.
 pub const MIN_MUL_CONSTRAINTS: usize = 1;
 
+/// Minimum number of zero constraints (must be a power of 2).
+/// This is a protocol requirement for the constraint system.
+pub const MIN_ZERO_CONSTRAINTS: usize = 1;
+
 /// The number of bits in a byte.
 pub const BYTE_BITS: usize = 8;
 

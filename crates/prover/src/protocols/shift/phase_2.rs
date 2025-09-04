@@ -52,6 +52,7 @@ use crate::{
 /// # Returns
 /// Returns `SumcheckOutput` containing the combined challenges `[r_j, r_y]` and witness evaluation,
 /// or an error if the protocol fails.
+#[allow(clippy::too_many_arguments)]
 #[instrument(skip_all, name = "prove_phase_2")]
 pub fn prove_phase_2<F, P: PackedField<Scalar = F>, C: Challenger>(
 	inout_n_vars: usize,
@@ -59,6 +60,7 @@ pub fn prove_phase_2<F, P: PackedField<Scalar = F>, C: Challenger>(
 	words: &[Word],
 	bitand_data: &PreparedOperatorData<F>,
 	intmul_data: &PreparedOperatorData<F>,
+	zeros_data: &PreparedOperatorData<F>,
 	phase_1_output: SumcheckOutput<F>,
 	transcript: &mut ProverTranscript<C>,
 ) -> Result<SumcheckOutput<F>, Error>
@@ -78,8 +80,14 @@ where
 	let r_j_tensor = eq_ind_partial_eval::<F>(&r_j);
 	let r_j_witness = fold_words::<_, P>(words, r_j_tensor.as_ref());
 
-	let monster_multilinear =
-		build_monster_multilinear(key_collection, bitand_data, intmul_data, &r_j, &r_s)?;
+	let monster_multilinear = build_monster_multilinear(
+		key_collection,
+		bitand_data,
+		intmul_data,
+		zeros_data,
+		&r_j,
+		&r_s,
+	)?;
 
 	run_sumcheck(inout_n_vars, r_j_witness, monster_multilinear, r_j, gamma, transcript)
 }

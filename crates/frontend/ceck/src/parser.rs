@@ -100,6 +100,7 @@ fn parse_constraint(pair: pest::iterators::Pair<Rule>) -> Result<Constraint> {
 	match inner.as_rule() {
 		Rule::and_constraint => parse_and_constraint(inner),
 		Rule::mul_constraint => parse_mul_constraint(inner),
+		Rule::zero_constraint => parse_zero_constraint(inner),
 		_ => Err(anyhow!("Unexpected constraint type: {:?}", inner.as_rule())),
 	}
 }
@@ -151,6 +152,18 @@ fn parse_mul_constraint(pair: pest::iterators::Pair<Rule>) -> Result<Constraint>
 	)?;
 
 	Ok(Constraint::Mul { a, b, hi, lo })
+}
+
+fn parse_zero_constraint(pair: pest::iterators::Pair<Rule>) -> Result<Constraint> {
+	let mut operands = pair.into_inner();
+
+	let zero = parse_operand(
+		operands
+			.next()
+			.ok_or_else(|| anyhow!("Missing operand in ZERO constraint"))?,
+	)?;
+
+	Ok(Constraint::Zero { zero })
 }
 
 fn parse_operand(pair: pest::iterators::Pair<Rule>) -> Result<OperandExpr> {

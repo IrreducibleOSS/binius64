@@ -8,6 +8,7 @@ pub struct CircuitStat {
 	pub n_eval_insn: usize,
 	pub n_and_constraints: usize,
 	pub n_mul_constraints: usize,
+	pub n_zero_constraints: usize,
 	pub value_vec_len: usize,
 	pub n_const: usize,
 	pub n_inout: usize,
@@ -23,6 +24,7 @@ impl CircuitStat {
 			n_eval_insn: circuit.n_eval_insn(),
 			n_and_constraints: cs.n_and_constraints(),
 			n_mul_constraints: cs.n_mul_constraints(),
+			n_zero_constraints: cs.n_zero_constraints(),
 			value_vec_len: cs.value_vec_layout.total_len,
 			n_const: cs.value_vec_layout.n_const,
 			n_inout: cs.value_vec_layout.n_inout,
@@ -38,6 +40,7 @@ impl fmt::Display for CircuitStat {
 		writeln!(f, "Number of evaluation instructions: {}", self.n_eval_insn)?;
 		writeln!(f, "Number of AND constraints: {}", self.n_and_constraints)?;
 		writeln!(f, "Number of MUL constraints: {}", self.n_mul_constraints)?;
+		writeln!(f, "Number of ZERO constraints: {}", self.n_zero_constraints)?;
 		writeln!(f, "Length of value vec: {}", self.value_vec_len)?;
 		writeln!(f, "  Constants: {}", self.n_const)?;
 		writeln!(f, "  Inout: {}", self.n_inout)?;

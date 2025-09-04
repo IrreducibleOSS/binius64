@@ -2,8 +2,9 @@ hash_based_sig circuit
 --
 Number of gates: 3986883
 Number of evaluation instructions: 4076982
-Number of AND constraints: 4022460
+Number of AND constraints: 1636239
 Number of MUL constraints: 0
+Number of ZERO constraints: 2386221
 Length of value vec: 4194304
   Constants: 376
   Inout: 20

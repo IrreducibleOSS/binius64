@@ -4,7 +4,7 @@
 //!
 //! # Constraints
 //!
-//! The gate generates 1 linear constraint:
+//! The gate generates 1 ZERO constraint:
 //! - `x0 ⊕ x1 ⊕ ... ⊕ xn = z`
 
 use binius_core::word::Word;
@@ -35,11 +35,10 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 	} = data.gate_param();
 	let [z] = outputs else { unreachable!() };
 
-	// Constraint: N-way Bitwise XOR (linear)
-	//
+	// Constraint: N-way Bitwise XOR
 	// (x0 ⊕ x1 ⊕ ... ⊕ xn) = z
 	let terms: Vec<WireExprTerm> = inputs.iter().map(|&w| w.into()).collect();
-	builder.linear().rhs(xor_multi(terms)).dst(*z).build();
+	builder.zero().xor(xor_multi(terms)).xor(*z).build();
 }
 
 pub fn emit_eval_bytecode(

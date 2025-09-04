@@ -2,8 +2,9 @@ keccak circuit
 --
 Number of gates: 27625
 Number of evaluation instructions: 27625
-Number of AND constraints: 27625
+Number of AND constraints: 6000
 Number of MUL constraints: 0
+Number of ZERO constraints: 21625
 Length of value vec: 32768
   Constants: 23
   Inout: 50

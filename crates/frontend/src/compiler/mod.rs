@@ -109,7 +109,6 @@ impl CircuitBuilder {
 	///
 	/// Must be called only once.
 	pub fn build(&self) -> Circuit {
-		let all_one = self.add_constant(Word::ALL_ONE);
 		let shared = self.shared.borrow_mut().take();
 
 		let Some(shared) = shared else {
@@ -213,7 +212,8 @@ impl CircuitBuilder {
 		for (gate_id, _) in graph.gates.iter() {
 			gate::constrain(gate_id, &graph, &mut builder);
 		}
-		let (mut and_constraints, mut mul_constraints) = builder.build(&wire_mapping, all_one);
+		let (mut and_constraints, mut mul_constraints, zero_constraints) =
+			builder.build(&wire_mapping);
 
 		// Perform fusion if the corresponding feature flag is turned on.
 		if shared.opts.enable_gate_fusion {
@@ -225,8 +225,13 @@ impl CircuitBuilder {
 			}
 		}
 
-		let cs =
-			ConstraintSystem::new(constants, value_vec_layout, and_constraints, mul_constraints);
+		let cs = ConstraintSystem::new(
+			constants,
+			value_vec_layout,
+			and_constraints,
+			mul_constraints,
+			zero_constraints,
+		);
 		if cfg!(debug_assertions) {
 			// Validate that the resulting constraint system has a good shape.
 			cs.validate().unwrap();

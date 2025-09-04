@@ -65,13 +65,13 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 		.c(xor3(*cout, cout_sll_1, cin_msb))
 		.build();
 
-	// Constraint 2: Sum equality (linear)
+	// Constraint 2: Sum equality
 	//
 	// (a ⊕ b ⊕ (cout << 1) ⊕ cin_msb) = sum
 	builder
-		.linear()
-		.rhs(xor4(*a, *b, cout_sll_1, cin_msb))
-		.dst(*sum)
+		.zero()
+		.xor(xor4(*a, *b, cout_sll_1, cin_msb))
+		.xor(*sum)
 		.build();
 }
 

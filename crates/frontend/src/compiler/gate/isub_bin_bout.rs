@@ -47,9 +47,9 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 	//
 	// (a ⊕ b ⊕ (bout << 1) ⊕ bin_msb) = diff
 	builder
-		.linear()
-		.rhs(xor4(*a, *b, bout_sll_1, bin_msb))
-		.dst(*diff)
+		.zero()
+		.xor(xor4(*a, *b, bout_sll_1, bin_msb))
+		.xor(*diff)
 		.build();
 }
 

@@ -1,6 +1,7 @@
 // Copyright 2025 Irreducible Inc.
 
 use binius_core::{ValueVec, constraint_system::ConstraintSystem};
+use binius_field::Field;
 use binius_frontend::{circuits::sha256::Sha256, compiler::CircuitBuilder};
 use binius_prover::protocols::shift::{OperatorData, build_key_collection, prove};
 use binius_transcript::ProverTranscript;
@@ -81,10 +82,17 @@ fn bench_prove_and_verify(c: &mut Criterion) {
 				.map(F::new)
 				.collect::<Vec<_>>()
 		};
+		let r_x_prime_zeros = {
+			let log_zero_constraint_count = strict_log_2(cs.zero_constraints.len()).unwrap();
+			(0..log_zero_constraint_count as u128)
+				.map(F::new)
+				.collect::<Vec<_>>()
+		};
 
 		// Sample univaraite eval point
 		let r_zhat_prime_bitand = F::random(&mut rng);
 		let r_zhat_prime_intmul = F::random(&mut rng);
+		let r_zhat_prime_zeros = F::random(&mut rng);
 
 		let bitand_evals = [F::random(&mut rng); 3];
 		let intmul_evals = [F::random(&mut rng); 4];
@@ -109,6 +117,11 @@ fn bench_prove_and_verify(c: &mut Criterion) {
 					r_zhat_prime: r_zhat_prime_intmul,
 					r_x_prime: r_x_prime_intmul.clone(),
 				};
+				let prover_zeros_data = OperatorData {
+					evals: vec![F::ZERO],
+					r_zhat_prime: r_zhat_prime_zeros,
+					r_x_prime: r_x_prime_zeros.clone(),
+				};
 
 				let mut prover_transcript = ProverTranscript::<StdChallenger>::default();
 
@@ -118,6 +131,7 @@ fn bench_prove_and_verify(c: &mut Criterion) {
 					value_vec.combined_witness(),
 					prover_bitand_data,
 					prover_intmul_data,
+					prover_zeros_data,
 					&mut prover_transcript,
 				)
 				.unwrap()
@@ -135,6 +149,11 @@ fn bench_prove_and_verify(c: &mut Criterion) {
 			r_zhat_prime: r_zhat_prime_intmul,
 			r_x_prime: r_x_prime_intmul.clone(),
 		};
+		let prover_zeros_data = OperatorData {
+			evals: vec![F::ZERO],
+			r_zhat_prime: r_zhat_prime_zeros,
+			r_x_prime: r_x_prime_zeros.clone(),
+		};
 
 		let mut prover_transcript = ProverTranscript::<StdChallenger>::default();
 
@@ -144,6 +163,7 @@ fn bench_prove_and_verify(c: &mut Criterion) {
 			value_vec.combined_witness(),
 			prover_bitand_data,
 			prover_intmul_data,
+			prover_zeros_data,
 			&mut prover_transcript,
 		)
 		.unwrap();
@@ -164,9 +184,20 @@ fn bench_prove_and_verify(c: &mut Criterion) {
 					r_x_prime_intmul.clone(),
 					intmul_evals,
 				);
+				let verifier_zeros_data = VerifierOperatorData::new(
+					r_zhat_prime_zeros,
+					r_x_prime_zeros.clone(),
+					[F::ZERO],
+				);
 
-				verify(&cs, verifier_bitand_data, verifier_intmul_data, &mut verifier_transcript)
-					.unwrap();
+				verify(
+					&cs,
+					verifier_bitand_data,
+					verifier_intmul_data,
+					verifier_zeros_data,
+					&mut verifier_transcript,
+				)
+				.unwrap();
 			})
 		});
 	}

@@ -9,7 +9,7 @@ use binius_math::{
 use binius_utils::{checked_arithmetics::strict_log_2, rayon::prelude::*};
 use binius_verifier::{
 	config::{LOG_WORD_SIZE_BITS, WORD_SIZE_BITS},
-	protocols::shift::{BITAND_ARITY, INTMUL_ARITY, evaluate_h_op},
+	protocols::shift::{BITAND_ARITY, INTMUL_ARITY, ZERO_ARITY, evaluate_h_op},
 };
 use tracing::instrument;
 
@@ -107,6 +107,7 @@ pub fn build_monster_multilinear<F, P: PackedField<Scalar = F>>(
 	key_collection: &KeyCollection,
 	bitand_operator_data: &PreparedOperatorData<F>,
 	intmul_operator_data: &PreparedOperatorData<F>,
+	zeros_operator_data: &PreparedOperatorData<F>,
 	r_j: &[F],
 	r_s: &[F],
 ) -> Result<FieldBuffer<P>, Error>
@@ -115,9 +116,10 @@ where
 {
 	// Compute h evaluations
 	let subspace = BinarySubspace::<AESTowerField8b>::with_dim(LOG_WORD_SIZE_BITS)?.isomorphic();
-	let [bitand_h_ops, intmul_h_ops] = [
+	let [bitand_h_ops, intmul_h_ops, zeros_h_ops] = [
 		bitand_operator_data.r_zhat_prime,
 		intmul_operator_data.r_zhat_prime,
+		zeros_operator_data.r_zhat_prime,
 	]
 	.map(|r_zhat_prime| {
 		let l_tilde = lagrange_evals(&subspace, r_zhat_prime);
@@ -129,6 +131,7 @@ where
 	// Allocate and populate the scalars
 	let mut bitand_scalars = vec![F::ZERO; BITAND_ARITY * SHIFT_VARIANT_COUNT * WORD_SIZE_BITS];
 	let mut intmul_scalars = vec![F::ZERO; INTMUL_ARITY * SHIFT_VARIANT_COUNT * WORD_SIZE_BITS];
+	let mut zeros_scalars = vec![F::ZERO; ZERO_ARITY * SHIFT_VARIANT_COUNT * WORD_SIZE_BITS];
 
 	let populate_scalars = |scalars: &mut [F], arity: usize, lambda_powers: &[F], h_ops: &[F]| {
 		for operand_idx in 0..arity {
@@ -155,6 +158,12 @@ where
 		&intmul_operator_data.lambda_powers,
 		&intmul_h_ops,
 	);
+	populate_scalars(
+		&mut zeros_scalars,
+		ZERO_ARITY,
+		&zeros_operator_data.lambda_powers,
+		&zeros_h_ops,
+	);
 
 	let monster_multilinear = key_collection
 		.key_ranges
@@ -167,6 +176,7 @@ where
 						let (operator_data, scalars) = match key.operation {
 							Operation::BitwiseAnd => (bitand_operator_data, &bitand_scalars),
 							Operation::IntegerMul => (intmul_operator_data, &intmul_scalars),
+							Operation::Zero => (zeros_operator_data, &zeros_scalars),
 						};
 						key.accumulate_by_operand(&key_collection.constraint_indices, operator_data)
 							.map(|(operand_index, acc)| {

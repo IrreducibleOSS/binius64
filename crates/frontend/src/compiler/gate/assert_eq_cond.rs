@@ -10,11 +10,11 @@
 //!
 //! # Constraints
 //!
-//! The gate generates 1 AND constraint:
+//! The gate generates 1 ZERO constraint:
 //! - `(x ⊕ y) ∧ (cond ~>> 63) = 0`
 
 use crate::compiler::{
-	constraint_builder::{ConstraintBuilder, empty, sar, xor2},
+	constraint_builder::{ConstraintBuilder, sar, xor2},
 	gate::opcode::OpcodeShape,
 	gate_graph::{Gate, GateData, GateParam, Wire},
 	pathspec::PathSpec,
@@ -37,7 +37,7 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 
 	// Constraint: (x ⊕ y) ∧ (cond ~>> 63) = 0
 	let mask = sar(*cond, 63);
-	builder.and().a(xor2(*x, *y)).b(mask).c(empty()).build();
+	builder.zero().xor(xor2(*x, *y)).xor(mask).build();
 }
 
 pub fn emit_eval_bytecode(

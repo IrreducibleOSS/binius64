@@ -2,8 +2,9 @@ blake2s circuit
 --
 Number of gates: 2937
 Number of evaluation instructions: 3068
-Number of AND constraints: 3897
+Number of AND constraints: 2841
 Number of MUL constraints: 0
+Number of ZERO constraints: 1056
 Length of value vec: 8192
   Constants: 140
   Inout: 0

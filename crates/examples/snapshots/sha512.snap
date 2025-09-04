@@ -2,8 +2,9 @@ sha512 circuit
 --
 Number of gates: 48779
 Number of evaluation instructions: 49886
-Number of AND constraints: 61700
+Number of AND constraints: 16891
 Number of MUL constraints: 0
+Number of ZERO constraints: 44809
 Length of value vec: 131072
   Constants: 377
   Inout: 264

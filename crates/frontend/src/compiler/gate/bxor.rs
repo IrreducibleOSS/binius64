@@ -4,11 +4,11 @@
 //!
 //! # Algorithm
 //!
-//! Computes the bitwise XOR using a linear constraint.
+//! Computes the bitwise XOR using a ZERO constraint.
 //!
 //! # Constraints
 //!
-//! The gate generates 1 linear constraint:
+//! The gate generates 1 ZERO constraint:
 //! - `x ⊕ y = z`
 
 use binius_core::word::Word;
@@ -40,7 +40,7 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 	// Constraint: Bitwise XOR (linear)
 	//
 	// (x ⊕ y) = z
-	builder.linear().rhs(xor2(*x, *y)).dst(*z).build();
+	builder.zero().xor(xor2(*x, *y)).xor(*z).build();
 }
 
 pub fn emit_eval_bytecode(

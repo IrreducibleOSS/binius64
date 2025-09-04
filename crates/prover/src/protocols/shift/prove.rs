@@ -107,6 +107,7 @@ pub fn prove<F, P: PackedField<Scalar = F>, C: Challenger>(
 	words: &[Word],
 	bitand_data: OperatorData<F>,
 	intmul_data: OperatorData<F>,
+	zeros_data: OperatorData<F>,
 	transcript: &mut ProverTranscript<C>,
 ) -> Result<SumcheckOutput<F>, Error>
 where
@@ -115,11 +116,13 @@ where
 	// Sample lambdas, one for each operator.
 	let bitand_lambda = transcript.sample();
 	let intmul_lambda = transcript.sample();
+	let zeros_lambda = transcript.sample();
 
 	// Create prepared operator data with sampled lambdas
 	let expand_scope = tracing::debug_span!("Expand tensor queries").entered();
 	let prepared_bitand_data = PreparedOperatorData::new(bitand_data, bitand_lambda);
 	let prepared_intmul_data = PreparedOperatorData::new(intmul_data, intmul_lambda);
+	let prepared_zeros_data = PreparedOperatorData::new(zeros_data, zeros_lambda);
 	drop(expand_scope);
 
 	// Prove the first phase, receiving a `SumcheckOutput`
@@ -130,6 +133,7 @@ where
 		words,
 		&prepared_bitand_data,
 		&prepared_intmul_data,
+		&prepared_zeros_data,
 		transcript,
 	)?;
 
@@ -143,6 +147,7 @@ where
 		words,
 		&prepared_bitand_data,
 		&prepared_intmul_data,
+		&prepared_zeros_data,
 		phase_1_output,
 		transcript,
 	)?;

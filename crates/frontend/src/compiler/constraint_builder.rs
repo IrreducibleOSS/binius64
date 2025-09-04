@@ -1,4 +1,6 @@
-use binius_core::constraint_system::{AndConstraint, MulConstraint, ShiftedValueIndex, ValueIndex};
+use binius_core::constraint_system::{
+	AndConstraint, MulConstraint, ShiftedValueIndex, ValueIndex, ZeroConstraint,
+};
 use cranelift_entity::SecondaryMap;
 use smallvec::{SmallVec, smallvec};
 
@@ -8,7 +10,8 @@ use crate::compiler::Wire;
 pub struct ConstraintBuilder {
 	pub and_constraints: Vec<WireAndConstraint>,
 	pub mul_constraints: Vec<WireMulConstraint>,
-	pub linear_constraints: Vec<WireLinearConstraint>,
+	// pub linear_constraints: Vec<WireLinearConstraint>,
+	pub zero_constraints: Vec<WireOperand>,
 }
 
 impl ConstraintBuilder {
@@ -16,7 +19,7 @@ impl ConstraintBuilder {
 		Self {
 			and_constraints: Vec::new(),
 			mul_constraints: Vec::new(),
-			linear_constraints: Vec::new(),
+			zero_constraints: Vec::new(),
 		}
 	}
 
@@ -33,17 +36,16 @@ impl ConstraintBuilder {
 	/// Build a linear constraint: RHS = DST
 	/// (where RHS is XOR of shifted values and DST is a
 	/// single wire)
-	pub fn linear(&mut self) -> LinearConstraintBuilder<'_> {
-		LinearConstraintBuilder::new(self)
+	pub fn zero(&mut self) -> ZeroConstraintBuilder<'_> {
+		ZeroConstraintBuilder::new(self)
 	}
 
 	/// Convert all wire-based constraints to ValueIndex-based constraints.
 	pub fn build(
 		self,
 		wire_mapping: &SecondaryMap<Wire, ValueIndex>,
-		all_one: Wire,
-	) -> (Vec<AndConstraint>, Vec<MulConstraint>) {
-		let mut and_constraints = self
+	) -> (Vec<AndConstraint>, Vec<MulConstraint>, Vec<ZeroConstraint>) {
+		let and_constraints = self
 			.and_constraints
 			.into_iter()
 			.map(|c| c.into_constraint(wire_mapping))
@@ -55,16 +57,13 @@ impl ConstraintBuilder {
 			.map(|c| c.into_constraint(wire_mapping))
 			.collect();
 
-		// Convert linear constraints to AND constraints (rhs & all_one = dst)
-		if !self.linear_constraints.is_empty() {
-			let all_one = wire_mapping[all_one];
-			for linear_constraint in self.linear_constraints {
-				let and_constraint = linear_constraint.into_and_constraint(wire_mapping, all_one);
-				and_constraints.push(and_constraint);
-			}
-		}
+		let zero_constraints = self
+			.zero_constraints
+			.into_iter()
+			.map(|c| ZeroConstraint(expand_and_convert_operand(c, wire_mapping)))
+			.collect();
 
-		(and_constraints, mul_constraints)
+		(and_constraints, mul_constraints, zero_constraints)
 	}
 }
 
@@ -123,27 +122,6 @@ pub struct WireMulConstraint {
 	pub b: WireOperand,
 	pub hi: WireOperand,
 	pub lo: WireOperand,
-}
-
-/// LINEAR constraint using Wire references
-pub struct WireLinearConstraint {
-	pub rhs: WireOperand,
-	pub dst: Wire,
-}
-
-impl WireLinearConstraint {
-	fn into_and_constraint(
-		self,
-		wire_mapping: &SecondaryMap<Wire, ValueIndex>,
-		all_ones: ValueIndex,
-	) -> AndConstraint {
-		let dst = wire_mapping[self.dst];
-		AndConstraint {
-			a: expand_and_convert_operand(self.rhs, wire_mapping),
-			b: vec![ShiftedValueIndex::plain(all_ones)],
-			c: vec![ShiftedValueIndex::plain(dst)],
-		}
-	}
 }
 
 impl WireMulConstraint {
@@ -270,12 +248,6 @@ pub struct MulConstraintBuilder<'a> {
 	lo: WireOperand,
 }
 
-pub struct LinearConstraintBuilder<'a> {
-	builder: &'a mut ConstraintBuilder,
-	rhs: WireOperand,
-	dst: Option<Wire>,
-}
-
 impl<'a> MulConstraintBuilder<'a> {
 	fn new(builder: &'a mut ConstraintBuilder) -> Self {
 		Self {
@@ -317,35 +289,28 @@ impl<'a> MulConstraintBuilder<'a> {
 	}
 }
 
-impl<'a> LinearConstraintBuilder<'a> {
+pub struct ZeroConstraintBuilder<'a> {
+	builder: &'a mut ConstraintBuilder,
+	operand: WireOperand,
+}
+
+impl<'a> ZeroConstraintBuilder<'a> {
 	fn new(builder: &'a mut ConstraintBuilder) -> Self {
 		Self {
 			builder,
-			rhs: Vec::new(),
-			dst: None,
+			operand: Vec::new(),
 		}
 	}
 
-	/// Set the RHS operand (XOR combination of shifted values)
-	pub fn rhs(mut self, expr: impl Into<WireExpr>) -> Self {
-		self.rhs = expr.into().to_operand();
+	/// XOR the expr with the existing operand to derive new operand
+	pub fn xor(mut self, expr: impl Into<WireExpr>) -> Self {
+		self.operand.extend_from_slice(&expr.into().to_operand());
 		self
 	}
 
-	/// Set the DST operand (destination wire)
-	pub fn dst(mut self, wire: Wire) -> Self {
-		self.dst = Some(wire);
-		self
-	}
-
-	/// Finalize and add the linear constraint.
-	///
-	/// Panics if `dst` wasn't assigned.
+	/// Finalize and add the zero constraint.
 	pub fn build(self) {
-		self.builder.linear_constraints.push(WireLinearConstraint {
-			rhs: self.rhs,
-			dst: self.dst.expect("dst wire must be assigned"),
-		});
+		self.builder.zero_constraints.push(self.operand);
 	}
 }
 
@@ -508,12 +473,12 @@ mod tests {
 
 			// Build: c = rotr(a, 0) ⊕ b
 			builder
-				.linear()
-				.rhs(xor2(rotr(wire_a, 0), wire_b))
-				.dst(wire_c)
+				.zero()
+				.xor(xor2(rotr(wire_a, 0), wire_b))
+				.xor(wire_c)
 				.build();
 
-			let (and_constraints, mul_constraints) = builder.build(&wire_mapping, all_one_wire);
+			let (and_constraints, mul_constraints, _) = builder.build(&wire_mapping);
 
 			// rotr(0) should be optimized to plain wire, so we expect:
 			// (a ⊕ b) & all_one = c
@@ -555,12 +520,12 @@ mod tests {
 
 			// Build: c = rotr(a, 5) ⊕ b
 			builder
-				.linear()
-				.rhs(xor2(rotr(wire_a, 5), wire_b))
-				.dst(wire_c)
+				.zero()
+				.xor(xor2(rotr(wire_a, 5), wire_b))
+				.xor(wire_c)
 				.build();
 
-			let (and_constraints, mul_constraints) = builder.build(&wire_mapping, all_one_wire);
+			let (and_constraints, mul_constraints, _) = builder.build(&wire_mapping);
 
 			assert_eq!(and_constraints.len(), 1);
 			assert_eq!(mul_constraints.len(), 0);
@@ -617,7 +582,7 @@ mod tests {
 			// Build: a & rotr(b, 0) ⊕ c = 0
 			builder.and().a(wire_a).b(rotr(wire_b, 0)).c(wire_c).build();
 
-			let (and_constraints, _) = builder.build(&wire_mapping, all_one_wire);
+			let (and_constraints, _, _) = builder.build(&wire_mapping);
 
 			assert_eq!(and_constraints.len(), 1);
 			let and_c = &and_constraints[0];
@@ -645,7 +610,7 @@ mod tests {
 			// Build: a & rotr(b, 8) ⊕ c = 0
 			builder.and().a(wire_a).b(rotr(wire_b, 8)).c(wire_c).build();
 
-			let (and_constraints, _) = builder.build(&wire_mapping, all_one_wire);
+			let (and_constraints, _, _) = builder.build(&wire_mapping);
 
 			assert_eq!(and_constraints.len(), 1);
 			let and_c = &and_constraints[0];
@@ -686,12 +651,12 @@ mod tests {
 
 		// Build complex expression
 		builder
-			.linear()
-			.rhs(xor3(rotr(wire_a, 0), sll(wire_b, 5), rotr(wire_a, 12)))
-			.dst(wire_c)
+			.zero()
+			.xor(xor3(rotr(wire_a, 0), sll(wire_b, 5), rotr(wire_a, 12)))
+			.xor(wire_c)
 			.build();
 
-		let (and_constraints, mul_constraints) = builder.build(&wire_mapping, all_one_wire);
+		let (and_constraints, mul_constraints, _) = builder.build(&wire_mapping);
 
 		assert_eq!(and_constraints.len(), 1);
 		assert_eq!(mul_constraints.len(), 0);

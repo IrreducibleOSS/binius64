@@ -219,6 +219,17 @@ where
 		};
 		drop(intmul_guard);
 
+		// [phase] Zero Reduction - zero constraint reduction
+		let zeros_claim = {
+			let r_zhat_prime = transcript.sample();
+			let r_x_prime = transcript.sample_vec(checked_log_2(cs.n_zero_constraints()));
+			OperatorData {
+				evals: vec![B128::zero()],
+				r_zhat_prime,
+				r_x_prime,
+			}
+		};
+
 		// [phase] Shift Reduction - shift operations
 		let shift_guard = tracing::info_span!(
 			"[phase] Shift Reduction",
@@ -235,6 +246,7 @@ where
 			witness.combined_witness(),
 			bitand_claim,
 			intmul_claim,
+			zeros_claim,
 			transcript,
 		)?;
 		drop(shift_guard);
