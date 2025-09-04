@@ -13,6 +13,14 @@ pub enum ConstraintSystemError {
 	#[error("the data length doesn't match layout")]
 	ValueVecLenMismatch { expected: usize, actual: usize },
 	#[error(
+		"{constraint_type} #{constraint_index} uses non canonical shift in its {operand_name} operand"
+	)]
+	NonCanonicalShift {
+		constraint_type: &'static str,
+		constraint_index: usize,
+		operand_name: &'static str,
+	},
+	#[error(
 		"{constraint_type} #{constraint_index} refers to padding in its {operand_name} operand"
 	)]
 	PaddingValueIndex {
