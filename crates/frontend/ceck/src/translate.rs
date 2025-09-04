@@ -92,7 +92,7 @@ impl Context {
 			cur_index += 1;
 		}
 		cur_index = cur_index.next_power_of_two();
-		let total_len = cur_index as usize;
+		let committed_total_len = cur_index as usize;
 
 		let value_vec_layout = ValueVecLayout {
 			n_const,
@@ -101,11 +101,12 @@ impl Context {
 			n_internal: 0,
 			offset_inout,
 			offset_witness,
-			total_len,
+			committed_total_len,
+			n_scratch: 0,
 		};
 		// For ceck, we only need basic validation, not full protocol compliance
 		assert!(
-			value_vec_layout.total_len.is_power_of_two(),
+			value_vec_layout.committed_total_len.is_power_of_two(),
 			"total length must be a power-of-two"
 		);
 		assert!(

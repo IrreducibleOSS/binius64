@@ -4,8 +4,8 @@ Number of gates: 3986883
 Number of evaluation instructions: 4076982
 Number of AND constraints: 1874328
 Number of MUL constraints: 0
-Length of value vec: 4194304
+Length of value vec: 2097152
   Constants: 376
   Inout: 20
   Witness: 29886
-  Internal: 3978540
+  Internal: 1827534

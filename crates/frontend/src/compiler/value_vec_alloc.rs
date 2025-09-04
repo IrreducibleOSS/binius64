@@ -5,10 +5,8 @@ use crate::compiler::Wire;
 
 pub struct Assignment {
 	pub wire_mapping: SecondaryMap<Wire, ValueIndex>,
-	pub scratch_mapping: SecondaryMap<Wire, u32>,
 	pub value_vec_layout: ValueVecLayout,
 	pub constants: Vec<Word>,
-	pub n_scratch: usize,
 }
 
 /// A structure that provides you assignments of value indices for wires and get a
@@ -60,12 +58,11 @@ impl Alloc {
 		// 2. inout
 		// 3. witness
 		// 4. internal
-		// Note: Scratch wires are NOT in ValueVec, they're handled separately
+		// 5. scratch
 		//
 		// So we create a mapping between a `Wire` to the final `ValueIndex`.
 
 		let mut wire_mapping = SecondaryMap::new();
-		let mut scratch_mapping = SecondaryMap::new();
 
 		let n_const = self.w_const.len();
 		let n_inout = self.w_inout.len();
@@ -108,12 +105,14 @@ impl Alloc {
 			cur_index += 1;
 		}
 
-		// Map scratch wires to scratch indices (with high bit set)
-		for (scratch_index, wire) in (0_u32..).zip(self.w_scratch.into_iter()) {
-			scratch_mapping[wire] = scratch_index | 0x8000_0000;
+		cur_index = cur_index.next_power_of_two();
+		let committed_total_len = cur_index as usize;
+
+		for wire in self.w_scratch {
+			wire_mapping[wire] = ValueIndex(cur_index);
+			cur_index += 1;
 		}
 
-		let total_len = (cur_index as usize).next_power_of_two();
 		let value_vec_layout = ValueVecLayout {
 			n_const,
 			n_inout,
@@ -121,17 +120,16 @@ impl Alloc {
 			n_internal,
 			offset_inout,
 			offset_witness,
-			total_len,
+			committed_total_len,
+			n_scratch,
 		};
 
 		value_vec_layout.validate().unwrap();
 
 		Assignment {
 			wire_mapping,
-			scratch_mapping,
 			value_vec_layout,
 			constants,
-			n_scratch,
 		}
 	}
 }
@@ -210,9 +208,10 @@ mod tests {
 		assert!(internal1_idx.0 > witness3_idx.0);
 
 		// Scratch wires should be in scratch mapping with high bit set
-		assert_eq!(assignment.scratch_mapping[scratch1], 0x8000_0000);
-		assert_eq!(assignment.scratch_mapping[scratch2], 0x8000_0001);
-		assert_eq!(assignment.n_scratch, 2);
+		let scratch1_idx = assignment.wire_mapping[scratch1];
+		let scratch2_idx = assignment.wire_mapping[scratch2];
+		assert!(scratch1_idx.0 > internal1_idx.0);
+		assert!(scratch2_idx.0 > scratch1_idx.0);
 
 		// Verify the value_vec_layout
 		assert_eq!(assignment.value_vec_layout.n_const, 3);
@@ -221,7 +220,12 @@ mod tests {
 		assert_eq!(assignment.value_vec_layout.n_internal, 1);
 		assert_eq!(assignment.value_vec_layout.offset_inout, 3);
 		assert_eq!(assignment.value_vec_layout.offset_witness, witness1_idx.0 as usize);
-		assert!(assignment.value_vec_layout.total_len.is_power_of_two());
+		assert!(
+			assignment
+				.value_vec_layout
+				.committed_total_len
+				.is_power_of_two()
+		);
 	}
 
 	#[test]

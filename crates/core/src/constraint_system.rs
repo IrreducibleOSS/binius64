@@ -261,7 +261,7 @@ pub struct ConstraintSystem {
 
 impl ConstraintSystem {
 	/// Serialization format version for compatibility checking
-	pub const SERIALIZATION_VERSION: u32 = 1;
+	pub const SERIALIZATION_VERSION: u32 = 2;
 }
 
 impl ConstraintSystem {
@@ -328,13 +328,13 @@ impl ConstraintSystem {
 					});
 				}
 				// Check if the value index is out of bounds.
-				if value_vec_layout.is_out_of_bounds(term.value_index) {
+				if value_vec_layout.is_committed_oob(term.value_index) {
 					return Err(ConstraintSystemError::OutOfRangeValueIndex {
 						constraint_type,
 						constraint_index,
 						operand_name,
 						value_index: term.value_index.0,
-						total_len: value_vec_layout.total_len,
+						total_len: value_vec_layout.committed_total_len,
 					});
 				}
 				// No value should refer to padding.
@@ -391,7 +391,7 @@ impl ConstraintSystem {
 
 	/// The total length of the [`ValueVec`] expected by this constraint system.
 	pub fn value_vec_len(&self) -> usize {
-		self.value_vec_layout.total_len
+		self.value_vec_layout.committed_total_len
 	}
 
 	/// Create a new [`ValueVec`] with the size expected by this constraint system.
@@ -464,16 +464,19 @@ pub struct ValueVecLayout {
 	/// The public section of the value vec has the power-of-two size and is greater than the
 	/// minimum number of words. By public section we mean the constants and the inout values.
 	pub offset_witness: usize,
-	/// The total size of the value vec vector.
+	/// The total number of committed values in the values vector. This does not include any
+	/// scratch values.
 	///
 	/// This must be a power-of-two.
-	pub total_len: usize,
+	pub committed_total_len: usize,
+	/// The number of scratch values at the end of the value vec.
+	pub n_scratch: usize,
 }
 
 impl ValueVecLayout {
 	/// Validates that the value vec layout has a correct shape.
 	pub fn validate(&self) -> Result<(), ConstraintSystemError> {
-		if !self.total_len.is_power_of_two() {
+		if !self.committed_total_len.is_power_of_two() {
 			return Err(ConstraintSystemError::ValueVecLenNotPowerOfTwo);
 		}
 
@@ -506,16 +509,16 @@ impl ValueVecLayout {
 
 		// padding 3: between the last internal value and the total len
 		let end_of_internal = self.offset_witness + self.n_witness + self.n_internal;
-		if idx >= end_of_internal && idx < self.total_len {
+		if idx >= end_of_internal && idx < self.committed_total_len {
 			return true;
 		}
 
 		false
 	}
 
-	/// Returns true if the given index is out-of-bounds for this layout.
-	fn is_out_of_bounds(&self, index: ValueIndex) -> bool {
-		index.0 as usize >= self.total_len
+	/// Returns true if the given index is out-of-bounds for the committed part of this layout.
+	fn is_committed_oob(&self, index: ValueIndex) -> bool {
+		index.0 as usize >= self.committed_total_len
 	}
 }
 
@@ -527,7 +530,8 @@ impl SerializeBytes for ValueVecLayout {
 		self.n_internal.serialize(&mut write_buf)?;
 		self.offset_inout.serialize(&mut write_buf)?;
 		self.offset_witness.serialize(&mut write_buf)?;
-		self.total_len.serialize(write_buf)
+		self.committed_total_len.serialize(&mut write_buf)?;
+		self.n_scratch.serialize(write_buf)
 	}
 }
 
@@ -542,7 +546,8 @@ impl DeserializeBytes for ValueVecLayout {
 		let n_internal = usize::deserialize(&mut read_buf)?;
 		let offset_inout = usize::deserialize(&mut read_buf)?;
 		let offset_witness = usize::deserialize(&mut read_buf)?;
-		let total_len = usize::deserialize(read_buf)?;
+		let committed_total_len = usize::deserialize(&mut read_buf)?;
+		let n_scratch = usize::deserialize(read_buf)?;
 
 		Ok(ValueVecLayout {
 			n_const,
@@ -551,7 +556,8 @@ impl DeserializeBytes for ValueVecLayout {
 			n_internal,
 			offset_inout,
 			offset_witness,
-			total_len,
+			committed_total_len,
+			n_scratch,
 		})
 	}
 }
@@ -569,7 +575,7 @@ pub struct ValueVec {
 
 impl ValueVec {
 	pub fn new(layout: ValueVecLayout) -> ValueVec {
-		let size = layout.total_len;
+		let size = layout.committed_total_len + layout.n_scratch;
 		ValueVec {
 			layout,
 			data: vec![Word::ZERO; size],
@@ -582,9 +588,9 @@ impl ValueVec {
 		private: Vec<Word>,
 	) -> Result<ValueVec, ConstraintSystemError> {
 		public.extend_from_slice(&private);
-		if public.len() != layout.total_len {
+		if public.len() != layout.committed_total_len {
 			return Err(ConstraintSystemError::ValueVecLenMismatch {
-				expected: layout.total_len,
+				expected: layout.committed_total_len,
 				actual: public.len(),
 			});
 		}
@@ -595,9 +601,9 @@ impl ValueVec {
 		})
 	}
 
-	/// The total size of the vector.
+	/// The total size of the committed portion of the vector (excluding scratch).
 	pub fn size(&self) -> usize {
-		self.data.len()
+		self.layout.committed_total_len
 	}
 
 	pub fn get(&self, index: usize) -> Word {
@@ -627,7 +633,9 @@ impl ValueVec {
 
 	/// Returns the combined values vector.
 	pub fn combined_witness(&self) -> &[Word] {
-		&self.data
+		let start = 0;
+		let end = self.layout.committed_total_len;
+		&self.data[start..end]
 	}
 }
 
@@ -908,9 +916,10 @@ mod serialization_tests {
 			n_inout: 2,
 			n_witness: 10,
 			n_internal: 3,
-			offset_inout: 4,   // Must be power of 2 and >= n_const
-			offset_witness: 8, // Must be power of 2 and >= offset_inout + n_inout
-			total_len: 16,     // Must be power of 2 and >= offset_witness + n_witness
+			offset_inout: 4,         // Must be power of 2 and >= n_const
+			offset_witness: 8,       // Must be power of 2 and >= offset_inout + n_inout
+			committed_total_len: 16, // Must be power of 2 and >= offset_witness + n_witness
+			n_scratch: 0,
 		};
 
 		let and_constraints = vec![
@@ -1081,7 +1090,8 @@ mod serialization_tests {
 			n_internal: 7,
 			offset_inout: 8,
 			offset_witness: 16,
-			total_len: 32,
+			committed_total_len: 32,
+			n_scratch: 0,
 		};
 
 		let mut buf = Vec::new();
@@ -1101,7 +1111,7 @@ mod serialization_tests {
 		let deserialized = ConstraintSystem::deserialize(&mut buf.as_slice()).unwrap();
 
 		// Check version
-		assert_eq!(ConstraintSystem::SERIALIZATION_VERSION, 1);
+		assert_eq!(ConstraintSystem::SERIALIZATION_VERSION, 2);
 
 		// Check value_vec_layout
 		assert_eq!(original.value_vec_layout, deserialized.value_vec_layout);
@@ -1145,7 +1155,8 @@ mod serialization_tests {
 			n_internal: 3,
 			offset_inout: 8,
 			offset_witness: 16,
-			total_len: 32,
+			committed_total_len: 32,
+			n_scratch: 0,
 		};
 
 		let constants = vec![Word::from_u64(1), Word::from_u64(2)]; // Only 2 constants
@@ -1201,8 +1212,8 @@ mod serialization_tests {
 		let mut buf = Vec::new();
 		constraint_system.serialize(&mut buf).unwrap();
 
-		// Write to reference file
-		let test_data_path = std::path::Path::new("crates/core/test_data/constraint_system_v1.bin");
+		// Write to reference file.
+		let test_data_path = std::path::Path::new("test_data/constraint_system_v2.bin");
 
 		// Create directory if it doesn't exist
 		if let Some(parent) = test_data_path.parent() {
@@ -1219,7 +1230,9 @@ mod serialization_tests {
 	/// This test will fail if breaking changes are made without incrementing the version.
 	#[test]
 	fn test_deserialize_from_reference_binary_file() {
-		let binary_data = include_bytes!("../test_data/constraint_system_v1.bin");
+		// We now have v2 format with n_scratch field
+		// The v1 file is no longer compatible, so we test with v2
+		let binary_data = include_bytes!("../test_data/constraint_system_v2.bin");
 
 		let deserialized = ConstraintSystem::deserialize(&mut binary_data.as_slice()).unwrap();
 
@@ -1229,7 +1242,8 @@ mod serialization_tests {
 		assert_eq!(deserialized.value_vec_layout.n_internal, 3);
 		assert_eq!(deserialized.value_vec_layout.offset_inout, 4);
 		assert_eq!(deserialized.value_vec_layout.offset_witness, 8);
-		assert_eq!(deserialized.value_vec_layout.total_len, 16);
+		assert_eq!(deserialized.value_vec_layout.committed_total_len, 16);
+		assert_eq!(deserialized.value_vec_layout.n_scratch, 0);
 
 		assert_eq!(deserialized.constants.len(), 3);
 		assert_eq!(deserialized.constants[0].as_u64(), 1);
@@ -1243,7 +1257,7 @@ mod serialization_tests {
 		// This is implicitly checked during deserialization, but we can also verify
 		// the file starts with the correct version bytes
 		let version_bytes = &binary_data[0..4]; // First 4 bytes should be version
-		let expected_version_bytes = 1u32.to_le_bytes(); // Version 1 in little-endian
+		let expected_version_bytes = 2u32.to_le_bytes(); // Version 2 in little-endian
 		assert_eq!(
 			version_bytes, expected_version_bytes,
 			"Binary file version mismatch. If you made breaking changes, increment ConstraintSystem::SERIALIZATION_VERSION"
@@ -1559,7 +1573,8 @@ mod serialization_tests {
 			n_internal: 2,
 			offset_inout: 2,
 			offset_witness: 4,
-			total_len: 8,
+			committed_total_len: 8,
+			n_scratch: 0,
 		});
 
 		let public = values.public();
@@ -1574,13 +1589,14 @@ mod serialization_tests {
 	fn test_is_padding_comprehensive() {
 		// Test layout with all types of padding
 		let layout = ValueVecLayout {
-			n_const: 2,         // constants at indices 0-1
-			n_inout: 3,         // inout at indices 4-6
-			n_witness: 5,       // witness at indices 16-20
-			n_internal: 10,     // internal at indices 21-30
-			offset_inout: 4,    // gap between constants and inout (indices 2-3 are padding)
-			offset_witness: 16, // public section is 16 (power of 2), gap 7-15 is padding
-			total_len: 64,      // total must be power of 2, gap 31-63 is padding
+			n_const: 2,              // constants at indices 0-1
+			n_inout: 3,              // inout at indices 4-6
+			n_witness: 5,            // witness at indices 16-20
+			n_internal: 10,          // internal at indices 21-30
+			offset_inout: 4,         // gap between constants and inout (indices 2-3 are padding)
+			offset_witness: 16,      // public section is 16 (power of 2), gap 7-15 is padding
+			committed_total_len: 64, // total must be power of 2, gap 31-63 is padding
+			n_scratch: 0,
 		};
 
 		// Test constants (indices 0-1): NOT padding
@@ -1635,13 +1651,14 @@ mod serialization_tests {
 	fn test_is_padding_minimal_layout() {
 		// Test a minimal layout with no gaps except required end padding
 		let layout = ValueVecLayout {
-			n_const: 4,        // constants at indices 0-3
-			n_inout: 4,        // inout at indices 4-7
-			n_witness: 4,      // witness at indices 8-11
-			n_internal: 4,     // internal at indices 12-15
-			offset_inout: 4,   // no gap between constants and inout
-			offset_witness: 8, // no gap between inout and witness
-			total_len: 16,     // exactly fits all values
+			n_const: 4,              // constants at indices 0-3
+			n_inout: 4,              // inout at indices 4-7
+			n_witness: 4,            // witness at indices 8-11
+			n_internal: 4,           // internal at indices 12-15
+			offset_inout: 4,         // no gap between constants and inout
+			offset_witness: 8,       // no gap between inout and witness
+			committed_total_len: 16, // exactly fits all values
+			n_scratch: 0,
 		};
 
 		// No padding anywhere in this layout
@@ -1658,13 +1675,14 @@ mod serialization_tests {
 	fn test_is_padding_public_section_min_size() {
 		// Test layout where public section must be padded to meet MIN_WORDS_PER_SEGMENT
 		let layout = ValueVecLayout {
-			n_const: 1,        // only 1 constant
-			n_inout: 1,        // only 1 inout
-			n_witness: 2,      // 2 witness values
-			n_internal: 2,     // 2 internal values
-			offset_inout: 4,   // padding between const and inout to reach min size
-			offset_witness: 8, // public section padded to 8 (MIN_WORDS_PER_SEGMENT)
-			total_len: 16,     // power of 2
+			n_const: 1,              // only 1 constant
+			n_inout: 1,              // only 1 inout
+			n_witness: 2,            // 2 witness values
+			n_internal: 2,           // 2 internal values
+			offset_inout: 4,         // padding between const and inout to reach min size
+			offset_witness: 8,       // public section padded to 8 (MIN_WORDS_PER_SEGMENT)
+			committed_total_len: 16, // power of 2
+			n_scratch: 0,
 		};
 
 		// Test the single constant
@@ -1706,7 +1724,8 @@ mod serialization_tests {
 			n_internal: 4,
 			offset_inout: 4,
 			offset_witness: 8,
-			total_len: 16,
+			committed_total_len: 16,
+			n_scratch: 0,
 		};
 
 		// Test exact boundaries
@@ -1740,7 +1759,8 @@ mod serialization_tests {
 				n_internal: 2,
 				offset_inout: 4,
 				offset_witness: 8,
-				total_len: 16,
+				committed_total_len: 16,
+				n_scratch: 0,
 			},
 			vec![],
 			vec![],
@@ -1777,7 +1797,8 @@ mod serialization_tests {
 				n_internal: 4,
 				offset_inout: 2,
 				offset_witness: 4,
-				total_len: 16,
+				committed_total_len: 16,
+				n_scratch: 0,
 			},
 			vec![],
 			vec![],
@@ -1821,7 +1842,8 @@ mod serialization_tests {
 			n_internal: 4,
 			offset_inout: 1,   // right after constants
 			offset_witness: 8, // padded to MIN_WORDS_PER_SEGMENT
-			total_len: 16,
+			committed_total_len: 16,
+			n_scratch: 0,
 		};
 
 		// Verify padding between end of inout (index 2) and offset_witness (8)
@@ -1843,7 +1865,8 @@ mod serialization_tests {
 			n_internal: 0,
 			offset_inout: 4,
 			offset_witness: 8, // exactly MIN_WORDS_PER_SEGMENT, already power of 2
-			total_len: 16,
+			committed_total_len: 16,
+			n_scratch: 0,
 		};
 
 		// No padding in public section
@@ -1860,7 +1883,8 @@ mod serialization_tests {
 			n_internal: 0,
 			offset_inout: 5,
 			offset_witness: 16, // rounded up from 10 to 16 (next power of 2)
-			total_len: 32,
+			committed_total_len: 32,
+			n_scratch: 0,
 		};
 
 		// Check padding from end of inout (10) to offset_witness (16)
@@ -1880,13 +1904,14 @@ mod serialization_tests {
 
 		// Case 4: Test with offsets that show all three padding types
 		let layout4 = ValueVecLayout {
-			n_const: 2,         // indices 0-1
-			n_inout: 2,         // indices 8-9
-			n_witness: 4,       // indices 16-19
-			n_internal: 4,      // indices 20-23
-			offset_inout: 8,    // padding after constants to align
-			offset_witness: 16, // padding after inout to reach power of 2
-			total_len: 32,      // padding after internal to reach total
+			n_const: 2,              // indices 0-1
+			n_inout: 2,              // indices 8-9
+			n_witness: 4,            // indices 16-19
+			n_internal: 4,           // indices 20-23
+			offset_inout: 8,         // padding after constants to align
+			offset_witness: 16,      // padding after inout to reach power of 2
+			committed_total_len: 32, // padding after internal to reach total
+			n_scratch: 0,
 		};
 
 		// Constants
@@ -1938,7 +1963,8 @@ mod serialization_tests {
 				n_internal: 2,
 				offset_inout: 4,
 				offset_witness: 8,
-				total_len: 16,
+				committed_total_len: 16,
+				n_scratch: 0,
 			},
 			vec![],
 			vec![],
@@ -1982,7 +2008,8 @@ mod serialization_tests {
 				n_internal: 4,
 				offset_inout: 2,
 				offset_witness: 4,
-				total_len: 16,
+				committed_total_len: 16,
+				n_scratch: 0,
 			},
 			vec![],
 			vec![],
@@ -2030,7 +2057,8 @@ mod serialization_tests {
 				n_internal: 2,
 				offset_inout: 4,
 				offset_witness: 8,
-				total_len: 16,
+				committed_total_len: 16,
+				n_scratch: 0,
 			},
 			vec![],
 			vec![],
