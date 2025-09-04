@@ -1,5 +1,12 @@
 //! Semaphore circuit with ECDSA key derivation using secp256k1.
 
+use binius_core::Word;
+use k256::{
+	ProjectivePoint, Scalar,
+	elliptic_curve::{PrimeField, sec1::ToEncodedPoint},
+};
+use sha3::{Digest, Keccak256};
+
 use crate::{
 	circuits::{
 		bignum::BigUint,
@@ -10,13 +17,6 @@ use crate::{
 	},
 	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
 	util::pack_bytes_into_wires_le,
-};
-use binius_core::Word;
-use sha3::{Digest, Keccak256};
-
-use k256::{
-	ProjectivePoint, Scalar,
-	elliptic_curve::{PrimeField, sec1::ToEncodedPoint},
 };
 
 // Circuit constants
@@ -502,10 +502,10 @@ impl SemaphoreProofECDSA {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::circuits::semaphore_ecdsa::reference::{
-		MerkleTree, SemaphoreProofECDSA as RefProof,
+	use crate::{
+		circuits::semaphore_ecdsa::reference::{MerkleTree, SemaphoreProofECDSA as RefProof},
+		compiler::CircuitBuilder,
 	};
-	use crate::compiler::CircuitBuilder;
 
 	#[test]
 	fn test_circuit_matches_reference() {

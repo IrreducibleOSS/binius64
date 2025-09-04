@@ -54,7 +54,3 @@ path = "examples/prover.rs"
 [[example]]
 name = "verifier"
 path = "examples/verifier.rs"
-
-[[example]]
-name = "padding_validation_test"
-path = "examples/padding_validation_test.rs"
