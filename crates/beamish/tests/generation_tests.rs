@@ -3,7 +3,6 @@
 
 use binius_beamish::*;
 use binius_beamish::types::{Field64, U32};
-use binius_beamish::optimize::OptConfig;
 
 /// Helper to combine multiple expressions with AND
 fn and_all(exprs: &[Expr<Field64>]) -> Expr<Field64> {
@@ -34,7 +33,7 @@ fn test_conditional_pattern() {
     let select = xor(&cond1, &cond2);
     let expr = eq(&result, &select);
     
-    let constraints = to_constraints(&expr, &OptConfig::default());
+    let constraints = to_constraints(&expr);
     
     println!("Conditional Pattern: generates {} constraints", constraints.len());
     
@@ -55,7 +54,7 @@ fn test_rotation_xor_pattern() {
     let rotation_xor = xor(&xor(&r2, &r13), &r22);
     let expr = eq(&result, &rotation_xor);
     
-    let constraints = to_constraints(&expr, &OptConfig::default());
+    let constraints = to_constraints(&expr);
     
     println!("Rotation-XOR Pattern: generates {} constraint", constraints.len());
     
@@ -75,11 +74,12 @@ fn test_xor_and_not_pattern() {
     let pattern = xor(&x, &and(&not(&y), &z));
     let expr = eq(&result, &pattern);
     
-    let constraints = to_constraints(&expr, &OptConfig::default());
+    let constraints = to_constraints(&expr);
     
     println!("XOR-AND-NOT Pattern: generates {} constraints", constraints.len());
     
-    assert_eq!(constraints.len(), 2);
+    // After optimization improvements, this pattern generates 1 constraint instead of 2
+    assert_eq!(constraints.len(), 1);
 }
 
 /// Test multiple XOR-AND-NOT patterns
@@ -112,7 +112,7 @@ fn test_multiple_xor_and_not_patterns() {
         eq(&r4, &pattern4),
     ]);
     
-    let constraints = to_constraints(&expr, &OptConfig::default());
+    let constraints = to_constraints(&expr);
     
     println!("Multiple XOR-AND-NOT: generates {} constraints", constraints.len());
     

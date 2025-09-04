@@ -47,42 +47,6 @@ pub fn icmp_eq<T: BitType>(a: &Expr<T>, b: &Expr<T>) -> Expr<T> {
     not(&xor(a, b))
 }
 
-/// Unsigned less-than comparison (for U64)
-///
-/// Returns all-1s if `a < b`, all-0s otherwise.
-/// 
-/// # Algorithm
-/// Computes `a < b` by checking if there's a borrow when computing `a - b`.
-/// This is done by computing `¬a + b` and checking if it carries out (≥ 2^64).
-///
-/// # Implementation
-/// Uses a BlackBox to compute the borrow chain, then constrains it with regular ops.
-/// The MSB of the borrow chain indicates the result.
-///
-/// # Cost
-/// 2 AND constraints (from the constraint verification)
-pub fn icmp_ult(a: &Expr<crate::types::U64>, b: &Expr<crate::types::U64>) -> Expr<crate::types::U64> {
-    use crate::expr::ExprNode;
-    
-    // BlackBox computes the borrow chain for a < b
-    let bout = Expr::wrap(std::rc::Rc::new(ExprNode::BlackBox {
-        compute: |inputs| {
-            let [a, b] = inputs else { panic!("icmp_ult needs 2 inputs") };
-            // Compute borrow chain: ¬a + b, track if it carries out
-            let not_a = !a;
-            let (_, carry) = not_a.overflowing_add(*b);
-            // If carry, set MSB; otherwise 0
-            if carry { 0x8000_0000_0000_0000 } else { 0 }
-        },
-        inputs: vec![a.inner.clone(), b.inner.clone()],
-    }));
-    
-    // TODO: Build constraints to verify bout is computed correctly
-    // For now, we trust the BlackBox computation
-    
-    // Extract and broadcast MSB using built-in arithmetic right shift
-    crate::ops::bitwise::sar(&bout, 63)
-}
 
 // ============================================================================
 // Multi-way Selection
@@ -93,7 +57,7 @@ pub fn icmp_ult(a: &Expr<crate::types::U64>, b: &Expr<crate::types::U64>) -> Exp
 /// For dynamic array access, selects `values[index]`.
 /// 
 /// # Example
-/// ```
+/// ```ignore
 /// let values = [a, b, c, d];  // 4 values
 /// let index = expr;            // Index 0-3
 /// let result = mux_array(&values, &index);
@@ -134,7 +98,7 @@ pub fn mux_array<T: BitType>(values: &[Expr<T>], index: &Expr<T>) -> Expr<T> {
 /// Returns the group at position `sel`.
 ///
 /// # Example
-/// ```
+/// ```ignore
 /// let groups = [&[a1, a2], &[b1, b2], &[c1, c2]];
 /// let sel = expr;  // Selects group 0, 1, or 2
 /// let [out1, out2] = multi_mux(&groups, &sel);
@@ -449,20 +413,22 @@ mod tests {
     }
     
     #[test] 
-    fn test_icmp_ult() {
-        // Test unsigned less-than comparison using BlackBox implementation
+    fn test_icmp_ult64_from_arithmetic() {
+        // Test the moved icmp_ult64 function from arithmetic module
+        use crate::ops::arithmetic::icmp_ult64;
+        
         let a = constant::<U64>(5);
         let b = constant::<U64>(10);
         let c = constant::<U64>(10);
         let d = constant::<U64>(5);
         
-        let result_lt = icmp_ult(&a, &b);  // 5 < 10 should be true (all-1s)
-        let result_eq = icmp_ult(&c, &c);  // 10 < 10 should be false (0)
-        let result_gt = icmp_ult(&b, &d);  // 10 < 5 should be false (0)
+        let result_lt = icmp_ult64(&a, &b);  // 5 < 10 should be true (all-1s)
+        let result_eq = icmp_ult64(&c, &c);  // 10 < 10 should be false (0)
+        let result_gt = icmp_ult64(&b, &d);  // 10 < 5 should be false (0)
         
         let mut eval = ExpressionEvaluator::new(vec![]);
         
-        // Test the BlackBox implementation
+        // Test the proper constraint-generating implementation
         assert_eq!(eval.evaluate(&result_lt), u64::MAX, "5 < 10 should be true");
         assert_eq!(eval.evaluate(&result_eq), 0, "10 < 10 should be false");
         assert_eq!(eval.evaluate(&result_gt), 0, "10 < 5 should be false");

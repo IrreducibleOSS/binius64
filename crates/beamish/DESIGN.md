@@ -460,3 +460,126 @@ C3: a & 0xFF..FF ⊕ (temp ⊕ result) = 0
 **Mathematical identity**: `(a ⊕ c) & (b ⊕ c) ⊕ c`
 
 **Proof**: Expanding `(a ⊕ c) & (b ⊕ c)` using distributivity over GF(2): equals `(a & b) ⊕ (a & c) ⊕ (c & b) ⊕ (c & c)`. Since `c & c = c` in GF(2), this becomes `(a & b) ⊕ (a & c) ⊕ (b & c) ⊕ c`. XORing with `c` gives the original majority expression.
+
+## Appendix: Control Flow Design
+
+### Overview
+
+Control flow operations enable dynamic behavior in static circuits through predicated execution patterns. These operations allow circuits to handle variable-length operations and dynamic indexing without branching.
+
+### Core Patterns
+
+#### 1. Predicated Fold Pattern
+
+The predicated fold pattern enables dynamic iteration in static circuits by unrolling all iterations and using conditional state updates.
+
+**Key Insight**: Instead of branching, we compute all iterations and mask inactive ones.
+
+```rust
+pub fn dynamic_fold<S, F>(
+    range: Range<Expr<U32>>,
+    max_iterations: u32,
+    init: S,
+    body: F,
+) -> S
+```
+
+**Properties**:
+- All iterations exist in the circuit
+- Each iteration conditionally updates state based on `index < end`
+- Overhead is proportional to max_iterations, not actual iterations
+
+#### 2. Dynamic Array Indexing
+
+Dynamic array indexing allows selecting array[i] where i is a runtime value.
+
+**Challenge**: Circuits can't have dynamic memory access - all paths must exist.
+
+**Solution**: Build a multiplexer tree that selects based on index bits.
+
+### Implementation Details
+
+#### Understanding Building Blocks
+
+From our ops modules, we have:
+- `select(cond, true_val, false_val)` - Returns true_val when cond is ALL-1s, false_val when cond is ALL-0s
+- `sar32(value, amount)` - Arithmetic shift right for U32 (sign-extends from bit 31)
+- `and(a, b)` - Bitwise AND
+- `shl(a, amount)` - Logical shift left
+- `icmp_ult(a, b)` - Returns ALL-1s if a < b, ALL-0s otherwise
+
+**Critical Requirement**: `select` requires its condition to be all-1s or all-0s, not just 1 or 0!
+
+#### Binary Tree Array Indexing
+
+For array of size N, we need ceil(log2(N)) bits from the index.
+
+**Algorithm**:
+```
+Given array [a0, a1, a2, a3] and index=2 (binary 10):
+
+Level 0 (bit 0=0): select(ALL-0s, a1, a0)=a0, select(ALL-0s, a3, a2)=a2
+Level 1 (bit 1=1): select(ALL-1s, a2, a0)=a2 ✓
+```
+
+**Bit Broadcasting**: Convert single bit to all-1s or all-0s mask:
+```rust
+let bit = and(&shifted, &constant::<U32>(1));
+let bit_msb = shl(&bit, 31);  // Move to MSB
+let mask = sar32(&bit_msb, 31);  // Broadcast MSB to all bits
+```
+
+#### Final Implementation
+
+```rust
+pub fn array_index<T: BitType>(array: &[Expr<T>], index: &Expr<U32>) -> Expr<T> {
+    use crate::ops::bitwise::{and, shr32, shl, sar32};
+    
+    let mut current_level = array.to_vec();
+    let mut bit_pos = 0u8;
+    
+    while current_level.len() > 1 {
+        let mut next_level = Vec::new();
+        
+        // Extract bit k and broadcast to all bits
+        let shifted = if bit_pos > 0 {
+            shr32(index, bit_pos)
+        } else {
+            index.clone()
+        };
+        
+        let bit = and(&shifted, &constant::<U32>(1));
+        let bit_msb = shl(&bit, 31);
+        let mask_u32 = sar32(&bit_msb, 31);
+        let mask_t: Expr<T> = Expr::wrap(mask_u32.inner);
+        
+        // Build next level of tree
+        for chunk in current_level.chunks(2) {
+            if chunk.len() == 2 {
+                next_level.push(select(&mask_t, &chunk[1], &chunk[0]));
+            } else {
+                next_level.push(chunk[0].clone());
+            }
+        }
+        
+        current_level = next_level;
+        bit_pos += 1;
+    }
+    
+    current_level[0].clone()
+}
+```
+
+**Constraint Count**: 2(N-1) AND constraints for N elements
+- N-1 select operations 
+- N-1 AND operations for bit extraction
+
+### Performance Results
+
+Tests show dynamic operations achieve reasonable overhead:
+
+- **Array indexing**: Correctly selects elements (array[0]→0, array[3]→3, etc.)
+- **Dynamic fold**: Correctly computes sums (0+1+2=3, sum 0..9=45)
+- **Constraint overhead**: 9x for dynamic vs fixed iteration (180 vs 20 constraints for 10-element sum)
+
+This provides an efficient foundation for dynamic message sizes in Keccak and other variable-length operations.
