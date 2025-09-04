@@ -169,7 +169,7 @@ fn f(b: &CircuitBuilder, x: Wire, y: Wire, z: Wire) -> Wire {
 
 // Selection function g(x, y, z) = (x AND y) OR (NOT x AND z) = z XOR (x AND (y XOR z))
 fn g(b: &CircuitBuilder, x: Wire, y: Wire, z: Wire) -> Wire {
-	b.bor(b.band(x, y), b.band(b.bnot(x), z))
+	b.bxor(z, b.band(x, b.bxor(y, z)))
 }
 
 // Selection function h(x, y, z) = (x OR NOT y) XOR z
@@ -179,7 +179,7 @@ fn h(b: &CircuitBuilder, x: Wire, y: Wire, z: Wire) -> Wire {
 
 // Selection function i(x, y, z) = (x AND z) OR (y AND NOT z) = y XOR (z AND (x XOR y))
 fn i(b: &CircuitBuilder, x: Wire, y: Wire, z: Wire) -> Wire {
-	b.bor(b.band(x, z), b.band(y, b.bnot(z)))
+	b.bxor(y, b.band(z, b.bxor(x, y)))
 }
 
 // Selection function j(x, y, z) = x XOR (y OR NOT z)
