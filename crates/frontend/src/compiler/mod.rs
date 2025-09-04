@@ -4,12 +4,7 @@ use std::{
 	rc::Rc,
 };
 
-use binius_core::{
-	constraint_system::{ConstraintSystem, ValueIndex, ValueVecLayout},
-	consts::MIN_WORDS_PER_SEGMENT,
-	word::Word,
-};
-use cranelift_entity::SecondaryMap;
+use binius_core::{constraint_system::ConstraintSystem, word::Word};
 
 use crate::compiler::{
 	circuit::Circuit,
@@ -32,6 +27,7 @@ pub mod hints;
 mod pathspec;
 #[cfg(test)]
 mod tests;
+mod value_vec_alloc;
 
 pub use gate_graph::Wire;
 
@@ -127,86 +123,30 @@ impl CircuitBuilder {
 			}
 		}
 
-		// `ValueVec` expects the wires to be in a certain order. Specifically:
+		// Allocate a place for each wire in the value vec layout.
 		//
-		// 1. const
-		// 2. inout
-		// 3. witness
-		// 4. internal
-		// Note: Scratch wires are NOT in ValueVec, they're handled separately
-		//
-		// So we create a mapping between a `Wire` to the final `ValueIndex`.
-		let mut wire_mapping = SecondaryMap::new();
-		let mut scratch_mapping = SecondaryMap::new();
-		let total_wires = graph.wires.len();
-		let mut w_const: Vec<(Wire, Word)> = Vec::with_capacity(total_wires);
-		let mut w_inout: Vec<Wire> = Vec::with_capacity(total_wires);
-		let mut w_witness: Vec<Wire> = Vec::with_capacity(total_wires);
-		let mut w_internal: Vec<Wire> = Vec::with_capacity(total_wires);
-		let mut w_scratch: Vec<Wire> = Vec::with_capacity(total_wires);
-		for (wire, wire_data) in graph.wires.iter() {
-			match wire_data.kind {
-				WireKind::Constant(ref value) => {
-					w_const.push((wire, *value));
+		// This gives us mappings from wires into the value indices, as well as the constant
+		// portion of the value vec.
+		let value_vec_alloc::Assignment {
+			wire_mapping,
+			scratch_mapping,
+			value_vec_layout,
+			constants,
+			n_scratch,
+		} = {
+			let mut value_vec_alloc = value_vec_alloc::Alloc::new();
+			for (wire, wire_data) in graph.wires.iter() {
+				match wire_data.kind {
+					WireKind::Constant(ref value) => {
+						value_vec_alloc.add_constant(wire, *value);
+					}
+					WireKind::Inout => value_vec_alloc.add_inout(wire),
+					WireKind::Witness => value_vec_alloc.add_witness(wire),
+					WireKind::Internal => value_vec_alloc.add_internal(wire),
+					WireKind::Scratch => value_vec_alloc.add_scratch(wire),
 				}
-				WireKind::Inout => w_inout.push(wire),
-				WireKind::Witness => w_witness.push(wire),
-				WireKind::Internal => w_internal.push(wire),
-				WireKind::Scratch => w_scratch.push(wire),
 			}
-		}
-
-		let n_const = w_const.len();
-		let n_inout = w_inout.len();
-		let n_witness = w_witness.len();
-		let n_internal = w_internal.len();
-		let n_scratch = w_scratch.len();
-
-		// Sort the wires pointing to the constant section of the input value vector ascending
-		// to their values.
-		w_const.sort_by_key(|&(_, value)| value);
-
-		// First, allocate the indices for the public section of the value vec. The public section
-		// consists of constant wires followed by inout wires.
-		//
-		// Next, we align the current index to the next power of 2.
-		//
-		// Finally, allocate wires for witness values and internal wires.
-		let mut cur_index: u32 = 0;
-		let mut constants = Vec::with_capacity(n_const);
-		for (wire, value) in w_const {
-			wire_mapping[wire] = ValueIndex(cur_index);
-			constants.push(value);
-			cur_index += 1;
-		}
-		let offset_inout = cur_index as usize;
-		for wire in w_inout {
-			wire_mapping[wire] = ValueIndex(cur_index);
-			cur_index += 1;
-		}
-		// Ensure the public section meets the minimum size requirement
-		cur_index = cur_index.max(MIN_WORDS_PER_SEGMENT as u32);
-		cur_index = cur_index.next_power_of_two();
-		let offset_witness = cur_index as usize;
-		for wire in w_witness.into_iter().chain(w_internal.into_iter()) {
-			wire_mapping[wire] = ValueIndex(cur_index);
-			cur_index += 1;
-		}
-
-		// Map scratch wires to scratch indices (with high bit set)
-		for (scratch_index, wire) in (0_u32..).zip(w_scratch.into_iter()) {
-			scratch_mapping[wire] = scratch_index | 0x8000_0000;
-		}
-
-		let total_len = (cur_index as usize).next_power_of_two();
-		let value_vec_layout = ValueVecLayout {
-			n_const,
-			n_inout,
-			n_witness,
-			n_internal,
-			offset_inout,
-			offset_witness,
-			total_len,
+			value_vec_alloc.into_assignment()
 		};
 
 		let mut builder = ConstraintBuilder::new();
