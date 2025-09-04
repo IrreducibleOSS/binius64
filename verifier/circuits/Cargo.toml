@@ -25,6 +25,7 @@ rustc-hash.workspace = true
 
 [dev-dependencies]
 base64 = { workspace = true }
+bitcoin = { workspace = true }
 blake2 = { workspace = true }
 hmac = { workspace = true }
 jwt-simple = { workspace = true }
