@@ -43,6 +43,7 @@ digest = "0.10.7"
 generic-array = "0.14.7"
 getrandom = "0.3.3"
 getset = "0.1.6"
+hex = "0.4"
 hex-literal = "1.0.0"
 either = "1.11.0"
 itertools = "0.14.0"
@@ -83,6 +84,7 @@ tracing-profile = "0.10.9"
 trait-set = "0.3.0"
 uninit = "0.6.2"
 z3 = "0.13.3"
+ureq = "3.1"
 
 
 [workspace.lints.clippy]
