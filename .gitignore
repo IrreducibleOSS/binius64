@@ -14,3 +14,4 @@ CLAUDE.local.md
 perfetto_traces/
 *.perfetto-trace
 .last_perfetto_trace_path
+*.pending-snap

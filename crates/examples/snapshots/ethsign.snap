@@ -2,7 +2,7 @@ ethsign circuit
 --
 Number of gates: 264472
 Number of evaluation instructions: 310572
-Number of AND constraints: 359966
+Number of AND constraints: 246345
 Number of MUL constraints: 25458
 Length of value vec: 524288
   Constants: 82
