@@ -179,6 +179,48 @@ impl Shift {
 	pub fn is_none(&self) -> bool {
 		matches!(self, Self::None)
 	}
+
+	/// Try to compose two shift operations.
+	///
+	/// Returns None if the shifts are incompatible.
+	pub fn compose(lhs: Shift, rhs: Shift) -> Option<Self> {
+		match (lhs, rhs) {
+			(Shift::None, shift) | (shift, Shift::None) => Some(shift),
+			(Shift::Sll(a), Shift::Sll(b)) => {
+				// Left shift composition: shl(shl(x, a), b) = shl(x, a + b)
+				let combined = a + b;
+				if combined < 64 {
+					Some(Shift::Sll(combined))
+				} else {
+					None
+				}
+			}
+			(Shift::Srl(a), Shift::Srl(b)) => {
+				// Logical right shift composition: shr(shr(x, a), b) = shr(x, a + b)
+				let combined = a + b;
+				if combined < 64 {
+					Some(Shift::Srl(combined))
+				} else {
+					None
+				}
+			}
+			(Shift::Sar(a), Shift::Sar(b)) => {
+				// Arithmetic right shift composition
+				let combined = a + b;
+				if combined < 64 {
+					Some(Shift::Sar(combined))
+				} else {
+					None
+				}
+			}
+			(Shift::Rotr(a), Shift::Rotr(b)) => {
+				// Rotate right composition: rotr(rotr(x, a), b) = rotr(x, (a + b) % 64)
+				let combined = (a + b) % 64;
+				Some(Shift::Rotr(combined))
+			}
+			_ => None, // Different shift types are not composable
+		}
+	}
 }
 
 impl ShiftedWire {

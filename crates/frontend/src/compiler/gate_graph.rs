@@ -32,7 +32,7 @@ impl ConstPool {
 ///
 /// The difference from `ValueIndex` is that a wire is abstract. Some wires could be moved during
 /// compilation and some wires might be pruned altogether.
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug, PartialOrd, Ord)]
 pub struct Wire(u32);
 entity_impl!(Wire);
 

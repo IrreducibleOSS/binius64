@@ -59,7 +59,7 @@ impl Permutation {
 		}
 	}
 
-	fn keccak_permutation_round(b: &CircuitBuilder, state: &mut [Wire; 25], round: usize) {
+	pub fn keccak_permutation_round(b: &CircuitBuilder, state: &mut [Wire; 25], round: usize) {
 		Self::theta(b, state);
 		Self::rho_pi(b, state);
 		Self::chi(b, state);
