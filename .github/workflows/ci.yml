@@ -80,7 +80,9 @@ jobs:
             name: "x86_64"
         test:
           - name: "test"
-            command: "cargo nextest run --workspace --release --no-fail-fast"
+            command: |
+              cargo nextest run --workspace --release --no-fail-fast
+              cargo test --doc --workspace
             rustflags: "-C debug-assertions"
           - name: "test-all-features"
             command: |

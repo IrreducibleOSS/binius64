@@ -241,21 +241,21 @@ pub trait PackedField:
 	/// ## Examples
 	///
 	/// ```
-	/// use binius_field::{BinaryField16b, PackedField, PackedBinaryField8x16b};
+	/// use binius_field::{BinaryField1b, PackedField, PackedBinaryField8x1b};
 	///
 	/// let input =
-	///     PackedBinaryField8x16b::from_scalars([0, 1, 2, 3, 4, 5, 6, 7].map(BinaryField16b::new));
+	///     PackedBinaryField8x1b::from_scalars([0, 1, 0, 1, 0, 1, 0, 1].map(BinaryField1b::from));
 	/// assert_eq!(
-	///     input.spread(0, 5),
-	///     PackedBinaryField8x16b::from_scalars([5, 5, 5, 5, 5, 5, 5, 5].map(BinaryField16b::new))
+	///     input.spread(0, 1),
+	///     PackedBinaryField8x1b::from_scalars([1, 1, 1, 1, 1, 1, 1, 1].map(BinaryField1b::from))
 	/// );
 	/// assert_eq!(
-	///     input.spread(1, 2),
-	///     PackedBinaryField8x16b::from_scalars([4, 4, 4, 4, 5, 5, 5, 5].map(BinaryField16b::new))
+	///     input.spread(1, 0),
+	///     PackedBinaryField8x1b::from_scalars([0, 0, 0, 0, 1, 1, 1, 1].map(BinaryField1b::from))
 	/// );
 	/// assert_eq!(
-	///     input.spread(2, 1),
-	///     PackedBinaryField8x16b::from_scalars([4, 4, 5, 5, 6, 6, 7, 7].map(BinaryField16b::new))
+	///     input.spread(2, 0),
+	///     PackedBinaryField8x1b::from_scalars([0, 0, 1, 1, 0, 0, 1, 1].map(BinaryField1b::from))
 	/// );
 	/// assert_eq!(input.spread(3, 0), input);
 	/// ```
