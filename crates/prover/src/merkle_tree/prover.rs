@@ -3,29 +3,35 @@
 use binius_field::Field;
 use binius_transcript::{BufMut, TranscriptWriter};
 use binius_utils::rayon::iter::IndexedParallelIterator;
-use binius_verifier::{
-	hash::PseudoCompressionFunction,
-	merkle_tree::{BinaryMerkleTreeScheme, Commitment, Error},
-};
+use binius_verifier::merkle_tree::{BinaryMerkleTreeScheme, Commitment, Error};
 use digest::{FixedOutputReset, Output, core_api::BlockSizeUser};
 use getset::Getters;
 
 use super::MerkleTreeProver;
 use crate::{
-	hash::ParallelDigest,
+	hash::{ParallelDigest, parallel_compression::ParallelPseudoCompression},
 	merkle_tree::binary_merkle_tree::{self, BinaryMerkleTree},
 };
 
 #[derive(Debug, Getters)]
-pub struct BinaryMerkleTreeProver<T, H: ParallelDigest, C> {
+pub struct BinaryMerkleTreeProver<T, H: ParallelDigest, C>
+where
+	C: ParallelPseudoCompression<Output<H::Digest>, 2>,
+{
 	#[getset(get = "pub")]
-	scheme: BinaryMerkleTreeScheme<T, H::Digest, C>,
+	scheme: BinaryMerkleTreeScheme<T, H::Digest, C::Compression>,
+	parallel_compression: C,
 }
 
-impl<T, C, H: ParallelDigest> BinaryMerkleTreeProver<T, H, C> {
-	pub fn new(compression: C) -> Self {
+impl<T, C, H: ParallelDigest> BinaryMerkleTreeProver<T, H, C>
+where
+	C: ParallelPseudoCompression<Output<H::Digest>, 2>,
+	C::Compression: Clone,
+{
+	pub fn new(parallel_compression: C) -> Self {
 		Self {
-			scheme: BinaryMerkleTreeScheme::new(compression),
+			scheme: BinaryMerkleTreeScheme::new(parallel_compression.compression().clone()),
+			parallel_compression,
 		}
 	}
 }
@@ -34,9 +40,9 @@ impl<F, H, C> MerkleTreeProver<F> for BinaryMerkleTreeProver<F, H, C>
 where
 	F: Field,
 	H: ParallelDigest<Digest: BlockSizeUser + FixedOutputReset>,
-	C: PseudoCompressionFunction<Output<H::Digest>, 2> + Sync,
+	C: ParallelPseudoCompression<Output<H::Digest>, 2>,
 {
-	type Scheme = BinaryMerkleTreeScheme<F, H::Digest, C>;
+	type Scheme = BinaryMerkleTreeScheme<F, H::Digest, C::Compression>;
 	type Committed = BinaryMerkleTree<Output<H::Digest>>;
 
 	fn scheme(&self) -> &Self::Scheme {
@@ -49,7 +55,7 @@ where
 		batch_size: usize,
 	) -> Result<(Commitment<Output<H::Digest>>, Self::Committed), Error> {
 		let tree =
-			binary_merkle_tree::build::<_, H, _>(self.scheme.compression(), data, batch_size)?;
+			binary_merkle_tree::build::<_, H, _>(&self.parallel_compression, data, batch_size)?;
 
 		let commitment = Commitment {
 			root: tree.root(),
@@ -91,8 +97,8 @@ where
 	where
 		ParIter: IndexedParallelIterator<Item: IntoIterator<Item = F>>,
 	{
-		let tree = binary_merkle_tree::build_from_iterator::<F, H, C, _>(
-			self.scheme.compression(),
+		let tree = binary_merkle_tree::build_from_iterator::<F, H, _, _>(
+			&self.parallel_compression,
 			iterated_chunks,
 			log_len,
 		)?;

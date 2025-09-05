@@ -835,6 +835,43 @@ impl PlatformDiagnostics {
 			has_feature_mismatches: has_mismatches,
 		}
 	}
+
+	/// Generate a feature suffix for benchmark names based on platform diagnostics
+	#[must_use]
+	pub fn get_feature_suffix(&self) -> String {
+		let mut suffix_parts = Vec::new();
+
+		// Threading - check if rayon feature is enabled
+		#[cfg(feature = "rayon")]
+		suffix_parts.push("mt");
+		#[cfg(not(feature = "rayon"))]
+		suffix_parts.push("st");
+
+		// Architecture
+		#[cfg(target_arch = "x86_64")]
+		{
+			suffix_parts.push("x86");
+			// Add key features based on compile-time features
+			#[cfg(target_feature = "gfni")]
+			suffix_parts.push("gfni");
+			#[cfg(target_feature = "avx512f")]
+			suffix_parts.push("avx512");
+			#[cfg(all(not(target_feature = "avx512f"), target_feature = "avx2"))]
+			suffix_parts.push("avx2");
+		}
+
+		#[cfg(target_arch = "aarch64")]
+		{
+			suffix_parts.push("arm64");
+			// Check for NEON and AES
+			#[cfg(all(target_feature = "neon", target_feature = "aes"))]
+			suffix_parts.push("neon_aes");
+			#[cfg(all(target_feature = "neon", not(target_feature = "aes")))]
+			suffix_parts.push("neon");
+		}
+
+		suffix_parts.join("_")
+	}
 }
 
 pub struct PlatformSummary {

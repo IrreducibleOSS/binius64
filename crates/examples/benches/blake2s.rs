@@ -17,35 +17,6 @@ use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_m
 
 const DEFAULT_MAX_BYTES: usize = 2048 * 64; // 2048 blocks × 64 bytes/block = 131,072 bytes
 
-fn get_feature_suffix(_diagnostics: &PlatformDiagnostics) -> String {
-	let mut suffix_parts = vec![];
-
-	// Add architecture
-	#[cfg(target_arch = "x86_64")]
-	{
-		suffix_parts.push("x86_64");
-		// Add key features based on compile-time features
-		#[cfg(target_feature = "gfni")]
-		suffix_parts.push("gfni");
-		#[cfg(target_feature = "avx512f")]
-		suffix_parts.push("avx512");
-		#[cfg(all(not(target_feature = "avx512f"), target_feature = "avx2"))]
-		suffix_parts.push("avx2");
-	}
-
-	#[cfg(target_arch = "aarch64")]
-	{
-		suffix_parts.push("arm64");
-		// Check for NEON and AES
-		#[cfg(all(target_feature = "neon", target_feature = "aes"))]
-		suffix_parts.push("neon_aes");
-		#[cfg(all(target_feature = "neon", not(target_feature = "aes")))]
-		suffix_parts.push("neon");
-	}
-
-	suffix_parts.join("_")
-}
-
 /// Benchmark Blake2s hash circuit
 fn bench_blake2s_hash(c: &mut Criterion) {
 	// Get maximum message size from environment or use default
@@ -84,12 +55,15 @@ fn bench_blake2s_hash(c: &mut Criterion) {
 	circuit.populate_wire_witness(&mut filler).unwrap();
 	let witness = filler.into_value_vec();
 
-	let feature_suffix = get_feature_suffix(&diagnostics);
+	let feature_suffix = diagnostics.get_feature_suffix();
 
 	// Benchmark 1: Witness generation
 	{
 		let mut group = c.benchmark_group("blake2s_witness_generation");
 		group.throughput(Throughput::Bytes(max_bytes as u64));
+		group.warm_up_time(std::time::Duration::from_secs(2));
+		group.measurement_time(std::time::Duration::from_secs(120));
+		group.sample_size(50);
 
 		let bench_name = format!("bytes_{}_{}", max_bytes, feature_suffix);
 		group.bench_with_input(BenchmarkId::from_parameter(&bench_name), &max_bytes, |b, _| {
@@ -110,8 +84,9 @@ fn bench_blake2s_hash(c: &mut Criterion) {
 	{
 		let mut group = c.benchmark_group("blake2s_proof_generation");
 		group.throughput(Throughput::Bytes(max_bytes as u64));
-		group.measurement_time(std::time::Duration::from_secs(120)); // 120 seconds measurement time
-		group.sample_size(100); // Keep 100 samples
+		group.warm_up_time(std::time::Duration::from_secs(2));
+		group.measurement_time(std::time::Duration::from_secs(120));
+		group.sample_size(50);
 
 		let bench_name = format!("bytes_{}_{}", max_bytes, feature_suffix);
 		group.bench_with_input(BenchmarkId::from_parameter(&bench_name), &max_bytes, |b, _| {
@@ -137,6 +112,9 @@ fn bench_blake2s_hash(c: &mut Criterion) {
 	{
 		let mut group = c.benchmark_group("blake2s_proof_verification");
 		group.throughput(Throughput::Bytes(max_bytes as u64));
+		group.warm_up_time(std::time::Duration::from_secs(2));
+		group.measurement_time(std::time::Duration::from_secs(120));
+		group.sample_size(50);
 
 		let bench_name = format!("bytes_{}_{}", max_bytes, feature_suffix);
 		group.bench_with_input(BenchmarkId::from_parameter(&bench_name), &max_bytes, |b, _| {

@@ -3,7 +3,10 @@
 use std::iter::repeat_with;
 
 use binius_field::Random;
-use binius_prover::merkle_tree::{MerkleTreeProver, prover::BinaryMerkleTreeProver};
+use binius_prover::{
+	hash::parallel_compression::ParallelCompressionAdaptor,
+	merkle_tree::{MerkleTreeProver, prover::BinaryMerkleTreeProver},
+};
 use binius_verifier::{
 	config::B128,
 	hash::{StdCompression, StdDigest},
@@ -21,7 +24,8 @@ where
 	H: binius_prover::hash::ParallelDigest<Digest: BlockSizeUser + FixedOutputReset>,
 	C: binius_verifier::hash::PseudoCompressionFunction<Output<H::Digest>, 2> + Sync,
 {
-	let merkle_prover = BinaryMerkleTreeProver::<_, H, C>::new(compression);
+	let parallel_compression = ParallelCompressionAdaptor::new(compression);
+	let merkle_prover = BinaryMerkleTreeProver::<_, H, _>::new(parallel_compression);
 	let mut rng = rand::rng();
 	let data = repeat_with(|| F::random(&mut rng))
 		.take(1 << (LOG_ELEMS + LOG_ELEMS_IN_LEAF))

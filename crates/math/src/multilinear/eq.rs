@@ -19,6 +19,10 @@ use crate::{Error, FieldBuffer};
 /// Let $v$ be a vector corresponding to the first $2^n$ scalar values of `values`.
 /// Let $r = (r_0, \ldots, r_{k-1})$ be the vector of `extra_query_coordinates`.
 ///
+/// # Precondition:
+/// * `values` must be zero-extended to the new log length before calling this function. This
+///   condition is necessary to get the best performance.
+///
 /// # Formal Definition
 /// `values` is updated to contain the result of:
 /// $v \otimes (1 - r_0, r_0) \otimes \ldots \otimes (1 - r_{k-1}, r_{k-1})$
@@ -32,7 +36,7 @@ use crate::{Error, FieldBuffer};
 /// Then `values` is updated to contain the evaluations of $g$ over the $n+k$-dimensional
 /// hypercube where
 /// * $g(x_0, \ldots, x_{n+k-1}) = f(x_0, \ldots, x_{n-1}) * eq(x_n, \ldots, x_{n+k-1}, r)$
-pub fn tensor_prod_eq_ind<P: PackedField, Data: DerefMut<Target = [P]>>(
+fn tensor_prod_eq_ind<P: PackedField, Data: DerefMut<Target = [P]>>(
 	values: &mut FieldBuffer<P, Data>,
 	extra_query_coordinates: &[P::Scalar],
 ) -> Result<(), Error> {
@@ -48,7 +52,7 @@ pub fn tensor_prod_eq_ind<P: PackedField, Data: DerefMut<Target = [P]>>(
 	for &r_i in extra_query_coordinates {
 		let packed_r_i = P::broadcast(r_i);
 
-		values.zero_extend(values.log_len() + 1)?;
+		values.resize(values.log_len() + 1)?;
 		let mut split = values
 			.split_half_mut_no_closure()
 			.expect("doubled by zero_extend()");

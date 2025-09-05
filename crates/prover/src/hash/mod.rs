@@ -1,3 +1,4 @@
+pub mod parallel_compression;
 pub mod parallel_digest;
 
 pub mod vision_4;

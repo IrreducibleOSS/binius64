@@ -7,7 +7,8 @@ use binius_math::{
 	test_utils::{random_field_buffer, random_scalars},
 };
 use binius_prover::{
-	fri, fri::CommitOutput, merkle_tree::prover::BinaryMerkleTreeProver, pcs::OneBitPCSProver,
+	fri, fri::CommitOutput, hash::parallel_compression::ParallelCompressionAdaptor,
+	merkle_tree::prover::BinaryMerkleTreeProver, pcs::OneBitPCSProver,
 };
 use binius_transcript::ProverTranscript;
 use binius_verifier::{
@@ -34,8 +35,8 @@ fn bench_pcs(c: &mut Criterion) {
 		let mut rng = rand::rng();
 		let packed_multilin = random_field_buffer::<P>(&mut rng, log_len);
 
-		let merkle_prover =
-			BinaryMerkleTreeProver::<B128, StdDigest, _>::new(StdCompression::default());
+		let compression = ParallelCompressionAdaptor::new(StdCompression::default());
+		let merkle_prover = BinaryMerkleTreeProver::<B128, StdDigest, _>::new(compression);
 
 		let subspace =
 			BinarySubspace::<B128>::with_dim(log_len).expect("Failed to create subspace");

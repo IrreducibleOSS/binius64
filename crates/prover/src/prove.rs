@@ -25,7 +25,6 @@ use binius_verifier::{
 	config::{
 		B1, B128, LOG_WORD_SIZE_BITS, LOG_WORDS_PER_ELEM, PROVER_SMALL_FIELD_ZEROCHECK_CHALLENGES,
 	},
-	hash::PseudoCompressionFunction,
 	protocols::{intmul::IntMulOutput, sumcheck::SumcheckOutput},
 };
 use digest::{Digest, FixedOutputReset, Output, core_api::BlockSizeUser};
@@ -36,7 +35,7 @@ use crate::{
 	and_reduction::{prover::OblongZerocheckProver, utils::multivariate::OneBitOblongMultilinear},
 	fri,
 	fri::CommitOutput,
-	hash::ParallelDigest,
+	hash::{ParallelDigest, parallel_compression::ParallelPseudoCompression},
 	merkle_tree::prover::BinaryMerkleTreeProver,
 	pcs::OneBitPCSProver,
 	protocols::{
@@ -53,27 +52,33 @@ use crate::{
 /// given constraint system. Then [`Self::prove`] is called one or more times with individual
 /// instances.
 #[derive(Debug)]
-pub struct Prover<P, MerkleCompress, ParallelMerkleHasher: ParallelDigest> {
+pub struct Prover<P, ParallelMerkleCompress, ParallelMerkleHasher: ParallelDigest>
+where
+	ParallelMerkleCompress: ParallelPseudoCompression<Output<ParallelMerkleHasher::Digest>, 2>,
+{
 	key_collection: KeyCollection,
-	verifier: Verifier<ParallelMerkleHasher::Digest, MerkleCompress>,
+	verifier: Verifier<ParallelMerkleHasher::Digest, ParallelMerkleCompress::Compression>,
 	ntt: NeighborsLastMultiThread<GenericPreExpanded<B128>>,
-	merkle_prover: BinaryMerkleTreeProver<B128, ParallelMerkleHasher, MerkleCompress>,
+	merkle_prover: BinaryMerkleTreeProver<B128, ParallelMerkleHasher, ParallelMerkleCompress>,
 	_p_marker: PhantomData<P>,
 }
 
-impl<P, MerkleHash, MerkleCompress, ParallelMerkleHasher>
-	Prover<P, MerkleCompress, ParallelMerkleHasher>
+impl<P, MerkleHash, ParallelMerkleCompress, ParallelMerkleHasher>
+	Prover<P, ParallelMerkleCompress, ParallelMerkleHasher>
 where
 	P: PackedField<Scalar = B128> + PackedExtension<B128> + PackedExtension<B1>,
 	MerkleHash: Digest + BlockSizeUser + FixedOutputReset,
 	ParallelMerkleHasher: ParallelDigest<Digest = MerkleHash>,
-	MerkleCompress: PseudoCompressionFunction<Output<MerkleHash>, 2> + Sync,
+	ParallelMerkleCompress: ParallelPseudoCompression<Output<MerkleHash>, 2>,
 	Output<MerkleHash>: SerializeBytes,
 {
 	/// Constructs a prover corresponding to a constraint system verifier.
 	///
 	/// See [`Prover`] struct documentation for details.
-	pub fn setup(verifier: Verifier<MerkleHash, MerkleCompress>) -> Result<Self, Error> {
+	pub fn setup(
+		verifier: Verifier<MerkleHash, ParallelMerkleCompress::Compression>,
+		compression: ParallelMerkleCompress,
+	) -> Result<Self, Error> {
 		let key_collection = build_key_collection(verifier.constraint_system());
 
 		let subspace = verifier.fri_params().rs_code().subspace();
@@ -87,9 +92,7 @@ where
 			log_num_shares,
 		};
 
-		let merkle_prover = BinaryMerkleTreeProver::<_, ParallelMerkleHasher, _>::new(
-			verifier.merkle_scheme().compression().clone(),
-		);
+		let merkle_prover = BinaryMerkleTreeProver::<_, ParallelMerkleHasher, _>::new(compression);
 
 		Ok(Prover {
 			key_collection,
@@ -275,27 +278,33 @@ fn pack_witness<P: PackedField<Scalar = B128>>(
 		});
 	}
 
-	let mut padded_witness_elems = FieldBuffer::zeros(log_witness_elems);
-	let witness_elems = witness
-		.combined_witness()
-		.par_chunks(2 * P::WIDTH)
-		.map(|chunk| {
-			// Pack B128 elements into packed elements
-			P::from_scalars(
-				// Pack words into B128 elements
-				chunk.chunks(2).map(|word_pair| {
-					let word_0 = word_pair.first().copied().expect("chunk cannot be empty");
-					let word_1 = word_pair.get(1).copied().unwrap_or(Word::ZERO);
-					B128::new(((word_1.0 as u128) << 64) | (word_0.0 as u128))
-				}),
-			)
-		});
-	padded_witness_elems
-		.as_mut()
-		.par_iter_mut()
-		.zip(witness_elems)
-		.for_each(|(dst, elem)| *dst = elem);
+	let len = 1 << log_witness_elems.saturating_sub(P::LOG_WIDTH);
+	let mut padded_witness_elems = Vec::<P>::with_capacity(len);
 
+	let combined_witness = witness.combined_witness();
+	padded_witness_elems
+		.spare_capacity_mut()
+		.into_par_iter()
+		.enumerate()
+		.for_each(|(i, dst)| {
+			// Pack B128 elements into packed elements
+			let offset = i << (P::LOG_WIDTH + 1);
+			let value = P::from_fn(|j| {
+				let word_0 = combined_witness[offset + 2 * j];
+				let word_1 = combined_witness[offset + 2 * j + 1];
+				B128::new(((word_1.0 as u128) << 64) | (word_0.0 as u128))
+			});
+
+			dst.write(value);
+		});
+
+	// SAFETY: We just initialized all elements
+	unsafe {
+		padded_witness_elems.set_len(len);
+	};
+
+	let padded_witness_elems =
+		FieldBuffer::new(log_witness_elems, padded_witness_elems.into_boxed_slice())?;
 	Ok(padded_witness_elems)
 }
 
