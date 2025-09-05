@@ -182,6 +182,10 @@ impl ExampleCircuit for EthSignExample {
 
 		Ok(())
 	}
+
+	fn param_summary(params: &Self::Params) -> Option<String> {
+		Some(format!("{}s-{}b", params.n_signatures, params.max_msg_len_bytes))
+	}
 }
 
 fn assert_address_eq(b: &CircuitBuilder, digest: &[Wire], address: &[Wire]) {

@@ -144,7 +144,7 @@ where
 		transcript: &mut VerifierTranscript<Challenger_>,
 	) -> Result<(), Error> {
 		let _verify_guard =
-			tracing::info_span!("verify", operation = "verify", perfetto_category = "operation")
+			tracing::info_span!("Verify", operation = "verify", perfetto_category = "operation")
 				.entered();
 
 		// Check that the public input length is correct

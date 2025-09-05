@@ -1,245 +1,573 @@
 #!/usr/bin/env python3
-"""
-Benchmark runner for Monbijou CI/CD pipeline.
-Handles multiple benchmarks with different threading and fusion configurations.
-"""
+"""Benchmark runner for Binius64 with perfetto tracing support."""
 
+import argparse
 import json
 import os
+import platform
 import subprocess
 import sys
+from dataclasses import dataclass, field, asdict
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Any, Tuple
-import argparse
+from typing import Dict, List, Optional, NamedTuple
+
+from perfetto.trace_processor import TraceProcessor
+import socket
 
 
-# Benchmark configuration table
-# Format: (name, example, args, enabled)
-BENCHMARKS = [
-    ("sha256", "sha256", "--max-len-bytes 65536", True),
-    ("zklogin", "zklogin", "", True),
-    ("base64", "base64", "--max-len 32768", False),
-    ("skein512", "skein512", "--max-len 16384", False),
-    ("keccak256", "keccak256", "--max-len 32768", False),
-]
+class Example(NamedTuple):
+    """Benchmark example configuration."""
 
-# Execution configurations: (name, env_vars)
-CONFIGS = [
-    ("multi-fusion", {"RAYON_NUM_THREADS": "0", "MONBIJOU_FUSION": "1"}),
-    ("multi", {"RAYON_NUM_THREADS": "0"}),  # No fusion
-    ("single-fusion", {"RAYON_NUM_THREADS": "1", "MONBIJOU_FUSION": "1"}),
-    ("single", {"RAYON_NUM_THREADS": "1"}),  # No fusion
-]
+    name: str
+    example: str
+    args: str = ""
 
 
-def run_command(cmd: str, env: Dict[str, str]) -> Tuple[int, str]:
-    """Execute a command and return (exit_code, output)."""
-    result = subprocess.run(
-        cmd, shell=True, env={**os.environ, **env}, capture_output=True, text=True
+class OperationTiming(NamedTuple):
+    """Timing data for a single operation."""
+
+    name: str
+    duration_ns: int
+
+    @property
+    def duration_ms(self) -> float:
+        return self.duration_ns / 1_000_000
+
+
+@dataclass
+class TraceMetrics:
+    """Metrics extracted from a single trace file."""
+
+    iteration: int
+    witness_ms: float = 0
+    prove_ms: float = 0
+    verify_ms: float = 0
+    proof_size_bytes: int = 0
+    trace_file: str = ""
+
+    @classmethod
+    def from_operations(
+        cls, iteration: int, operations: List[OperationTiming], trace_file: str = ""
+    ):
+        # The OperationTiming.name field now contains the operation name from debug.operation if available
+        # We already handled this in extract_trace_metrics
+        ops = {op.name.lower(): op.duration_ms for op in operations}
+
+        # Look for operations - the actual names from debug.operation field or span names
+        # The debug.operation values are: witness_generation, prove, verify
+        witness_ms = ops.get("witness_generation", 0) or ops.get(
+            "generating witness", 0
+        )
+        prove_ms = ops.get("prove", 0) or ops.get("proving", 0)
+        verify_ms = (
+            ops.get("verify", 0)
+            or ops.get("verification", 0)
+            or ops.get("verifying", 0)
+        )
+
+        return cls(
+            iteration=iteration,
+            witness_ms=witness_ms,
+            prove_ms=prove_ms,
+            verify_ms=verify_ms,
+            trace_file=trace_file,
+        )
+
+
+@dataclass
+class AggregateMetrics:
+    """Aggregated metrics across multiple runs."""
+
+    avg_witness_ms: float
+    avg_prove_ms: float
+    avg_verify_ms: float
+    avg_proof_size_bytes: float
+
+    @classmethod
+    def from_traces(cls, traces: List[TraceMetrics]):
+        if not traces:
+            return cls(0, 0, 0, 0)
+
+        n = len(traces)
+        return cls(
+            avg_witness_ms=sum(t.witness_ms for t in traces) / n,
+            avg_prove_ms=sum(t.prove_ms for t in traces) / n,
+            avg_verify_ms=sum(t.verify_ms for t in traces) / n,
+            avg_proof_size_bytes=sum(t.proof_size_bytes for t in traces) / n,
+        )
+
+
+@dataclass
+class BenchmarkResult:
+    """Complete benchmark result."""
+
+    benchmark: str
+    parameters: str = ""
+    timestamp: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
-    output = result.stdout + result.stderr
-    print(output)
-    return result.returncode, output
+    git_commit: str = ""
+    git_commit_time: str = ""
+    git_branch: str = ""
+    env_os: str = field(default_factory=lambda: platform.system().lower())
+    env_arch: str = field(default_factory=lambda: platform.machine())
+    env_cpu_count: int = field(default_factory=lambda: os.cpu_count() or 1)
+    iterations: int = 0
+    log_inv_rate: int = 1
+    timings: dict = field(default_factory=dict)
 
 
-def move_traces(benchmark_name: str, run_id: str, mode: str, run_num: int):
-    """Move perfetto trace files to organized directory structure."""
-    traces_dir = Path("perfetto_traces")
-    target_dir = traces_dir / benchmark_name / run_id
-    target_dir.mkdir(parents=True, exist_ok=True)
+# Benchmark configurations
+EXAMPLES = [
+    Example("sha256", "sha256", "--max-len-bytes 65536"),
+    Example("sha512", "sha512", "--max-len-bytes 98304"),
+    Example("keccak", "keccak", "--n-permutations 1500"),
+    Example("ethsign", "ethsign", "--n-signatures 6 --max-msg-len-bytes 128"),
+    Example("blake2s", "blake2s", "--max-bytes 131072"),
+]
 
-    # Find and move trace files
-    for trace_file in traces_dir.glob("*.perfetto-trace"):
-        new_name = f"{mode}-run{run_num}-{trace_file.name}"
-        trace_file.rename(target_dir / new_name)
+CONFIGS = {
+    "single": {"RAYON_NUM_THREADS": "1", "PERFETTO_TRACE_THREADS": "single-threaded"},
+    "single-fusion": {
+        "RAYON_NUM_THREADS": "1",
+        "MONBIJOU_FUSION": "1",
+        "PERFETTO_TRACE_THREADS": "single-threaded",
+        "PERFETTO_TRACE_FUSION": "fusion",
+    },
+    "multi": {"RAYON_NUM_THREADS": "0", "PERFETTO_TRACE_THREADS": "multi-threaded"},
+    "multi-fusion": {
+        "RAYON_NUM_THREADS": "0",
+        "MONBIJOU_FUSION": "1",
+        "PERFETTO_TRACE_THREADS": "multi-threaded",
+        "PERFETTO_TRACE_FUSION": "fusion",
+    },
+}
+
+
+def run_command(cmd: str, env: Dict[str, str]) -> int:
+    """Execute a command with given environment."""
+    full_env = {"RUSTFLAGS": "-C target-cpu=native", **os.environ, **env}
+    print(f"  Command: {cmd}")
+    return subprocess.run(cmd, shell=True, env=full_env).returncode
+
+
+def normalize_trace_dir_path(trace_dir: Path) -> str:
+    """Normalize trace directory path by removing perfetto_traces/ prefix if present."""
+    trace_path_str = str(trace_dir)
+    if "perfetto_traces/" in trace_path_str:
+        return trace_path_str.split("perfetto_traces/", 1)[1]
+    return trace_path_str
+
+
+def get_trace_dir() -> Optional[Path]:
+    """Read the last perfetto trace directory."""
+    trace_path_file = Path(".last_perfetto_trace_path")
+    if not trace_path_file.exists():
+        return None
+
+    trace_path = Path(trace_path_file.read_text().strip())
+    if not trace_path.exists():
+        return None
+
+    return trace_path.parent if trace_path.is_file() else trace_path
+
+
+def extract_trace_metrics(trace_file: Path) -> Optional[TraceMetrics]:
+    """Extract metrics from a perfetto trace file."""
+    # Add file existence check
+    if not trace_file.exists():
+        print(f"    Warning: Trace file does not exist: {trace_file.name}")
+        return None
+
+    try:
+        tp = TraceProcessor(trace=str(trace_file))
+
+        # Query for operation timings
+        operation_query = """
+            SELECT
+                s.name,
+                s.dur as duration_ns,
+                a.string_value as operation
+            FROM slice s
+            LEFT JOIN args a ON s.arg_set_id = a.arg_set_id AND a.key = 'debug.operation'
+            WHERE s.category = 'operation'
+            ORDER BY s.ts
+        """
+
+        result = tp.query(operation_query)
+        # Use the operation field if available, otherwise fall back to name
+        operations = [
+            OperationTiming(
+                row.operation if row.operation else row.name, row.duration_ns
+            )
+            for row in result
+        ]
+
+        # Query for proof size from metrics events
+        proof_size_query = """
+            SELECT
+                a.int_value as proof_size_bytes
+            FROM slice s
+            JOIN args a ON s.arg_set_id = a.arg_set_id
+            WHERE s.name = 'proof_size' AND a.key = 'debug.proof_size_bytes'
+            LIMIT 1
+        """
+
+        proof_result = list(tp.query(proof_size_query))
+        proof_size_bytes = (
+            proof_result[0].proof_size_bytes if len(proof_result) > 0 else 0
+        )
+
+        # Extract iteration from filename
+        iteration = 1
+        try:
+            if "-iter" in trace_file.name:
+                filename_parts = trace_file.name.split("-iter")
+                if len(filename_parts) > 1:
+                    iter_part = filename_parts[1].split("-")[0]
+                    if iter_part.isdigit():
+                        iteration = int(iter_part)
+        except (ValueError, IndexError):
+            pass  # Default to iteration 1
+
+        metrics = TraceMetrics.from_operations(iteration, operations, trace_file.name)
+        metrics.proof_size_bytes = proof_size_bytes
+        return metrics
+
+    except Exception as e:
+        print(f"    Error processing {trace_file.name}: {e}")
+        return None
+
+
+def get_git_info() -> dict:
+    """Get git information for the current repository."""
+    try:
+
+        def run(cmd):
+            return subprocess.run(cmd, capture_output=True, text=True).stdout.strip()
+
+        commit = run(["git", "rev-parse", "HEAD"])
+        return {
+            "commit": commit[:7],
+            "commit_time": run(["git", "show", "-s", "--format=%cI", commit]),
+            "branch": run(["git", "rev-parse", "--abbrev-ref", "HEAD"]),
+        }
+    except Exception:
+        return {"commit": "", "commit_time": "", "branch": ""}
+
+
+def post_process_traces(
+    trace_dir: Path, example_name: str = "", example_args: str = ""
+) -> Optional[BenchmarkResult]:
+    """Post-process perfetto traces in a directory."""
+    print(f"  Processing traces in {trace_dir}")
+
+    trace_files = list(trace_dir.glob("*.perfetto-trace"))
+    if not trace_files:
+        print("    No trace files found")
+        return None
+
+    print(f"    Found {len(trace_files)} trace files")
+
+    # Extract metrics
+    trace_metrics = sorted(
+        filter(None, (extract_trace_metrics(f) for f in trace_files)),
+        key=lambda x: x.iteration,
+    )
+
+    if not trace_metrics:
+        print("    No valid metrics extracted")
+        return None
+
+    # Use actual command arguments instead of extracting from filename
+    parameters = example_args
+
+    # Build result
+    aggregate = AggregateMetrics.from_traces(trace_metrics)
+    git_info = get_git_info()
+
+    result = BenchmarkResult(
+        benchmark=example_name or "unknown",
+        parameters=parameters,
+        git_commit=git_info["commit"],
+        git_commit_time=git_info["commit_time"],
+        git_branch=git_info["branch"],
+        iterations=len(trace_metrics),
+        timings={
+            "aggregate": {
+                "avg_witness_ms": aggregate.avg_witness_ms,
+                "avg_prove_ms": aggregate.avg_prove_ms,
+                "avg_verify_ms": aggregate.avg_verify_ms,
+                "avg_proof_size_bytes": aggregate.avg_proof_size_bytes,
+            },
+            "all_runs": [
+                {
+                    "iteration": t.iteration,
+                    "witness_ms": t.witness_ms,
+                    "prove_ms": t.prove_ms,
+                    "verify_ms": t.verify_ms,
+                    "proof_size_bytes": t.proof_size_bytes,
+                    "trace_file": t.trace_file,
+                }
+                for t in trace_metrics
+            ],
+        },
+    )
+
+    # Save metrics to trace directory (critical missing feature)
+    metrics_file = trace_dir / "metrics.json"
+    # Store trace_dir relative to perfetto_traces (e.g., "sha256/20250903-032211-80a3f42")
+    trace_dir_relative = normalize_trace_dir_path(trace_dir)
+    result_dict = {**asdict(result), "trace_dir": trace_dir_relative}
+    metrics_file.write_text(json.dumps(result_dict, indent=2))
+    print(f"    Metrics saved to {metrics_file}")
+
+    return result
+
+
+def create_summary_entries(
+    example_name: str, results: List[dict], machine_id: str
+) -> List[dict]:
+    """Create flat summary entries for an example across all configurations."""
+    summary_entries = []
+    git_info = get_git_info()
+    timestamp = datetime.now(timezone.utc).isoformat()
+
+    # Create platform identifier
+    platform_id = f"{platform.system().lower()}-{platform.machine()}"
+
+    for r in results:
+        if r.get("metrics") and hasattr(r["metrics"], "timings"):
+            config_name = r["config"]
+            aggregate = r["metrics"].timings.get("aggregate", {})
+            parameters = (
+                r["metrics"].parameters if hasattr(r["metrics"], "parameters") else ""
+            )
+
+            # Get trace_dir from metrics - it's stored as an attribute
+            trace_dir = getattr(r["metrics"], "trace_dir", "")
+
+            # Get individual trace file paths from all_runs
+            trace_files = []
+            if "all_runs" in r["metrics"].timings:
+                for run in r["metrics"].timings["all_runs"]:
+                    if "trace_file" in run and run["trace_file"]:
+                        # Construct the full relative path
+                        if trace_dir:
+                            trace_path = f"{trace_dir}/{run['trace_file']}"
+                        else:
+                            trace_path = run["trace_file"]
+                        trace_files.append(trace_path)
+
+            # Parse config name to extract threading and fusion settings
+            is_multi = "multi" in config_name
+            has_fusion = "fusion" in config_name
+
+            entry = {
+                # Core metrics
+                "avg_witness_ms": aggregate.get("avg_witness_ms", 0),
+                "avg_prove_ms": aggregate.get("avg_prove_ms", 0),
+                "avg_verify_ms": aggregate.get("avg_verify_ms", 0),
+                "avg_proof_size_bytes": aggregate.get("avg_proof_size_bytes", 0),
+                # Configuration
+                "fusion": has_fusion,
+                "threading": "multi" if is_multi else "single",
+                # Identification
+                "machine": machine_id,
+                "circuit": example_name,  # Using "circuit" for consistency
+                "parameters": parameters,
+                # Git info
+                "git_commit": git_info["commit"],
+                "git_commit_time": git_info["commit_time"],
+                "git_branch": git_info["branch"],
+                # Environment
+                "platform": platform_id,
+                # Timing
+                "run_timestamp": timestamp,
+                "iterations": r["metrics"].iterations
+                if hasattr(r["metrics"], "iterations")
+                else r.get("repeat", 5),
+                # Trace paths
+                "trace_files": trace_files,
+                "trace_dir": trace_dir,
+            }
+            summary_entries.append(entry)
+
+    return summary_entries
 
 
 def run_benchmark(
-    name: str, example: str, args: str, num_runs: int, run_id: str, log_dir: Path
-) -> Dict[str, Any]:
-    """Run a single benchmark with all configurations."""
-    results = {"name": name, "runs": []}
-    # Add -- separator before args
-    command = f"cargo run --release --features perfetto --example {example} --"
+    example: Example, config_name: str, env: Dict[str, str], repeat: int = 5
+) -> dict:
+    """Run a single benchmark configuration."""
+    print(f"\n{'=' * 60}")
+    print(f"Running {example.name} ({config_name})")
+    print(f"{'=' * 60}")
 
-    for config_name, env_vars in CONFIGS:
-        print(f"\n{'=' * 60}")
-        print(f"Running {name} ({config_name})")
-        print(f"{'=' * 60}")
+    # Clean up old trace path
+    Path(".last_perfetto_trace_path").unlink(missing_ok=True)
 
-        log_file = log_dir / f"{name}_{config_name}.log"
+    # Build and run command
+    cmd = f"cargo run --release --features perfetto --example {example.example} -- --repeat {repeat}"
+    if example.args:
+        cmd += f" {example.args}"
 
-        with open(log_file, "w") as log:
-            for run in range(1, num_runs + 1):
-                print(f"\n>>> {name} {config_name} run {run}/{num_runs}")
+    exit_code = run_command(cmd, env)
 
-                # Add standard env vars
-                env = {
-                    **env_vars,
-                    "RUSTFLAGS": "-C target-cpu=native",
-                    "PERFETTO_TRACE_DIR": "./perfetto_traces",
-                    "PERFETTO_PLATFORM_NAME": os.environ.get(
-                        "PERFETTO_PLATFORM_NAME", "unknown"
-                    ),
-                }
+    # Process traces
+    trace_dir = get_trace_dir()
+    metrics = (
+        post_process_traces(trace_dir, example.name, example.args)
+        if trace_dir
+        else None
+    )
 
-                # Run the benchmark
-                full_command = f"{command} {args}".strip() if args else command
-                exit_code, output = run_command(full_command, env)
+    if not metrics:
+        print("  Warning: Could not find trace directory")
 
-                # Log output
-                log.write(f"=== Run {run}/{num_runs} ===\n")
-                log.write(output)
-                log.write("\n")
+    # Add trace_dir to metrics if available
+    if metrics and trace_dir:
+        metrics.trace_dir = normalize_trace_dir_path(trace_dir)
 
-                # Move trace files
-                move_traces(name, run_id, config_name, run)
-
-                results["runs"].append(
-                    {"config": config_name, "run": run, "exit_code": exit_code}
-                )
-
-                if exit_code != 0:
-                    print(f"Warning: Benchmark failed with exit code {exit_code}")
-
-    return results
-
-
-def generate_stats(benchmarks: List[Tuple[str, str, str, bool]]) -> Path:
-    """Generate circuit statistics for all benchmarks."""
-    import re
-
-    stats_file = Path("circuit_stats.md")
-
-    with open(stats_file, "w") as f:
-        f.write("## Circuit Statistics\n\n")
-
-        for name, example, args, enabled in benchmarks:
-            if not enabled:
-                continue
-
-            # Generate stats without fusion
-            f.write(f"### {name} Circuit Statistics\n\n")
-            f.write("#### Without Fusion\n")
-            f.write("```\n")
-
-            stat_args = f"stat {args}" if args else "stat"
-            stat_cmd = f"cargo run --release --example {example} -- {stat_args} 2>&1"
-            env = {"RUSTFLAGS": "-C target-cpu=native"}
-            exit_code, output = run_command(stat_cmd, env)
-
-            if exit_code == 0:
-                # Remove ANSI escape codes and filter out compilation messages
-                clean_output = re.sub(r"\x1b\[[0-9;]*m", "", output)
-                # Only keep lines that look like statistics (not compilation output)
-                stat_lines = []
-                for line in clean_output.split("\n"):
-                    if not any(
-                        x in line
-                        for x in ["Compiling", "Finished", "Running", "target/release"]
-                    ):
-                        if line.strip():
-                            stat_lines.append(line)
-                f.write("\n".join(stat_lines))
-            else:
-                f.write(f"Stats not available for {name}\n")
-
-            f.write("\n```\n\n")
-
-            # Generate stats with fusion
-            f.write("#### With Fusion\n")
-            f.write("```\n")
-
-            env_fusion = {"RUSTFLAGS": "-C target-cpu=native", "MONBIJOU_FUSION": "1"}
-            exit_code, output = run_command(stat_cmd, env_fusion)
-
-            if exit_code == 0:
-                # Remove ANSI escape codes and filter out compilation messages
-                clean_output = re.sub(r"\x1b\[[0-9;]*m", "", output)
-                stat_lines = []
-                for line in clean_output.split("\n"):
-                    if not any(
-                        x in line
-                        for x in ["Compiling", "Finished", "Running", "target/release"]
-                    ):
-                        if line.strip():
-                            stat_lines.append(line)
-                f.write("\n".join(stat_lines))
-            else:
-                f.write(f"Stats not available for {name} with fusion\n")
-
-            f.write("\n```\n\n")
-
-    return stats_file
+    return {
+        "example": example.name,
+        "config": config_name,
+        "exit_code": exit_code,
+        "repeat": repeat,
+        "metrics": metrics,
+    }
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run Monbijou benchmarks")
-    parser.add_argument(
-        "--runs", type=int, default=1, help="Number of runs per configuration"
+    parser = argparse.ArgumentParser(
+        description="Run Binius64 benchmarks with perfetto tracing"
     )
-    parser.add_argument("--run-id", required=True, help="Unique run identifier")
     parser.add_argument(
-        "--generate-stats", action="store_true", help="Generate circuit statistics"
+        "examples", nargs="*", help="Specific examples to run (default: all)"
     )
-    parser.add_argument("--filter", help="Run only specific benchmark by name")
+    parser.add_argument(
+        "--repeat", type=int, default=5, help="Number of iterations (default: 5)"
+    )
+    parser.add_argument("--list", action="store_true", help="List available examples")
+    parser.add_argument(
+        "--extract-only",
+        type=str,
+        metavar="PATH",
+        help="Extract metrics from existing traces",
+    )
 
     args = parser.parse_args()
 
-    # Filter benchmarks
-    benchmarks = [(n, e, a, en) for n, e, a, en in BENCHMARKS if en]
-    if args.filter:
-        benchmarks = [(n, e, a, en) for n, e, a, en in benchmarks if n == args.filter]
+    # Handle special modes
+    if args.list:
+        print("Available examples:")
+        for ex in EXAMPLES:
+            print(f"  {ex.name:12} (example: {ex.example}, args: {ex.args or 'none'})")
+        return 0
 
-    if not benchmarks:
-        print("No benchmarks to run")
-        return
+    if args.extract_only:
+        trace_dir = Path(args.extract_only)
+        if not trace_dir.is_dir():
+            print(f"Error: Not a directory: {trace_dir}")
+            return 1
+        post_process_traces(trace_dir)
+        return 0
 
-    print(f"Running {len(benchmarks)} benchmark(s):")
-    for name, example, args_str, _ in benchmarks:
-        print(f"  - {name:12} (example: {example}, args: {args_str or 'none'})")
+    # Select examples
+    examples = EXAMPLES
+    if args.examples:
+        examples = [ex for ex in EXAMPLES if ex.name in args.examples]
+        if not examples:
+            print("Error: No matching examples found. Use --list to see available.")
+            return 1
 
-    print(f"\nConfigurations: {', '.join(c[0] for c in CONFIGS)}")
-    print(f"Runs per config: {args.runs}")
+    # Display configuration
+    print(f"Running {len(examples)} example(s) with {len(CONFIGS)} configurations")
+    print(f"Iterations per benchmark: {args.repeat}\n")
+    print("Examples:", ", ".join(ex.name for ex in examples))
+    print("Configurations:", ", ".join(CONFIGS.keys()))
 
-    # Setup directories
-    log_dir = Path("benchmark_logs")
-    log_dir.mkdir(exist_ok=True)
-    Path("perfetto_traces").mkdir(exist_ok=True)
+    # Setup output directory
+    summaries_dir = Path("benchmark_summaries")
+    summaries_dir.mkdir(exist_ok=True)
 
     # Run benchmarks
-    all_results = []
-    for name, example, args_str, _ in benchmarks:
-        results = run_benchmark(
-            name, example, args_str, args.runs, args.run_id, log_dir
-        )
-        all_results.append(results)
+    # Add time to the filename for uniqueness
+    datetime_str = datetime.now().strftime("%Y%m%d-%H%M%S")
 
-    # Generate stats if requested
-    if args.generate_stats:
-        stats_file = generate_stats(benchmarks)
-        print(f"\nGenerated circuit statistics: {stats_file}")
+    # Respect PERFETTO_PLATFORM_NAME if set, otherwise use hostname
+    platform_name = os.environ.get("PERFETTO_PLATFORM_NAME")
+    if platform_name:
+        # Use platform name from environment (e.g., "c7i-16xlarge" in CI)
+        machine_id = platform_name
+    else:
+        # Use hostname for local runs - simplify it
+        hostname = socket.gethostname().split(".")[0]
+        # Further simplify hostname - remove common prefixes/suffixes
+        if hostname.lower().endswith("-pro"):
+            hostname = hostname[:-4]
+        if hostname.lower().endswith("-macbook"):
+            hostname = hostname[:-8]
+        machine_id = hostname
 
-    # Write results summary
-    results_file = Path("benchmark_results.json")
-    with open(results_file, "w") as f:
-        json.dump(all_results, f, indent=2)
+    all_entries = []
+    failed_runs = []
 
-    print(f"\nBenchmark results saved to: {results_file}")
+    for example in examples:
+        results = []
+        example_failed = False
 
-    # Check for failures
-    failed = []
-    for result in all_results:
-        for run in result["runs"]:
-            if run["exit_code"] != 0:
-                failed.append(f"{result['name']} {run['config']} run {run['run']}")
+        # Run all configurations for this example
+        for config_name, env in CONFIGS.items():
+            result = run_benchmark(example, config_name, env, args.repeat)
+            results.append(result)
 
-    if failed:
-        print("\nWarning: The following runs failed:")
-        for f in failed:
-            print(f"  - {f}")
-        sys.exit(1)
+            if result["exit_code"] != 0:
+                failed_runs.append(f"{example.name} ({config_name})")
+                example_failed = True
+
+        # Save summary immediately after finishing all configs for this example
+        if not example_failed:
+            # Create flat entries for this example
+            entries = create_summary_entries(example.name, results, machine_id)
+            if entries:
+                all_entries.extend(entries)
+
+                # Sort all entries by git commit time (newest first)
+                # Handle cases where git_commit_time might be empty or invalid
+                all_entries.sort(
+                    key=lambda x: x.get("git_commit_time") or "", reverse=True
+                )
+
+                # Save individual example summary as flat array
+                # Simplified filename: example-datetime-machine
+                filename = f"{example.name}-{datetime_str}-{machine_id}.json"
+                example_only_entries = [
+                    e for e in entries
+                ]  # Just this example's entries
+                (summaries_dir / filename).write_text(
+                    json.dumps(example_only_entries, indent=2)
+                )
+                print(f"\n  Saved {example.name} summary: {summaries_dir / filename}")
+
+                # Update and save overall summary with all examples completed so far
+                overall_file = f"benchmark-results-{datetime_str}-{machine_id}.json"
+                (summaries_dir / overall_file).write_text(
+                    json.dumps(all_entries, indent=2)
+                )
+                print(f"  Updated overall summary: {summaries_dir / overall_file}")
+
+    # Final report
+    if failed_runs:
+        print(f"\nFailed runs: {', '.join(failed_runs)}")
+        return 1
+
+    print(f"\n{'=' * 60}")
+    print(f"All benchmarks completed! Summaries in: {summaries_dir}")
+    print("=" * 60)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -5,6 +5,10 @@ use binius_core::constraint_system::{ValueVec, ValuesData};
 use binius_frontend::{compiler::CircuitBuilder, stat::CircuitStat};
 use binius_utils::serialization::SerializeBytes;
 use clap::{Arg, Args, Command, FromArgMatches, Subcommand};
+#[allow(unused_imports)] // Used in #[cfg(not(feature = "perfetto"))] blocks
+use tracing_profile::init_tracing;
+#[cfg(feature = "perfetto")]
+use tracing_profile::{TraceFilenameBuilder, init_tracing_with_builder};
 
 use crate::{ExampleCircuit, prove_verify, setup};
 
@@ -63,6 +67,10 @@ enum Commands {
 		/// Log of the inverse rate for the proof system
 		#[arg(short = 'l', long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..))]
 		log_inv_rate: u32,
+
+		/// Number of times to run the benchmark (default: 1 for no repetition)
+		#[arg(long, default_value = "1")]
+		repeat: usize,
 
 		#[command(flatten)]
 		params: CommandArgs,
@@ -126,9 +134,21 @@ struct CommandArgs {
 
 impl<E: ExampleCircuit> Cli<E>
 where
-	E::Params: Args,
-	E::Instance: Args,
+	E::Params: Args + Clone,
+	E::Instance: Args + Clone,
 {
+	/// Common arguments for prove operation
+	fn common_prove_args() -> Vec<Arg> {
+		vec![
+			Arg::new("repeat")
+				.long("repeat")
+				.value_name("COUNT")
+				.help("Number of times to run the benchmark (default: 1 for no repetition)")
+				.default_value("1")
+				.value_parser(clap::value_parser!(usize)),
+		]
+	}
+
 	/// Create a new CLI for the given circuit example.
 	///
 	/// The `name` parameter sets the command name (shown in help and usage).
@@ -187,6 +207,12 @@ where
 					.default_value("1")
 					.value_parser(clap::value_parser!(u32).range(1..)),
 			);
+
+		// Add common prove arguments
+		for arg in Self::common_prove_args() {
+			cmd = cmd.arg(arg);
+		}
+
 		cmd = E::Params::augment_args(cmd);
 		cmd = E::Instance::augment_args(cmd);
 		cmd
@@ -270,11 +296,21 @@ where
 		self
 	}
 
+	/// Enable repeat functionality with --repeat argument.
+	pub fn with_repeat(mut self) -> Self {
+		// Add common prove arguments to top-level command for default prove behavior
+		for arg in Self::common_prove_args() {
+			self.command = self.command.arg(arg);
+		}
+
+		self
+	}
+
 	/// Run the circuit with parsed ArgMatches (implementation).
 	fn run_with_matches_impl(matches: clap::ArgMatches, circuit_name: &str) -> Result<()> {
 		// Check if a subcommand was used
 		match matches.subcommand() {
-			Some(("prove", sub_matches)) => Self::run_prove(sub_matches.clone()),
+			Some(("prove", sub_matches)) => Self::run_prove(sub_matches.clone(), circuit_name),
 			Some(("stat", sub_matches)) => Self::run_stat(sub_matches.clone()),
 			Some(("composition", sub_matches)) => Self::run_composition(sub_matches.clone()),
 			Some(("check-snapshot", sub_matches)) => {
@@ -287,21 +323,87 @@ where
 			Some((cmd, _)) => anyhow::bail!("Unknown subcommand: {}", cmd),
 			None => {
 				// No subcommand - default to prove behavior for backward compatibility
-				Self::run_prove(matches)
+				Self::run_prove(matches, circuit_name)
 			}
 		}
 	}
 
-	fn run_prove(matches: clap::ArgMatches) -> Result<()> {
+	fn run_prove(matches: clap::ArgMatches, #[allow(unused)] circuit_name: &str) -> Result<()> {
 		// Extract common arguments
 		let log_inv_rate = *matches
 			.get_one::<u32>("log_inv_rate")
 			.expect("has default value");
 
+		// Check for repeat argument
+		let repeat_count = matches.get_one::<usize>("repeat").copied().unwrap_or(1);
+
 		// Parse Params and Instance from matches
 		let params = E::Params::from_arg_matches(&matches)?;
 		let instance = E::Instance::from_arg_matches(&matches)?;
 
+		// Generate base builder once for this session
+		#[cfg(feature = "perfetto")]
+		let perfetto_path_builder = {
+			let mut builder = TraceFilenameBuilder::for_benchmark(circuit_name)
+				.output_dir("perfetto_traces")
+				.subdir(circuit_name)
+				.subdir_run_id()
+				.timestamp() // Add timestamp for uniqueness
+				.git_info() // Include git status
+				.platform(); // Include OS info
+
+			// Add parameter summary if available
+			if let Some(param_summary) = E::param_summary(&params) {
+				builder = builder.add("params", param_summary);
+			}
+
+			// Add custom fields from environment variables if they exist
+			builder = builder
+				.add_from_env("threads", "PERFETTO_TRACE_THREADS")
+				.add_from_env("fusion", "PERFETTO_TRACE_FUSION");
+
+			builder
+		};
+
+		if repeat_count > 1 {
+			// Run multiple iterations with separate trace files
+			for i in 1..=repeat_count {
+				let _tracing_guard = {
+					#[cfg(feature = "perfetto")]
+					{
+						let perfetto_path = perfetto_path_builder.clone().iteration(i);
+						init_tracing_with_builder(perfetto_path).ok()
+					}
+					#[cfg(not(feature = "perfetto"))]
+					{
+						init_tracing().ok()
+					}
+				};
+
+				println!("Running iteration {}/{}...", i, repeat_count);
+				Self::run_single_prove(log_inv_rate, params.clone(), instance.clone())?;
+			}
+			println!("Done.");
+			Ok(())
+		} else {
+			// Single run
+			let _tracing_guard = {
+				#[cfg(feature = "perfetto")]
+				{
+					let perfetto_path = perfetto_path_builder.clone();
+					init_tracing_with_builder(perfetto_path)?
+				}
+				#[cfg(not(feature = "perfetto"))]
+				{
+					init_tracing()?
+				}
+			};
+
+			Self::run_single_prove(log_inv_rate, params, instance)
+		}
+	}
+
+	fn run_single_prove(log_inv_rate: u32, params: E::Params, instance: E::Instance) -> Result<()> {
 		// Build the circuit
 		let build_scope = tracing::info_span!("Building circuit").entered();
 		let mut builder = CircuitBuilder::new();
@@ -314,7 +416,12 @@ where
 		let (verifier, prover) = setup(cs, log_inv_rate as usize)?;
 
 		// Population of the input to the witness and then evaluating the circuit.
-		let witness_population = tracing::info_span!("Generating witness").entered();
+		let witness_population = tracing::info_span!(
+			"Generating witness",
+			operation = "witness_generation",
+			perfetto_category = "operation"
+		)
+		.entered();
 		let mut filler = circuit.new_witness_filler();
 		tracing::info_span!("Input population")
 			.in_scope(|| example.populate_witness(instance, &mut filler))?;

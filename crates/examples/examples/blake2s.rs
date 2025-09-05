@@ -14,7 +14,7 @@ struct Blake2sExample {
 }
 
 /// Circuit parameters that affect structure (compile-time configuration)
-#[derive(Args, Debug)]
+#[derive(Args, Debug, Clone)]
 struct Params {
 	/// Maximum message length in bytes that the circuit can handle.
 	#[arg(long, default_value_t = 128)]
@@ -22,7 +22,7 @@ struct Params {
 }
 
 /// Instance data for witness population (runtime values)
-#[derive(Args, Debug)]
+#[derive(Args, Debug, Clone)]
 #[group(multiple = false)]
 struct Instance {
 	/// Length of the randomly generated message, in bytes (defaults to half of --max-message-len).
@@ -85,11 +85,9 @@ impl ExampleCircuit for Blake2sExample {
 }
 
 fn main() -> Result<()> {
-	let _tracing_guard = tracing_profile::init_tracing()?;
-
-	// Create and run the CLI
 	Cli::<Blake2sExample>::new("blake2s")
 		.about("Blake2s hash function circuit example")
+		.with_repeat()
 		.long_about(
 			"Blake2s cryptographic hash function circuit implementation.\n\
             \n\

@@ -80,4 +80,8 @@ impl ExampleCircuit for KeccakExample {
 
 		Ok(())
 	}
+
+	fn param_summary(params: &Self::Params) -> Option<String> {
+		Some(format!("{}p", params.n_permutations))
+	}
 }
