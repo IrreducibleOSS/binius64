@@ -14,9 +14,6 @@ pub const N_WORDS_PER_STATE: usize = 25;
 pub const RATE_BYTES: usize = 136;
 pub const N_WORDS_PER_BLOCK: usize = RATE_BYTES / 8;
 
-// Semantic constants for hash output sizes
-pub const KECCAK256_OUTPUT_BYTES: usize = N_WORDS_PER_DIGEST * 8;
-
 /// Keccak-256 circuit that can handle variable-length inputs up to a specified maximum length.
 ///
 /// # Arguments
@@ -52,15 +49,6 @@ impl Keccak {
 		message: Vec<Wire>,
 	) -> Self {
 		let max_len_bytes = message.len() << 3;
-
-		assert!(!message.is_empty(), "Keccak message wires cannot be empty");
-		assert!(
-			max_len_bytes > 0,
-			"Keccak max message length must be > 0, got {} bytes from {} wires",
-			max_len_bytes,
-			message.len()
-		);
-
 		// number of blocks needed for the maximum sized message
 		let n_blocks = (max_len_bytes + 1).div_ceil(RATE_BYTES);
 
@@ -248,14 +236,11 @@ impl Keccak {
 	/// * w - The witness filler to populate
 	/// * message_bytes - The input message as a byte slice
 	pub fn populate_message(&self, w: &mut WitnessFiller<'_>, message_bytes: &[u8]) {
-		let max_capacity = self.max_len_bytes();
 		assert!(
-			message_bytes.len() <= max_capacity,
-			"Message length {} exceeds maximum capacity {} (allocated {} wires × 8 = {} bytes)",
+			message_bytes.len() <= self.max_len_bytes(),
+			"Message length {} exceeds maximum {}",
 			message_bytes.len(),
-			max_capacity,
-			self.message.len(),
-			self.message.len() * 8
+			self.max_len_bytes()
 		);
 
 		// populate message words from input bytes
