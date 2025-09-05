@@ -27,7 +27,6 @@ pub struct Keccak {
 	pub digest: [Wire; N_WORDS_PER_DIGEST],
 	pub message: Vec<Wire>,
 	pub padded_message: Vec<Wire>,
-	n_blocks: usize,
 }
 
 impl Keccak {
@@ -268,12 +267,16 @@ impl Keccak {
 			digest,
 			message,
 			padded_message,
-			n_blocks,
 		}
 	}
 
 	pub fn max_len_bytes(&self) -> usize {
 		self.message.len() << 3
+	}
+
+	/// Returns the number of Keccak rate blocks needed for the padded message.
+	fn n_blocks(&self) -> usize {
+		self.padded_message.len() / N_WORDS_PER_BLOCK
 	}
 
 	/// Populates the witness with the actual message length
@@ -319,7 +322,7 @@ impl Keccak {
 			&self.message,
 			&self.padded_message,
 			max_len_bytes,
-			self.n_blocks,
+			self.n_blocks(),
 		);
 	}
 }
