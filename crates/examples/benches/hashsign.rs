@@ -2,7 +2,7 @@ use std::env;
 
 use binius_examples::{
 	ExampleCircuit,
-	circuits::keccak::{Instance, KeccakExample, Params},
+	circuits::hashsign::{HashBasedSigExample, Instance, Params},
 	setup,
 };
 use binius_frontend::compiler::CircuitBuilder;
@@ -13,28 +13,45 @@ use binius_verifier::{
 };
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 
-fn bench_keccak_permutations(c: &mut Criterion) {
-	// Parse n_permutations from environment variable or use default
-	let n_permutations = env::var("KECCAK_PERMUTATIONS")
+fn bench_hashsign(c: &mut Criterion) {
+	// Parse parameters from environment variables or use defaults
+	let num_validators = env::var("HASHSIGN_VALIDATORS")
 		.ok()
 		.and_then(|s| s.parse::<usize>().ok())
-		.unwrap_or(1365);
+		.unwrap_or(4);
+
+	let tree_height = env::var("HASHSIGN_TREE_HEIGHT")
+		.ok()
+		.and_then(|s| s.parse::<usize>().ok())
+		.unwrap_or(13);
+
+	let spec = env::var("HASHSIGN_SPEC")
+		.ok()
+		.and_then(|s| s.parse::<u8>().ok())
+		.unwrap_or(2);
 
 	// Gather and print comprehensive platform diagnostics
 	let diagnostics = PlatformDiagnostics::gather();
 	diagnostics.print();
 
 	// Print benchmark-specific parameters
-	println!("\nKeccak Benchmark Parameters:");
-	println!("  Permutations: {}", n_permutations);
-	println!("=======================================\n");
+	println!("\nHashsign Benchmark Parameters:");
+	println!("  Validators: {}", num_validators);
+	println!("  Tree height: {} (2^{} = {} slots)", tree_height, tree_height, 1 << tree_height);
+	println!("  Winternitz spec: {}", spec);
+	println!("  Message size: 32 bytes (fixed)");
+	println!("=========================================\n");
 
-	let params = Params { n_permutations };
+	let params = Params {
+		num_validators,
+		tree_height,
+		spec,
+	};
 	let instance = Instance {};
 
 	// Setup phase - do this once outside the benchmark loop
 	let mut builder = CircuitBuilder::new();
-	let example = KeccakExample::build(params.clone(), &mut builder).unwrap();
+	let example = HashBasedSigExample::build(params.clone(), &mut builder).unwrap();
 	let circuit = builder.build();
 	let cs = circuit.constraint_system().clone();
 	let (verifier, prover) = setup(cs, 1).unwrap();
@@ -48,16 +65,17 @@ fn bench_keccak_permutations(c: &mut Criterion) {
 	let witness = filler.into_value_vec();
 
 	let feature_suffix = diagnostics.get_feature_suffix();
+	let bench_name =
+		format!("validators_{}_tree_{}_{}", num_validators, tree_height, feature_suffix);
 
 	// Measure witness generation time
 	{
-		let mut group = c.benchmark_group("keccak_witness_generation");
-		group.throughput(Throughput::Elements(n_permutations as u64));
-		group.warm_up_time(std::time::Duration::from_secs(2));
-		group.measurement_time(std::time::Duration::from_secs(120));
-		group.sample_size(50);
+		let mut group = c.benchmark_group("hashsign_witness_generation");
+		group.throughput(Throughput::Elements(num_validators as u64));
+		group.warm_up_time(std::time::Duration::from_millis(100));
+		group.measurement_time(std::time::Duration::from_secs(10));
+		group.sample_size(10);
 
-		let bench_name = format!("n_{}_{}", n_permutations, feature_suffix);
 		group.bench_function(BenchmarkId::from_parameter(&bench_name), |b| {
 			b.iter(|| {
 				let mut filler = circuit.new_witness_filler();
@@ -74,13 +92,12 @@ fn bench_keccak_permutations(c: &mut Criterion) {
 
 	// Measure proof generation time
 	{
-		let mut group = c.benchmark_group("keccak_proof_generation");
-		group.throughput(Throughput::Elements(n_permutations as u64));
-		group.warm_up_time(std::time::Duration::from_secs(2));
-		group.measurement_time(std::time::Duration::from_secs(120));
-		group.sample_size(50);
+		let mut group = c.benchmark_group("hashsign_proof_generation");
+		group.throughput(Throughput::Elements(num_validators as u64));
+		group.warm_up_time(std::time::Duration::from_millis(100));
+		group.measurement_time(std::time::Duration::from_secs(10));
+		group.sample_size(10);
 
-		let bench_name = format!("n_{}_{}", n_permutations, feature_suffix);
 		group.bench_function(BenchmarkId::from_parameter(&bench_name), |b| {
 			b.iter(|| {
 				let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
@@ -104,13 +121,12 @@ fn bench_keccak_permutations(c: &mut Criterion) {
 
 	// Measure proof verification time
 	{
-		let mut group = c.benchmark_group("keccak_proof_verification");
-		group.throughput(Throughput::Elements(n_permutations as u64));
-		group.warm_up_time(std::time::Duration::from_secs(2));
-		group.measurement_time(std::time::Duration::from_secs(120));
-		group.sample_size(50);
+		let mut group = c.benchmark_group("hashsign_proof_verification");
+		group.throughput(Throughput::Elements(num_validators as u64));
+		group.warm_up_time(std::time::Duration::from_millis(100));
+		group.measurement_time(std::time::Duration::from_secs(10));
+		group.sample_size(10);
 
-		let bench_name = format!("n_{}_{}", n_permutations, feature_suffix);
 		group.bench_function(BenchmarkId::from_parameter(&bench_name), |b| {
 			b.iter(|| {
 				let mut verifier_transcript =
@@ -126,8 +142,11 @@ fn bench_keccak_permutations(c: &mut Criterion) {
 	}
 
 	// Report proof size
-	println!("\nKeccak proof size for {} permutations: {} bytes", n_permutations, proof_size);
+	println!(
+		"\nHashsign proof size for {} validators (tree height {}): {} bytes",
+		num_validators, tree_height, proof_size
+	);
 }
 
-criterion_group!(keccak, bench_keccak_permutations);
-criterion_main!(keccak);
+criterion_group!(hashsign, bench_hashsign);
+criterion_main!(hashsign);

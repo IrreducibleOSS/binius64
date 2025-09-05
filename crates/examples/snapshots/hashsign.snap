@@ -1,4 +1,4 @@
-hash_based_sig circuit
+hashsign circuit
 --
 Number of gates: 3986883
 Number of evaluation instructions: 4076982

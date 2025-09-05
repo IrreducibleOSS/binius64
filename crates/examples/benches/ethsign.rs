@@ -13,42 +13,6 @@ use binius_verifier::{
 };
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 
-/// Generate a feature suffix for benchmark names based on platform diagnostics
-fn get_feature_suffix(_diagnostics: &PlatformDiagnostics) -> String {
-	let mut suffix_parts = Vec::new();
-
-	// Threading - check if rayon feature is enabled
-	#[cfg(feature = "rayon")]
-	suffix_parts.push("mt");
-	#[cfg(not(feature = "rayon"))]
-	suffix_parts.push("st");
-
-	// Architecture
-	#[cfg(target_arch = "x86_64")]
-	{
-		suffix_parts.push("x86");
-		// Add key features based on compile-time features
-		#[cfg(target_feature = "gfni")]
-		suffix_parts.push("gfni");
-		#[cfg(target_feature = "avx512f")]
-		suffix_parts.push("avx512");
-		#[cfg(all(not(target_feature = "avx512f"), target_feature = "avx2"))]
-		suffix_parts.push("avx2");
-	}
-
-	#[cfg(target_arch = "aarch64")]
-	{
-		suffix_parts.push("arm64");
-		// Check for NEON and AES
-		#[cfg(all(target_feature = "neon", target_feature = "aes"))]
-		suffix_parts.push("neon_aes");
-		#[cfg(all(target_feature = "neon", not(target_feature = "aes")))]
-		suffix_parts.push("neon");
-	}
-
-	suffix_parts.join("_")
-}
-
 fn bench_ethsign_signatures(c: &mut Criterion) {
 	// Parse parameters from environment variables or use defaults
 	let n_signatures = env::var("ETHSIGN_SIGNATURES")
@@ -92,15 +56,18 @@ fn bench_ethsign_signatures(c: &mut Criterion) {
 	circuit.populate_wire_witness(&mut filler).unwrap();
 	let witness = filler.into_value_vec();
 
-	let feature_suffix = get_feature_suffix(&diagnostics);
+	let feature_suffix = diagnostics.get_feature_suffix();
 	let bench_name = format!("sig_{}_msg_{}_{}", n_signatures, max_msg_len_bytes, feature_suffix);
 
 	// Measure witness generation time
 	{
 		let mut group = c.benchmark_group("ethsign_witness_generation");
 		group.throughput(Throughput::Elements(n_signatures as u64));
+		group.warm_up_time(std::time::Duration::from_secs(2));
+		group.measurement_time(std::time::Duration::from_secs(120));
+		group.sample_size(50);
 
-		group.bench_with_input(BenchmarkId::from_parameter(&bench_name), &bench_name, |b, _| {
+		group.bench_function(BenchmarkId::from_parameter(&bench_name), |b| {
 			b.iter(|| {
 				let mut filler = circuit.new_witness_filler();
 				example
@@ -118,8 +85,11 @@ fn bench_ethsign_signatures(c: &mut Criterion) {
 	{
 		let mut group = c.benchmark_group("ethsign_proof_generation");
 		group.throughput(Throughput::Elements(n_signatures as u64));
+		group.warm_up_time(std::time::Duration::from_secs(2));
+		group.measurement_time(std::time::Duration::from_secs(120));
+		group.sample_size(50);
 
-		group.bench_with_input(BenchmarkId::from_parameter(&bench_name), &bench_name, |b, _| {
+		group.bench_function(BenchmarkId::from_parameter(&bench_name), |b| {
 			b.iter(|| {
 				let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
 				prover
@@ -144,8 +114,11 @@ fn bench_ethsign_signatures(c: &mut Criterion) {
 	{
 		let mut group = c.benchmark_group("ethsign_proof_verification");
 		group.throughput(Throughput::Elements(n_signatures as u64));
+		group.warm_up_time(std::time::Duration::from_secs(2));
+		group.measurement_time(std::time::Duration::from_secs(120));
+		group.sample_size(50);
 
-		group.bench_with_input(BenchmarkId::from_parameter(&bench_name), &bench_name, |b, _| {
+		group.bench_function(BenchmarkId::from_parameter(&bench_name), |b| {
 			b.iter(|| {
 				let mut verifier_transcript =
 					VerifierTranscript::new(StdChallenger::default(), proof_bytes.clone());
