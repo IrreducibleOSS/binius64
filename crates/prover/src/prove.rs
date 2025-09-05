@@ -25,7 +25,6 @@ use binius_verifier::{
 	config::{
 		B1, B128, LOG_WORD_SIZE_BITS, LOG_WORDS_PER_ELEM, PROVER_SMALL_FIELD_ZEROCHECK_CHALLENGES,
 	},
-	hash::PseudoCompressionFunction,
 	protocols::{intmul::IntMulOutput, sumcheck::SumcheckOutput},
 };
 use digest::{Digest, FixedOutputReset, Output, core_api::BlockSizeUser};
@@ -36,7 +35,7 @@ use crate::{
 	and_reduction::{prover::OblongZerocheckProver, utils::multivariate::OneBitOblongMultilinear},
 	fri,
 	fri::CommitOutput,
-	hash::ParallelDigest,
+	hash::{ParallelDigest, parallel_compression::ParallelPseudoCompression},
 	merkle_tree::prover::BinaryMerkleTreeProver,
 	pcs::OneBitPCSProver,
 	protocols::{
@@ -53,27 +52,33 @@ use crate::{
 /// given constraint system. Then [`Self::prove`] is called one or more times with individual
 /// instances.
 #[derive(Debug)]
-pub struct Prover<P, MerkleCompress, ParallelMerkleHasher: ParallelDigest> {
+pub struct Prover<P, ParallelMerkleCompress, ParallelMerkleHasher: ParallelDigest>
+where
+	ParallelMerkleCompress: ParallelPseudoCompression<Output<ParallelMerkleHasher::Digest>, 2>,
+{
 	key_collection: KeyCollection,
-	verifier: Verifier<ParallelMerkleHasher::Digest, MerkleCompress>,
+	verifier: Verifier<ParallelMerkleHasher::Digest, ParallelMerkleCompress::Compression>,
 	ntt: NeighborsLastMultiThread<GenericPreExpanded<B128>>,
-	merkle_prover: BinaryMerkleTreeProver<B128, ParallelMerkleHasher, MerkleCompress>,
+	merkle_prover: BinaryMerkleTreeProver<B128, ParallelMerkleHasher, ParallelMerkleCompress>,
 	_p_marker: PhantomData<P>,
 }
 
-impl<P, MerkleHash, MerkleCompress, ParallelMerkleHasher>
-	Prover<P, MerkleCompress, ParallelMerkleHasher>
+impl<P, MerkleHash, ParallelMerkleCompress, ParallelMerkleHasher>
+	Prover<P, ParallelMerkleCompress, ParallelMerkleHasher>
 where
 	P: PackedField<Scalar = B128> + PackedExtension<B128> + PackedExtension<B1>,
 	MerkleHash: Digest + BlockSizeUser + FixedOutputReset,
 	ParallelMerkleHasher: ParallelDigest<Digest = MerkleHash>,
-	MerkleCompress: PseudoCompressionFunction<Output<MerkleHash>, 2> + Sync,
+	ParallelMerkleCompress: ParallelPseudoCompression<Output<MerkleHash>, 2>,
 	Output<MerkleHash>: SerializeBytes,
 {
 	/// Constructs a prover corresponding to a constraint system verifier.
 	///
 	/// See [`Prover`] struct documentation for details.
-	pub fn setup(verifier: Verifier<MerkleHash, MerkleCompress>) -> Result<Self, Error> {
+	pub fn setup(
+		verifier: Verifier<MerkleHash, ParallelMerkleCompress::Compression>,
+		compression: ParallelMerkleCompress,
+	) -> Result<Self, Error> {
 		let key_collection = build_key_collection(verifier.constraint_system());
 
 		let subspace = verifier.fri_params().rs_code().subspace();
@@ -87,9 +92,7 @@ where
 			log_num_shares,
 		};
 
-		let merkle_prover = BinaryMerkleTreeProver::<_, ParallelMerkleHasher, _>::new(
-			verifier.merkle_scheme().compression().clone(),
-		);
+		let merkle_prover = BinaryMerkleTreeProver::<_, ParallelMerkleHasher, _>::new(compression);
 
 		Ok(Prover {
 			key_collection,

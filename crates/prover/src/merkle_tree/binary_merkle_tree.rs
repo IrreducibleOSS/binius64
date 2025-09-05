@@ -1,6 +1,6 @@
 // Copyright 2024-2025 Irreducible Inc.
 
-use std::{array, fmt::Debug, mem::MaybeUninit};
+use std::{fmt::Debug, mem::MaybeUninit};
 
 use binius_field::Field;
 use binius_utils::{
@@ -9,10 +9,10 @@ use binius_utils::{
 	mem::slice_assume_init_mut,
 	rayon::{prelude::*, slice::ParallelSlice},
 };
-use binius_verifier::{hash::PseudoCompressionFunction, merkle_tree::Error};
+use binius_verifier::merkle_tree::Error;
 use digest::{FixedOutputReset, Output, crypto_common::BlockSizeUser};
 
-use crate::hash::ParallelDigest;
+use crate::hash::{ParallelDigest, parallel_compression::ParallelPseudoCompression};
 
 /// A binary Merkle tree that commits batches of vectors.
 ///
@@ -35,7 +35,7 @@ pub fn build<F, H, C>(
 where
 	F: Field,
 	H: ParallelDigest<Digest: BlockSizeUser + FixedOutputReset>,
-	C: PseudoCompressionFunction<Output<H::Digest>, 2> + Sync,
+	C: ParallelPseudoCompression<Output<H::Digest>, 2>,
 {
 	if !elements.len().is_multiple_of(batch_size) {
 		bail!(Error::IncorrectBatchSize);
@@ -64,7 +64,7 @@ fn internal_build<Digest, C>(
 ) -> Result<BinaryMerkleTree<Digest>, Error>
 where
 	Digest: Clone + Send + Sync,
-	C: PseudoCompressionFunction<Digest, 2> + Sync,
+	C: ParallelPseudoCompression<Digest, 2>,
 {
 	let total_length = (1 << (log_len + 1)) - 1;
 	let mut inner_nodes = Vec::with_capacity(total_length);
@@ -109,7 +109,7 @@ pub fn build_from_iterator<F, H, C, ParIter>(
 where
 	F: Field,
 	H: ParallelDigest<Digest: BlockSizeUser + FixedOutputReset>,
-	C: PseudoCompressionFunction<Output<H::Digest>, 2> + Sync,
+	C: ParallelPseudoCompression<Output<H::Digest>, 2>,
 	ParIter: IndexedParallelIterator<Item: IntoIterator<Item = F>>,
 {
 	internal_build(
@@ -161,14 +161,9 @@ impl<D: Clone> BinaryMerkleTree<D> {
 fn compress_layer<D, C>(compression: &C, prev_layer: &[D], next_layer: &mut [MaybeUninit<D>])
 where
 	D: Clone + Send + Sync,
-	C: PseudoCompressionFunction<D, 2> + Sync,
+	C: ParallelPseudoCompression<D, 2>,
 {
-	prev_layer
-		.par_chunks_exact(2)
-		.zip(next_layer.par_iter_mut())
-		.for_each(|(prev_pair, next_digest)| {
-			next_digest.write(compression.compress(array::from_fn(|i| prev_pair[i].clone())));
-		})
+	compression.parallel_compress(prev_layer, next_layer);
 }
 
 /// Hashes the elements in chunks of a vector into digests.
