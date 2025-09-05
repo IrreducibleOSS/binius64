@@ -5,7 +5,7 @@ use binius_field::{AESTowerField8b, BinaryField, Field};
 use binius_math::{
 	BinarySubspace, multilinear::eq::eq_ind_partial_eval, univariate::lagrange_evals,
 };
-use itertools::izip;
+use binius_utils::rayon::prelude::*;
 
 use super::{SHIFT_VARIANT_COUNT, error::Error, verify::OperatorData};
 use crate::config::{LOG_WORD_SIZE_BITS, WORD_SIZE_BITS};
@@ -83,14 +83,20 @@ pub fn evaluate_h_op<F: Field>(l_tilde: &[F], r_j: &[F], r_s: &[F]) -> [F; SHIFT
 /// $$
 /// This function computes this term from the three evaluations $h_{\text{op}}(r_j, r_s)$,
 /// as well as $r_x'$, $r_y$, and $r_s$ (or rather their expanded tensors).
+///
+/// Note: This function uses multithreading (par_iter), which is an exception to the general
+/// rule that the verifier should be single-threaded. The monster multilinear evaluation
+/// takes time linear in the size of the constraint system, so we use parallelization here
+/// to make the verifier performant on large constraint systems.
 fn evaluate_monster_multilinear_term_for_operand<F: Field>(
 	operands: Vec<&Operand>,
-	h_op_evals: [F; SHIFT_VARIANT_COUNT],
+	h_op_r_s_product: &[[F; 64]; SHIFT_VARIANT_COUNT],
 	r_x_prime_tensor: &[F],
 	r_y_tensor: &[F],
-	r_s_tensor: &[F],
 ) -> F {
-	izip!(operands, r_x_prime_tensor)
+	operands
+		.par_iter()
+		.zip(r_x_prime_tensor.par_iter())
 		.map(|(operand, &constraint_eval)| {
 			operand
 				.iter()
@@ -101,9 +107,8 @@ fn evaluate_monster_multilinear_term_for_operand<F: Field>(
 					     amount,
 					 }| {
 						constraint_eval
-							* h_op_evals[*shift_variant as usize]
+							* h_op_r_s_product[*shift_variant as usize][*amount]
 							* r_y_tensor[value_index.0 as usize]
-							* r_s_tensor[*amount]
 					},
 				)
 				.sum::<F>()
@@ -138,17 +143,27 @@ where
 	let l_tilde = lagrange_evals(&subspace, operator_data.r_zhat_prime);
 	let h_op_evals = evaluate_h_op(&l_tilde, r_j, r_s);
 
+	// Pre-expand tensor product of h_op_evals and r_s_tensor to reduce multiplications
+	let mut h_op_r_s_product = [[F::ZERO; 64]; SHIFT_VARIANT_COUNT];
+	for shift_variant in 0..SHIFT_VARIANT_COUNT {
+		for amount in 0..r_s_tensor.as_ref().len() {
+			h_op_r_s_product[shift_variant][amount] =
+				h_op_evals[shift_variant] * r_s_tensor.as_ref()[amount];
+		}
+	}
+
+	// Use parallelization for performance (see explanation in
+	// `evaluate_monster_multilinear_term_for_operand`)
 	let eval = operand_vecs
-		.into_iter()
+		.into_par_iter()
 		.enumerate()
 		.map(|(i, operand_vec)| {
 			operator_data.lambda.pow([i as u64 + 1])
 				* evaluate_monster_multilinear_term_for_operand(
 					operand_vec,
-					h_op_evals,
+					&h_op_r_s_product,
 					r_x_prime_tensor.as_ref(),
 					r_y_tensor.as_ref(),
-					r_s_tensor.as_ref(),
 				)
 		})
 		.sum();
