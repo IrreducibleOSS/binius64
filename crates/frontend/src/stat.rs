@@ -13,6 +13,7 @@ pub struct CircuitStat {
 	pub n_inout: usize,
 	pub n_witness: usize,
 	pub n_internal: usize,
+	pub n_scratch: usize,
 }
 
 impl CircuitStat {
@@ -28,6 +29,7 @@ impl CircuitStat {
 			n_inout: cs.value_vec_layout.n_inout,
 			n_witness: cs.value_vec_layout.n_witness,
 			n_internal: cs.value_vec_layout.n_internal,
+			n_scratch: cs.value_vec_layout.n_scratch,
 		}
 	}
 }
@@ -43,6 +45,7 @@ impl fmt::Display for CircuitStat {
 		writeln!(f, "  Inout: {}", self.n_inout)?;
 		writeln!(f, "  Witness: {}", self.n_witness)?;
 		writeln!(f, "  Internal: {}", self.n_internal)?;
+		writeln!(f, "  Scratch: {}", self.n_scratch)?;
 		Ok(())
 	}
 }
