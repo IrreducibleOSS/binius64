@@ -53,6 +53,16 @@ impl ExampleCircuit for HashBasedSigExample {
 	type Instance = Instance;
 
 	fn build(params: Params, builder: &mut CircuitBuilder) -> Result<Self> {
+		println!("Building HashBasedSigExample with parameters:");
+		println!("  num_validators: {}", params.num_validators);
+		println!(
+			"  tree_height: {} (2^{} = {} slots)",
+			params.tree_height,
+			params.tree_height,
+			1 << params.tree_height
+		);
+		println!("  spec: {}", params.spec);
+
 		let spec = match params.spec {
 			1 => WinternitzSpec::spec_1(),
 			2 => WinternitzSpec::spec_2(),
@@ -60,8 +70,8 @@ impl ExampleCircuit for HashBasedSigExample {
 		};
 
 		let tree_height = params.tree_height;
-		if tree_height >= 10 {
-			anyhow::bail!("tree_height {} exceeds the maximum supported height of 10", tree_height);
+		if tree_height > 31 {
+			anyhow::bail!("tree_height {} exceeds the maximum supported height of 31", tree_height);
 		}
 		let num_validators = params.num_validators;
 
@@ -123,7 +133,7 @@ impl ExampleCircuit for HashBasedSigExample {
 		let mut message_bytes = [0u8; 32];
 		rng.fill_bytes(&mut message_bytes);
 
-		// Safe because tree_height is validated to be < 10 in build()
+		// Safe because tree_height is validated to be <= 31 in build()
 		let epoch = rng.next_u32() % (1u32 << self.tree_height);
 
 		// Pack param_bytes (pad to match wire count)

@@ -118,8 +118,8 @@ impl ValidatorSignatureData {
 		tree_height: usize,
 	) -> Self {
 		assert!(
-			tree_height <= 10,
-			"Tree height {} exceeds maximum supported height of 10",
+			tree_height <= 31,
+			"Tree height {} exceeds maximum supported height of 31",
 			tree_height,
 		);
 
