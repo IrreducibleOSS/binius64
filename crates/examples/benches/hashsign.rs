@@ -108,6 +108,8 @@ fn bench_hashsign(c: &mut Criterion) {
 	{
 		let mut group = c.benchmark_group("hashsign_witness_generation");
 		group.throughput(Throughput::Elements(num_validators as u64));
+		group.warm_up_time(std::time::Duration::from_secs(2));
+		group.measurement_time(std::time::Duration::from_secs(120));
 
 		group.bench_with_input(BenchmarkId::from_parameter(&bench_name), &bench_name, |b, _| {
 			b.iter(|| {
@@ -127,19 +129,8 @@ fn bench_hashsign(c: &mut Criterion) {
 	{
 		let mut group = c.benchmark_group("hashsign_proof_generation");
 		group.throughput(Throughput::Elements(num_validators as u64));
-
-		// Add warm-up time and measurement configuration for better stability
-		group.warm_up_time(std::time::Duration::from_secs(5));
-
-		// Scale measurement time based on number of validators
-		// More validators need more time for stable measurements
-		let measurement_time = match num_validators {
-			1..=3 => std::time::Duration::from_secs(30),
-			4..=10 => std::time::Duration::from_secs(60),
-			_ => std::time::Duration::from_secs(120),
-		};
-		group.measurement_time(measurement_time);
-		group.sample_size(50);
+		group.warm_up_time(std::time::Duration::from_secs(2));
+		group.measurement_time(std::time::Duration::from_secs(120));
 
 		group.bench_with_input(BenchmarkId::from_parameter(&bench_name), &bench_name, |b, _| {
 			b.iter(|| {
@@ -166,6 +157,8 @@ fn bench_hashsign(c: &mut Criterion) {
 	{
 		let mut group = c.benchmark_group("hashsign_proof_verification");
 		group.throughput(Throughput::Elements(num_validators as u64));
+		group.warm_up_time(std::time::Duration::from_secs(2));
+		group.measurement_time(std::time::Duration::from_secs(120));
 
 		group.bench_with_input(BenchmarkId::from_parameter(&bench_name), &bench_name, |b, _| {
 			b.iter(|| {

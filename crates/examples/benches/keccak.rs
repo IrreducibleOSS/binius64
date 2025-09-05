@@ -89,6 +89,8 @@ fn bench_keccak_permutations(c: &mut Criterion) {
 	{
 		let mut group = c.benchmark_group("keccak_witness_generation");
 		group.throughput(Throughput::Elements(n_permutations as u64));
+		group.warm_up_time(std::time::Duration::from_secs(2));
+		group.measurement_time(std::time::Duration::from_secs(120));
 
 		let bench_name = format!("n_{}_{}", n_permutations, feature_suffix);
 		group.bench_with_input(
@@ -113,6 +115,8 @@ fn bench_keccak_permutations(c: &mut Criterion) {
 	{
 		let mut group = c.benchmark_group("keccak_proof_generation");
 		group.throughput(Throughput::Elements(n_permutations as u64));
+		group.warm_up_time(std::time::Duration::from_secs(2));
+		group.measurement_time(std::time::Duration::from_secs(120));
 
 		let bench_name = format!("n_{}_{}", n_permutations, feature_suffix);
 		group.bench_with_input(
@@ -144,6 +148,8 @@ fn bench_keccak_permutations(c: &mut Criterion) {
 	{
 		let mut group = c.benchmark_group("keccak_proof_verification");
 		group.throughput(Throughput::Elements(n_permutations as u64));
+		group.warm_up_time(std::time::Duration::from_secs(2));
+		group.measurement_time(std::time::Duration::from_secs(120));
 
 		let bench_name = format!("n_{}_{}", n_permutations, feature_suffix);
 		group.bench_with_input(
