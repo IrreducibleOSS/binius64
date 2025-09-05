@@ -207,6 +207,7 @@ mod test {
 	use super::OneBitPCSProver;
 	use crate::{
 		fri::{self, CommitOutput},
+		hash::parallel_compression::ParallelCompressionAdaptor,
 		merkle_tree::prover::BinaryMerkleTreeProver,
 	};
 
@@ -240,8 +241,9 @@ mod test {
 		const LOG_INV_RATE: usize = 1;
 		const NUM_TEST_QUERIES: usize = 3;
 
-		let merkle_prover =
-			BinaryMerkleTreeProver::<B128, StdDigest, _>::new(StdCompression::default());
+		let merkle_prover = BinaryMerkleTreeProver::<B128, StdDigest, _>::new(
+			ParallelCompressionAdaptor::new(StdCompression::default()),
+		);
 
 		let committed_rs_code = ReedSolomonCode::<B128>::new(packed_mle.log_len(), LOG_INV_RATE)?;
 
@@ -496,8 +498,9 @@ mod test {
 		let scalars = random_scalars::<B128>(&mut rng, n_scalars);
 		let packed_buffer: FieldBuffer<P> = FieldBuffer::from_values(&scalars).unwrap();
 
-		let merkle_prover =
-			BinaryMerkleTreeProver::<B128, StdDigest, _>::new(StdCompression::default());
+		let merkle_prover = BinaryMerkleTreeProver::<B128, StdDigest, _>::new(
+			ParallelCompressionAdaptor::new(StdCompression::default()),
+		);
 		let committed_rs_code = ReedSolomonCode::<B128>::new(log_dimension, LOG_INV_RATE).unwrap();
 
 		let fri_log_batch_size = 0;

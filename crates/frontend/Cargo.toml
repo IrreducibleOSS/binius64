@@ -27,6 +27,7 @@ hmac = { workspace = true }
 jwt-simple = { workspace = true }
 k256 = { workspace = true, features = ["arithmetic"] }
 rand = { workspace = true, features = ["std_rng", "thread_rng"] }
+ripemd = { workspace = true }
 rsa = { workspace = true, features = ["sha2"] }
 hex-literal = { workspace = true }
 num-traits = { workspace = true }

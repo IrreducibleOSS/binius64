@@ -5,30 +5,41 @@ pub mod snapshot;
 use anyhow::Result;
 use binius_core::constraint_system::{ConstraintSystem, ValueVec};
 use binius_frontend::compiler::{CircuitBuilder, circuit::WitnessFiller};
-use binius_prover::{OptimalPackedB128, Prover};
+use binius_prover::{
+	OptimalPackedB128, Prover, hash::parallel_compression::ParallelCompressionAdaptor,
+};
 use binius_verifier::{
 	Verifier,
 	config::StdChallenger,
 	hash::{StdCompression, StdDigest},
-	transcript::ProverTranscript,
+	transcript::{ProverTranscript, VerifierTranscript},
 };
 pub use cli::Cli;
 
 pub type StdVerifier = Verifier<StdDigest, StdCompression>;
-pub type StdProver = Prover<OptimalPackedB128, StdCompression, StdDigest>;
+pub type StdProver =
+	Prover<OptimalPackedB128, ParallelCompressionAdaptor<StdCompression>, StdDigest>;
 
 pub fn setup(cs: ConstraintSystem, log_inv_rate: usize) -> Result<(StdVerifier, StdProver)> {
 	let _setup_guard = tracing::info_span!("Setup", log_inv_rate).entered();
 	let verifier = Verifier::<StdDigest, _>::setup(cs, log_inv_rate, StdCompression::default())?;
-	let prover = Prover::<OptimalPackedB128, _, StdDigest>::setup(verifier.clone())?;
+	let prover = Prover::<OptimalPackedB128, _, StdDigest>::setup(
+		verifier.clone(),
+		ParallelCompressionAdaptor::new(StdCompression::default()),
+	)?;
 	Ok((verifier, prover))
 }
 
 pub fn prove_verify(verifier: &StdVerifier, prover: &StdProver, witness: ValueVec) -> Result<()> {
-	let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
+	let challenger = StdChallenger::default();
+
+	let mut prover_transcript = ProverTranscript::new(challenger.clone());
 	prover.prove(witness.clone(), &mut prover_transcript)?;
 
-	let mut verifier_transcript = prover_transcript.into_verifier();
+	let proof = prover_transcript.finalize();
+	tracing::info!("Proof size: {} KiB", proof.len() / 1024);
+
+	let mut verifier_transcript = VerifierTranscript::new(challenger, proof);
 	verifier.verify(witness.public(), &mut verifier_transcript)?;
 	verifier_transcript.finalize()?;
 

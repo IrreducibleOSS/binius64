@@ -207,6 +207,7 @@ mod test {
 	use super::BaseFoldProver;
 	use crate::{
 		fri::{self, CommitOutput},
+		hash::parallel_compression::ParallelCompressionAdaptor,
 		merkle_tree::prover::BinaryMerkleTreeProver,
 	};
 
@@ -226,8 +227,9 @@ mod test {
 
 		let eval_point_eq = eq_ind_partial_eval::<P>(&evaluation_point);
 
-		let merkle_prover =
-			BinaryMerkleTreeProver::<F, StdDigest, _>::new(StdCompression::default());
+		let merkle_prover = BinaryMerkleTreeProver::<F, StdDigest, _>::new(
+			ParallelCompressionAdaptor::new(StdCompression::default()),
+		);
 
 		let rs_code = ReedSolomonCode::<F>::new(multilinear.log_len(), LOG_INV_RATE)?;
 
