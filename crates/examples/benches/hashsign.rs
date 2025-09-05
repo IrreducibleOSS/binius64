@@ -76,7 +76,7 @@ fn bench_hashsign(c: &mut Criterion) {
 		group.measurement_time(std::time::Duration::from_secs(10));
 		group.sample_size(10);
 
-		group.bench_with_input(BenchmarkId::from_parameter(&bench_name), &bench_name, |b, _| {
+		group.bench_function(BenchmarkId::from_parameter(&bench_name), |b| {
 			b.iter(|| {
 				let mut filler = circuit.new_witness_filler();
 				example
@@ -98,7 +98,7 @@ fn bench_hashsign(c: &mut Criterion) {
 		group.measurement_time(std::time::Duration::from_secs(10));
 		group.sample_size(10);
 
-		group.bench_with_input(BenchmarkId::from_parameter(&bench_name), &bench_name, |b, _| {
+		group.bench_function(BenchmarkId::from_parameter(&bench_name), |b| {
 			b.iter(|| {
 				let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
 				prover
@@ -127,7 +127,7 @@ fn bench_hashsign(c: &mut Criterion) {
 		group.measurement_time(std::time::Duration::from_secs(10));
 		group.sample_size(10);
 
-		group.bench_with_input(BenchmarkId::from_parameter(&bench_name), &bench_name, |b, _| {
+		group.bench_function(BenchmarkId::from_parameter(&bench_name), |b| {
 			b.iter(|| {
 				let mut verifier_transcript =
 					VerifierTranscript::new(StdChallenger::default(), proof_bytes.clone());

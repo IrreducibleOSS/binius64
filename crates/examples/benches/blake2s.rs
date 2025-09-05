@@ -66,7 +66,7 @@ fn bench_blake2s_hash(c: &mut Criterion) {
 		group.sample_size(50);
 
 		let bench_name = format!("bytes_{}_{}", max_bytes, feature_suffix);
-		group.bench_with_input(BenchmarkId::from_parameter(&bench_name), &max_bytes, |b, _| {
+		group.bench_function(BenchmarkId::from_parameter(&bench_name), |b| {
 			b.iter(|| {
 				let mut filler = circuit.new_witness_filler();
 				example
@@ -89,7 +89,7 @@ fn bench_blake2s_hash(c: &mut Criterion) {
 		group.sample_size(50);
 
 		let bench_name = format!("bytes_{}_{}", max_bytes, feature_suffix);
-		group.bench_with_input(BenchmarkId::from_parameter(&bench_name), &max_bytes, |b, _| {
+		group.bench_function(BenchmarkId::from_parameter(&bench_name), |b| {
 			b.iter(|| {
 				let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
 				prover
@@ -117,7 +117,7 @@ fn bench_blake2s_hash(c: &mut Criterion) {
 		group.sample_size(50);
 
 		let bench_name = format!("bytes_{}_{}", max_bytes, feature_suffix);
-		group.bench_with_input(BenchmarkId::from_parameter(&bench_name), &max_bytes, |b, _| {
+		group.bench_function(BenchmarkId::from_parameter(&bench_name), |b| {
 			b.iter(|| {
 				let mut verifier_transcript =
 					VerifierTranscript::new(StdChallenger::default(), proof_bytes.clone());

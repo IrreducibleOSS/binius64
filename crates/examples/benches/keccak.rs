@@ -58,20 +58,16 @@ fn bench_keccak_permutations(c: &mut Criterion) {
 		group.sample_size(50);
 
 		let bench_name = format!("n_{}_{}", n_permutations, feature_suffix);
-		group.bench_with_input(
-			BenchmarkId::from_parameter(&bench_name),
-			&n_permutations,
-			|b, _| {
-				b.iter(|| {
-					let mut filler = circuit.new_witness_filler();
-					example
-						.populate_witness(instance.clone(), &mut filler)
-						.unwrap();
-					circuit.populate_wire_witness(&mut filler).unwrap();
-					filler.into_value_vec()
-				})
-			},
-		);
+		group.bench_function(BenchmarkId::from_parameter(&bench_name), |b| {
+			b.iter(|| {
+				let mut filler = circuit.new_witness_filler();
+				example
+					.populate_witness(instance.clone(), &mut filler)
+					.unwrap();
+				circuit.populate_wire_witness(&mut filler).unwrap();
+				filler.into_value_vec()
+			})
+		});
 
 		group.finish();
 	}
@@ -85,19 +81,15 @@ fn bench_keccak_permutations(c: &mut Criterion) {
 		group.sample_size(50);
 
 		let bench_name = format!("n_{}_{}", n_permutations, feature_suffix);
-		group.bench_with_input(
-			BenchmarkId::from_parameter(&bench_name),
-			&n_permutations,
-			|b, _| {
-				b.iter(|| {
-					let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
-					prover
-						.prove(witness.clone(), &mut prover_transcript)
-						.unwrap();
-					prover_transcript
-				})
-			},
-		);
+		group.bench_function(BenchmarkId::from_parameter(&bench_name), |b| {
+			b.iter(|| {
+				let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
+				prover
+					.prove(witness.clone(), &mut prover_transcript)
+					.unwrap();
+				prover_transcript
+			})
+		});
 
 		group.finish();
 	}
@@ -119,20 +111,16 @@ fn bench_keccak_permutations(c: &mut Criterion) {
 		group.sample_size(50);
 
 		let bench_name = format!("n_{}_{}", n_permutations, feature_suffix);
-		group.bench_with_input(
-			BenchmarkId::from_parameter(&bench_name),
-			&n_permutations,
-			|b, _| {
-				b.iter(|| {
-					let mut verifier_transcript =
-						VerifierTranscript::new(StdChallenger::default(), proof_bytes.clone());
-					verifier
-						.verify(witness.public(), &mut verifier_transcript)
-						.unwrap();
-					verifier_transcript.finalize().unwrap()
-				})
-			},
-		);
+		group.bench_function(BenchmarkId::from_parameter(&bench_name), |b| {
+			b.iter(|| {
+				let mut verifier_transcript =
+					VerifierTranscript::new(StdChallenger::default(), proof_bytes.clone());
+				verifier
+					.verify(witness.public(), &mut verifier_transcript)
+					.unwrap();
+				verifier_transcript.finalize().unwrap()
+			})
+		});
 
 		group.finish();
 	}
