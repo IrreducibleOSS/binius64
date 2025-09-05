@@ -10,7 +10,7 @@ use binius_verifier::{
 	Verifier,
 	config::StdChallenger,
 	hash::{StdCompression, StdDigest},
-	transcript::ProverTranscript,
+	transcript::{ProverTranscript, VerifierTranscript},
 };
 pub use cli::Cli;
 
@@ -25,10 +25,15 @@ pub fn setup(cs: ConstraintSystem, log_inv_rate: usize) -> Result<(StdVerifier, 
 }
 
 pub fn prove_verify(verifier: &StdVerifier, prover: &StdProver, witness: ValueVec) -> Result<()> {
-	let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
+	let challenger = StdChallenger::default();
+
+	let mut prover_transcript = ProverTranscript::new(challenger.clone());
 	prover.prove(witness.clone(), &mut prover_transcript)?;
 
-	let mut verifier_transcript = prover_transcript.into_verifier();
+	let proof = prover_transcript.finalize();
+	tracing::info!("Proof size: {} KiB", proof.len() / 1024);
+
+	let mut verifier_transcript = VerifierTranscript::new(challenger, proof);
 	verifier.verify(witness.public(), &mut verifier_transcript)?;
 	verifier_transcript.finalize()?;
 

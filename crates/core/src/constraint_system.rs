@@ -42,7 +42,7 @@ impl DeserializeBytes for ValueIndex {
 /// A different variants of shifting a value.
 ///
 /// Note that there is no shift left arithmetic because it is redundant.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ShiftVariant {
 	/// Shift logical left.
 	Sll,
@@ -280,14 +280,84 @@ impl ConstraintSystem {
 		}
 	}
 
+	pub fn validate(&self) -> Result<(), ConstraintSystemError> {
+		// Validate the value vector layout
+		self.value_vec_layout.validate()?;
+
+		// Validate the constraints.
+		//
+		// - referenced values indices are in the range
+		// - no reference of padding
+		// - shifts amounts are valid.
+		for i in 0..self.and_constraints.len() {
+			validate_operand(&self.and_constraints[i].a, &self.value_vec_layout, "and", i, "a")?;
+			validate_operand(&self.and_constraints[i].b, &self.value_vec_layout, "and", i, "b")?;
+			validate_operand(&self.and_constraints[i].c, &self.value_vec_layout, "and", i, "c")?;
+		}
+		for i in 0..self.mul_constraints.len() {
+			validate_operand(&self.mul_constraints[i].a, &self.value_vec_layout, "mul", i, "a")?;
+			validate_operand(&self.mul_constraints[i].b, &self.value_vec_layout, "mul", i, "b")?;
+			validate_operand(&self.mul_constraints[i].lo, &self.value_vec_layout, "mul", i, "lo")?;
+			validate_operand(&self.mul_constraints[i].hi, &self.value_vec_layout, "mul", i, "hi")?;
+		}
+
+		return Ok(());
+
+		fn validate_operand(
+			operand: &Operand,
+			value_vec_layout: &ValueVecLayout,
+			constraint_type: &'static str,
+			constraint_index: usize,
+			operand_name: &'static str,
+		) -> Result<(), ConstraintSystemError> {
+			for term in operand {
+				// check canonicity. SLL is the canonical form of the operand.
+				if term.amount == 0 && term.shift_variant != ShiftVariant::Sll {
+					return Err(ConstraintSystemError::NonCanonicalShift {
+						constraint_type,
+						constraint_index,
+						operand_name,
+					});
+				}
+				if term.amount >= 64 {
+					return Err(ConstraintSystemError::ShiftAmountTooLarge {
+						constraint_type,
+						constraint_index,
+						operand_name,
+						shift_amount: term.amount,
+					});
+				}
+				// Check if the value index is out of bounds.
+				if value_vec_layout.is_out_of_bounds(term.value_index) {
+					return Err(ConstraintSystemError::OutOfRangeValueIndex {
+						constraint_type,
+						constraint_index,
+						operand_name,
+						value_index: term.value_index.0,
+						total_len: value_vec_layout.total_len,
+					});
+				}
+				// No value should refer to padding.
+				if value_vec_layout.is_padding(term.value_index) {
+					return Err(ConstraintSystemError::PaddingValueIndex {
+						constraint_type,
+						constraint_index,
+						operand_name,
+					});
+				}
+			}
+			Ok(())
+		}
+	}
+
 	/// Validates and prepares this constraint system for proving/verifying.
 	///
 	/// This function performs the following:
 	/// 1. Validates the value vector layout (including public input checks)
-	/// 2. Pads the AND and MUL constraints to the next po2 size
+	/// 2. Validates the constraints.
+	/// 3. Pads the AND and MUL constraints to the next po2 size
 	pub fn validate_and_prepare(&mut self) -> Result<(), ConstraintSystemError> {
-		// Validate the value vector layout
-		self.value_vec_layout.validate()?;
+		self.validate()?;
 
 		// Both AND and MUL constraint list have requirements wrt their sizes.
 		let and_target_size =
@@ -417,6 +487,35 @@ impl ValueVecLayout {
 		}
 
 		Ok(())
+	}
+
+	/// Returns true if the given index points to an area that is considered to be padding.
+	fn is_padding(&self, index: ValueIndex) -> bool {
+		let idx = index.0 as usize;
+
+		// padding 1: between constants and inout section
+		if idx >= self.n_const && idx < self.offset_inout {
+			return true;
+		}
+
+		// padding 2: between the end of inout section and the start of witness section
+		let end_of_inout = self.offset_inout + self.n_inout;
+		if idx >= end_of_inout && idx < self.offset_witness {
+			return true;
+		}
+
+		// padding 3: between the last internal value and the total len
+		let end_of_internal = self.offset_witness + self.n_witness + self.n_internal;
+		if idx >= end_of_internal && idx < self.total_len {
+			return true;
+		}
+
+		false
+	}
+
+	/// Returns true if the given index is out-of-bounds for this layout.
+	fn is_out_of_bounds(&self, index: ValueIndex) -> bool {
+		index.0 as usize >= self.total_len
 	}
 }
 
@@ -1469,5 +1568,494 @@ mod serialization_tests {
 			ValueVec::new_from_data(values.layout.clone(), public.to_vec(), non_public.to_vec())
 				.unwrap();
 		assert_eq!(combined.combined_witness(), values.combined_witness());
+	}
+
+	#[test]
+	fn test_is_padding_comprehensive() {
+		// Test layout with all types of padding
+		let layout = ValueVecLayout {
+			n_const: 2,         // constants at indices 0-1
+			n_inout: 3,         // inout at indices 4-6
+			n_witness: 5,       // witness at indices 16-20
+			n_internal: 10,     // internal at indices 21-30
+			offset_inout: 4,    // gap between constants and inout (indices 2-3 are padding)
+			offset_witness: 16, // public section is 16 (power of 2), gap 7-15 is padding
+			total_len: 64,      // total must be power of 2, gap 31-63 is padding
+		};
+
+		// Test constants (indices 0-1): NOT padding
+		assert!(!layout.is_padding(ValueIndex(0)), "index 0 should be constant");
+		assert!(!layout.is_padding(ValueIndex(1)), "index 1 should be constant");
+
+		// Test padding between constants and inout (indices 2-3): PADDING
+		assert!(
+			layout.is_padding(ValueIndex(2)),
+			"index 2 should be padding between const and inout"
+		);
+		assert!(
+			layout.is_padding(ValueIndex(3)),
+			"index 3 should be padding between const and inout"
+		);
+
+		// Test inout values (indices 4-6): NOT padding
+		assert!(!layout.is_padding(ValueIndex(4)), "index 4 should be inout");
+		assert!(!layout.is_padding(ValueIndex(5)), "index 5 should be inout");
+		assert!(!layout.is_padding(ValueIndex(6)), "index 6 should be inout");
+
+		// Test padding between inout and witness (indices 7-15): PADDING
+		for i in 7..16 {
+			assert!(
+				layout.is_padding(ValueIndex(i)),
+				"index {} should be padding between inout and witness",
+				i
+			);
+		}
+
+		// Test witness values (indices 16-20): NOT padding
+		for i in 16..21 {
+			assert!(!layout.is_padding(ValueIndex(i)), "index {} should be witness", i);
+		}
+
+		// Test internal values (indices 21-30): NOT padding
+		for i in 21..31 {
+			assert!(!layout.is_padding(ValueIndex(i)), "index {} should be internal", i);
+		}
+
+		// Test padding after internal values (indices 31-63): PADDING
+		for i in 31..64 {
+			assert!(
+				layout.is_padding(ValueIndex(i)),
+				"index {} should be padding after internal",
+				i
+			);
+		}
+	}
+
+	#[test]
+	fn test_is_padding_minimal_layout() {
+		// Test a minimal layout with no gaps except required end padding
+		let layout = ValueVecLayout {
+			n_const: 4,        // constants at indices 0-3
+			n_inout: 4,        // inout at indices 4-7
+			n_witness: 4,      // witness at indices 8-11
+			n_internal: 4,     // internal at indices 12-15
+			offset_inout: 4,   // no gap between constants and inout
+			offset_witness: 8, // no gap between inout and witness
+			total_len: 16,     // exactly fits all values
+		};
+
+		// No padding anywhere in this layout
+		for i in 0..16 {
+			assert!(
+				!layout.is_padding(ValueIndex(i)),
+				"index {} should not be padding in minimal layout",
+				i
+			);
+		}
+	}
+
+	#[test]
+	fn test_is_padding_public_section_min_size() {
+		// Test layout where public section must be padded to meet MIN_WORDS_PER_SEGMENT
+		let layout = ValueVecLayout {
+			n_const: 1,        // only 1 constant
+			n_inout: 1,        // only 1 inout
+			n_witness: 2,      // 2 witness values
+			n_internal: 2,     // 2 internal values
+			offset_inout: 4,   // padding between const and inout to reach min size
+			offset_witness: 8, // public section padded to 8 (MIN_WORDS_PER_SEGMENT)
+			total_len: 16,     // power of 2
+		};
+
+		// Test the single constant
+		assert!(!layout.is_padding(ValueIndex(0)), "index 0 should be constant");
+
+		// Test padding between constant and inout (indices 1-3)
+		assert!(layout.is_padding(ValueIndex(1)), "index 1 should be padding");
+		assert!(layout.is_padding(ValueIndex(2)), "index 2 should be padding");
+		assert!(layout.is_padding(ValueIndex(3)), "index 3 should be padding");
+
+		// Test the single inout value
+		assert!(!layout.is_padding(ValueIndex(4)), "index 4 should be inout");
+
+		// Test padding between inout and witness (indices 5-7)
+		assert!(layout.is_padding(ValueIndex(5)), "index 5 should be padding");
+		assert!(layout.is_padding(ValueIndex(6)), "index 6 should be padding");
+		assert!(layout.is_padding(ValueIndex(7)), "index 7 should be padding");
+
+		// Test witness values (indices 8-9)
+		assert!(!layout.is_padding(ValueIndex(8)), "index 8 should be witness");
+		assert!(!layout.is_padding(ValueIndex(9)), "index 9 should be witness");
+
+		// Test internal values (indices 10-11)
+		assert!(!layout.is_padding(ValueIndex(10)), "index 10 should be internal");
+		assert!(!layout.is_padding(ValueIndex(11)), "index 11 should be internal");
+
+		// Test padding at the end (indices 12-15)
+		for i in 12..16 {
+			assert!(layout.is_padding(ValueIndex(i)), "index {} should be end padding", i);
+		}
+	}
+
+	#[test]
+	fn test_is_padding_boundary_conditions() {
+		let layout = ValueVecLayout {
+			n_const: 2,
+			n_inout: 2,
+			n_witness: 4,
+			n_internal: 4,
+			offset_inout: 4,
+			offset_witness: 8,
+			total_len: 16,
+		};
+
+		// Test exact boundaries
+		assert!(!layout.is_padding(ValueIndex(1)), "last constant should not be padding");
+		assert!(layout.is_padding(ValueIndex(2)), "first padding after const should be padding");
+
+		assert!(layout.is_padding(ValueIndex(3)), "last padding before inout should be padding");
+		assert!(!layout.is_padding(ValueIndex(4)), "first inout should not be padding");
+
+		assert!(!layout.is_padding(ValueIndex(5)), "last inout should not be padding");
+		assert!(layout.is_padding(ValueIndex(6)), "first padding after inout should be padding");
+
+		assert!(layout.is_padding(ValueIndex(7)), "last padding before witness should be padding");
+		assert!(!layout.is_padding(ValueIndex(8)), "first witness should not be padding");
+
+		assert!(!layout.is_padding(ValueIndex(11)), "last witness should not be padding");
+		assert!(!layout.is_padding(ValueIndex(12)), "first internal should not be padding");
+
+		assert!(!layout.is_padding(ValueIndex(15)), "last internal should not be padding");
+		// Note: index 16 would be out of bounds, not tested here
+	}
+
+	#[test]
+	fn test_validate_rejects_padding_references() {
+		let mut cs = ConstraintSystem::new(
+			vec![Word::from_u64(1)],
+			ValueVecLayout {
+				n_const: 1,
+				n_inout: 1,
+				n_witness: 2,
+				n_internal: 2,
+				offset_inout: 4,
+				offset_witness: 8,
+				total_len: 16,
+			},
+			vec![],
+			vec![],
+		);
+
+		// Add constraint that references padding (index 2 is padding between const and inout)
+		cs.add_and_constraint(AndConstraint::plain_abc(
+			vec![ValueIndex(0)], // valid constant
+			vec![ValueIndex(2)], // PADDING!
+			vec![ValueIndex(8)], // valid witness
+		));
+
+		let result = cs.validate_and_prepare();
+		assert!(result.is_err(), "Should reject constraint referencing padding");
+
+		match result.unwrap_err() {
+			ConstraintSystemError::PaddingValueIndex {
+				constraint_type, ..
+			} => {
+				assert_eq!(constraint_type, "and");
+			}
+			other => panic!("Expected PaddingValueIndex error, got: {:?}", other),
+		}
+	}
+
+	#[test]
+	fn test_validate_accepts_non_padding_references() {
+		let mut cs = ConstraintSystem::new(
+			vec![Word::from_u64(1), Word::from_u64(2)],
+			ValueVecLayout {
+				n_const: 2,
+				n_inout: 2,
+				n_witness: 4,
+				n_internal: 4,
+				offset_inout: 2,
+				offset_witness: 4,
+				total_len: 16,
+			},
+			vec![],
+			vec![],
+		);
+
+		// Add constraint that only references valid non-padding indices
+		cs.add_and_constraint(AndConstraint::plain_abc(
+			vec![ValueIndex(0), ValueIndex(1)], // constants
+			vec![ValueIndex(2), ValueIndex(3)], // inout
+			vec![ValueIndex(4), ValueIndex(5)], // witness
+		));
+
+		cs.add_mul_constraint(MulConstraint {
+			a: vec![ShiftedValueIndex::plain(ValueIndex(6))], // witness
+			b: vec![ShiftedValueIndex::plain(ValueIndex(7))], // witness
+			hi: vec![ShiftedValueIndex::plain(ValueIndex(8))], // internal
+			lo: vec![ShiftedValueIndex::plain(ValueIndex(9))], // internal
+		});
+
+		let result = cs.validate_and_prepare();
+		assert!(
+			result.is_ok(),
+			"Should accept constraints with only valid references: {:?}",
+			result
+		);
+	}
+
+	#[test]
+	fn test_is_padding_matches_compiler_requirements() {
+		// Test that is_padding correctly handles the MIN_WORDS_PER_SEGMENT requirement
+		// as seen in the compiler mod.rs:
+		// cur_index = cur_index.max(MIN_WORDS_PER_SEGMENT as u32);
+		// cur_index = cur_index.next_power_of_two();
+
+		// Case 1: Very small public section (1 const + 1 inout = 2 total)
+		// Should be padded to MIN_WORDS_PER_SEGMENT (8)
+		let layout1 = ValueVecLayout {
+			n_const: 1,
+			n_inout: 1,
+			n_witness: 4,
+			n_internal: 4,
+			offset_inout: 1,   // right after constants
+			offset_witness: 8, // padded to MIN_WORDS_PER_SEGMENT
+			total_len: 16,
+		};
+
+		// Verify padding between end of inout (index 2) and offset_witness (8)
+		assert!(!layout1.is_padding(ValueIndex(0)), "const should not be padding");
+		assert!(!layout1.is_padding(ValueIndex(1)), "inout should not be padding");
+		for i in 2..8 {
+			assert!(
+				layout1.is_padding(ValueIndex(i)),
+				"index {} should be padding to meet MIN_WORDS_PER_SEGMENT",
+				i
+			);
+		}
+
+		// Case 2: Public section exactly MIN_WORDS_PER_SEGMENT (no extra padding needed)
+		let layout2 = ValueVecLayout {
+			n_const: 4,
+			n_inout: 4,
+			n_witness: 8,
+			n_internal: 0,
+			offset_inout: 4,
+			offset_witness: 8, // exactly MIN_WORDS_PER_SEGMENT, already power of 2
+			total_len: 16,
+		};
+
+		// No padding in public section
+		for i in 0..8 {
+			assert!(!layout2.is_padding(ValueIndex(i)), "index {} should not be padding", i);
+		}
+
+		// Case 3: Public section between MIN_WORDS_PER_SEGMENT and next power of 2
+		// e.g., 10 total needs to round up to 16
+		let layout3 = ValueVecLayout {
+			n_const: 5,
+			n_inout: 5,
+			n_witness: 16,
+			n_internal: 0,
+			offset_inout: 5,
+			offset_witness: 16, // rounded up from 10 to 16 (next power of 2)
+			total_len: 32,
+		};
+
+		// Check padding from end of inout (10) to offset_witness (16)
+		for i in 0..5 {
+			assert!(!layout3.is_padding(ValueIndex(i)), "const {} should not be padding", i);
+		}
+		for i in 5..10 {
+			assert!(!layout3.is_padding(ValueIndex(i)), "inout {} should not be padding", i);
+		}
+		for i in 10..16 {
+			assert!(
+				layout3.is_padding(ValueIndex(i)),
+				"index {} should be padding for power-of-2 alignment",
+				i
+			);
+		}
+
+		// Case 4: Test with offsets that show all three padding types
+		let layout4 = ValueVecLayout {
+			n_const: 2,         // indices 0-1
+			n_inout: 2,         // indices 8-9
+			n_witness: 4,       // indices 16-19
+			n_internal: 4,      // indices 20-23
+			offset_inout: 8,    // padding after constants to align
+			offset_witness: 16, // padding after inout to reach power of 2
+			total_len: 32,      // padding after internal to reach total
+		};
+
+		// Constants
+		assert!(!layout4.is_padding(ValueIndex(0)));
+		assert!(!layout4.is_padding(ValueIndex(1)));
+
+		// Padding between constants and inout (indices 2-7)
+		for i in 2..8 {
+			assert!(layout4.is_padding(ValueIndex(i)), "padding between const and inout at {}", i);
+		}
+
+		// Inout values
+		assert!(!layout4.is_padding(ValueIndex(8)));
+		assert!(!layout4.is_padding(ValueIndex(9)));
+
+		// Padding between inout and witness (indices 10-15)
+		for i in 10..16 {
+			assert!(
+				layout4.is_padding(ValueIndex(i)),
+				"padding between inout and witness at {}",
+				i
+			);
+		}
+
+		// Witness values
+		for i in 16..20 {
+			assert!(!layout4.is_padding(ValueIndex(i)), "witness at {}", i);
+		}
+
+		// Internal values
+		for i in 20..24 {
+			assert!(!layout4.is_padding(ValueIndex(i)), "internal at {}", i);
+		}
+
+		// Padding after internal to total_len (indices 24-31)
+		for i in 24..32 {
+			assert!(layout4.is_padding(ValueIndex(i)), "padding after internal at {}", i);
+		}
+	}
+
+	#[test]
+	fn test_validate_rejects_out_of_range_indices() {
+		let mut cs = ConstraintSystem::new(
+			vec![Word::from_u64(1)],
+			ValueVecLayout {
+				n_const: 1,
+				n_inout: 1,
+				n_witness: 2,
+				n_internal: 2,
+				offset_inout: 4,
+				offset_witness: 8,
+				total_len: 16,
+			},
+			vec![],
+			vec![],
+		);
+
+		// Add AND constraint that references an out-of-range index
+		cs.add_and_constraint(AndConstraint::plain_abc(
+			vec![ValueIndex(0)],  // valid constant
+			vec![ValueIndex(16)], // OUT OF RANGE! (total_len is 16, so max valid index is 15)
+			vec![ValueIndex(8)],  // valid witness
+		));
+
+		let result = cs.validate_and_prepare();
+		assert!(result.is_err(), "Should reject constraint with out-of-range index");
+
+		match result.unwrap_err() {
+			ConstraintSystemError::OutOfRangeValueIndex {
+				constraint_type,
+				operand_name,
+				value_index,
+				total_len,
+				..
+			} => {
+				assert_eq!(constraint_type, "and");
+				assert_eq!(operand_name, "b");
+				assert_eq!(value_index, 16);
+				assert_eq!(total_len, 16);
+			}
+			other => panic!("Expected OutOfRangeValueIndex error, got: {:?}", other),
+		}
+	}
+
+	#[test]
+	fn test_validate_rejects_out_of_range_in_mul_constraint() {
+		let mut cs = ConstraintSystem::new(
+			vec![Word::from_u64(1), Word::from_u64(2)],
+			ValueVecLayout {
+				n_const: 2,
+				n_inout: 2,
+				n_witness: 4,
+				n_internal: 4,
+				offset_inout: 2,
+				offset_witness: 4,
+				total_len: 16,
+			},
+			vec![],
+			vec![],
+		);
+
+		// Add MUL constraint with out-of-range index in 'hi' operand
+		cs.add_mul_constraint(MulConstraint {
+			a: vec![ShiftedValueIndex::plain(ValueIndex(0))], // valid
+			b: vec![ShiftedValueIndex::plain(ValueIndex(1))], // valid
+			hi: vec![ShiftedValueIndex::plain(ValueIndex(100))], // WAY out of range!
+			lo: vec![ShiftedValueIndex::plain(ValueIndex(3))], // valid
+		});
+
+		let result = cs.validate_and_prepare();
+		assert!(result.is_err(), "Should reject MUL constraint with out-of-range index");
+
+		match result.unwrap_err() {
+			ConstraintSystemError::OutOfRangeValueIndex {
+				constraint_type,
+				operand_name,
+				value_index,
+				total_len,
+				..
+			} => {
+				assert_eq!(constraint_type, "mul");
+				assert_eq!(operand_name, "hi");
+				assert_eq!(value_index, 100);
+				assert_eq!(total_len, 16);
+			}
+			other => panic!("Expected OutOfRangeValueIndex error, got: {:?}", other),
+		}
+	}
+
+	#[test]
+	fn test_validate_checks_out_of_range_before_padding() {
+		// This test verifies that out-of-range checking happens before padding checking
+		// by using an index that is both out-of-range AND would be in a padding area if it were
+		// valid
+		let mut cs = ConstraintSystem::new(
+			vec![Word::from_u64(1)],
+			ValueVecLayout {
+				n_const: 1,
+				n_inout: 1,
+				n_witness: 2,
+				n_internal: 2,
+				offset_inout: 4,
+				offset_witness: 8,
+				total_len: 16,
+			},
+			vec![],
+			vec![],
+		);
+
+		// Index 20 is out of range (>= 16)
+		// If it were in range, indices 2-3 and 6-7 would be padding
+		cs.add_and_constraint(AndConstraint::plain_abc(
+			vec![ValueIndex(0)],
+			vec![ValueIndex(20)], // out of range
+			vec![ValueIndex(8)],
+		));
+
+		let result = cs.validate_and_prepare();
+		assert!(result.is_err());
+
+		// Should get OutOfRangeValueIndex, not PaddingValueIndex
+		match result.unwrap_err() {
+			ConstraintSystemError::OutOfRangeValueIndex { .. } => {
+				// Good, out-of-range was detected first
+			}
+			other => panic!(
+				"Expected OutOfRangeValueIndex to be detected before padding check, got: {:?}",
+				other
+			),
+		}
 	}
 }
