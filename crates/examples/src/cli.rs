@@ -3,10 +3,15 @@ use std::{fs, path::Path};
 use anyhow::Result;
 use binius_core::constraint_system::{ValueVec, ValuesData};
 use binius_frontend::{compiler::CircuitBuilder, stat::CircuitStat};
+use binius_prover::hash::{
+	parallel_compression::ParallelCompressionAdaptor,
+	vision_4::compression::VisionParallelCompression,
+};
 use binius_utils::serialization::SerializeBytes;
+use binius_verifier::hash::StdCompression;
 use clap::{Arg, Args, Command, FromArgMatches, Subcommand};
 
-use crate::{ExampleCircuit, prove_verify, setup};
+use crate::{CompressionType, ExampleCircuit, prove_verify, setup_sha256, setup_vision4};
 
 /// Serialize a value implementing `SerializeBytes` and write it to the given path.
 fn write_serialized<T: SerializeBytes>(value: &T, path: &str) -> Result<()> {
@@ -63,6 +68,10 @@ enum Commands {
 		/// Log of the inverse rate for the proof system
 		#[arg(short = 'l', long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..))]
 		log_inv_rate: u32,
+
+		/// Compression function to use
+		#[arg(short = 'c', long, value_enum, default_value_t = crate::CompressionType::Sha256)]
+		compression: crate::CompressionType,
 
 		#[command(flatten)]
 		params: CommandArgs,
@@ -154,15 +163,25 @@ where
 			.subcommand(save_cmd);
 
 		// Also add top-level args for default prove behavior
-		let command = command.arg(
-			Arg::new("log_inv_rate")
-				.short('l')
-				.long("log-inv-rate")
-				.value_name("RATE")
-				.help("Log of the inverse rate for the proof system")
-				.default_value("1")
-				.value_parser(clap::value_parser!(u32).range(1..)),
-		);
+		let command = command
+			.arg(
+				Arg::new("log_inv_rate")
+					.short('l')
+					.long("log-inv-rate")
+					.value_name("RATE")
+					.help("Log of the inverse rate for the proof system")
+					.default_value("1")
+					.value_parser(clap::value_parser!(u32).range(1..)),
+			)
+			.arg(
+				Arg::new("compression")
+					.short('c')
+					.long("compression")
+					.value_name("TYPE")
+					.help("Compression function to use")
+					.default_value("sha256")
+					.value_parser(clap::value_parser!(crate::CompressionType)),
+			);
 
 		// Augment with Params arguments at top level for default behavior
 		let command = E::Params::augment_args(command);
@@ -186,6 +205,15 @@ where
 					.help("Log of the inverse rate for the proof system")
 					.default_value("1")
 					.value_parser(clap::value_parser!(u32).range(1..)),
+			)
+			.arg(
+				Arg::new("compression")
+					.short('c')
+					.long("compression")
+					.value_name("TYPE")
+					.help("Compression function to use")
+					.default_value("sha256")
+					.value_parser(clap::value_parser!(crate::CompressionType)),
 			);
 		cmd = E::Params::augment_args(cmd);
 		cmd = E::Instance::augment_args(cmd);
@@ -297,6 +325,10 @@ where
 		let log_inv_rate = *matches
 			.get_one::<u32>("log_inv_rate")
 			.expect("has default value");
+		let compression = matches
+			.get_one::<crate::CompressionType>("compression")
+			.expect("has default value")
+			.clone();
 
 		// Parse Params and Instance from matches
 		let params = E::Params::from_arg_matches(&matches)?;
@@ -309,10 +341,6 @@ where
 		let circuit = builder.build();
 		drop(build_scope);
 
-		// Set up prover and verifier
-		let cs = circuit.constraint_system().clone();
-		let (verifier, prover) = setup(cs, log_inv_rate as usize)?;
-
 		// Population of the input to the witness and then evaluating the circuit.
 		let witness_population = tracing::info_span!("Generating witness").entered();
 		let mut filler = circuit.new_witness_filler();
@@ -323,8 +351,23 @@ where
 		let witness = filler.into_value_vec();
 		drop(witness_population);
 
-		// Prove and verify
-		prove_verify(&verifier, &prover, witness)?;
+		// Set up prover and verifier based on compression type
+		let cs = circuit.constraint_system().clone();
+		match compression {
+			CompressionType::Sha256 => {
+				let parallel_compression =
+					ParallelCompressionAdaptor::new(StdCompression::default());
+				let (verifier, prover) =
+					setup_sha256(cs, log_inv_rate as usize, parallel_compression)?;
+				prove_verify(&verifier, &prover, witness)?;
+			}
+			CompressionType::Vision4 => {
+				let parallel_compression = VisionParallelCompression::default();
+				let (verifier, prover) =
+					setup_vision4(cs, log_inv_rate as usize, parallel_compression)?;
+				prove_verify(&verifier, &prover, witness)?;
+			}
+		}
 
 		Ok(())
 	}

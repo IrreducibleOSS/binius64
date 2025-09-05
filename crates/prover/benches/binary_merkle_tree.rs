@@ -4,7 +4,10 @@ use std::iter::repeat_with;
 
 use binius_field::Random;
 use binius_prover::{
-	hash::parallel_compression::ParallelCompressionAdaptor,
+	hash::{
+		parallel_compression::ParallelCompressionAdaptor,
+		vision_4::compression::VisionParallelCompression as VisionParallelCompression_4,
+	},
 	merkle_tree::{MerkleTreeProver, prover::BinaryMerkleTreeProver},
 };
 use binius_verifier::{
@@ -14,7 +17,7 @@ use binius_verifier::{
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use digest::{FixedOutputReset, Output, core_api::BlockSizeUser};
 
-const LOG_ELEMS: usize = 17;
+const LOG_ELEMS: usize = 20;
 const LOG_ELEMS_IN_LEAF: usize = 4;
 
 type F = B128;
@@ -48,5 +51,27 @@ fn bench_sha256_merkle_tree(c: &mut Criterion) {
 	bench_binary_merkle_tree::<StdDigest, _>(c, StdCompression::default(), "SHA-256");
 }
 
-criterion_group!(binary_merkle_tree, bench_sha256_merkle_tree);
+fn bench_vision_merkle_tree(c: &mut Criterion) {
+	let vision_compression = VisionParallelCompression_4::new();
+	let merkle_prover = BinaryMerkleTreeProver::<_, StdDigest, _>::new(vision_compression);
+	let mut rng = rand::rng();
+	let data = repeat_with(|| F::random(&mut rng))
+		.take(1 << (LOG_ELEMS + LOG_ELEMS_IN_LEAF))
+		.collect::<Vec<_>>();
+
+	let mut group = c.benchmark_group("slow/merkle_tree/Vision");
+	group.throughput(Throughput::Bytes(
+		((1 << (LOG_ELEMS + LOG_ELEMS_IN_LEAF)) * std::mem::size_of::<F>()) as u64,
+	));
+	group.sample_size(10);
+	group.bench_function(
+		format!("{LOG_ELEMS} log elems size {}xB64 leaf", 1 << LOG_ELEMS_IN_LEAF),
+		|b| {
+			b.iter(|| merkle_prover.commit(&data, 1 << LOG_ELEMS_IN_LEAF));
+		},
+	);
+	group.finish()
+}
+
+criterion_group!(binary_merkle_tree, bench_sha256_merkle_tree, bench_vision_merkle_tree);
 criterion_main!(binary_merkle_tree);

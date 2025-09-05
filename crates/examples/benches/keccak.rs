@@ -3,12 +3,14 @@ use std::env;
 use binius_examples::{
 	ExampleCircuit,
 	circuits::keccak::{Instance, KeccakExample, Params},
-	setup,
+	setup_sha256,
 };
 use binius_frontend::compiler::CircuitBuilder;
+use binius_prover::hash::parallel_compression::ParallelCompressionAdaptor;
 use binius_utils::platform_diagnostics::PlatformDiagnostics;
 use binius_verifier::{
 	config::StdChallenger,
+	hash::StdCompression,
 	transcript::{ProverTranscript, VerifierTranscript},
 };
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
@@ -73,7 +75,8 @@ fn bench_keccak_permutations(c: &mut Criterion) {
 	let example = KeccakExample::build(params.clone(), &mut builder).unwrap();
 	let circuit = builder.build();
 	let cs = circuit.constraint_system().clone();
-	let (verifier, prover) = setup(cs, 1).unwrap();
+	let parallel_compression = ParallelCompressionAdaptor::new(StdCompression::default());
+	let (verifier, prover) = setup_sha256(cs, 1, parallel_compression).unwrap();
 
 	// Create a witness once for proof size measurement
 	let mut filler = circuit.new_witness_filler();

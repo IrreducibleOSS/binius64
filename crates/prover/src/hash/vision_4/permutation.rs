@@ -21,7 +21,7 @@ use binius_verifier::hash::vision_4::{
 
 /// Applies forward B-polynomial transformation: B(x) = c₀ + c₁x + c₂x² + c₃x⁴.
 #[inline]
-fn parallel_forward_transform<const N: usize, const MN: usize>(states: &mut [Ghash; MN]) {
+fn batch_forward_transform<const N: usize, const MN: usize>(states: &mut [Ghash; MN]) {
 	for i in 0..MN {
 		let scalar = states[i];
 		let square = scalar.square();
@@ -36,7 +36,7 @@ fn parallel_forward_transform<const N: usize, const MN: usize>(states: &mut [Gha
 
 /// Applies inverse B-polynomial transformation using lookups.
 #[inline]
-fn parallel_inverse_transform<const N: usize, const MN: usize>(states: &mut [Ghash; MN]) {
+fn batch_inverse_transform<const N: usize, const MN: usize>(states: &mut [Ghash; MN]) {
 	for i in 0..MN {
 		linearized_b_inv_transform_scalar(&mut states[i]);
 	}
@@ -44,7 +44,7 @@ fn parallel_inverse_transform<const N: usize, const MN: usize>(states: &mut [Gha
 
 /// Applies MDS matrix multiplication to each of the N parallel states.
 #[inline]
-fn parallel_mds_mul<const N: usize, const MN: usize>(states: &mut [Ghash; MN]) {
+fn batch_mds_mul<const N: usize, const MN: usize>(states: &mut [Ghash; MN]) {
 	for i in 0..N {
 		let state = &mut states[i * M..];
 		mds_mul(state);
@@ -53,7 +53,7 @@ fn parallel_mds_mul<const N: usize, const MN: usize>(states: &mut [Ghash; MN]) {
 
 /// Adds round constants to each of the N parallel states.
 #[inline]
-fn parallel_constants_add<const N: usize, const MN: usize>(
+fn batch_constants_add<const N: usize, const MN: usize>(
 	states: &mut [Ghash; MN],
 	constants: &[Ghash; M],
 ) {
@@ -65,38 +65,38 @@ fn parallel_constants_add<const N: usize, const MN: usize>(
 
 /// Executes a complete Vision-4 round on all parallel states.
 #[inline]
-fn parallel_round<const N: usize, const MN: usize>(
+fn batch_round<const N: usize, const MN: usize>(
 	states: &mut [Ghash; MN],
 	scratchpad: &mut [Ghash],
 	round_constants_idx: usize,
 ) {
 	// First half-round: inversion → inverse transform → MDS → constants
 	batch_invert::<MN>(states, scratchpad);
-	parallel_inverse_transform::<N, MN>(states);
-	parallel_mds_mul::<N, MN>(states);
-	parallel_constants_add::<N, MN>(states, &ROUND_CONSTANTS[round_constants_idx]);
+	batch_inverse_transform::<N, MN>(states);
+	batch_mds_mul::<N, MN>(states);
+	batch_constants_add::<N, MN>(states, &ROUND_CONSTANTS[round_constants_idx]);
 
 	// Second half-round: inversion → forward transform → MDS → constants
 	batch_invert::<MN>(states, scratchpad);
-	parallel_forward_transform::<N, MN>(states);
-	parallel_mds_mul::<N, MN>(states);
-	parallel_constants_add::<N, MN>(states, &ROUND_CONSTANTS[round_constants_idx + 1]);
+	batch_forward_transform::<N, MN>(states);
+	batch_mds_mul::<N, MN>(states);
+	batch_constants_add::<N, MN>(states, &ROUND_CONSTANTS[round_constants_idx + 1]);
 }
 
 /// Executes the complete Vision-4 permutation on N parallel states.
 ///
 /// Main entry point for parallel Vision-4 hashing. Requires scratchpad ≥ 2×MN-1 elements.
 #[inline]
-pub fn parallel_permutation<const N: usize, const MN: usize>(
+pub fn batch_permutation<const N: usize, const MN: usize>(
 	states: &mut [Ghash; MN],
 	scratchpad: &mut [Ghash],
 ) {
 	// Initial round constant addition
-	parallel_constants_add::<N, MN>(states, &ROUND_CONSTANTS[0]);
+	batch_constants_add::<N, MN>(states, &ROUND_CONSTANTS[0]);
 
 	// Execute all rounds of the permutation
 	for round_num in 0..NUM_ROUNDS {
-		parallel_round::<N, MN>(states, scratchpad, 1 + 2 * round_num);
+		batch_round::<N, MN>(states, scratchpad, 1 + 2 * round_num);
 	}
 }
 
@@ -126,7 +126,7 @@ mod tests {
 						array::from_fn(|i| array::from_fn(|j| parallel_states[i * M + j]));
 
 					let scratchpad = &mut [Ghash::ZERO; { 2 * MN }];
-					parallel_permutation::<N, MN>(&mut parallel_states, scratchpad);
+					batch_permutation::<N, MN>(&mut parallel_states, scratchpad);
 
 					for state in single_states.iter_mut() {
 						permutation(state);

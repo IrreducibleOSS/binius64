@@ -10,7 +10,7 @@ use binius_verifier::hash::vision_6::{
 };
 use digest::Output;
 
-use super::{super::parallel_digest::MultiDigest, parallel::parallel_permutation};
+use super::{super::parallel_digest::MultiDigest, permutation::parallel_permutation};
 
 /// A Vision hasher with state size M=6 suited for parallelization.
 ///
@@ -49,12 +49,20 @@ impl<const N: usize, const MN: usize, const MN_DIV_3: usize>
 	#[inline]
 	fn advance_data(data: &mut [&[u8]; N], bytes: usize) {
 		for i in 0..N {
-			data[i] = &data[i][bytes..];
+			if data[i].len() >= bytes {
+				data[i] = &data[i][bytes..];
+			} else {
+				data[i] = &[];
+			}
 		}
 	}
 
 	fn permute(states: &mut [Ghash; MN], scratchpad: &mut [Ghash], data: [&[u8]; N]) {
 		for (i, data) in data.iter().enumerate() {
+			// Skip empty data (padding case)
+			if data.is_empty() {
+				continue;
+			}
 			debug_assert_eq!(data.len(), RATE_AS_U8);
 
 			// Overwrite first RATE_AS_U128 elements of state i with data
@@ -111,15 +119,29 @@ impl<const N: usize, const MN: usize, const MN_DIV_3: usize> MultiDigest<N>
 	}
 
 	fn update(&mut self, mut data: [&[u8]; N]) {
-		data[1..].iter().for_each(|row| {
-			assert_eq!(row.len(), data[0].len());
-		});
+		// Handle padding: skip assertion if we have mix of empty and non-empty inputs
+		let non_empty_len = data.iter().find(|row| !row.is_empty()).map(|row| row.len());
+		if let Some(expected_len) = non_empty_len {
+			data.iter().for_each(|row| {
+				assert!(
+					row.is_empty() || row.len() == expected_len,
+					"All non-empty inputs must have same length"
+				);
+			});
+		}
+
+		// Skip processing if all inputs are empty (padding case)
+		if data.iter().all(|row| row.is_empty()) {
+			return;
+		}
 
 		if self.filled_bytes != 0 {
 			let to_copy = std::cmp::min(data[0].len(), RATE_AS_U8 - self.filled_bytes);
 			data.iter().enumerate().for_each(|(row_i, row)| {
-				self.buffers[row_i][self.filled_bytes..self.filled_bytes + to_copy]
-					.copy_from_slice(&row[..to_copy]);
+				if !row.is_empty() {
+					self.buffers[row_i][self.filled_bytes..self.filled_bytes + to_copy]
+						.copy_from_slice(&row[..to_copy]);
+				}
 			});
 			Self::advance_data(&mut data, to_copy);
 			self.filled_bytes += to_copy;
@@ -135,14 +157,22 @@ impl<const N: usize, const MN: usize, const MN_DIV_3: usize> MultiDigest<N>
 		}
 
 		while data[0].len() >= RATE_AS_U8 {
-			let chunks = array::from_fn(|i| &data[i][..RATE_AS_U8]);
+			let chunks = array::from_fn(|i| {
+				if data[i].len() >= RATE_AS_U8 {
+					&data[i][..RATE_AS_U8]
+				} else {
+					&[] // Empty slice for padding
+				}
+			});
 			Self::permute(&mut self.states, &mut self.scratchpad, chunks);
 			Self::advance_data(&mut data, RATE_AS_U8);
 		}
 
 		if !data[0].is_empty() {
 			data.iter().enumerate().for_each(|(row_i, row)| {
-				self.buffers[row_i][..row.len()].copy_from_slice(row);
+				if !row.is_empty() {
+					self.buffers[row_i][..row.len()].copy_from_slice(row);
+				}
 			});
 			self.filled_bytes = data[0].len();
 		}

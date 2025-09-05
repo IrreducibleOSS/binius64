@@ -6,12 +6,12 @@ use binius_field::{BinaryField128bGhash as Ghash, Field, Random};
 use binius_prover::hash::{
 	parallel_digest::{MultiDigest, ParallelDigest, ParallelMultidigestImpl},
 	vision_4::{
-		parallel::parallel_permutation as parallel_permutation_4,
-		single::VisionHasherMultiDigest as VisionHasherMultiDigest_4,
+		digest::VisionHasherMultiDigest as VisionHasherMultiDigest_4,
+		permutation::batch_permutation as parallel_permutation_4,
 	},
 	vision_6::{
-		parallel::parallel_permutation as parallel_permutation_6,
-		single::VisionHasherMultiDigest as VisionHasherMultiDigest_6,
+		digest::VisionHasherMultiDigest as VisionHasherMultiDigest_6,
+		permutation::parallel_permutation as parallel_permutation_6,
 	},
 };
 use binius_utils::rayon::prelude::*;
@@ -131,7 +131,7 @@ fn bench_hash_vision_4(c: &mut Criterion) {
 
 	// Number of parallel hashing instances
 	// Larger powers of 2 perform better.
-	const N: usize = 32;
+	const N: usize = 128;
 
 	group.bench_function("MultiDigest", |bench| {
 		bench.iter(|| {
@@ -183,7 +183,7 @@ fn bench_hash_vision_6(c: &mut Criterion) {
 
 	// Number of parallel hashing instances
 	// Larger powers of 2 perform better.
-	const N: usize = 32;
+	const N: usize = 128;
 
 	group.bench_function("MultiDigest", |bench| {
 		bench.iter(|| {

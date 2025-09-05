@@ -2,10 +2,12 @@ use std::{fs, path::PathBuf};
 
 use anyhow::{Context, Result};
 use binius_core::constraint_system::{ConstraintSystem, Proof, ValueVec, ValuesData};
-use binius_examples::setup;
+use binius_examples::setup_sha256;
+use binius_prover::hash::parallel_compression::ParallelCompressionAdaptor;
 use binius_utils::serialization::{DeserializeBytes, SerializeBytes};
 use binius_verifier::{
 	config::{ChallengerWithName, StdChallenger},
+	hash::StdCompression,
 	transcript::ProverTranscript,
 };
 use clap::Parser;
@@ -70,8 +72,9 @@ fn main() -> Result<()> {
 	let witness = ValueVec::new_from_data(cs.value_vec_layout.clone(), public, non_public)
 		.context("Failed to reconstruct ValueVec from provided values")?;
 
-	// Setup prover (verifier is not used here)
-	let (_verifier, prover) = setup(cs, args.log_inv_rate as usize)?;
+	// Setup prover (verifier is not used here) - using SHA256 compression
+	let parallel_compression = ParallelCompressionAdaptor::new(StdCompression::default());
+	let (_verifier, prover) = setup_sha256(cs, args.log_inv_rate as usize, parallel_compression)?;
 
 	// Prove
 	let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
