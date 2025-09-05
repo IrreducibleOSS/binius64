@@ -1,7 +1,7 @@
 use crate::{
 	circuits::{
 		concat::{Concat, Term},
-		keccak::Keccak,
+		keccak::{Keccak, N_WORDS_PER_BLOCK, RATE_BYTES},
 	},
 	compiler::{CircuitBuilder, Wire},
 };
@@ -33,30 +33,37 @@ pub(super) fn circuit_tweaked_keccak(
 ) -> Keccak {
 	// Create the message wires for Keccak (LE-packed)
 	let n_message_words = total_message_len.div_ceil(8);
-	let message_le: Vec<Wire> = (0..n_message_words)
+	let message: Vec<Wire> = (0..n_message_words)
 		.map(|_| builder.add_witness())
 		.collect();
-	let len = builder.add_constant_64(total_message_len as u64);
 
-	let keccak = Keccak::new(builder, len, digest, message_le.clone());
+	// Create padded message wires for build_circuit
+	let max_len_bytes = n_message_words * 8;
+	let n_blocks = (max_len_bytes + 1).div_ceil(RATE_BYTES);
+	let padded_message: Vec<Wire> = (0..n_blocks * N_WORDS_PER_BLOCK)
+		.map(|_| builder.add_witness())
+		.collect();
 
-	let mut terms = Vec::new();
-	let domain_param_term = Term {
-		len_bytes: builder.add_constant_64(domain_param_len as u64),
-		data: domain_param_wires,
-	};
-	terms.push(domain_param_term);
+	let len_bytes = builder.add_constant_64(total_message_len as u64);
 
-	let tweak_wire = builder.add_constant_64(tweak_byte as u64);
-	let tweak_term = Term {
-		len_bytes: builder.add_constant_64(1),
-		data: vec![tweak_wire],
-	};
-	terms.push(tweak_term);
-	terms.extend(additional_terms);
+	circuit_build_tweaked_keccak(
+		builder,
+		domain_param_len,
+		tweak_byte,
+		total_message_len,
+		domain_param_wires,
+		additional_terms,
+		digest,
+		&message,
+		&padded_message,
+	);
 
-	let _message_structure_verifier = Concat::new(builder, len, message_le, terms);
-	keccak
+	Keccak {
+		len_bytes,
+		digest,
+		message,
+		padded_message,
+	}
 }
 
 /// Verify a tweaked Keccak-256 circuit using the build_circuit API.
@@ -71,8 +78,7 @@ pub(super) fn circuit_tweaked_keccak(
 /// * `digest` - Output digest wires
 /// * `message_le` - Message wires (LE-packed, must have capacity for total_message_len)
 /// * `padded_message` - Padded message wires (must be sized for Keccak padding requirements)
-#[allow(dead_code)]
-pub(super) fn circuit_build_tweaked_keccak(
+fn circuit_build_tweaked_keccak(
 	builder: &CircuitBuilder,
 	domain_param_len: usize,
 	tweak_byte: u8,
