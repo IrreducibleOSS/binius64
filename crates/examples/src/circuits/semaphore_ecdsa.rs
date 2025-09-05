@@ -110,21 +110,3 @@ impl ExampleCircuit for SemaphoreExample {
 		Ok(())
 	}
 }
-
-#[cfg(test)]
-mod tests {
-	use binius_frontend::circuits::semaphore_ecdsa::reference::IdentityECDSA;
-
-	#[test]
-	fn test_examples_crate_identity_commitment() {
-		// Test the same computation from the examples crate
-		let secret_scalar = [0x2b; 32];
-		println!("Examples crate - Testing secret_scalar: {:02x?}", secret_scalar);
-
-		let identity = IdentityECDSA::new(secret_scalar);
-		let commitment = identity.commitment();
-		println!("Examples crate - Direct commitment result: {:02x?}", commitment);
-
-		// Let's see if this matches what the frontend crate produces
-	}
-}

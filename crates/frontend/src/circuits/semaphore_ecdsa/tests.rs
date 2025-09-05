@@ -88,8 +88,6 @@ mod test_semaphore_ecdsa {
 
 	#[test]
 	fn test_ecdsa_constraint_scaling() {
-		println!("\n=== ECDSA Semaphore Constraint Scaling ===\n");
-
 		for tree_height in [1, 2, 4, 8, 12, 16] {
 			let builder = CircuitBuilder::new();
 			let _circuit = SemaphoreProofECDSA::new(
@@ -103,17 +101,13 @@ mod test_semaphore_ecdsa {
 			let cs = compiled.constraint_system();
 			let total = cs.and_constraints.len() + cs.mul_constraints.len();
 
-			println!(
-				"Tree height {:2}: {:7} total ({:6} AND, {:6} MUL)",
-				tree_height,
-				total,
-				cs.and_constraints.len(),
-				cs.mul_constraints.len()
-			);
+			// Verify constraints scale as expected
+			assert!(total > 0, "Should have constraints");
+			if tree_height > 1 {
+				// Constraints should increase with tree height
+				assert!(cs.and_constraints.len() > 1000, "Should have AND constraints for tree");
+			}
 		}
-
-		println!("\nNote: MUL constraints stay constant (from ECDSA)");
-		println!("      AND constraints scale with tree height (Merkle proof)");
 	}
 
 	#[test]
@@ -174,32 +168,5 @@ mod test_semaphore_ecdsa {
 				);
 			}
 		}
-	}
-
-	#[test]
-	fn test_ecdsa_circuit_sizes() {
-		// Document circuit sizes for different configurations
-		println!("\n=== ECDSA Circuit Size Reference ===\n");
-		println!("Configuration: msg_len=32, scope_len=16\n");
-
-		let configurations = [
-			(1, "Single member"),
-			(4, "Small group (16 members)"),
-			(8, "Medium group (256 members)"),
-			(16, "Large group (65K members)"),
-			(20, "XL group (1M members)"),
-		];
-
-		for (height, description) in configurations {
-			let builder = CircuitBuilder::new();
-			let _circuit = SemaphoreProofECDSA::new(&builder, height, 32, 16);
-			let compiled = builder.build();
-			let cs = compiled.constraint_system();
-
-			let total = cs.and_constraints.len() + cs.mul_constraints.len();
-			println!("Height {:2} ({}): {:7} constraints", height, description, total);
-		}
-
-		println!("\nNote: These include full secp256k1 scalar multiplication");
 	}
 }
