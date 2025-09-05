@@ -17,6 +17,7 @@ rand.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 transpose.workspace = true
+uninit.workspace = true
 
 [dev-dependencies]
 assert_matches.workspace = true

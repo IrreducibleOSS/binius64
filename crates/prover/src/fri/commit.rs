@@ -2,7 +2,6 @@ use binius_field::{BinaryField, PackedExtension, PackedField};
 use binius_math::{FieldSlice, ntt::AdditiveNTT};
 use binius_utils::{bail, rayon::prelude::*};
 use binius_verifier::{fri::FRIParams, merkle_tree::MerkleTreeScheme};
-use bytemuck::zeroed_vec;
 
 use super::error::Error;
 use crate::merkle_tree::MerkleTreeProver;
@@ -43,9 +42,7 @@ where
 		));
 	}
 
-	commit_interleaved_with(params, ntt, merkle_prover, move |buffer| {
-		buffer.copy_from_slice(message.as_ref())
-	})
+	commit_interleaved_with(params, ntt, merkle_prover, message.as_ref())
 }
 
 /// Encodes and commits the input message with a closure for writing the message.
@@ -60,7 +57,7 @@ fn commit_interleaved_with<F, FA, P, PA, NTT, MerkleProver, VCS>(
 	params: &FRIParams<F, FA>,
 	ntt: &NTT,
 	merkle_prover: &MerkleProver,
-	message_writer: impl FnOnce(&mut [P]),
+	message: &[P],
 ) -> Result<CommitOutput<P, VCS::Digest, MerkleProver::Committed>, Error>
 where
 	F: BinaryField,
@@ -87,11 +84,17 @@ where
 	)
 	.entered();
 
-	let mut encoded = zeroed_vec(1 << (log_elems - P::LOG_WIDTH + rs_code.log_inv_rate()));
-	message_writer(&mut encoded[..1 << (log_elems - P::LOG_WIDTH)]);
+	let len = 1 << (log_elems - P::LOG_WIDTH + rs_code.log_inv_rate());
+	let mut encoded = Vec::with_capacity(len);
 
-	tracing::debug_span!("Reed–Solomon Encode")
-		.in_scope(|| rs_code.encode_ext_batch_inplace(ntt, &mut encoded, log_batch_size))?;
+	tracing::debug_span!("Reed–Solomon Encode").in_scope(|| {
+		rs_code.encode_ext_batch(ntt, message, encoded.spare_capacity_mut(), log_batch_size)
+	})?;
+
+	unsafe {
+		// Safety: encode_ext_batch guarantees all elements are initialized on success
+		encoded.set_len(len);
+	}
 
 	// Take the first arity as coset_log_len, or use the value such that the number of leaves equals
 	// 1 << log_inv_rate if arities is empty
