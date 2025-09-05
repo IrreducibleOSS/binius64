@@ -55,6 +55,7 @@ fn bench_keccak_permutations(c: &mut Criterion) {
 		group.throughput(Throughput::Elements(n_permutations as u64));
 		group.warm_up_time(std::time::Duration::from_secs(2));
 		group.measurement_time(std::time::Duration::from_secs(120));
+		group.sample_size(50);
 
 		let bench_name = format!("n_{}_{}", n_permutations, feature_suffix);
 		group.bench_with_input(
@@ -81,6 +82,7 @@ fn bench_keccak_permutations(c: &mut Criterion) {
 		group.throughput(Throughput::Elements(n_permutations as u64));
 		group.warm_up_time(std::time::Duration::from_secs(2));
 		group.measurement_time(std::time::Duration::from_secs(120));
+		group.sample_size(50);
 
 		let bench_name = format!("n_{}_{}", n_permutations, feature_suffix);
 		group.bench_with_input(
@@ -114,6 +116,7 @@ fn bench_keccak_permutations(c: &mut Criterion) {
 		group.throughput(Throughput::Elements(n_permutations as u64));
 		group.warm_up_time(std::time::Duration::from_secs(2));
 		group.measurement_time(std::time::Duration::from_secs(120));
+		group.sample_size(50);
 
 		let bench_name = format!("n_{}_{}", n_permutations, feature_suffix);
 		group.bench_with_input(

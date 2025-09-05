@@ -63,6 +63,7 @@ fn bench_blake2s_hash(c: &mut Criterion) {
 		group.throughput(Throughput::Bytes(max_bytes as u64));
 		group.warm_up_time(std::time::Duration::from_secs(2));
 		group.measurement_time(std::time::Duration::from_secs(120));
+		group.sample_size(50);
 
 		let bench_name = format!("bytes_{}_{}", max_bytes, feature_suffix);
 		group.bench_with_input(BenchmarkId::from_parameter(&bench_name), &max_bytes, |b, _| {
@@ -85,6 +86,7 @@ fn bench_blake2s_hash(c: &mut Criterion) {
 		group.throughput(Throughput::Bytes(max_bytes as u64));
 		group.warm_up_time(std::time::Duration::from_secs(2));
 		group.measurement_time(std::time::Duration::from_secs(120));
+		group.sample_size(50);
 
 		let bench_name = format!("bytes_{}_{}", max_bytes, feature_suffix);
 		group.bench_with_input(BenchmarkId::from_parameter(&bench_name), &max_bytes, |b, _| {
@@ -112,6 +114,7 @@ fn bench_blake2s_hash(c: &mut Criterion) {
 		group.throughput(Throughput::Bytes(max_bytes as u64));
 		group.warm_up_time(std::time::Duration::from_secs(2));
 		group.measurement_time(std::time::Duration::from_secs(120));
+		group.sample_size(50);
 
 		let bench_name = format!("bytes_{}_{}", max_bytes, feature_suffix);
 		group.bench_with_input(BenchmarkId::from_parameter(&bench_name), &max_bytes, |b, _| {

@@ -65,6 +65,7 @@ fn bench_ethsign_signatures(c: &mut Criterion) {
 		group.throughput(Throughput::Elements(n_signatures as u64));
 		group.warm_up_time(std::time::Duration::from_secs(2));
 		group.measurement_time(std::time::Duration::from_secs(120));
+		group.sample_size(50);
 
 		group.bench_with_input(BenchmarkId::from_parameter(&bench_name), &bench_name, |b, _| {
 			b.iter(|| {
@@ -86,6 +87,7 @@ fn bench_ethsign_signatures(c: &mut Criterion) {
 		group.throughput(Throughput::Elements(n_signatures as u64));
 		group.warm_up_time(std::time::Duration::from_secs(2));
 		group.measurement_time(std::time::Duration::from_secs(120));
+		group.sample_size(50);
 
 		group.bench_with_input(BenchmarkId::from_parameter(&bench_name), &bench_name, |b, _| {
 			b.iter(|| {
@@ -114,6 +116,7 @@ fn bench_ethsign_signatures(c: &mut Criterion) {
 		group.throughput(Throughput::Elements(n_signatures as u64));
 		group.warm_up_time(std::time::Duration::from_secs(2));
 		group.measurement_time(std::time::Duration::from_secs(120));
+		group.sample_size(50);
 
 		group.bench_with_input(BenchmarkId::from_parameter(&bench_name), &bench_name, |b, _| {
 			b.iter(|| {
