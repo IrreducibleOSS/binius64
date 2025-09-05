@@ -23,7 +23,7 @@ impl Default for ValueIndex {
 /// A different variants of shifting a value.
 ///
 /// Note that there is no shift left arithmetic because it is redundant.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ShiftVariant {
 	/// Shift logical left.
 	Sll,

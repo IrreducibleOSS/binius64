@@ -35,9 +35,17 @@ pub fn shr<T: BitType>(expr: &Expr<T>, amount: u8) -> Expr<T> {
     Expr::new(ExprNode::Shr(expr.inner.clone(), amount))
 }
 
-/// Arithmetic shift right
+/// Arithmetic shift right (sign-extend)
 pub fn sar<T: BitType>(expr: &Expr<T>, amount: u8) -> Expr<T> {
     Expr::new(ExprNode::Sar(expr.inner.clone(), amount))
+}
+
+/// 32-bit arithmetic shift right
+/// 
+/// Sign-extends from bit 31 for U32 values.
+/// The evaluation will treat this as U32-specific.
+pub fn sar32(expr: &Expr<crate::types::U32>, amount: u8) -> Expr<crate::types::U32> {
+    sar(expr, amount)
 }
 
 /// Rotate left
@@ -87,3 +95,58 @@ pub fn shr32(expr: &Expr<crate::types::U32>, amount: u8) -> Expr<crate::types::U
 
 // Note: Method-style operations removed as they don't work well with value-based API
 // Use the free functions instead: xor(a, b) rather than a.xor(b)
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{constant, types::{U32, U64}};
+    use crate::compute::expressions::ExpressionEvaluator;
+    
+    #[test]
+    fn test_sar_u32() {
+        // Test U32 arithmetic shift with MSB set
+        let val = constant::<U32>(0x80000000);
+        let shifted = sar(&val, 31);
+        
+        let mut eval = ExpressionEvaluator::new(vec![]);
+        let result = eval.evaluate(&shifted) as u32;
+        
+        assert_eq!(result, 0xffffffff, "U32 sar should sign-extend from bit 31");
+    }
+    
+    #[test]
+    fn test_sar_u32_positive() {
+        // Test U32 arithmetic shift with positive value
+        let val = constant::<U32>(0x40000000);
+        let shifted = sar(&val, 31);
+        
+        let mut eval = ExpressionEvaluator::new(vec![]);
+        let result = eval.evaluate(&shifted) as u32;
+        
+        assert_eq!(result, 0, "Positive U32 sar should shift to 0");
+    }
+    
+    #[test]
+    fn test_sar_u64() {
+        // Test U64 arithmetic shift with MSB set
+        let val = constant::<U64>(0x8000000000000000);
+        let shifted = sar(&val, 63);
+        
+        let mut eval = ExpressionEvaluator::new(vec![]);
+        let result = eval.evaluate(&shifted);
+        
+        assert_eq!(result, 0xffffffffffffffff, "U64 sar should sign-extend from bit 63");
+    }
+    
+    #[test]
+    fn test_sar_u64_positive() {
+        // Test U64 arithmetic shift with positive value  
+        let val = constant::<U64>(0x4000000000000000);
+        let shifted = sar(&val, 63);
+        
+        let mut eval = ExpressionEvaluator::new(vec![]);
+        let result = eval.evaluate(&shifted);
+        
+        assert_eq!(result, 0, "Positive U64 sar should shift to 0");
+    }
+}

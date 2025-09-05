@@ -111,7 +111,20 @@ impl ConstraintValidator {
             
             ExprNode::Sar(a, amount) => {
                 let a_val = self.evaluate_expr(a);
-                ((a_val as i64) >> *amount) as u64
+                
+                // Heuristic to determine if this is U32 or U64:
+                // If upper 32 bits are all 0 or all 1, treat as U32
+                let upper = (a_val >> 32) as u32;
+                let is_u32 = upper == 0 || upper == 0xffffffff;
+                
+                if is_u32 && (a_val & 0x80000000) != 0 {
+                    // U32 with bit 31 set - sign extend from bit 31
+                    let signed = a_val | 0xffffffff_00000000;
+                    ((signed as i64) >> *amount) as u64
+                } else {
+                    // U64 or positive U32 - normal arithmetic shift
+                    ((a_val as i64) >> *amount) as u64
+                }
             }
             
             ExprNode::Rol(a, amount) => {

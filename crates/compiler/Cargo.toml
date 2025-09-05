@@ -1,0 +1,8 @@
+[package]
+name = "binius-compiler"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Reuse the local core constraint system instead of duplicating
+binius-core = { path = "../core" }

@@ -1,0 +1,15 @@
+[package]
+name = "binius-compiler3"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+binius-core = { path = "../core" }
+binius-field = { path = "../field" }
+binius-utils = { path = "../utils" }
+thiserror = "1.0"
+tracing = "0.1"
+
+[dev-dependencies]
+rand = "0.8"
+proptest = "1.0"
