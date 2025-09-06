@@ -435,8 +435,8 @@ impl<'a> Interpreter<'a> {
 
 		let val = self.load(ctx, src);
 
-		if val & Word::MSB_ONE != Word::ZERO {
-			ctx.note_assertion_failure(error_id, format!("{val:?} & MSB_ONE != 0"));
+		if val.is_msb_true() {
+			ctx.note_assertion_failure(error_id, format!("{val:?} MSB is true"));
 		}
 	}
 
@@ -446,8 +446,8 @@ impl<'a> Interpreter<'a> {
 
 		let val = self.load(ctx, src);
 
-		if val & Word::MSB_ONE != Word::MSB_ONE {
-			ctx.note_assertion_failure(error_id, format!("{val:?} & MSB_ONE != MSB_ONE"));
+		if val.is_msb_false() {
+			ctx.note_assertion_failure(error_id, format!("{val:?} MSB is false"));
 		}
 	}
 
