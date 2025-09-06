@@ -128,7 +128,7 @@ impl Permutation {
 
 #[cfg(test)]
 mod tests {
-	use binius_core::word::Word;
+	use binius_core::{verify::verify_constraints, word::Word};
 	use rand::{Rng, SeedableRng, rngs::StdRng};
 
 	use super::*;
@@ -138,7 +138,6 @@ mod tests {
 			keccak_permutation_round_reference, rho_pi_reference, theta_reference,
 		},
 		compiler::CircuitBuilder,
-		constraint_verifier::verify_constraints,
 	};
 
 	#[test]

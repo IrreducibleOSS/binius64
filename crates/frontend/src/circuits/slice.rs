@@ -271,8 +271,9 @@ pub fn create_byte_mask(b: &CircuitBuilder, n_bytes: Wire) -> Wire {
 
 #[cfg(test)]
 mod tests {
+	use binius_core::verify::verify_constraints;
+
 	use super::{CircuitBuilder, Slice, Wire, Word};
-	use crate::constraint_verifier::verify_constraints;
 
 	#[test]
 	fn test_aligned_slice() {

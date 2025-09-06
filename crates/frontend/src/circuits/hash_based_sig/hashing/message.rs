@@ -119,13 +119,13 @@ pub fn hash_message(param: &[u8], nonce: &[u8], message: &[u8]) -> [u8; 32] {
 
 #[cfg(test)]
 mod tests {
+	use binius_core::verify::verify_constraints;
 	use proptest::prelude::*;
 	use sha3::{Digest, Keccak256};
 
 	use super::*;
 	use crate::{
 		compiler::{CircuitBuilder, circuit::Circuit},
-		constraint_verifier::verify_constraints,
 		util::pack_bytes_into_wires_le,
 	};
 

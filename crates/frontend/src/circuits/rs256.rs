@@ -438,6 +438,7 @@ impl RsaIntermediates {
 
 #[cfg(test)]
 mod tests {
+	use binius_core::verify::verify_constraints;
 	use hex_literal::hex;
 	use num_bigint::BigUint;
 	use rand::{SeedableRng, TryRngCore, rngs::StdRng};
@@ -448,7 +449,6 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::{compiler::CircuitBuilder, constraint_verifier::verify_constraints};
 
 	/// Create a deterministic test RSA key
 	/// This is a 2048-bit RSA key generated with ChaCha8Rng seed 42

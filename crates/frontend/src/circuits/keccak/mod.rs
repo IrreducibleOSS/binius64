@@ -298,6 +298,7 @@ impl Keccak {
 mod tests {
 	use std::iter::repeat_n;
 
+	use binius_core::verify::verify_constraints;
 	use rand::{Rng, SeedableRng, rngs::StdRng};
 	use sha3::{Digest, Keccak256};
 
@@ -305,7 +306,6 @@ mod tests {
 	use crate::{
 		circuits::keccak::RATE_BYTES,
 		compiler::{CircuitBuilder, Wire},
-		constraint_verifier::verify_constraints,
 	};
 
 	fn keccak_crate(message_bytes: &[u8]) -> [u8; 32] {

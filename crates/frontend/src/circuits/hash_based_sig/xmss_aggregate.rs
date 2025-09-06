@@ -117,7 +117,7 @@ impl<'a> MultiSigBuilder<'a> {
 mod tests {
 	use std::error::Error;
 
-	use binius_core::Word;
+	use binius_core::{Word, verify::verify_constraints};
 	use rand::{RngCore, SeedableRng, rngs::StdRng};
 	use rstest::rstest;
 
@@ -126,7 +126,6 @@ mod tests {
 		circuits::hash_based_sig::witness_utils::{
 			ValidatorSignatureData, XmssHasherData, populate_xmss_hashers,
 		},
-		constraint_verifier::verify_constraints,
 		util::pack_bytes_into_wires_le,
 	};
 

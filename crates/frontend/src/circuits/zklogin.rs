@@ -508,11 +508,11 @@ fn jwt_payload_check(
 mod tests {
 
 	use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as BASE64_URL_SAFE_NO_PAD};
+	use binius_core::verify::verify_constraints;
 	use rand::{SeedableRng, TryRngCore, rngs::StdRng};
 	use sha2::{Digest, Sha256};
 
 	use super::*;
-	use crate::constraint_verifier::verify_constraints;
 
 	fn run_zk_login_with_jwt_population(config: Config) {
 		use jwt_simple::prelude::*;

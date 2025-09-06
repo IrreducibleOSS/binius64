@@ -265,8 +265,9 @@ impl Concat {
 }
 #[cfg(test)]
 mod tests {
+	use binius_core::verify::verify_constraints;
+
 	use super::*;
-	use crate::{compiler::CircuitBuilder, constraint_verifier::verify_constraints};
 
 	// Test utilities
 

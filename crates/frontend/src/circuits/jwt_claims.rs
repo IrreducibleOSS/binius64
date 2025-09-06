@@ -220,8 +220,10 @@ impl JwtClaims {
 
 #[cfg(test)]
 mod tests {
+	use binius_core::verify::verify_constraints;
+
 	use super::{Attribute, JwtClaims, Wire};
-	use crate::{compiler::CircuitBuilder, constraint_verifier::verify_constraints};
+	use crate::compiler::CircuitBuilder;
 
 	#[test]
 	fn test_single_attribute() {

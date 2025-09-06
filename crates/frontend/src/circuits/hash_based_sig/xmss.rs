@@ -120,7 +120,7 @@ pub fn circuit_xmss(
 
 #[cfg(test)]
 mod tests {
-	use binius_core::Word;
+	use binius_core::{Word, verify::verify_constraints};
 	use rand::{RngCore, SeedableRng, rngs::StdRng};
 	use rstest::rstest;
 
@@ -133,7 +133,6 @@ mod tests {
 				XmssHasherData, build_merkle_tree, extract_auth_path, populate_xmss_hashers,
 			},
 		},
-		constraint_verifier::verify_constraints,
 		util::pack_bytes_into_wires_le,
 	};
 

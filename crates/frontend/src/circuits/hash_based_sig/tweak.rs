@@ -1,4 +1,5 @@
 use binius_core::Word;
+use binius_core::verify::verify_constraints;
 
 use crate::{
 	circuits::{
@@ -194,7 +195,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		compiler::{CircuitBuilder, circuit::Circuit},
-		constraint_verifier::verify_constraints,
+		binius_core::verify::verify_constraints,
 	};
 
 	/// Helper struct to encapsulate test circuit setup

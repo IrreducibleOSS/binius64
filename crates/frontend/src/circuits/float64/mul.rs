@@ -171,15 +171,12 @@ pub fn float64_mul(builder: &CircuitBuilder, a: Wire, b: Wire) -> Wire {
 
 #[cfg(test)]
 mod tests {
-	use binius_core::word::Word;
+	use binius_core::{verify::verify_constraints, word::Word};
 
 	use super::*;
-	use crate::{
-		circuits::float64::utils::tests::{
-			f64_bits_semantic_eq, ref_fp64_pack_finite_or_inf, ref_fp64_round_rne,
-			ref_fp64_underflow_shift, ref_fp64_unpack,
-		},
-		constraint_verifier::verify_constraints,
+	use crate::circuits::float64::utils::tests::{
+		f64_bits_semantic_eq, ref_fp64_pack_finite_or_inf, ref_fp64_round_rne,
+		ref_fp64_underflow_shift, ref_fp64_unpack,
 	};
 
 	fn ref_fp64_sig53_and_exp(exp: u64, frac: u64, is_norm: bool) -> (u64, u64) {

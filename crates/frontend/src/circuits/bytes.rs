@@ -123,11 +123,10 @@ pub fn swap_bytes(builder: &CircuitBuilder, input: Wire) -> Wire {
 
 #[cfg(test)]
 mod tests {
-	use binius_core::word::Word;
+	use binius_core::{verify::verify_constraints, word::Word};
 	use proptest::prelude::*;
 
 	use super::*;
-	use crate::constraint_verifier::verify_constraints;
 
 	/// Helper function to test swap_bytes circuit with given input and expected output
 	fn test_swap_bytes_helper(input_val: u64, expected: u64) {

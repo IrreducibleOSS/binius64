@@ -99,10 +99,11 @@ impl DoubleSha256 {
 mod tests {
 	use std::array;
 
+	use binius_core::verify::verify_constraints;
 	use hex_literal::hex;
 
 	use super::*;
-	use crate::{constraint_verifier::verify_constraints, util::pack_bytes_into_wires_le};
+	use crate::util::pack_bytes_into_wires_le;
 
 	#[test]
 	fn test_valid() {

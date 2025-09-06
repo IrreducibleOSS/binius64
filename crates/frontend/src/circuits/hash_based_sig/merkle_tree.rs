@@ -99,12 +99,11 @@ pub fn circuit_merkle_path(
 
 #[cfg(test)]
 mod tests {
-	use binius_core::Word;
+	use binius_core::{Word, verify::verify_constraints};
 
 	use super::*;
 	use crate::{
 		circuits::hash_based_sig::hashing::{build_tree_hash, hash_tree_node_keccak},
-		constraint_verifier::verify_constraints,
 		util::pack_bytes_into_wires_le,
 	};
 

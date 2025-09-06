@@ -120,10 +120,9 @@ pub fn single_wire_multiplex(b: &CircuitBuilder, inputs: &[Wire], sel: Wire) -> 
 
 #[cfg(test)]
 mod tests {
-	use binius_core::word::Word;
+	use binius_core::{verify::verify_constraints, word::Word};
 
 	use super::*;
-	use crate::constraint_verifier::verify_constraints;
 
 	/// Helper function to verify single-wire multiplexer behavior
 	/// Takes input values and test cases as (selector, expected_output) pairs

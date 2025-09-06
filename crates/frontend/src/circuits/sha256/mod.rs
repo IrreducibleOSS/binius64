@@ -608,15 +608,12 @@ pub fn sha256_fixed(builder: &CircuitBuilder, message: &[Wire], len_bytes: usize
 mod tests {
 	use std::array;
 
-	use binius_core::Word;
+	use binius_core::{Word, verify::verify_constraints};
 	use hex_literal::hex;
 	use sha2::Digest;
 
 	use super::*;
-	use crate::{
-		compiler::{self, Wire},
-		constraint_verifier::verify_constraints,
-	};
+	use crate::compiler::{self, Wire};
 
 	fn mk_circuit(b: &mut compiler::CircuitBuilder, max_len: usize) -> Sha256 {
 		let len = b.add_witness();
