@@ -1,9 +1,9 @@
 use anyhow::{Result, anyhow};
 use binius_core::{
 	constraint_system::{ConstraintSystem, ValueVec},
+	verify::verify_constraints,
 	word::Word,
 };
-use binius_frontend::constraint_verifier::verify_constraints;
 use rand::{Rng, SeedableRng, rngs::StdRng};
 
 pub struct RandBlast {

@@ -256,13 +256,14 @@ pub fn grind_nonce(
 
 #[cfg(test)]
 mod tests {
+	use binius_core::verify::verify_constraints;
 	use rand::{RngCore, SeedableRng, rngs::StdRng};
 
 	use super::{
 		super::hashing::{build_chain_hash, hash_chain_keccak},
 		*,
 	};
-	use crate::{constraint_verifier::verify_constraints, util::pack_bytes_into_wires_le};
+	use crate::util::pack_bytes_into_wires_le;
 
 	#[test]
 	fn test_circuit_winternitz_ots() {

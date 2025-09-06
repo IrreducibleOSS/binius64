@@ -296,8 +296,10 @@ fn compute_expected_base64_char(
 
 #[cfg(test)]
 mod tests {
+	use binius_core::verify::verify_constraints;
+
 	use super::{Base64UrlSafe, Wire};
-	use crate::{compiler::CircuitBuilder, constraint_verifier::verify_constraints};
+	use crate::compiler::CircuitBuilder;
 
 	/// Encodes bytes to base64 using URL-safe alphabet without trailing padding
 	/// '=" chars.

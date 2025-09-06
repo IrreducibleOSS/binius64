@@ -6,6 +6,7 @@
 
 #[cfg(test)]
 mod blake2b_tests {
+	use binius_core::verify::verify_constraints;
 	use rand::{Rng, SeedableRng, rngs::StdRng};
 
 	use crate::{
@@ -16,7 +17,6 @@ mod blake2b_tests {
 			test_constants::{ground_truth_blake2b, hex_string},
 		},
 		compiler::CircuitBuilder,
-		constraint_verifier::verify_constraints,
 	};
 
 	/// All test vectors for comprehensive testing

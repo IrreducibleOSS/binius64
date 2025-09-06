@@ -2,14 +2,11 @@
 
 use binius_core::{
 	constraint_system::{AndConstraint, ConstraintSystem, MulConstraint, ValueVec},
+	verify::{eval_operand, verify_constraints},
 	word::Word,
 };
 use binius_field::{AESTowerField8b, BinaryField, Field};
-use binius_frontend::{
-	circuits::sha256::Sha256,
-	compiler::CircuitBuilder,
-	constraint_verifier::{eval_operand, verify_constraints},
-};
+use binius_frontend::{circuits::sha256::Sha256, compiler::CircuitBuilder};
 use binius_math::{
 	BinarySubspace,
 	inner_product::{inner_product, inner_product_buffers},

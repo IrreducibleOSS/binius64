@@ -481,11 +481,10 @@ pub fn fp64_pack_finite_or_inf(
 
 #[cfg(test)]
 pub mod tests {
-	use binius_core::word::Word;
+	use binius_core::{verify::verify_constraints, word::Word};
 	use proptest::bool;
 
 	use super::*;
-	use crate::constraint_verifier::verify_constraints;
 
 	// Reference implementations for testing (shared between add.rs and utils.rs tests)
 	pub struct Fp64UnpackResult {

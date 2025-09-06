@@ -1,6 +1,6 @@
 use std::iter::repeat_with;
 
-use binius_core::word::Word;
+use binius_core::{verify::verify_constraints, word::Word};
 use num_integer::Integer;
 use proptest::prelude::*;
 use rand::{SeedableRng, rngs::StdRng};
@@ -8,7 +8,6 @@ use rand::{SeedableRng, rngs::StdRng};
 use super::*;
 use crate::{
 	compiler::{CircuitBuilder, circuit::WitnessFiller},
-	constraint_verifier::verify_constraints,
 	util::num_biguint_from_u64_limbs as from_u64_limbs,
 };
 

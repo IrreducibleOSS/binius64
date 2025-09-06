@@ -507,11 +507,10 @@ impl Threefish512Block {
 
 #[cfg(test)]
 mod tests {
+	use binius_core::verify::verify_constraints;
+
 	use super::*;
-	use crate::{
-		circuits::skein512::reference, compiler::CircuitBuilder,
-		constraint_verifier::verify_constraints,
-	};
+	use crate::{circuits::skein512::reference, compiler::CircuitBuilder};
 
 	// Tests from skein512.rs
 	fn test_skein512_with_blocks(message_blocks: &[[u8; 64]]) {

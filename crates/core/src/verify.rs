@@ -1,6 +1,8 @@
-//! Simple constraint verifier for testing
+//! Routines for checking whether the
+//! [constraint system][`crate::constraint_system::ConstraintSystem`] is satisfied with the given
+//! [value vector][`ValueVec`].
 
-use binius_core::{
+use crate::{
 	constraint_system::{
 		AndConstraint, ConstraintSystem, MulConstraint, ShiftVariant, ShiftedValueIndex, ValueVec,
 	},

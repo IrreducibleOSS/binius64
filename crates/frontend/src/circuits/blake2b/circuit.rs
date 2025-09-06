@@ -311,12 +311,11 @@ pub fn g_mixing(
 
 #[cfg(test)]
 mod tests {
-	use binius_core::word::Word;
+	use binius_core::{verify::verify_constraints, word::Word};
 
 	use crate::{
 		circuits::blake2b::{circuit::g_mixing, reference},
 		compiler::CircuitBuilder,
-		constraint_verifier::verify_constraints,
 	};
 
 	/// Test the G mixing function with known values

@@ -93,13 +93,12 @@ pub fn hmac_sha512_fixed(
 mod tests {
 	use std::{array, iter::repeat_with};
 
-	use binius_core::word::Word;
+	use binius_core::{verify::verify_constraints, word::Word};
 	use hmac::{Hmac, Mac};
 	use rand::{Rng, SeedableRng, rngs::StdRng};
 	use sha2::Sha512;
 
 	use super::*;
-	use crate::constraint_verifier::verify_constraints;
 
 	type HmacSha512 = Hmac<Sha512>;
 

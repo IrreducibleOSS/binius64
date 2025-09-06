@@ -97,13 +97,13 @@ pub fn hash_public_key_keccak(domain_param: &[u8], pk_hashes: &[[u8; 32]]) -> [u
 
 #[cfg(test)]
 mod tests {
+	use binius_core::verify::verify_constraints;
 	use proptest::prelude::*;
 	use sha3::{Digest, Keccak256};
 
 	use super::*;
 	use crate::{
 		compiler::{CircuitBuilder, circuit::Circuit},
-		constraint_verifier::verify_constraints,
 		util::pack_bytes_into_wires_le,
 	};
 

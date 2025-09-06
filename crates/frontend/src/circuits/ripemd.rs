@@ -358,11 +358,11 @@ pub fn ripemd160_fixed(builder: &CircuitBuilder, message: &[Wire], len_bytes: us
 mod tests {
 	use std::{array, iter, iter::repeat_with};
 
+	use binius_core::verify::verify_constraints;
 	use rand::prelude::*;
 	use ripemd::Digest;
 
 	use super::*;
-	use crate::{compiler::CircuitBuilder, constraint_verifier::verify_constraints};
 
 	// Helper function for ripemd160_fixed tests
 	fn test_ripemd160_fixed_with_input(message: &[u8], expected_bytes: [u8; 20]) {

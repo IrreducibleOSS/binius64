@@ -213,13 +213,10 @@ fn small_sigma_1(b: &CircuitBuilder, x: Wire) -> Wire {
 
 #[cfg(test)]
 mod tests {
-	use binius_core::word::Word;
+	use binius_core::{verify::verify_constraints, word::Word};
 
 	use super::{Compress, State};
-	use crate::{
-		compiler::{self, Wire},
-		constraint_verifier::verify_constraints,
-	};
+	use crate::compiler::{self, Wire};
 
 	/// A test circuit that proves a knowledge of preimage for a given state vector S in
 	///

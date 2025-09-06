@@ -68,10 +68,10 @@ pub fn emit_eval_bytecode(
 
 #[cfg(test)]
 mod tests {
-	use binius_core::word::Word;
+	use binius_core::{verify::verify_constraints, word::Word};
 	use rand::{RngCore, SeedableRng, rngs::StdRng};
 
-	use crate::{compiler::CircuitBuilder, constraint_verifier::verify_constraints};
+	use crate::compiler::CircuitBuilder;
 
 	#[test]
 	fn test_select_basic() {

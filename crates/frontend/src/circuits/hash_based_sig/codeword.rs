@@ -118,13 +118,10 @@ pub fn extract_coordinates(hash: &[u8], dimension: usize, resolution_bits: usize
 
 #[cfg(test)]
 mod tests {
-	use binius_core::Word;
+	use binius_core::{Word, verify::verify_constraints};
 
 	use super::*;
-	use crate::{
-		compiler::{CircuitBuilder, Wire},
-		constraint_verifier::verify_constraints,
-	};
+	use crate::compiler::{CircuitBuilder, Wire};
 
 	#[test]
 	fn test_coordinate_extraction() {

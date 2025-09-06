@@ -76,11 +76,11 @@ fn join(builder: &CircuitBuilder, b0: Wire, b1: Wire) -> Wire {
 
 #[cfg(test)]
 mod tests {
-	use binius_core::Word;
+	use binius_core::{Word, verify::verify_constraints};
 	use hex_literal::hex;
 
 	use super::*;
-	use crate::{constraint_verifier::verify_constraints, util::pack_bytes_into_wires_le};
+	use crate::util::pack_bytes_into_wires_le;
 
 	#[test]
 	fn test_valid() {

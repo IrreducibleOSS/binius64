@@ -147,14 +147,13 @@ pub fn hash_tree_node_keccak(
 
 #[cfg(test)]
 mod tests {
-	use binius_core::Word;
+	use binius_core::{Word, verify::verify_constraints};
 	use proptest::prelude::*;
 	use sha3::{Digest, Keccak256};
 
 	use super::*;
 	use crate::{
 		compiler::{CircuitBuilder, circuit::Circuit},
-		constraint_verifier::verify_constraints,
 		util::pack_bytes_into_wires_le,
 	};
 

@@ -92,11 +92,10 @@ impl MerklePath {
 mod tests {
 	use std::array;
 
-	use binius_core::Word;
+	use binius_core::{Word, verify::verify_constraints};
 	use hex_literal::hex;
 
 	use super::*;
-	use crate::constraint_verifier::verify_constraints;
 
 	#[test]
 	fn test_valid() {

@@ -111,12 +111,12 @@ pub fn circuit_chain(
 
 #[cfg(test)]
 mod tests {
-	use binius_core::Word;
+	use binius_core::{Word, verify::verify_constraints};
 	use proptest::{prelude::*, strategy::Just};
 	use sha3::{Digest, Keccak256};
 
 	use super::{super::hashing::build_chain_hash, *};
-	use crate::{constraint_verifier::verify_constraints, util::pack_bytes_into_wires_le};
+	use crate::util::pack_bytes_into_wires_le;
 
 	proptest! {
 		#[test]
