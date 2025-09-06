@@ -1,3 +1,9 @@
+//! Core datatypes common to prover and verifier of Binius64.
+//!
+//! Most imporantly it hosts the definition of a [`ConstraintSystem`].
+
+#![warn(missing_docs)]
+
 pub mod constraint_system;
 pub mod consts;
 pub mod error;
