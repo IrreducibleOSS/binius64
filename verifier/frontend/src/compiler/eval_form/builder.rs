@@ -66,13 +66,13 @@ impl BytecodeBuilder {
 		self.emit_reg(src3);
 	}
 
-	pub fn emit_select(&mut self, dst: u32, a: u32, b: u32, cond: u32) {
+	pub fn emit_select(&mut self, dst: u32, cond: u32, t: u32, f: u32) {
 		self.n_eval_insn += 1;
 		self.emit_u8(0x05);
 		self.emit_reg(dst);
-		self.emit_reg(a);
-		self.emit_reg(b);
 		self.emit_reg(cond);
+		self.emit_reg(t);
+		self.emit_reg(f);
 	}
 
 	// Shifts

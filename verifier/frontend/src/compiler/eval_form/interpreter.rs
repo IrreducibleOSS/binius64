@@ -201,15 +201,15 @@ impl<'a> Interpreter<'a> {
 
 	fn exec_select(&mut self, ctx: &mut ExecutionContext<'_>) {
 		let dst = self.read_reg();
-		let a = self.read_reg();
-		let b = self.read_reg();
 		let cond = self.read_reg();
-		// Select b if MSB(cond) is 1, otherwise select a
+		let t = self.read_reg();
+		let f = self.read_reg();
+		// Select t if MSB(cond) is 1, otherwise select f
 		let cond_val = self.load(ctx, cond);
 		let val = if cond_val.is_msb_true() {
-			self.load(ctx, b)
+			self.load(ctx, t)
 		} else {
-			self.load(ctx, a)
+			self.load(ctx, f)
 		};
 		self.store(ctx, dst, val);
 	}
