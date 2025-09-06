@@ -112,7 +112,7 @@ pub fn evaluate_constant_gate(
 	// Run evaluation
 	let mut interpreter = Interpreter::new(&bytecode, &hint_registry);
 	interpreter
-		.run_with_value_vec(&mut value_vec)
+		.run_with_value_vec(&mut value_vec, None)
 		.map_err(|e| format!("Constant evaluation failed: {:?}", e))?;
 
 	// Extract and return output values

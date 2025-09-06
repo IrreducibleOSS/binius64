@@ -18,6 +18,7 @@ use crate::compiler::{
 	gate,
 	gate_graph::{GateGraph, Wire},
 	hints::HintRegistry,
+	pathspec::PathSpecTree,
 };
 
 /// Compiled evaluation form for circuit witness computation
@@ -69,10 +70,13 @@ impl EvalForm {
 	}
 
 	/// Execute the evaluation form to populate witness values
-	pub fn evaluate(&self, value_vec: &mut ValueVec) -> Result<(), PopulateError> {
+	pub fn evaluate(
+		&self,
+		value_vec: &mut ValueVec,
+		path_spec_tree: Option<&PathSpecTree>,
+	) -> Result<(), PopulateError> {
 		let mut interpreter = interpreter::Interpreter::new(&self.bytecode, &self.hint_registry);
-		interpreter.run_with_value_vec(value_vec)?;
-
+		interpreter.run_with_value_vec(value_vec, path_spec_tree)?;
 		Ok(())
 	}
 
