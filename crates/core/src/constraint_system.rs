@@ -1,3 +1,5 @@
+//! Constraint system and related definitions.
+
 use std::{
 	borrow::Cow,
 	cmp,
@@ -9,7 +11,8 @@ use bytes::{Buf, BufMut};
 
 use crate::{consts, error::ConstraintSystemError, word::Word};
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+/// A type safe wrapper over an index into the [`ValueVec`].
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct ValueIndex(pub u32);
 
 impl ValueIndex {
@@ -17,7 +20,7 @@ impl ValueIndex {
 	pub const INVALID: ValueIndex = ValueIndex(u32::MAX);
 }
 
-// The most sensible default for a value index is to make it invalid.
+/// The most sensible default for a value index is invalid.
 impl Default for ValueIndex {
 	fn default() -> Self {
 		Self::INVALID
@@ -49,6 +52,9 @@ pub enum ShiftVariant {
 	/// Shift logical right.
 	Slr,
 	/// Shift arithmetic right.
+	///
+	/// This is similar to the logical shift right but instead of shifting in 0 bits it will
+	/// replicate the sign bit.
 	Sar,
 }
 
@@ -81,9 +87,15 @@ impl DeserializeBytes for ShiftVariant {
 	}
 }
 
+/// Similar to [`ValueIndex`], but represents a value that has been shifted by a certain amount.
+///
+/// This is used in the operands to constraints like [`AndConstraint`].
+///
+/// The canonical formto represent a value without any shifting is [`ShiftVariant::Sll`] with
+/// amount equals 0.
 #[derive(Copy, Clone, Debug)]
 pub struct ShiftedValueIndex {
-	/// The index of this value in the input values vector `z`.
+	/// The index of this value in the input values vector.
 	pub value_index: ValueIndex,
 	/// The flavour of the shift that the value must be shifted by.
 	pub shift_variant: ShiftVariant,
@@ -94,7 +106,8 @@ pub struct ShiftedValueIndex {
 }
 
 impl ShiftedValueIndex {
-	/// Create a value index that just uses the specified value.
+	/// Create a value index that just uses the specified value. Equivalent to [`Self::sll`] with
+	/// amount equals 0.
 	pub fn plain(value_index: ValueIndex) -> Self {
 		Self {
 			value_index,
@@ -104,6 +117,9 @@ impl ShiftedValueIndex {
 	}
 
 	/// Shift Left Logical by the given number of bits.
+	///
+	/// # Panics
+	/// Panics if the shift amount is greater than or equal to 64.
 	pub fn sll(value_index: ValueIndex, amount: usize) -> Self {
 		assert!(amount < 64, "shift amount n={amount} out of range");
 		Self {
@@ -113,6 +129,10 @@ impl ShiftedValueIndex {
 		}
 	}
 
+	/// Shift Right Logical by the given number of bits.
+	///
+	/// # Panics
+	/// Panics if the shift amount is greater than or equal to 64.
 	pub fn srl(value_index: ValueIndex, amount: usize) -> Self {
 		assert!(amount < 64, "shift amount n={amount} out of range");
 		Self {
@@ -122,6 +142,13 @@ impl ShiftedValueIndex {
 		}
 	}
 
+	/// Shift Right Arithmetic by the given number of bits.
+	///
+	/// This is similar to the Shift Right Logical but instead of shifting in 0 bits it will
+	/// replicate the sign bit.
+	///
+	/// # Panics
+	/// Panics if the shift amount is greater than or equal to 64.
 	pub fn sar(value_index: ValueIndex, amount: usize) -> Self {
 		assert!(amount < 64, "shift amount n={amount} out of range");
 		Self {
@@ -164,16 +191,37 @@ impl DeserializeBytes for ShiftedValueIndex {
 	}
 }
 
+/// Operand type.
+///
+/// An operand in Binius64 is a vector of shifted values. Each item in the vector represents a
+/// term in a XOR combination of shifted values.
+///
+/// To give a couple examples:
+///
+/// ```ignore
+/// vec![] == 0
+/// vec![1] == 1
+/// vec![1, 1] == 1 ^ 1
+/// vec![x >> 5, y << 5] = (x >> 5) ^ (y << 5)
+/// ```
 pub type Operand = Vec<ShiftedValueIndex>;
 
+/// AND constraint: `A & B = C`.
+///
+/// This constraint verifies that the bitwise AND of operands A and B equals operand C.
+/// Each operand is computed as the XOR of multiple shifted values from the value vector.
 #[derive(Debug, Clone, Default)]
 pub struct AndConstraint {
+	/// Operand A.
 	pub a: Operand,
+	/// Operand B.
 	pub b: Operand,
+	/// Operand C.
 	pub c: Operand,
 }
 
 impl AndConstraint {
+	/// Creates a new AND constraint from XOR combinations of the given unshifted values.
 	pub fn plain_abc(
 		a: impl IntoIterator<Item = ValueIndex>,
 		b: impl IntoIterator<Item = ValueIndex>,
@@ -186,6 +234,7 @@ impl AndConstraint {
 		}
 	}
 
+	/// Creates a new AND constraint from XOR combinations of the given shifted values.
 	pub fn abc(
 		a: impl IntoIterator<Item = ShiftedValueIndex>,
 		b: impl IntoIterator<Item = ShiftedValueIndex>,
@@ -220,11 +269,23 @@ impl DeserializeBytes for AndConstraint {
 	}
 }
 
+/// MUL constraint: `A * B = (HI << 64) | LO`.
+///
+/// 64-bit unsigned integer multiplication producing 128-bit result split into high and low 64-bit
+/// words.
 #[derive(Debug, Clone, Default)]
 pub struct MulConstraint {
+	/// A operand.
 	pub a: Operand,
+	/// B operand.
 	pub b: Operand,
+	/// HI operand.
+	///
+	/// The high 64 bits of the result of the multiplication.
 	pub hi: Operand,
+	/// LO operand.
+	///
+	/// The low 64 bits of the result of the multiplication.
 	pub lo: Operand,
 }
 
@@ -251,11 +312,26 @@ impl DeserializeBytes for MulConstraint {
 	}
 }
 
+/// The ConstraintSystem is the core data structure in Binius64 that defines the computational
+/// constraints to be proven in zero-knowledge. It represents a system of equations over 64-bit
+/// words that must be satisfied by a valid values vector [`ValueVec`].
+///
+/// # Clone
+///
+/// While this type is cloneable it may be expensive to do so since the constraint systems often
+/// can have millions of constraints.
 #[derive(Debug, Clone)]
 pub struct ConstraintSystem {
+	/// Description of the value vector layout expected by this constraint system.
 	pub value_vec_layout: ValueVecLayout,
+	/// The constants that this constraint system defines.
+	///
+	/// Those constants will be going to be available for constraints in the value vector. Those
+	/// are known to both prover and verifier.
 	pub constants: Vec<Word>,
+	/// List of AND constraints that must be satisfied by the values vector.
 	pub and_constraints: Vec<AndConstraint>,
+	/// List of MUL constraints that must be satisfied by the values vector.
 	pub mul_constraints: Vec<MulConstraint>,
 }
 
@@ -265,6 +341,7 @@ impl ConstraintSystem {
 }
 
 impl ConstraintSystem {
+	/// Creates a new constraint system.
 	pub fn new(
 		constants: Vec<Word>,
 		value_vec_layout: ValueVecLayout,
@@ -280,15 +357,19 @@ impl ConstraintSystem {
 		}
 	}
 
+	/// Ensures that this constraint system is well-formed and ready for proving.
+	///
+	/// Specifically checks that:
+	///
+	/// - the value vec layout is [valid][`ValueVecLayout::validate`].
+	/// - every [shifted value index][`ShiftedValueIndex`] is canonical.
+	/// - referenced values indices are in the range.
+	/// - constraints do not reference values in the padding area.
+	/// - shifts amounts are valid.
 	pub fn validate(&self) -> Result<(), ConstraintSystemError> {
 		// Validate the value vector layout
 		self.value_vec_layout.validate()?;
 
-		// Validate the constraints.
-		//
-		// - referenced values indices are in the range
-		// - no reference of padding
-		// - shifts amounts are valid.
 		for i in 0..self.and_constraints.len() {
 			validate_operand(&self.and_constraints[i].a, &self.value_vec_layout, "and", i, "a")?;
 			validate_operand(&self.and_constraints[i].b, &self.value_vec_layout, "and", i, "b")?;
@@ -350,7 +431,7 @@ impl ConstraintSystem {
 		}
 	}
 
-	/// Validates and prepares this constraint system for proving/verifying.
+	/// [Validates][`Self::validate`] and prepares this constraint system for proving/verifying.
 	///
 	/// This function performs the following:
 	/// 1. Validates the value vector layout (including public input checks)
@@ -373,18 +454,22 @@ impl ConstraintSystem {
 		Ok(())
 	}
 
-	pub fn add_and_constraint(&mut self, and_constraint: AndConstraint) {
+	#[cfg(test)]
+	fn add_and_constraint(&mut self, and_constraint: AndConstraint) {
 		self.and_constraints.push(and_constraint);
 	}
 
-	pub fn add_mul_constraint(&mut self, mul_constraint: MulConstraint) {
+	#[cfg(test)]
+	fn add_mul_constraint(&mut self, mul_constraint: MulConstraint) {
 		self.mul_constraints.push(mul_constraint);
 	}
 
+	/// Returns the number of AND constraints in the system.
 	pub fn n_and_constraints(&self) -> usize {
 		self.and_constraints.len()
 	}
 
+	/// Returns the number of MUL  constraints in the system.
 	pub fn n_mul_constraints(&self) -> usize {
 		self.mul_constraints.len()
 	}
@@ -472,6 +557,12 @@ pub struct ValueVecLayout {
 
 impl ValueVecLayout {
 	/// Validates that the value vec layout has a correct shape.
+	///
+	/// Specifically checks that:
+	///
+	/// - the total committed length is a power of two.
+	/// - the public segment (constants and inout values) is padded to the power of two.
+	/// - the public segment is not less than the minimum size.
 	pub fn validate(&self) -> Result<(), ConstraintSystemError> {
 		if !self.total_len.is_power_of_two() {
 			return Err(ConstraintSystemError::ValueVecLenNotPowerOfTwo);
@@ -556,11 +647,14 @@ impl DeserializeBytes for ValueVecLayout {
 	}
 }
 
-/// The vector of values.
+/// The vector of values used in constraint evaluation and proof generation.
 ///
-/// This is a prover-only structure.
+/// `ValueVec` is the concrete instantiation of values that satisfy (or should satisfy) a
+/// [`ConstraintSystem`]. It follows the layout defined by [`ValueVecLayout`] and serves
+/// as the primary data structure for both constraint evaluation and polynomial commitment.
 ///
-/// The size of the value vec is always a power-of-two.
+/// Between these sections, there may be padding regions to satisfy alignment requirements.
+/// The total size is always a power of two as required for technical reasons.
 #[derive(Clone, Debug)]
 pub struct ValueVec {
 	layout: ValueVecLayout,
@@ -568,6 +662,9 @@ pub struct ValueVec {
 }
 
 impl ValueVec {
+	/// Creates a new value vector with the given layout.
+	///
+	/// The values are filled with zeros.
 	pub fn new(layout: ValueVecLayout) -> ValueVec {
 		let size = layout.total_len;
 		ValueVec {
@@ -576,6 +673,9 @@ impl ValueVec {
 		}
 	}
 
+	/// Creates a new value vector with the given layout and data.
+	///
+	/// The data is checked to have the correct length.
 	pub fn new_from_data(
 		layout: ValueVecLayout,
 		mut public: Vec<Word>,
@@ -600,10 +700,16 @@ impl ValueVec {
 		self.data.len()
 	}
 
+	/// Returns the value stored at the given index.
+	///
+	/// Panics if the index is out of bounds. Will happily return a value from the padding section.
 	pub fn get(&self, index: usize) -> Word {
 		self.data[index]
 	}
 
+	/// Sets the value at the given index.
+	///
+	/// Panics if the index is out of bounds. Will gladly assign a value to the padding section.
 	pub fn set(&mut self, index: usize, value: Word) {
 		self.data[index] = value;
 	}

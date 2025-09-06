@@ -1,5 +1,9 @@
+//! Hosts error definitions for the core crate.
+
 use crate::consts::MIN_WORDS_PER_SEGMENT;
 
+/// Constraint system related error.
+#[allow(missing_docs)] // errors are self-documenting
 #[derive(Debug, thiserror::Error)]
 pub enum ConstraintSystemError {
 	#[error("the total length of the value vector must be a power of two")]

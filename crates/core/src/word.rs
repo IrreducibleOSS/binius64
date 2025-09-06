@@ -1,3 +1,5 @@
+//! [`Word`] related definitions.
+
 use std::{
 	fmt,
 	ops::{BitAnd, BitOr, BitXor, Not, Shl, Shr},
@@ -6,14 +8,23 @@ use std::{
 use binius_utils::serialization::{DeserializeBytes, SerializationError, SerializeBytes};
 use bytes::{Buf, BufMut};
 
+/// [`Word`] is 64-bit value and is a fundamental unit of data in Binius64. All computation and
+/// constraints operate on it.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Word(pub u64);
 
 impl Word {
+	/// All zero bit pattern, zero, nil, null.
 	pub const ZERO: Word = Word(0);
+	/// 1.
 	pub const ONE: Word = Word(1);
+	/// All bits set to one.
 	pub const ALL_ONE: Word = Word(u64::MAX);
+	/// 32 lower bits are set to one, all other bits are zero.
 	pub const MASK_32: Word = Word(0x00000000_FFFFFFFF);
+	/// Most Significant Bit is set to one, all other bits are zero.
+	///
+	/// This is a canonical representation of true.
 	pub const MSB_ONE: Word = Word(0x80000000_00000000);
 }
 
@@ -72,6 +83,11 @@ impl Not for Word {
 }
 
 impl Word {
+	/// Creates a new `Word` from a 64-bit unsigned integer.
+	pub fn from_u64(value: u64) -> Word {
+		Word(value)
+	}
+
 	/// Performs 32-bit addition.
 	///
 	/// Returns (sum, carry_out) where ith carry_out bit is set to one if there is a carry out at
@@ -119,6 +135,7 @@ impl Word {
 		(Word(diff), Word(bout))
 	}
 
+	/// Performs shift right by a given number of bits followed by masking with a 32-bit mask.
 	pub fn shr_32(self, n: u32) -> Word {
 		let Word(value) = self;
 		// Shift right logically by n bits and mask with 32-bit mask
@@ -127,6 +144,8 @@ impl Word {
 	}
 
 	/// Shift Arithmetic Right by a given number of bits.
+	///
+	/// This is similar to a logical shift right, but it shifts the sign bit to the right.
 	pub fn sar(&self, n: u32) -> Word {
 		let Word(value) = self;
 		let value = *value as i64;
@@ -134,6 +153,7 @@ impl Word {
 		Word(result as u64)
 	}
 
+	/// Rotate Right by a given number of bits followed by masking with a 32-bit mask.
 	pub fn rotr_32(self, n: u32) -> Word {
 		let Word(value) = self;
 		let n = n % 32; // Ensure n is within 0-31 range
@@ -147,6 +167,7 @@ impl Word {
 		Word(result)
 	}
 
+	/// Rotate Right by a given number of bits.
 	pub fn rotr(self, n: u32) -> Word {
 		let Word(value) = self;
 		let n = n % 64; // Ensure n is within 0-63 range
@@ -157,6 +178,10 @@ impl Word {
 		Word(result)
 	}
 
+	/// Unsigned integer multiplication.
+	///
+	/// Multiplies two 64-bit unsigned integers and returns the 128-bit result split into high and
+	/// low 64-bit words, respectively.
 	pub fn imul(self, rhs: Word) -> (Word, Word) {
 		let Word(lhs) = self;
 		let Word(rhs) = rhs;
@@ -167,6 +192,10 @@ impl Word {
 		(Word(hi), Word(lo))
 	}
 
+	/// Signed integer multiplication.
+	///
+	/// Multiplies two 64-bit signed integers and returns the 128-bit result split into high and
+	/// low 64-bit words, respectively.
 	pub fn smul(self, rhs: Word) -> (Word, Word) {
 		let Word(lhs) = self;
 		let Word(rhs) = rhs;
@@ -181,20 +210,23 @@ impl Word {
 		(Word(hi), Word(lo))
 	}
 
+	/// Integer addition.
+	///
+	/// Wraps around on overflow.
 	pub fn wrapping_add(self, rhs: Word) -> Word {
 		Word(self.0.wrapping_add(rhs.0))
 	}
 
+	/// Integer subtraction.
+	///
+	/// Wraps around on overflow.
 	pub fn wrapping_sub(self, rhs: Word) -> Word {
 		Word(self.0.wrapping_sub(rhs.0))
 	}
 
+	/// Returns the integer value as a 64-bit unsigned integer.
 	pub fn as_u64(self) -> u64 {
 		self.0
-	}
-
-	pub fn from_u64(value: u64) -> Word {
-		Word(value)
 	}
 }
 
