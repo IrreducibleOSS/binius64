@@ -37,8 +37,8 @@ pub fn shape() -> OpcodeShape {
 	OpcodeShape {
 		const_in: &[Word::ALL_ONE, Word::ZERO], // Need zero constant for cin
 		n_in: 1,
-		n_out: 1,
-		n_aux: 0,
+		n_out: 0,
+		n_aux: 1,
 		n_scratch: 1,
 		n_imm: 0,
 	}
@@ -48,12 +48,14 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 	let GateParam {
 		constants,
 		inputs,
-		outputs,
+		aux,
 		..
 	} = data.gate_param();
-	let [all_one] = constants else { unreachable!() };
+	let [all_one, _zero] = constants else {
+		unreachable!()
+	};
 	let [x] = inputs else { unreachable!() };
-	let [cout] = outputs else { unreachable!() };
+	let [cout] = aux else { unreachable!() };
 
 	let cin = sll(*cout, 1);
 
@@ -77,7 +79,7 @@ pub fn emit_eval_bytecode(
 	let GateParam {
 		constants,
 		inputs,
-		outputs,
+		aux,
 		scratch,
 		..
 	} = data.gate_param();
@@ -85,7 +87,7 @@ pub fn emit_eval_bytecode(
 		unreachable!()
 	};
 	let [x] = inputs else { unreachable!() };
-	let [cout] = outputs else { unreachable!() };
+	let [cout] = aux else { unreachable!() };
 	let [scratch_sum_unused] = scratch else {
 		unreachable!()
 	};
@@ -100,4 +102,83 @@ pub fn emit_eval_bytecode(
 	);
 
 	builder.emit_assert_non_zero(wire_to_reg(*cout), assertion_path.as_u32());
+}
+
+#[cfg(test)]
+mod tests {
+	use binius_core::{verify::verify_constraints, word::Word};
+	use rand::{RngCore, SeedableRng, rngs::StdRng};
+
+	use crate::compiler::CircuitBuilder;
+
+	#[test]
+	fn test_assert_non_zero_basic() {
+		// Build a circuit with assert_non_zero gate
+		let builder = CircuitBuilder::new();
+		let x = builder.add_inout();
+		builder.assert_non_zero("non_zero", x);
+		let circuit = builder.build();
+
+		// Test specific non-zero cases
+		let test_cases = [
+			1_u64,
+			0xFFFFFFFFFFFFFFFF_u64,
+			0x1234567890ABCDEF_u64,
+			0x8000000000000000_u64,
+			0x0000000000000001_u64,
+		];
+
+		for x_val in test_cases {
+			let mut w = circuit.new_witness_filler();
+			w[x] = Word(x_val);
+			w.circuit.populate_wire_witness(&mut w).unwrap();
+
+			// Verify constraints pass for non-zero values
+			let cs = circuit.constraint_system();
+			verify_constraints(cs, &w.into_value_vec()).unwrap();
+		}
+	}
+
+	#[test]
+	fn test_assert_non_zero_random() {
+		// Build a circuit with assert_non_zero gate
+		let builder = CircuitBuilder::new();
+		let x = builder.add_inout();
+		builder.assert_non_zero("non_zero", x);
+		let circuit = builder.build();
+
+		// Test with random non-zero values
+		let mut rng = StdRng::seed_from_u64(42);
+		for _ in 0..1000 {
+			let mut x_val = rng.next_u64();
+			// Ensure we don't test with zero
+			if x_val == 0 {
+				x_val = 1;
+			}
+
+			let mut w = circuit.new_witness_filler();
+			w[x] = Word(x_val);
+			w.circuit.populate_wire_witness(&mut w).unwrap();
+
+			// Verify constraints pass
+			let cs = circuit.constraint_system();
+			verify_constraints(cs, &w.into_value_vec()).unwrap();
+		}
+	}
+
+	#[test]
+	#[should_panic(expected = "Word(0x0000000000000000) == 0")]
+	fn test_assert_non_zero_fails_on_zero() {
+		// Build a circuit with assert_non_zero gate
+		let builder = CircuitBuilder::new();
+		let x = builder.add_inout();
+		builder.assert_non_zero("non_zero", x);
+		let circuit = builder.build();
+
+		// Test with zero value (should panic)
+		let mut w = circuit.new_witness_filler();
+		w[x] = Word(0);
+		// This should panic when trying to assert non-zero on zero
+		w.circuit.populate_wire_witness(&mut w).unwrap();
+	}
 }
