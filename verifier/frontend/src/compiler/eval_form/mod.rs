@@ -7,6 +7,8 @@
 mod builder;
 mod const_eval;
 mod interpreter;
+#[cfg(test)]
+mod tests;
 
 use binius_core::{ValueIndex, ValueVec};
 pub use builder::BytecodeBuilder;
