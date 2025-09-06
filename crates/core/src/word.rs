@@ -21,11 +21,11 @@ impl Word {
 	/// All bits set to one.
 	pub const ALL_ONE: Word = Word(u64::MAX);
 	/// 32 lower bits are set to one, all other bits are zero.
-	pub const MASK_32: Word = Word(0x00000000_FFFFFFFF);
+	pub const MASK_32: Word = Word(0x00000000FFFFFFFF);
 	/// Most Significant Bit is set to one, all other bits are zero.
 	///
 	/// This is a canonical representation of true.
-	pub const MSB_ONE: Word = Word(0x80000000_00000000);
+	pub const MSB_ONE: Word = Word(0x8000000000000000);
 }
 
 impl fmt::Debug for Word {
