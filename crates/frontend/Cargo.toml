@@ -11,6 +11,7 @@ workspace = true
 binius-core = { path = "../core" }
 cranelift-entity = { workspace = true }
 hex-literal.workspace = true
+itertools.workspace = true
 num-bigint = { workspace = true }
 num-integer = { workspace = true }
 rand = { workspace = true, features = ["std_rng", "thread_rng"] }

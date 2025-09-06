@@ -7,12 +7,10 @@
 //! # Constraints
 //! Generates 25 AND constraints for each round χ step, which is allegedly optimal.
 
-use std::{
-	array,
-	iter::{self, once},
-};
+use std::{array, iter::once};
 
 use binius_core::word::Word;
+use itertools::izip;
 
 use crate::compiler::{
 	constraint_builder::{ConstraintBuilder, WireExpr, sll, srl, xor_multi},
@@ -109,7 +107,7 @@ pub fn shape() -> OpcodeShape {
 		const_in: &CONSTS,
 		n_in: 25,
 		n_out: 25,
-		n_aux: (24 - 1) * 25,
+		n_aux: (24 - 1) * 25 + 24 * 10,
 		n_scratch: 0,
 		n_imm: 0,
 	}
@@ -127,20 +125,34 @@ pub fn constrain(_gate: Gate, data: &GateData, builder: &mut ConstraintBuilder) 
 	assert_eq!(constants.len(), 24 + 1);
 	assert_eq!(inputs.len(), 25);
 	assert_eq!(outputs.len(), 25);
-	assert_eq!(aux.len(), (24 - 1) * 25);
+	assert_eq!(aux.len(), (24 - 1) * 25 + 24 * 10);
 
 	let (all_one, round_constants) = constants.split_last().expect("RC[0..24] + ALL_ONE");
 
-	let inputs = once(inputs).chain(aux.chunks(25));
-	let outputs = aux.chunks(25).chain(once(outputs));
+	let round_out = &aux[..(24 - 1) * 25];
+	let c_wires = &aux[(24 - 1) * 25..(24 - 1) * 25 + 24 * 5];
+	let d_wires = &aux[(24 - 1) * 25 + 24 * 5..];
 
-	for (round, (pre, post)) in iter::zip(inputs, outputs).enumerate() {
+	let inputs = once(inputs).chain(round_out.chunks(25));
+	let c_wires = c_wires.chunks(5);
+	let d_wires = d_wires.chunks(5);
+	let outputs = round_out.chunks(25).chain(once(outputs));
+
+	for (round, (pre, post, c, d)) in izip!(inputs, outputs, c_wires, d_wires).enumerate() {
 		// θ
-		let c: [Vec<RotWire>; 5] =
-			array::from_fn(|i| (0..5).map(|j| plain(pre[idx(i, j)])).collect());
-		let d: [Vec<RotWire>; 5] =
-			array::from_fn(|i| xor(&c[(i + 4) % 5], &rot(1, &c[(i + 1) % 5])));
-		let a: [Vec<RotWire>; 25] = array::from_fn(|i| xor(&[plain(pre[i])], &d[i % 5]));
+		let c: [_; 5] = c.try_into().unwrap();
+		for i in 0..5 {
+			let terms: [_; 5] = array::from_fn(|j| plain(pre[idx(i, j)]));
+			emit_and(builder, &terms, &[plain(*all_one)], &[plain(c[i])]);
+		}
+
+		let d: [_; 5] = d.try_into().unwrap();
+		for i in 0..5 {
+			let terms = xor(&[plain(c[(i + 4) % 5])], &rot(1, &[plain(c[(i + 1) % 5])]));
+			emit_and(builder, &terms, &[plain(*all_one)], &[plain(d[i])]);
+		}
+
+		let a: [Vec<RotWire>; 25] = array::from_fn(|i| xor(&[plain(pre[i])], &[plain(d[i % 5])]));
 
 		// ρ & π
 		let mut b: [Vec<RotWire>; 25] = Default::default();
@@ -185,17 +197,28 @@ pub fn emit_eval_bytecode(
 
 	assert_eq!(inputs.len(), 25);
 	assert_eq!(outputs.len(), 25);
-	assert_eq!(aux.len(), (24 - 1) * 25);
+	assert_eq!(aux.len(), (24 - 1) * 25 + 24 * 10);
 
-	let regs = inputs
-		.iter()
-		.chain(aux)
-		.chain(outputs)
-		.map(|&wire| wire_to_reg(wire))
-		.collect::<Vec<_>>();
+	let round_out = &aux[..(24 - 1) * 25];
+	let c_wires = &aux[(24 - 1) * 25..(24 - 1) * 25 + 24 * 5];
+	let d_wires = &aux[(24 - 1) * 25 + 24 * 5..];
+
+	let mut wires = Vec::with_capacity((24 + 1) * 25 + 24 * 10);
+	wires.extend_from_slice(inputs);
+
+	let round_out_wires = round_out.chunks(25).chain(once(outputs));
+	let c_wires = c_wires.chunks(5);
+	let d_wires = d_wires.chunks(5);
+	for (round_out, c_wires, d_wires) in izip!(round_out_wires, c_wires, d_wires) {
+		wires.extend_from_slice(c_wires);
+		wires.extend_from_slice(d_wires);
+		wires.extend_from_slice(round_out);
+	}
+
+	let regs = wires.into_iter().map(wire_to_reg).collect::<Vec<_>>();
 
 	builder.emit_keccakf1600(
-		TryInto::<[u32; (24 + 1) * 25]>::try_into(regs)
+		TryInto::<[u32; (24 + 1) * 25 + 24 * 10]>::try_into(regs)
 			.expect("correct number of Keccak intermediates"),
 	);
 }

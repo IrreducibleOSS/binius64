@@ -268,7 +268,7 @@ impl BytecodeBuilder {
 		self.emit_u32(error_id);
 	}
 
-	pub fn emit_keccakf1600(&mut self, rounds: [u32; (24 + 1) * 25]) {
+	pub fn emit_keccakf1600(&mut self, rounds: [u32; (24 + 1) * 25 + 24 * 10]) {
 		self.n_eval_insn += 1;
 		self.emit_u8(0x70);
 		for reg in rounds {

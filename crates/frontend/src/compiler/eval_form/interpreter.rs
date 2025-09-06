@@ -477,7 +477,16 @@ impl<'a> Interpreter<'a> {
 			// θ
 			let c: [Word; 5] =
 				array::from_fn(|i| (0..5).fold(Word::ZERO, |acc, j| acc ^ a[idx(i, j)]));
+			for val in c {
+				let reg = self.read_reg();
+				self.store(ctx, reg, val);
+			}
+
 			let d: [Word; 5] = array::from_fn(|i| c[(i + 4) % 5] ^ rot(1, c[(i + 1) % 5]));
+			for val in d {
+				let reg = self.read_reg();
+				self.store(ctx, reg, val);
+			}
 
 			for i in 0..25 {
 				a[i] = a[i] ^ d[i % 5];
