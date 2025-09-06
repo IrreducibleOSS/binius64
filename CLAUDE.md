@@ -96,15 +96,18 @@ Key aspects of Binius64:
 
 ### Core Crates
 
+- **`binius-core`**: Core constraint system definitions and data structures
 - **`binius-field`**: Binary field arithmetic with platform-specific optimizations (x86_64, aarch64)
 - **`binius-frontend`**: Circuit construction API
   - `circuits/`: Pre-built circuits (SHA256, base64, equality)
   - `compiler/`: Constraint system generation
+- **`binius-math`**: Mathematical operations and polynomial utilities
 - **`binius-prover`**: Proof generation
 - **`binius-verifier`**: Proof verification
 - **`binius-transcript`**: Fiat-Shamir non-interactive proofs
 - **`binius-utils`**: Common utilities
-- **`binius-maybe-rayon`**: Optional parallelization
+- **`binius-examples`**: Example implementations
+- **`binius-arith-bench`**: Arithmetic benchmarks
 
 ### Constraint System
 
@@ -119,7 +122,7 @@ Where A, B, C are operands (XOR combinations of shifted input values).
 
 The key innovation is **shifted value indices** - a tuple `(value_id, shift_op, shift_amount)` where:
 - `value_id`: index of a 64-bit word in the witness
-- `shift_op`: one of `sll` (logical left), `srl` (logical right), `sra` (arithmetic right)
+- `shift_op`: one of `sll` (logical left), `srl` (logical right), `sar` (arithmetic right)
 - `shift_amount`: 0-63 bits
 
 This allows constraints to directly express shifted operands without separate shift constraints. For example:
@@ -130,15 +133,8 @@ This design maps naturally to CPU instructions and achieves massive efficiency g
 
 ### Cost Model
 - AND constraint: baseline cost (1x)
-- MUL constraint: ~200x more expensive
+- MUL constraint: ~3-4x more expensive
 - Committing one 64-bit word: ~0.2x
-
-### Circuit Implementation and Design
-
-There are several resources depending on the task:
-
-- docs/frontend/circuit_design.md - how to design circuits for Binius64
-- docs/frontend/rust_circuits.md - conventions on coding circuits for the frontend crate
 
 ## Key Differences from Original Binius
 
@@ -206,10 +202,10 @@ Example test pattern:
 #[test]
 fn test_property() {
     let mut rng = StdRng::seed_from_u64(0);
-    
+
     let x = <F as Field>::random(&mut rng);
     let y = <F as Field>::random(&mut rng);
-    
+
     // Test mathematical property
     assert_eq!(some_operation(x, y), expected_result(x, y));
 }
@@ -270,7 +266,7 @@ let result = binius_field::util::inner_product_par(evals.as_ref(), eq_tensor.as_
 
 The codebase includes significant architecture-specific optimizations:
 - **x86_64**: GFNI, PCLMUL, AVX2/AVX-512 SIMD instructions
-- **aarch64**: NEON SIMD instructions  
+- **aarch64**: NEON SIMD instructions
 - **Portable**: Fallback implementations for all architectures
 
 When adding new optimized code paths, follow the existing pattern in `crates/field/src/arch/` with separate modules for each architecture and feature detection.
