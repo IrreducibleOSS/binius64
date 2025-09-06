@@ -228,6 +228,26 @@ impl Word {
 	pub fn as_u64(self) -> u64 {
 		self.0
 	}
+
+	/// Tests if this Word represents true as an MSB-bool.
+	///
+	/// In MSB-bool representation, a value is true if its Most Significant Bit (bit 63) is set to
+	/// 1. All other bits are ignored for the boolean value.
+	///
+	/// Returns true if the MSB is 1, false otherwise.
+	pub fn is_msb_true(self) -> bool {
+		(self.0 & 0x8000000000000000) != 0
+	}
+
+	/// Tests if this Word represents false as an MSB-bool.
+	///
+	/// In MSB-bool representation, a value is false if its Most Significant Bit (bit 63) is 0.
+	/// All other bits are ignored for the boolean value.
+	///
+	/// Returns true if the MSB is 0, false otherwise.
+	pub fn is_msb_false(self) -> bool {
+		(self.0 & 0x8000000000000000) == 0
+	}
 }
 
 impl SerializeBytes for Word {
@@ -257,9 +277,62 @@ mod tests {
 		assert_eq!(Word::ONE, Word(1));
 		assert_eq!(Word::ALL_ONE, Word(0xFFFFFFFFFFFFFFFF));
 		assert_eq!(Word::MASK_32, Word(0x00000000FFFFFFFF));
+		assert_eq!(Word::MSB_ONE, Word(0x8000000000000000));
+	}
+
+	#[test]
+	fn test_msb_bool() {
+		// Test MSB_ONE is true
+		assert!(Word::MSB_ONE.is_msb_true());
+		assert!(!Word::MSB_ONE.is_msb_false());
+
+		// Test ZERO is false
+		assert!(!Word::ZERO.is_msb_true());
+		assert!(Word::ZERO.is_msb_false());
+
+		// Test various values with MSB set
+		assert!(Word(0x8000000000000000).is_msb_true());
+		assert!(Word(0x8000000000000001).is_msb_true());
+		assert!(Word(0x80000000FFFFFFFF).is_msb_true());
+		assert!(Word(0xFFFFFFFFFFFFFFFF).is_msb_true());
+
+		// Test various values with MSB clear
+		assert!(Word(0x7FFFFFFFFFFFFFFF).is_msb_false());
+		assert!(Word(0x0000000000000001).is_msb_false());
+		assert!(Word(0x00000000FFFFFFFF).is_msb_false());
+		assert!(Word(0x7000000000000000).is_msb_false());
+
+		// Verify complementary behavior
+		let test_word = Word(0x8123456789ABCDEF);
+		assert!(test_word.is_msb_true());
+		assert!(!test_word.is_msb_false());
+
+		let test_word2 = Word(0x7123456789ABCDEF);
+		assert!(!test_word2.is_msb_true());
+		assert!(test_word2.is_msb_false());
 	}
 
 	proptest! {
+		#[test]
+		fn prop_msb_bool(val in any::<u64>()) {
+			let word = Word(val);
+
+			// is_msb_true and is_msb_false should be complementary
+			assert_eq!(word.is_msb_true(), !word.is_msb_false());
+			assert_eq!(word.is_msb_false(), !word.is_msb_true());
+
+			// Check against direct bit manipulation
+			let msb_set = (val & 0x8000000000000000) != 0;
+			assert_eq!(word.is_msb_true(), msb_set);
+			assert_eq!(word.is_msb_false(), !msb_set);
+
+			// MSB operations should ignore lower bits
+			let word_with_msb = Word(val | 0x8000000000000000);
+			let word_without_msb = Word(val & 0x7FFFFFFFFFFFFFFF);
+			assert!(word_with_msb.is_msb_true());
+			assert!(word_without_msb.is_msb_false());
+		}
+
 		#[test]
 		fn prop_bitwise_and(a in any::<u64>(), b in any::<u64>()) {
 			let wa = Word(a);
