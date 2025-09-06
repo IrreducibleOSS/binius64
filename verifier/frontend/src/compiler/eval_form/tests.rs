@@ -37,6 +37,12 @@ impl InterpreterTest {
 		self
 	}
 
+	/// Emit a select instruction
+	fn select(mut self, dst: u32, a: u32, b: u32, cond: u32) -> Self {
+		self.builder.emit_select(dst, a, b, cond);
+		self
+	}
+
 	/// Run the test and expect success (no assertion failures)
 	fn expect_success(self) {
 		let (result, ctx) = self.execute();
@@ -49,6 +55,46 @@ impl InterpreterTest {
 		let (result, ctx) = self.execute();
 		assert!(result.is_ok(), "Interpreter should execute successfully");
 		assert!(ctx.check_assertions(None).is_err(), "Should have assertion failures");
+	}
+
+	/// Run the test and check that specific values match expectations
+	fn expect_values(self, expected: Vec<(u32, Word)>) {
+		let (bytecode, _) = self.builder.finalize();
+
+		// Create value vec with the right size
+		let n_witness = self.values.len();
+		let mut value_vec = ValueVec::new(ValueVecLayout {
+			n_const: 0,
+			n_inout: 0,
+			n_witness,
+			n_internal: 0,
+			offset_inout: 0,
+			offset_witness: 0,
+			committed_total_len: n_witness,
+			n_scratch: 0,
+		});
+
+		// Set the values
+		for (i, value) in self.values.into_iter().enumerate() {
+			value_vec[ValueIndex(i as u32)] = value;
+		}
+
+		let hint_registry = HintRegistry::new();
+		let mut interpreter = Interpreter::new(&bytecode, &hint_registry);
+		let mut ctx = ExecutionContext::new(&mut value_vec);
+
+		let result = interpreter.run(&mut ctx);
+		assert!(result.is_ok(), "Interpreter should execute successfully");
+
+		// Check the expected values
+		for (idx, expected_value) in expected {
+			let actual = value_vec[ValueIndex(idx)];
+			assert_eq!(
+				actual, expected_value,
+				"Wire {} should have value {:?}, got {:?}",
+				idx, expected_value, actual
+			);
+		}
 	}
 
 	/// Execute the bytecode and return the result and context
@@ -146,4 +192,54 @@ fn test_assert_eq_cond() {
 		])
 		.assert_eq_cond(0, 1, 2)
 		.expect_assertion_failure();
+}
+
+#[test]
+fn test_select_msb_behavior() {
+	// Test that select uses MSB to choose between values
+	// select(dst, a, b, cond) writes a to dst if MSB(cond)=0, b if MSB(cond)=1
+
+	// MSB=0 should select 'a' (wire 0)
+	InterpreterTest::new()
+		.with_values(vec![
+			Word(42),        // wire 0: a
+			Word(99),        // wire 1: b
+			msb_false(0xFF), // wire 2: cond with MSB=0
+			Word::ZERO,      // wire 3: dst (will be overwritten)
+		])
+		.select(3, 0, 1, 2) // dst=3, a=0, b=1, cond=2
+		.expect_values(vec![(3, Word(42))]); // dst should have value of a
+
+	// MSB=1 should select 'b' (wire 1)
+	InterpreterTest::new()
+		.with_values(vec![
+			Word(42),    // wire 0: a
+			Word(99),    // wire 1: b
+			msb_true(0), // wire 2: cond with MSB=1
+			Word::ZERO,  // wire 3: dst
+		])
+		.select(3, 0, 1, 2)
+		.expect_values(vec![(3, Word(99))]); // dst should have value of b
+
+	// Test with all bits except MSB set (should still select 'a')
+	InterpreterTest::new()
+		.with_values(vec![
+			Word(1),                  // wire 0: a
+			Word(2),                  // wire 1: b
+			Word(0x7FFFFFFFFFFFFFFF), // wire 2: cond (all bits except MSB)
+			Word::ZERO,               // wire 3: dst
+		])
+		.select(3, 0, 1, 2)
+		.expect_values(vec![(3, Word(1))]);
+
+	// Test with all bits set (should select 'b')
+	InterpreterTest::new()
+		.with_values(vec![
+			Word(100),                // wire 0: a
+			Word(200),                // wire 1: b
+			Word(0xFFFFFFFFFFFFFFFF), // wire 2: cond (all bits set)
+			Word::ZERO,               // wire 3: dst
+		])
+		.select(3, 0, 1, 2)
+		.expect_values(vec![(3, Word(200))]);
 }

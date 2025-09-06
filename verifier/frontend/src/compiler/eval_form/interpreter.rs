@@ -206,7 +206,7 @@ impl<'a> Interpreter<'a> {
 		let cond = self.read_reg();
 		// Select b if MSB(cond) is 1, otherwise select a
 		let cond_val = self.load(ctx, cond);
-		let val = if (cond_val.0 as i64) < 0 {
+		let val = if cond_val.is_msb_true() {
 			self.load(ctx, b)
 		} else {
 			self.load(ctx, a)
