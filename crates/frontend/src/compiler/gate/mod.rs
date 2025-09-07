@@ -23,7 +23,6 @@ pub mod biguint_mod_pow_hint;
 pub mod bor;
 pub mod bxor;
 pub mod bxor_multi;
-pub mod extract_byte;
 pub mod fax;
 pub mod iadd32;
 pub mod iadd_cin_cout;
@@ -67,7 +66,6 @@ pub fn constrain(gate: Gate, graph: &GateGraph, builder: &mut ConstraintBuilder)
 		Opcode::Smul => smul::constrain(gate, data, builder),
 		Opcode::IcmpUlt => icmp_ult::constrain(gate, data, builder),
 		Opcode::IcmpEq => icmp_eq::constrain(gate, data, builder),
-		Opcode::ExtractByte => extract_byte::constrain(gate, data, builder),
 		Opcode::Shr => shr::constrain(gate, data, builder),
 		Opcode::Shl => shl::constrain(gate, data, builder),
 		Opcode::Sar => sar::constrain(gate, data, builder),
@@ -129,7 +127,6 @@ pub fn emit_gate_bytecode(
 		Opcode::Smul => smul::emit_eval_bytecode(gate, data, builder, wire_to_reg),
 		Opcode::IcmpUlt => icmp_ult::emit_eval_bytecode(gate, data, builder, wire_to_reg),
 		Opcode::IcmpEq => icmp_eq::emit_eval_bytecode(gate, data, builder, wire_to_reg),
-		Opcode::ExtractByte => extract_byte::emit_eval_bytecode(gate, data, builder, wire_to_reg),
 		Opcode::Shr => shr::emit_eval_bytecode(gate, data, builder, wire_to_reg),
 		Opcode::Shl => shl::emit_eval_bytecode(gate, data, builder, wire_to_reg),
 		Opcode::Sar => sar::emit_eval_bytecode(gate, data, builder, wire_to_reg),
