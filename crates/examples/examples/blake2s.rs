@@ -53,9 +53,7 @@ impl ExampleCircuit for Blake2sExample {
 		} else {
 			// Generate random bytes
 			let mut rng = StdRng::seed_from_u64(0);
-			let len = instance
-				.message_len
-				.unwrap_or(self.blake2s_gadget.max_bytes / 2);
+			let len = instance.message_len.unwrap_or(self.blake2s_gadget.length);
 
 			let mut message_bytes = vec![0u8; len];
 			rng.fill_bytes(&mut message_bytes);
@@ -64,10 +62,10 @@ impl ExampleCircuit for Blake2sExample {
 
 		// Validate message length
 		ensure!(
-			message_bytes.len() <= self.blake2s_gadget.max_bytes,
-			"Message length ({}) exceeds maximum ({})",
+			message_bytes.len() == self.blake2s_gadget.length,
+			"Message length ({}) does not equal ({})",
 			message_bytes.len(),
-			self.blake2s_gadget.max_bytes
+			self.blake2s_gadget.length
 		);
 
 		// Compute the expected Blake2s digest using the reference implementation

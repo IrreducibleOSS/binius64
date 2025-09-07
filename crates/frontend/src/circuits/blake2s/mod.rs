@@ -19,6 +19,7 @@
 //! - **Salt parameter**: The 8-byte salt field is not implemented.
 //! - **Personalization parameter**: The 8-byte personalization field is not implemented.
 //! - **Tree hashing mode**: Only sequential mode is supported.
+//! - **Variable input length**: Message length is specified at instantiation time.
 //! - **Variable output length**: Fixed at 256 bits (32 bytes).
 //! - **Message size limitation**: Messages are limited to < 4GiB (2^32 bytes) as the high counter
 //!   word (t_hi) is always zero. This is sufficient for most ZK circuit applications.
@@ -36,8 +37,6 @@
 //! # Circuit Design
 //!
 //! This circuit verifies that a given message produces a specific Blake2s digest.
-//! It handles variable-length messages by conditionally processing blocks based
-//! on the actual message length, supporting messages up to a configured maximum.
 
 mod constants;
 #[cfg(test)]
@@ -247,30 +246,23 @@ pub fn blake2s_compress(
 /// Blake2s hash function circuit for variable-length messages.
 ///
 /// This struct represents a complete Blake2s circuit that can verify
-/// a message of variable length (up to `max_bytes`) produces a specific
-/// 256-bit digest. The circuit handles message padding and block processing
-/// according to RFC 7693.
+/// that a message of predefined `length` produces a specific 256-bit digest.
+/// The circuit handles message padding and block processing according to RFC 7693.
 ///
 /// # Circuit Structure
 ///
-/// 1. **Message Input**: Variable-length byte array up to `max_bytes`
-/// 2. **Length Input**: Actual message length in bytes
-/// 3. **Processing**: Conditionally process blocks based on actual length
+/// 1. **Message Input**: Fixed length byte array little-endian packed into 64-bit words.
 /// 4. **Output**: 256-bit digest (8 × 32-bit words)
 ///
 /// # Design Decisions
 ///
-/// - Supports variable-length messages through conditional block processing
 /// - Pads messages to 64-byte blocks as per Blake2s specification
-/// - Uses multiplexers to handle variable-length logic efficiently
 /// - Optimized for messages up to a few hundred bytes
 pub struct Blake2s {
-	/// Maximum message size in bytes this circuit supports
-	pub max_bytes: usize,
-	/// Witness wires for the input message bytes
+	/// Message size in bytes this circuit supports
+	pub length: usize,
+	/// Witness wires for the input message (encoded into little-endian 64-bit words)
 	pub message: Vec<Wire>,
-	/// Witness wire for the actual message length
-	pub length: Wire,
 	/// Witness wires for the expected 256-bit digest (8 × 32-bit words)
 	pub digest: [Wire; 8],
 }
@@ -284,26 +276,24 @@ impl Blake2s {
 	/// # Arguments
 	///
 	/// * `builder` - Circuit builder to add constraints to
-	/// * `max_bytes` - Maximum message size this circuit will support
+	/// * `length` - Fixed message size (in bytes) this circuit will support
 	///
 	/// # Returns
 	///
 	/// A Blake2s struct with witness wires for message, length, and digest
-	pub fn new_witness(builder: &mut CircuitBuilder, max_bytes: usize) -> Self {
-		assert!(max_bytes > 0, "max_bytes must be positive");
-
+	pub fn new_witness(builder: &mut CircuitBuilder, length: usize) -> Self {
 		// Create witness wires
-		let message: Vec<Wire> = (0..max_bytes).map(|_| builder.add_witness()).collect();
-		let length = builder.add_witness();
+		let message: Vec<Wire> = (0..length.div_ceil(8))
+			.map(|_| builder.add_witness())
+			.collect();
 		let digest = std::array::from_fn(|_| builder.add_witness());
 
 		// Build the circuit
-		Self::build_circuit(builder, &message, length, digest, max_bytes);
+		Self::build_circuit(builder, length, &message, digest);
 
 		Self {
-			max_bytes,
-			message,
 			length,
+			message,
 			digest,
 		}
 	}
@@ -319,35 +309,13 @@ impl Blake2s {
 	/// 4. Final block detection and processing
 	fn build_circuit(
 		builder: &mut CircuitBuilder,
+		length: usize,
 		message: &[Wire],
-		length: Wire,
 		expected_digest: [Wire; 8],
-		max_bytes: usize,
 	) {
-		// Calculate number of blocks needed for max size
-		let max_blocks = max_bytes.div_ceil(64);
+		// Calculate number of blocks needed for this length
+		let num_blocks = length.div_ceil(64).max(1);
 		let zero = builder.add_constant(Word(0));
-
-		// SOUNDNESS: Enforce zero-padding constraint for RFC 7693 compliance
-		// The Blake2s specification requires that all message bytes beyond the actual
-		// message length must be zero. Without this constraint, a malicious prover
-		// could provide non-zero bytes beyond `length` and still produce a valid proof,
-		// violating the standard.
-		//
-		// For each byte position i in the message array:
-		// - If i < length: byte can be any value (actual message data)
-		// - If i >= length: byte MUST be zero (padding)
-		for (i, &byte_wire) in message.iter().enumerate() {
-			let index_wire = builder.add_constant(Word(i as u64));
-			// Check if this index is beyond the actual message length
-			// is_within_msg = (i < length) returns all-1s if true, all-0s if false
-			let is_within_msg = builder.icmp_ult(index_wire, length);
-			// If this is a padding byte (i >= length), it must be zero
-			builder.assert_zero(
-				"blake2s.zero_padding",
-				builder.select(is_within_msg, zero, byte_wire),
-			);
-		}
 
 		// Initialize hash state with Blake2s-256 parameters
 		// h[0] = IV[0] ^ 0x01010020 (param block: digest_length=32, fanout=1, depth=1)
@@ -362,98 +330,78 @@ impl Blake2s {
 			builder.add_constant_64(IV[7] as u64),
 		];
 
-		// Accumulator for the final digest (using masking)
-		let mut final_digest_accumulator = [zero; 8];
+		// The final digest
+		let mut final_digest = [zero; 8];
 
 		// Process each block and accumulate the correct digest
 		let mut h = init_state;
 
 		// Process each block - all blocks are processed but with appropriate padding
-		for block_idx in 0..max_blocks {
-			// Calculate byte offset for this block
-			let block_start = block_idx * 64;
-
+		for block_idx in 0..num_blocks {
 			// Prepare message block with proper padding
 			let mut m = [builder.add_constant(Word(0)); 16];
 
-			// Fill message words from input bytes
+			// Fill message words from input qwords
 			for word_idx in 0..16 {
-				let byte_offset = block_start + word_idx * 4;
+				let message_qword = *message.get(block_idx << 3 | word_idx >> 1).unwrap_or(&zero);
 
-				// Combine 4 bytes into a 32-bit word (little-endian)
-				let mut word = builder.add_constant(Word(0));
+				// Select low or high dword from the qword
+				let message_dword = if word_idx % 2 == 0 {
+					builder.band(message_qword, builder.add_constant_64(0xFFFF_FFFF))
+				} else {
+					builder.shr(message_qword, 32)
+				};
 
-				for byte_idx in 0..4 {
-					let global_byte_idx = byte_offset + byte_idx;
-					if global_byte_idx < max_bytes {
-						// Get the byte wire (or zero if beyond message length)
-						let byte_wire = if global_byte_idx < message.len() {
-							message[global_byte_idx]
-						} else {
-							builder.add_constant(Word(0))
-						};
-
-						// Shift byte to correct position for little-endian encoding
-						let shifted = if byte_idx == 0 {
-							byte_wire
-						} else {
-							builder.shl(byte_wire, (byte_idx * 8) as u32)
-						};
-
-						word = builder.bxor(word, shifted);
+				// Process padding for the last dword, if needed.
+				let first_byte_offset = block_idx * 64 + word_idx * 4;
+				let padded_message_dword = if first_byte_offset + 4 > length {
+					if first_byte_offset < length {
+						let nonzero_bytes = (length - first_byte_offset) as u32;
+						builder.band(
+							message_dword,
+							builder.add_constant(Word::ALL_ONE >> (64 - nonzero_bytes * 8)),
+						)
+					} else {
+						zero
 					}
-				}
+				} else {
+					message_dword
+				};
 
-				m[word_idx] = word;
+				m[word_idx] = padded_message_dword;
 			}
 
 			// Determine if this block is in the valid range and if it's the final block
-			let block_start = builder.add_constant(Word((block_idx * 64) as u64));
-			let block_end = builder.add_constant(Word(((block_idx + 1) * 64) as u64));
+			let block_start = (block_idx * 64) as u64;
+			let block_end = block_start + 64;
+			let is_final_block =
+				(block_idx == 0 || block_start < length as u64) && length as u64 <= block_end;
 
-			// Check if length > block_start (block is valid)
-			let ge_start = if block_idx == 0 {
-				builder.add_constant(Word::ALL_ONE) // First block always valid
+			// t_lo is block end (length for the last block)
+			let t_lo = builder.add_constant_64(if is_final_block {
+				length as u64
 			} else {
-				builder.icmp_ult(block_start, length)
-			};
-
-			// Check if length <= block_end (this is the last block)
-			// For exact block boundaries like 128 bytes, block 1 ends at 128 and should be final
-			// length <= block_end is equivalent to NOT(block_end < length)
-			let le_end = builder.bnot(builder.icmp_ult(block_end, length));
-
-			// This block is the final block if both conditions are true
-			let is_final_block = builder.band(ge_start, le_end);
-
-			// Calculate counter and flag values using conditional masking
-			// Counter: if final, use actual length; otherwise use block boundary
-			let block_counter = builder.add_constant(Word(((block_idx + 1) * 64) as u64));
-
-			// Use select for counter value
-			let t_lo = builder.select(is_final_block, length, block_counter);
+				block_end
+			});
 			// t_hi is always zero (see message size limitation in module documentation)
 			let t_hi = zero;
 
 			// Finalization flag: use select for conditional flag
 			let flag_value = builder.add_constant(Word(0xFFFFFFFF));
-			let last_flag = builder.select(is_final_block, flag_value, zero);
+			let last_flag = if is_final_block { flag_value } else { zero };
 
 			// Process the block
 			h = blake2s_compress(builder, &h, &m, t_lo, t_hi, last_flag);
 
-			// Accumulate this state into final digest if it's the final block
-			// Using masking: only XOR in the state if this is the final block
-			for i in 0..8 {
-				let masked_state = builder.select(is_final_block, h[i], zero);
-				final_digest_accumulator[i] =
-					builder.bxor(final_digest_accumulator[i], masked_state);
+			// Assign this state into final digest if it's the final block
+			if is_final_block {
+				final_digest.copy_from_slice(&h);
 			}
 		}
 
 		// Assert that accumulated digest matches expected
 		for i in 0..8 {
-			builder.assert_eq("digest_match", final_digest_accumulator[i], expected_digest[i]);
+			builder.assert_eq("digest_match", final_digest[i], expected_digest[i]);
 		}
 	}
 
@@ -465,24 +413,18 @@ impl Blake2s {
 	/// * `message` - The message bytes to hash
 	pub fn populate_message(&self, witness: &mut WitnessFiller, message: &[u8]) {
 		assert!(
-			message.len() <= self.max_bytes,
-			"Message length {} exceeds maximum {}",
+			message.len() == self.length,
+			"Only messages of length {} supported while given {} bytes",
+			self.length,
 			message.len(),
-			self.max_bytes
 		);
 
 		// Set message bytes
-		for (i, &byte) in message.iter().enumerate() {
-			witness[self.message[i]] = Word(byte as u64);
+		for (i, bytes) in message.chunks(8).enumerate() {
+			let mut le_bytes = [0; 8];
+			le_bytes[..bytes.len()].copy_from_slice(bytes);
+			witness[self.message[i]] = Word(u64::from_le_bytes(le_bytes))
 		}
-
-		// Pad remaining bytes with zeros
-		for i in message.len()..self.max_bytes {
-			witness[self.message[i]] = Word(0);
-		}
-
-		// Set actual length
-		witness[self.length] = Word(message.len() as u64);
 	}
 
 	/// Populate the expected digest witness data.
