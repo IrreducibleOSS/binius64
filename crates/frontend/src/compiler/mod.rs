@@ -658,13 +658,18 @@ impl CircuitBuilder {
 	///
 	/// # Cost
 	///
-	/// 2 AND constraints.
+	/// - 1 AND constraint,
+	/// - 1 linear constraint.
 	pub fn extract_byte(&self, word: Wire, j: u32) -> Wire {
 		assert!(j < 8, "byte index j={j} out of range");
-		let z = self.add_internal();
-		let mut graph = self.graph_mut();
-		graph.emit_gate_imm(self.current_path, Opcode::ExtractByte, [word], [z], j);
-		z
+
+		// To extract the byte j out of 8 we want to generate a mask that will zero out all bits
+		// except the ones in the j-th byte and then shift it to the rightmost position. We used
+		// to have a gate for this but it's not necessary.
+		let shift = j * 8;
+		let mask = self.add_constant_64(0xff << shift);
+		let masked = self.band(word, mask);
+		self.shr(masked, shift)
 	}
 
 	/// Select operation.

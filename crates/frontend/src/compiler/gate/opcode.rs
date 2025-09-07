@@ -33,9 +33,6 @@ pub enum Opcode {
 	IcmpUlt,
 	IcmpEq,
 
-	// Extraction
-	ExtractByte,
-
 	// Assertions
 	AssertEq,
 	AssertZero,
@@ -120,9 +117,6 @@ impl Opcode {
 			// Comparisons
 			Opcode::IcmpUlt => gate::icmp_ult::shape(),
 			Opcode::IcmpEq => gate::icmp_eq::shape(),
-
-			// Extraction
-			Opcode::ExtractByte => gate::extract_byte::shape(),
 
 			// Assertions (no outputs)
 			Opcode::AssertEq => gate::assert_eq::shape(),
