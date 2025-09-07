@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Implementation of secp256k1 elliptic curve group operations.
 //!
 //! Points are represented either in affine form as a `(x, y)` coordinate tuple

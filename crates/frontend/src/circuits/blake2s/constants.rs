@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Blake2s constants
 //!
 //! This module contains the constants used in the Blake2s hash function,

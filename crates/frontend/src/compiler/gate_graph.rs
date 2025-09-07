@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use std::collections::{HashMap, HashSet};
 
 use binius_core::word::Word;

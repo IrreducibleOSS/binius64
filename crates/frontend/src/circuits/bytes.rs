@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Byte manipulation circuits for Binius64.
 //!
 //! This module provides utility functions for byte-level operations on 64-bit words,

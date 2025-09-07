@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 pub mod and_reduction;
 pub mod config;
 mod error;

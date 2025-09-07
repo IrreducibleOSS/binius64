@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 #[cfg(target_arch = "x86_64")]
 pub mod x86_64;
 

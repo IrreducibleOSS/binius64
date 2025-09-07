@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Hosts error definitions for the core crate.
 
 use crate::consts::MIN_WORDS_PER_SEGMENT;

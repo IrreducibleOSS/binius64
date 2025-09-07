@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! BLAKE2b reference implementation
 //!
 //! This module provides a pure Rust implementation of BLAKE2b following RFC 7693.

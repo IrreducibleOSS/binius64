@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Specifies standard trait implementations and parameters.
 
 use binius_field::{AESTowerField8b, BinaryField, BinaryField1b, BinaryField128bGhash};

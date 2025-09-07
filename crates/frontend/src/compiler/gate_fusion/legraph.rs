@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! linear expression graph.
 
 use cranelift_entity::EntitySet;

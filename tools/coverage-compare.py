@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Copyright 2025 Irreducible Inc.
 """
 Compare coverage between current branch and main branch.
 Safely handles git operations to ensure no work is lost.

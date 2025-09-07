@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use std::fmt;
 
 use crate::compiler::circuit::Circuit;

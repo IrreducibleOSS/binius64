@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! BigUint modular exponentiation.
 //!
 //! Given `base`, `exp` and `modulus` represented by little-endian arrays of

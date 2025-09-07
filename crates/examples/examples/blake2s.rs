@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use anyhow::{Result, ensure};
 use binius_examples::{Cli, ExampleCircuit};
 use binius_frontend::{

@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Blake2s circuit tests
 //!
 //! This module contains comprehensive tests for the Blake2s circuit implementation,

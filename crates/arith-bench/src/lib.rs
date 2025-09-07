@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! SIMD-accelerated binary field arithmetic operations.
 //!
 //! This crate is currently only used for benchmarking arithmetic operations.

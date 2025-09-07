@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Assert that a wire, interpreted as a MSB-bool, is true.
 //! i.e., we are checking whether its most-significant bit is 1. all lower bits get ignored.
 //!

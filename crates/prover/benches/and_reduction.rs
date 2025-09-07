@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use std::{iter, iter::repeat_with};
 
 use binius_core::word::Word;

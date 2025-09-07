@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! BigUint division.
 //!
 //! Given `dividend` and `divisor`, returns `(quotient, remainder)`, numbers represented

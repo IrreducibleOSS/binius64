@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! 64-bit unsigned integer addition with carry propagation.
 //!
 //! # Wires

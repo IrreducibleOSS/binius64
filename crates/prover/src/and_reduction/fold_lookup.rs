@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use binius_field::{BinaryField, Field};
 use binius_math::BinarySubspace;
 use binius_verifier::and_reduction::univariate::univariate_lagrange::lexicographic_lagrange_basis_vectors;

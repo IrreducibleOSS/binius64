@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use rand::{RngCore, rngs::StdRng};
 
 use super::{

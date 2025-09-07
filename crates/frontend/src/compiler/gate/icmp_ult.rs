@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Unsigned less-than test returning a mask.
 //!
 //! Returns a wire whose value as an MSB-bool is true if `x < y`, and false otherwise.

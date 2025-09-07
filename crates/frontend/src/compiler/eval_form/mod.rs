@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Circuit representation in the evaluation form.
 //!
 //! The main purpose of the evaluation form is to evaluate and assign the intermediate witness

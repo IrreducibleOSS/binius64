@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! BigUint division hint implementation
 
 use binius_core::Word;

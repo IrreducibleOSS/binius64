@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! SIMD binary field operations for the Rijndael field.
 //!
 //! This module implements arithmetic operations in the GF(2^8) binary field used by

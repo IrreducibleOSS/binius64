@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Circuits related to Bitcoin.
 
 pub mod block_contains_transaction;

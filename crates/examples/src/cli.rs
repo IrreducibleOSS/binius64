@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use std::{fs, path::Path};
 
 use anyhow::Result;

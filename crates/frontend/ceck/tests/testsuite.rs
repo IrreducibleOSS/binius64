@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use std::{path::PathBuf, process::Command};
 
 fn run_ceck_test(test_file: &str) -> Result<(), String> {

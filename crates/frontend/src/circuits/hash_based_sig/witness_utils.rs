@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Witness population utilities for hash-based signature verification.
 //!
 //! This module provides helper functions for populating witness data

@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! The Bitcoin double-SHA256 hash function.
 
 use sha2::Digest;

@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use std::{error, fmt};
 
 use binius_core::{

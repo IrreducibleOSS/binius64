@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use binius_field::{
 	BinaryField, ExtensionField, PackedField, packed::iter_packed_slice_with_offset,
 };

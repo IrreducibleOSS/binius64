@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Constant propagation optimization pass.
 //!
 //! This module implements constant propagation for the gate graph, identifying gates

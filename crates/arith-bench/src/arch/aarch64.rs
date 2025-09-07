@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use std::arch::aarch64::*;
 
 use seq_macro::seq;

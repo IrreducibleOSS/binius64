@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use binius_core::{Word, consts::WORD_SIZE_BITS};
 
 use crate::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};

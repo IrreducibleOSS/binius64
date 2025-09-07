@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Arithmetic for the Monbijou field, GF(2)\[X\] / (X^64 + X^4 + X^3 + X + 1).
 //!
 //! This module implements arithmetic in the GF(2^64) binary field defined by the

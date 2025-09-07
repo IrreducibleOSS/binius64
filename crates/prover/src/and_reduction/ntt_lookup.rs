@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! # NTT Lookup Table Module
 //!
 //! This module provides a precomputed lookup table implementation for fast Number Theoretic

@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 /// log2 size of the univariate domain
 pub const SKIPPED_VARS: usize = binius_core::consts::LOG_WORD_SIZE_BITS;
 

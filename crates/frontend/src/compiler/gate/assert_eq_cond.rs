@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Conditional equality assertion.
 //!
 //! Enforces `x = y` when the MSB-bool value of `cond` is true, and no constraint otherwise.

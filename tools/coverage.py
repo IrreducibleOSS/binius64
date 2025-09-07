@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Copyright 2025 Irreducible Inc.
 """
 Rust Code Coverage Tool
 

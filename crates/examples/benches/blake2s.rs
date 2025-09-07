@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Blake2s hash benchmark
 
 use std::env;

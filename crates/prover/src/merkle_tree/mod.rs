@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use binius_transcript::{BufMut, TranscriptWriter};
 use binius_utils::rayon::prelude::IndexedParallelIterator;
 use binius_verifier::merkle_tree::{Commitment, Error, MerkleTreeScheme};

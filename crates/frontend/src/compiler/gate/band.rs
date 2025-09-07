@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Bitwise AND operation.
 //!
 //! Returns `z = x & y`.

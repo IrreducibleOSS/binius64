@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! ECDSA verification circuits
 
 mod bitcoin;

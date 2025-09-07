@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use binius_core::constraint_system::ShiftVariant;
 
 #[derive(Debug, Clone, PartialEq)]

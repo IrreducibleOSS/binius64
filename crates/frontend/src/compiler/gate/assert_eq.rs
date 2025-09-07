@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Equality assertion.
 //!
 //! Enforces `x = y` using an AND constraint.

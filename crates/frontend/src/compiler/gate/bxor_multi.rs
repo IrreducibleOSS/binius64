@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! N-way bitwise XOR operation.
 //!
 //! Returns `z = x0 ^ x1 ^ ... ^ xn`.

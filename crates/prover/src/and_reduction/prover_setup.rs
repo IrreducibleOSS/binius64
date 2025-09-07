@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use binius_field::{BinaryField, PackedField};
 use binius_math::BinarySubspace;
 use itertools::Itertools;

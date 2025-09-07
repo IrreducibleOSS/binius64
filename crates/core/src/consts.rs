@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Protocol-level constants for the Binius64 constraint system.
 
 /// Computes the base-2 logarithm of a value, panicking if it's not a power of 2.

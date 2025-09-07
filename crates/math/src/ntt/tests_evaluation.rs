@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! This module tests that running the NTT is equivalent to evaluating the respective polynomial at
 //! the respective points of $S^{(0)}$.
 

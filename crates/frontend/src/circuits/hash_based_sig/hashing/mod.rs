@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Tweaked Keccak-256 circuits for hash-based signatures.
 mod base;
 mod chain;

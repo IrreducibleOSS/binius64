@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Imul gate implements 64-bit × 64-bit → 128-bit unsigned multiplication.
 //! Uses the MulConstraint: X * Y = (HI << 64) | LO
 

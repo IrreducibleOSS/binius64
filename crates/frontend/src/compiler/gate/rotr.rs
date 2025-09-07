@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! 64-bit rotate right.
 //!
 //! Returns `z = ((x >> n) | (x << (64 - n))) & MASK_64`

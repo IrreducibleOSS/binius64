@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use cranelift_entity::PrimaryMap;
 
 /// A designator of a path within a circuit.

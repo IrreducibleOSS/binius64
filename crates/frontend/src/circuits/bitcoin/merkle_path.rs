@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! The merkle proof for a transaction in a Bitcoin block.
 
 use super::double_sha256::DoubleSha256;

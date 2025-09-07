@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Smul gate implements 64-bit × 64-bit → 128-bit signed multiplication.
 //!
 //! Algorithm is unsigned multiplication with high-word correction

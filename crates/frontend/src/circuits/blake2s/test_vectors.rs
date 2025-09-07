@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Blake2s test vectors from RFC 7693 and additional edge cases
 //!
 //! This module contains test vectors for Blake2s verification, including

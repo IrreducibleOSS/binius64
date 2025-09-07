@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Blake2s hash function circuit implementation
 //!
 //! Blake2s is a cryptographic hash function optimized for 32-bit platforms,

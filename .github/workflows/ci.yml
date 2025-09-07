@@ -12,6 +12,19 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  copyright-check:
+    name: copyright-check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Check copyright notices
+        run: python3 tools/check_copyright_notice.py
+
   pre-commit:
     name: pre-commit-${{ matrix.expand.name }}
     runs-on: ${{ matrix.expand.runner }}
@@ -39,7 +52,7 @@ jobs:
       - name: Run pre-commit
         uses: pre-commit/action@v3.0.1
         env:
-          SKIP: "clippy"
+          SKIP: "clippy,copyright"
 
   rust-checks:
     name: rust-checks-${{ matrix.expand.name }}
