@@ -161,6 +161,18 @@ where
 		transcript.message().write(&trace_commitment);
 		drop(witness_commit_guard);
 
+		// [phase] IntMul Reduction - multiplication constraint reduction
+		let intmul_guard = tracing::info_span!(
+			"[phase] IntMul Reduction",
+			phase = "intmul_reduction",
+			perfetto_category = "phase",
+			n_constraints = cs.mul_constraints.len()
+		)
+		.entered();
+		let mul_witness = build_intmul_witness(&cs.mul_constraints, witness.combined_witness());
+		let intmul_output = prove_intmul_reduction::<_, P, _>(mul_witness, transcript)?;
+		drop(intmul_guard);
+
 		// [phase] BitAnd Reduction - AND constraint reduction
 		let bitand_guard = tracing::info_span!(
 			"[phase] BitAnd Reduction",
@@ -187,27 +199,21 @@ where
 		};
 		drop(bitand_guard);
 
-		// [phase] IntMul Reduction - multiplication constraint reduction
-		let intmul_guard = tracing::info_span!(
-			"[phase] IntMul Reduction",
-			phase = "intmul_reduction",
-			perfetto_category = "phase",
-			n_constraints = cs.mul_constraints.len()
-		)
-		.entered();
+		// Build `OperatorData` for IntMul using the same `r_zhat_prime`
+		// challenge as in BitAnd. Sharing this univariate challenge
+		// improves ShiftReduction perf.
 		let intmul_claim = {
-			let mul_witness = build_intmul_witness(&cs.mul_constraints, witness.combined_witness());
 			let IntMulOutput {
 				eval_point,
 				a_evals,
 				b_evals,
 				c_lo_evals,
 				c_hi_evals,
-			} = prove_intmul_reduction::<_, P, _>(mul_witness, transcript)?;
+			} = intmul_output;
 
-			let z_challenge = transcript.sample();
+			let r_zhat_prime = bitand_claim.r_zhat_prime;
 			let subspace = BinarySubspace::<B8>::with_dim(LOG_WORD_SIZE_BITS)?.isomorphic();
-			let l_tilde = lagrange_evals(&subspace, z_challenge);
+			let l_tilde = lagrange_evals(&subspace, r_zhat_prime);
 			let make_final_claim = |evals| izip!(evals, &l_tilde).map(|(x, y)| x * y).sum();
 			OperatorData {
 				evals: vec![
@@ -216,11 +222,10 @@ where
 					make_final_claim(c_lo_evals),
 					make_final_claim(c_hi_evals),
 				],
-				r_zhat_prime: z_challenge,
+				r_zhat_prime,
 				r_x_prime: eval_point,
 			}
 		};
-		drop(intmul_guard);
 
 		// [phase] Shift Reduction - shift operations
 		let shift_guard = tracing::info_span!(
