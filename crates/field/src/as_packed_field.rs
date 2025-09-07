@@ -3,9 +3,8 @@
 use crate::{
 	BinaryField128bGhash, ExtensionField, Field, PackedBinaryGhash1x128b, PackedField,
 	aes_field::*,
-	arch::{packed_1::*, packed_aes_8::*, packed_polyval_128::PackedBinaryPolyval1x128b},
+	arch::{packed_1::*, packed_aes_8::*},
 	binary_field::*,
-	polyval::BinaryField128bPolyval,
 	underlier::{UnderlierType, WithUnderlier},
 };
 
@@ -43,7 +42,6 @@ macro_rules! impl_as_single_packed_field {
 
 impl_as_single_packed_field!(BinaryField1b, PackedBinaryField1x1b);
 impl_as_single_packed_field!(AESTowerField8b, PackedAESBinaryField1x8b);
-impl_as_single_packed_field!(BinaryField128bPolyval, PackedBinaryPolyval1x128b);
 impl_as_single_packed_field!(BinaryField128bGhash, PackedBinaryGhash1x128b);
 
 /// This trait represents correspondence (UnderlierType, Field) -> PackedField.

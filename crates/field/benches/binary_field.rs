@@ -2,9 +2,7 @@
 
 use std::array;
 
-use binius_field::{
-	BinaryField128bGhash, BinaryField128bPolyval, Field, aes_field::AESTowerField8b,
-};
+use binius_field::{BinaryField128bGhash, Field, aes_field::AESTowerField8b};
 use criterion::{
 	BenchmarkGroup, Criterion, criterion_group, criterion_main, measurement::Measurement,
 };
@@ -43,7 +41,6 @@ fn bench_all_fields<Op: FieldOperation>(c: &mut Criterion) {
 
 	run_bench!(group, AESTowerField8b, Op);
 	run_bench!(group, BinaryField128bGhash, Op);
-	run_bench!(group, BinaryField128bPolyval, Op);
 }
 
 struct MultiplyOp;

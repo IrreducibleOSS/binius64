@@ -204,11 +204,6 @@ macro_rules! benchmark_packed_operation {
 				PackedAESBinaryField32x8b
 				PackedAESBinaryField64x8b
 
-				// POLYVAL
-				PackedBinaryPolyval1x128b
-				PackedBinaryPolyval2x128b
-				PackedBinaryPolyval4x128b
-
 				// GHASH
 				PackedBinaryGhash1x128b
 				PackedBinaryGhash2x128b

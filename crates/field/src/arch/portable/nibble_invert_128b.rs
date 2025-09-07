@@ -3,7 +3,7 @@
 //! Generic nibble-based inversion algorithm for 128-bit binary fields.
 //!
 //! This module provides a generic implementation of the nibble table-based inversion
-//! algorithm that can be used for any 128-bit binary field, including POLYVAL and GHASH.
+//! algorithm that can be used for any 128-bit binary field, including GHASH.
 
 use std::ops::BitXor;
 
