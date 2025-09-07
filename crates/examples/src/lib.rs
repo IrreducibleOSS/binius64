@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 pub mod circuits;
 pub mod cli;
 pub mod snapshot;

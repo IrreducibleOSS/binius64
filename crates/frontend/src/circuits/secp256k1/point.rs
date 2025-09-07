@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use binius_core::word::Word;
 
 use super::common::{coord_zero, coords_gen};

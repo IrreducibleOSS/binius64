@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use binius_core::{ValueIndex, ValueVecLayout, Word, consts::MIN_WORDS_PER_SEGMENT};
 use cranelift_entity::SecondaryMap;
 

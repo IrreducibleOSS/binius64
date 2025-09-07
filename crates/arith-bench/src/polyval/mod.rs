@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! SIMD binary field operations for the POLYVAL field.
 //!
 //! This module implements multiplication in the GF(2^128) binary field used by the POLYVAL

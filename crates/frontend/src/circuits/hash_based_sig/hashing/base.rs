@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use crate::{
 	circuits::{
 		concat::{Concat, Term},

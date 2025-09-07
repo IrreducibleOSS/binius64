@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 /// BLAKE2b constants
 /// Initialization vectors from SHA-512 (fractional parts of square roots of primes 2..19)
 pub const IV: [u64; 8] = [

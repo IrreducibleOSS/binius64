@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 pub mod circuit;
 pub mod constants;
 pub mod reference;

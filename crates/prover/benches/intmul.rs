@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use binius_field::PackedBinaryGhash1x128b;
 use binius_prover::protocols::intmul::{prove::IntMulProver, witness::Witness};
 use binius_transcript::ProverTranscript;

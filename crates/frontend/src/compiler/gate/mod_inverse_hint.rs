@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! BigUint modular inverse
 //!
 //! Given `base` and `modulus` represented by little-endian arrays of 64-bit limbs returns

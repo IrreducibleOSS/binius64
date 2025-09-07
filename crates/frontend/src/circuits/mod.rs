@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 pub mod base64;
 pub mod bignum;
 pub mod bitcoin;

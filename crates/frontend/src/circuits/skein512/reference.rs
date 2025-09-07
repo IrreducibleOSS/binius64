@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 /// This module contains a reference Skein-512 implementation that we use to
 /// cross-check the different circuit builder implementations against.
 /// It has been tested against known good vectors and should match the

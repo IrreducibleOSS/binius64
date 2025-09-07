@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use crate::compiler::{
 	Wire,
 	constraint_builder::{ConstraintBuilder, rotr, sar, sll, srl, xor2, xor3},

@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Logical right shift.
 //!
 //! Returns `z = x >> n`.

@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! 32-bit logical right shift.
 //!
 //! Returns `z = (x >> n) & MASK_32`.

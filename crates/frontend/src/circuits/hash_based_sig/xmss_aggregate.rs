@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! XMSS multi-signature aggregation for multiple validators.
 //!
 //! This module implements aggregation of XMSS signatures where each validator

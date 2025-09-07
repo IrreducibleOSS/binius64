@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use binius_field::{BinaryField, Field, PackedBinaryField128x1b, PackedExtension, PackedField};
 use binius_math::{BinarySubspace, multilinear::eq::eq_ind_partial_eval};
 use binius_transcript::{

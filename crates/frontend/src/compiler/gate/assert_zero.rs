@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Assert that a wire equals zero.
 //!
 //! Enforces `x = 0` using an AND constraint.

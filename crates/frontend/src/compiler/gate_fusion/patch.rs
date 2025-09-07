@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use rustc_hash::FxHashSet;
 
 use super::legraph::LeGraph;

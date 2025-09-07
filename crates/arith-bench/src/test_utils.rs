@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Test utilities for PackedUnderlier implementations.
 
 #[cfg(test)]

@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 #![allow(dead_code)]
 #![allow(unused_imports)]
 

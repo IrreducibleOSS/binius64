@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use binius_core::word::Word;
 use binius_field::Field;
 use binius_math::FieldBuffer;

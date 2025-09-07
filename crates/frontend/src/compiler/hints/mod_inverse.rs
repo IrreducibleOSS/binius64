@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Modular inverse hint implementation
 
 use binius_core::Word;

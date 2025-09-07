@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use num_integer::Integer;
 
 use super::fixed_byte_vec::FixedByteVec;

@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use sha3::{Digest, Keccak256};
 
 use super::base::circuit_tweaked_keccak;

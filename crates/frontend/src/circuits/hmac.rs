@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! HMAC (Hash-based Message Authentication Code) circuit implementation using SHA-512.
 //!
 //! This module provides circuit gadgets for computing HMAC-SHA512 on fixed-length messages.

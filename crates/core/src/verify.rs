@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Routines for checking whether the
 //! [constraint system][`crate::constraint_system::ConstraintSystem`] is satisfied with the given
 //! [value vector][`ValueVec`].

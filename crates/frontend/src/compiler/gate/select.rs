@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Select operation.
 //!
 //! Returns `out = MSB(cond) ? t : f`.

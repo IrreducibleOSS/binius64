@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use super::scalar_mul::shamirs_trick_endomorphism;
 use crate::{
 	circuits::{

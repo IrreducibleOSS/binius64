@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Assert that a wire isn't zero.
 //!
 //! Enforces `x ≠ 0`.

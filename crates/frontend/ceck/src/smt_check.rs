@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use anyhow::{Result, anyhow};
 use binius_core::constraint_system::{
 	AndConstraint, ConstraintSystem, MulConstraint, Operand, ShiftVariant, ShiftedValueIndex,

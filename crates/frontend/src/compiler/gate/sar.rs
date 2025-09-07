@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Arithmetic right shift.
 //!
 //! Returns `z = x SAR n`.

@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Comprehensive BLAKE2b tests for both implementations
 //!
 //! This module contains tests that validate both the reference implementation and

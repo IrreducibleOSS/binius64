@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Gate fusion optimization.
 //!
 //! The main cost of our system is coming from the number of AND constraints. The less we have the

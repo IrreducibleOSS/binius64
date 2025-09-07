@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! This module tests that the NTT implementations are equivalent to a simple reference
 //! implementation.
 

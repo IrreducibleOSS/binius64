@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Fused AND-XOR operation.
 //!
 //! Returns `z = (x & y) ^ w`.

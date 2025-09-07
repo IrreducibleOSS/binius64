@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use binius_core::ConstraintSystem;
 
 use crate::compiler::{CircuitBuilder, Options, gate_fusion::commit_set::MAX_DEPTH};

@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Secp256k1 endomorphism split
 //!
 //! The curve has an endomorphism `λ (x, y) = (βx, y)` where `λ³=1 (mod n)`

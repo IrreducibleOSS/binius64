@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use anyhow::Result;
 use binius_core::word::Word;
 use binius_frontend::{

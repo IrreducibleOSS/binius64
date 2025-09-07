@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Proof that a Bitcoin block contains a certain transaction.
 
 use super::{

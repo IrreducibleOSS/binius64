@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Arbitrary-precision bignum arithmetic for circuits.
 //!
 //! This module provides operations on big integers represented as vectors of `Wire` elements,

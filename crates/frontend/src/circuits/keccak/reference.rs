@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 pub const PADDING_BYTE: u8 = 0x01;
 pub const RATE_BYTES: usize = 136;
 

@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! [`Word`] related definitions.
 
 use std::{

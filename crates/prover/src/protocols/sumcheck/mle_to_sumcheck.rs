@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use binius_field::Field;
 use binius_math::multilinear::eq::eq_one_var;
 use binius_verifier::protocols::sumcheck::RoundCoeffs;

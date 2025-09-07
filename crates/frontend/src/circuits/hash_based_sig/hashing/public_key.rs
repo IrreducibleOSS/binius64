@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use super::base::circuit_tweaked_keccak;
 // Note: PublicKeyTweak reuses TREE_TWEAK (0x01) for consistency with XMSS spec
 pub use super::tree::TREE_TWEAK as PUBLIC_KEY_TWEAK;

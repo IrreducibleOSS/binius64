@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Algorithms for matrix multiplications and generalized tensor contractions.
 
 use std::ops::Deref;

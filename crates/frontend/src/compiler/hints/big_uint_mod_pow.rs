@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! BigUint mod pow hint implementation
 
 use binius_core::Word;

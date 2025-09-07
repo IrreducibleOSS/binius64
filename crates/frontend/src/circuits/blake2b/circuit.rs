@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! BLAKE2b circuit implementation for Binius64
 //!
 //! This module implements BLAKE2b as a zero-knowledge circuit using the Binius64

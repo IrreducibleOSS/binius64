@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 // Type codes from Skein specification Table 6:
 pub const TWEAK_TYPE_CFG: u64 = 4;
 pub const TWEAK_TYPE_MSG: u64 = 48;

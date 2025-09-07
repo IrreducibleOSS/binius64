@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Popcount circuit implementation for counting 1-bits in a 64-bit word.
 //!
 //! This module implements the population count (popcount) operation using

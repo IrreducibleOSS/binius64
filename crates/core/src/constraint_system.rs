@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Constraint system and related definitions.
 
 use std::{

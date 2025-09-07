@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! 64-bit equality test that returns an MSB-bool indicating equality.
 //!
 //! Returns a wire whose value, as an MSB-bool, is true if `x == y` and false otherwise.

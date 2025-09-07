@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use crate::compiler::{
 	constraint_builder::ConstraintBuilder,
 	eval_form::BytecodeBuilder,

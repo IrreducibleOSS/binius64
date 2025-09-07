@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! 32-bit unsigned integer addition with carry propagation.
 //!
 //! Returns `z = (x + y) & MASK_32` and `cout` containing carry bits.

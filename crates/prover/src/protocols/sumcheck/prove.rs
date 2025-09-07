@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Prover implementation for the sumcheck protocol.
 //!
 //! This module provides functionality for executing the sumcheck proving protocol,

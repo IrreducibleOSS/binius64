@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use super::{
 	hashing::circuit_public_key_hash,
 	merkle_tree::circuit_merkle_path,

@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use super::base::circuit_tweaked_keccak;
 use crate::{
 	circuits::{concat::Term, keccak::Keccak},

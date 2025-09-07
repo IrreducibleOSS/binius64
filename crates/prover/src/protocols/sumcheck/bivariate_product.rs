@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use binius_field::{Field, PackedField};
 use binius_math::{FieldBuffer, multilinear::fold::fold_highest_var_inplace};
 use binius_utils::rayon::prelude::*;

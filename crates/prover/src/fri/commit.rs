@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use binius_field::{BinaryField, PackedExtension, PackedField};
 use binius_math::{FieldSlice, ntt::AdditiveNTT};
 use binius_utils::{bail, rayon::prelude::*};

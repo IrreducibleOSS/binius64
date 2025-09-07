@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use super::{addsub::compute_stack_adds, biguint::BigUint};
 use crate::compiler::CircuitBuilder;
 

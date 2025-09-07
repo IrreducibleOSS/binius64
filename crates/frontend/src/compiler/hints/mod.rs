@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Hint system.
 //!
 //! Hints are deterministic computations that happen on the prover side.

@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 pub mod parallel_compression;
 pub mod parallel_digest;
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Copyright 2025 Irreducible Inc.
 """
 Benchmark runner for Monbijou CI/CD pipeline.
 Handles multiple benchmarks with different threading and fusion configurations.

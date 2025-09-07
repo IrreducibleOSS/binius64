@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use crate::compiler::{CircuitBuilder, Wire};
 
 /// Extract codeword coordinates from a message hash.

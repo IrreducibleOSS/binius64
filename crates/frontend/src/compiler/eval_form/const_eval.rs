@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 //! Constant evaluation support for gates.
 
 use binius_core::{ValueIndex, ValueVec, ValueVecLayout, Word};

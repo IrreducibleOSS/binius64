@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use super::hashing::circuit_tree_hash;
 use crate::{
 	circuits::{keccak::Keccak, multiplexer::multi_wire_multiplex},
