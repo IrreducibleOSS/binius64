@@ -64,3 +64,40 @@ path = "examples/prover.rs"
 [[example]]
 name = "verifier"
 path = "examples/verifier.rs"
+
+# Tutorial examples
+[[example]]
+name = "getting_started_first_circuits"
+path = "examples/tutorials/getting_started_first_circuits.rs"
+
+[[example]]
+name = "getting_started_proving"
+path = "examples/tutorials/getting_started_proving.rs"
+
+[[example]]
+name = "getting_started_cli"
+path = "examples/tutorials/getting_started_cli.rs"
+
+[[example]]
+name = "basics_word_semantics"
+path = "examples/tutorials/basics_word_semantics.rs"
+
+[[example]]
+name = "basics_nondeterministic"
+path = "examples/tutorials/basics_nondeterministic.rs"
+
+[[example]]
+name = "basics_xor_packing"
+path = "examples/tutorials/basics_xor_packing.rs"
+
+[[example]]
+name = "circuits_control_flow"
+path = "examples/tutorials/circuits_control_flow.rs"
+
+[[example]]
+name = "circuits_gadgets"
+path = "examples/tutorials/circuits_gadgets.rs"
+
+[[example]]
+name = "circuits_data_structures"
+path = "examples/tutorials/circuits_data_structures.rs"
