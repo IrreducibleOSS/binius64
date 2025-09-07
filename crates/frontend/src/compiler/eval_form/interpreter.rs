@@ -2,13 +2,17 @@
 
 use binius_core::{ValueIndex, ValueVec, Word};
 
-use crate::compiler::{circuit::PopulateError, hints::HintRegistry};
+use crate::compiler::{
+	circuit::PopulateError,
+	hints::HintRegistry,
+	pathspec::{PathSpec, PathSpecTree},
+};
 
 const MAX_ASSERTION_FAILURES: usize = 100;
 
 /// Assertion failure information
 pub struct AssertionFailure {
-	pub error_id: u32,
+	pub path_spec: PathSpec,
 	pub message: String,
 }
 
@@ -32,28 +36,49 @@ impl<'a> ExecutionContext<'a> {
 		}
 	}
 
-	/// Record an assertion failure with the given error ID and message.
+	/// Record an assertion failure with the given path spec and message.
 	///
 	/// Note that this assertion might be discarded in case there is already too many recorded
 	/// assertions.
 	#[cold]
-	fn note_assertion_failure(&mut self, error_id: u32, message: String) {
+	fn note_assertion_failure(&mut self, path_spec: PathSpec, message: String) {
 		self.assertion_count += 1;
 		if self.assertion_failures.len() < MAX_ASSERTION_FAILURES {
 			self.assertion_failures
-				.push(AssertionFailure { error_id, message });
+				.push(AssertionFailure { path_spec, message });
 		}
 	}
 
 	/// Check assertions and return error if any failed
-	pub fn check_assertions(self) -> Result<(), PopulateError> {
+	pub fn check_assertions(
+		self,
+		path_spec_tree: Option<&PathSpecTree>,
+	) -> Result<(), PopulateError> {
 		if !self.assertion_failures.is_empty() {
-			Err(PopulateError {
-				messages: self
-					.assertion_failures
+			let messages = if let Some(tree) = path_spec_tree {
+				// Symbolicate the path specs
+				self.assertion_failures
+					.into_iter()
+					.map(|f| {
+						let mut path = String::new();
+						tree.stringify(f.path_spec, &mut path);
+						if path.is_empty() {
+							f.message
+						} else {
+							format!("{}: {}", path, f.message)
+						}
+					})
+					.collect()
+			} else {
+				// No tree provided, just use messages as-is
+				self.assertion_failures
 					.into_iter()
 					.map(|f| f.message)
-					.collect(),
+					.collect()
+			};
+
+			Err(PopulateError {
+				messages,
 				total_count: self.assertion_count,
 			})
 		} else {
@@ -77,10 +102,14 @@ impl<'a> Interpreter<'a> {
 		}
 	}
 
-	pub fn run_with_value_vec(&mut self, value_vec: &mut ValueVec) -> Result<(), PopulateError> {
+	pub fn run_with_value_vec(
+		&mut self,
+		value_vec: &mut ValueVec,
+		path_spec_tree: Option<&PathSpecTree>,
+	) -> Result<(), PopulateError> {
 		let mut ctx = ExecutionContext::new(value_vec);
 		self.run(&mut ctx)?;
-		ctx.check_assertions()
+		ctx.check_assertions(path_spec_tree)
 	}
 
 	pub fn run(&mut self, ctx: &mut ExecutionContext<'_>) -> Result<(), PopulateError> {
@@ -369,12 +398,13 @@ impl<'a> Interpreter<'a> {
 		let src1 = self.read_reg();
 		let src2 = self.read_reg();
 		let error_id = self.read_u32();
+		let path_spec = PathSpec::from_u32(error_id);
 
 		let val1 = self.load(ctx, src1);
 		let val2 = self.load(ctx, src2);
 
 		if val1 != val2 {
-			ctx.note_assertion_failure(error_id, format!("{val1:?} != {val2:?}"));
+			ctx.note_assertion_failure(path_spec, format!("{val1:?} != {val2:?}"));
 		}
 	}
 
@@ -383,6 +413,7 @@ impl<'a> Interpreter<'a> {
 		let src1 = self.read_reg();
 		let src2 = self.read_reg();
 		let error_id = self.read_u32();
+		let path_spec = PathSpec::from_u32(error_id);
 
 		let cond_val = self.load(ctx, cond);
 
@@ -393,7 +424,7 @@ impl<'a> Interpreter<'a> {
 
 			if val1 != val2 {
 				ctx.note_assertion_failure(
-					error_id,
+					path_spec,
 					format!("conditional assert: {val1:?} != {val2:?}"),
 				);
 			}
@@ -403,44 +434,48 @@ impl<'a> Interpreter<'a> {
 	fn exec_assert_zero(&mut self, ctx: &mut ExecutionContext<'_>) {
 		let src = self.read_reg();
 		let error_id = self.read_u32();
+		let path_spec = PathSpec::from_u32(error_id);
 
 		let val = self.load(ctx, src);
 
 		if val != Word::ZERO {
-			ctx.note_assertion_failure(error_id, format!("{val:?} != 0"));
+			ctx.note_assertion_failure(path_spec, format!("{val:?} != 0"));
 		}
 	}
 
 	fn exec_assert_non_zero(&mut self, ctx: &mut ExecutionContext<'_>) {
 		let src = self.read_reg();
 		let error_id = self.read_u32();
+		let path_spec = PathSpec::from_u32(error_id);
 
 		let val = self.load(ctx, src);
 
 		if val == Word::ZERO {
-			ctx.note_assertion_failure(error_id, format!("{val:?} == 0"));
+			ctx.note_assertion_failure(path_spec, format!("{val:?} == 0"));
 		}
 	}
 
 	fn exec_assert_false(&mut self, ctx: &mut ExecutionContext<'_>) {
 		let src = self.read_reg();
 		let error_id = self.read_u32();
+		let path_spec = PathSpec::from_u32(error_id);
 
 		let val = self.load(ctx, src);
 
 		if val.is_msb_true() {
-			ctx.note_assertion_failure(error_id, format!("{val:?} MSB is true"));
+			ctx.note_assertion_failure(path_spec, format!("{val:?} MSB is true"));
 		}
 	}
 
 	fn exec_assert_true(&mut self, ctx: &mut ExecutionContext<'_>) {
 		let src = self.read_reg();
 		let error_id = self.read_u32();
+		let path_spec = PathSpec::from_u32(error_id);
 
 		let val = self.load(ctx, src);
 
 		if val.is_msb_false() {
-			ctx.note_assertion_failure(error_id, format!("{val:?} MSB is false"));
+			ctx.note_assertion_failure(path_spec, format!("{val:?} MSB is false"));
 		}
 	}
 

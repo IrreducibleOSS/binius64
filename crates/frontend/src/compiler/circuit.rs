@@ -147,7 +147,9 @@ impl Circuit {
 		}
 
 		// Execute the evaluation form - it modifies the ValueVec in place
-		self.eval_form.evaluate(&mut w.value_vec)?;
+		// Pass the PathSpecTree for assertion error symbolication
+		self.eval_form
+			.evaluate(&mut w.value_vec, Some(&self.gate_graph.path_spec_tree))?;
 
 		Ok(())
 	}
