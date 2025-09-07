@@ -68,9 +68,109 @@ pub(crate) struct Shared {
 	pub(crate) opts: Options,
 }
 
-/// # Clone
+/// Circuit builder for constructing zero-knowledge proof circuits.
 ///
-/// This is a light-weight reference. Cloning is cheap.
+/// `CircuitBuilder` is your primary interface for constructing circuits in the Binius64
+/// proof system. Think of it as a specialized compiler that lets you express computations
+/// in a way that can be efficiently proven in zero-knowledge.
+///
+/// # The Circuit Abstraction
+///
+/// A circuit in Binius64 represents a computation as a directed graph where data flows
+/// through gates via "wires". Each wire carries a 64-bit word, and gates transform their
+/// input wires to produce output wires. When you call methods like [`band`] or
+/// [`iadd_32`], you're adding gates to this graph and getting back handles
+/// to the output wires.
+///
+/// The beauty of this abstraction is that you write imperative-looking code, but behind
+/// the scenes, the builder is constructing a declarative constraint system. When you
+/// finally call [`build`], this graph is compiled into the AND and MUL constraints that
+/// the proof system actually operates on.
+///
+/// # Wires and Values
+///
+/// Wires are abstract handles to 64-bit values that will exist during proof generation.
+/// They don't contain actual values during circuit construction — they're more like
+/// promises of values to come. There are several types of wires, each serving a
+/// different role in the proof system:
+///
+/// **Constants** are values known at compile time. These are "free" in terms of
+/// constraints because both prover and verifier know them. When you call
+/// [`add_constant`], you're embedding that value directly into the
+/// circuit.
+///
+/// **Public inputs/outputs** (created with [`add_inout`](Self::add_inout)) are values that will be
+/// visible to both the prover and verifier. These form part of the statement being
+/// proven—for example, the hash output in a hash preimage proof.
+///
+/// **Private witnesses** (created with [`add_witness`](Self::add_witness)) are the secret values
+/// known only to the prover. These are the values you're proving knowledge of without
+/// revealing them—like the preimage in a hash proof or a private key in a signature
+/// verification.
+///
+/// Internal wires are created automatically when gates produce outputs. You don't
+/// create these directly; they emerge from operations like [`iadd_32`].
+///
+/// # The MSB-Boolean Convention
+///
+/// Throughout this API, you'll encounter operations that produce or consume boolean
+/// values. Rather than using a separate boolean type, Binius64 adopts an unusual
+/// convention: booleans are encoded in the most significant bit (bit 63) of a 64-bit
+/// word. When the MSB is 1, the value is considered "true"; when it's 0, it's "false".
+/// The remaining 63 bits are ignored — they're "don't care" values.
+///
+/// This convention allows compiler to exploit a more efficient arithmitization for Binius64.
+///
+/// # Understanding Costs
+///
+/// Not all operations are created equal in terms of proof complexity. Here's the
+/// hierarchy of costs you should keep in mind when optimizing circuits:
+///
+/// **AND constraints** form the baseline unit of cost. Operations like bitwise AND
+/// and comparisons generate one or two AND constraints. These are your primary
+/// optimization target.
+///
+/// **MUL constraints** (64-bit multiplication) are the heavyweight operations, costing
+/// roughly 3-4 times more than AND constraints. Use them judiciously.
+///
+/// **Committing values** also has a cost—each committed word (public inputs/outputs
+/// and witnesses) adds to the proof size, though less than a full AND constraint.
+///
+/// **Linear operations** ([`bxor`](Self::bxor) and shifts) are the interesting case. They generate
+/// what we call "virtual" linear constraints — constraints that our underlying proof
+/// system doesn't directly support. During compilation, these must either be:
+/// - Absorbed into nearby non-linear gates through gate fusion (making them nearly free), or
+/// - Materialized as actual AND constraints
+///
+/// The gate fusion optimization intelligently inlines XOR expressions and compatible
+/// shifts into gates that already require AND constraints. However, it can't inline
+/// everything — incompatible operations (like a right shift into a left shift) and
+/// heuristic limits mean some linear operations will still materialize as constraints.
+/// In practice, XORs are very cheap (think of them as a small fraction of an AND),
+/// while shifts are slightly more expensive but still economical.
+///
+/// The individual method documentation specifies exact costs, but this hierarchy helps
+/// you reason about circuit efficiency: minimize ANDs and MULs, use XORs liberally,
+/// and be mindful of committed values.
+///
+/// # Building and Compilation
+///
+/// The builder uses a reference-counted pointer internally, making it cheap to clone.
+/// When you call [`subcircuit`], you get a new builder that adds gates
+/// to the same underlying graph but with hierarchical naming for better debugging.
+///
+/// The compilation process (triggered by [`build`]) is where the magic happens. It
+/// validates your circuit, runs optimization passes like constant propagation and gate
+/// fusion, and produces the final constraint system. Note that [`build`] consumes the
+/// builder's internal state—you can only call it once per builder instance.
+///
+/// [`add_constant`]: Self::add_constant
+/// [`add_inout`]: Self::add_inout
+/// [`add_witness`]: Self::add_witness
+/// [`band`]: Self::band
+/// [`build`]: Self::build
+/// [`iadd_32`]: Self::iadd_32
+/// [`subcircuit`]: Self::subcircuit
 #[derive(Clone)]
 pub struct CircuitBuilder {
 	/// Current path at which this circuit builder is positioned.
@@ -84,7 +184,9 @@ impl Default for CircuitBuilder {
 	}
 }
 
+#[warn(missing_docs)]
 impl CircuitBuilder {
+	/// Create a new circuit builder with default options.
 	pub fn new() -> Self {
 		let opts = Options::from_env();
 		Self::with_opts(opts)
@@ -99,6 +201,11 @@ impl CircuitBuilder {
 		}
 	}
 
+	/// Returns the circuit built by this builder.
+	///
+	/// Note that cloning the circuit builder only clones the reference and as such is treated
+	/// as a shallow copy.
+	///
 	/// # Preconditions
 	///
 	/// Must be called only once.
@@ -187,6 +294,13 @@ impl CircuitBuilder {
 		Circuit::new(graph, cs, wire_mapping, eval_form)
 	}
 
+	/// Creates a reference to the same underlying circuit builder that is namespaced to the
+	/// given name.
+	///
+	/// This is useful for creating subcircuits within a larger circuit.
+	///
+	/// Note that this is the same builder instance, but with a different namespace, and that means
+	/// calling [`Self::build`] on the returned builder is going to build the whole circuit.
 	pub fn subcircuit(&self, name: impl Into<String>) -> CircuitBuilder {
 		let nested_path = self
 			.graph_mut()
@@ -205,11 +319,9 @@ impl CircuitBuilder {
 	/// Creates a wire from a 64-bit word.
 	///
 	/// # Arguments
-	///
 	/// * `word` -  The word to add to the circuit.
 	///
 	/// # Returns
-	///
 	/// A `Wire` representing the constant value. The wire might be aliased because the constants
 	/// are deduplicated.
 	///
@@ -250,20 +362,45 @@ impl CircuitBuilder {
 		self.add_constant(Word(c as u64))
 	}
 
+	/// Creates a public input/output wire.
+	///
+	/// Public wires form part of the proof statement and are visible to both prover and verifier.
+	/// They are committed in the public section of the value vector alongside constants.
+	///
+	/// The wire must be manually assigned a value using [`WitnessFiller`] before circuit
+	/// evaluation.
+	///
+	/// [`WitnessFiller`]: crate::compiler::circuit::WitnessFiller
 	pub fn add_inout(&self) -> Wire {
 		self.graph_mut().add_inout()
 	}
 
+	/// Creates a private input wire.
+	///
+	/// Private wires contain secret values known only to the prover. They are placed in the
+	/// private section of the value vector and are not revealed to the verifier.
+	///
+	/// The wire must be manually assigned a value using [`WitnessFiller`] before circuit
+	/// evaluation.
+	///
+	/// [`WitnessFiller`]: crate::compiler::circuit::WitnessFiller
 	pub fn add_witness(&self) -> Wire {
 		self.graph_mut().add_witness()
 	}
 
-	/// Adds a wire similar to `add_witness`. Internal wires are meant to designate wires that
-	/// are prunable.
+	/// Adds a wire similar to [`Self::add_witness`]. Internal wires are meant to designate wires
+	/// that are prunable.
 	fn add_internal(&self) -> Wire {
 		self.graph_mut().add_internal()
 	}
 
+	/// Bitwise AND.
+	///
+	/// Returns z = x & y
+	///
+	/// # Cost
+	///
+	/// 1 AND constraint.
 	pub fn band(&self, x: Wire, y: Wire) -> Wire {
 		let z = self.add_internal();
 		let mut graph = self.graph_mut();
@@ -271,6 +408,13 @@ impl CircuitBuilder {
 		z
 	}
 
+	/// Bitwise XOR.
+	///
+	/// Returns z = x ^ y
+	///
+	/// # Cost
+	///
+	/// 1 linear constraint.
 	pub fn bxor(&self, a: Wire, b: Wire) -> Wire {
 		let z = self.add_internal();
 		let mut graph = self.graph_mut();
@@ -282,9 +426,11 @@ impl CircuitBuilder {
 	///
 	/// Takes a variable-length slice of wires and XORs them all together.
 	///
+	/// Returns z = i ^ j ^ k ^ ...
+	///
 	/// # Cost
 	///
-	/// Potentially 1 AND constraint, though this may be optimized through gate fusion.
+	/// 1 linear constraint.
 	pub fn bxor_multi(&self, wires: &[Wire]) -> Wire {
 		assert!(!wires.is_empty(), "bxor_multi requires at least one input");
 
@@ -310,11 +456,24 @@ impl CircuitBuilder {
 	}
 
 	/// Bitwise Not
+	///
+	/// Returns z = ~x
+	///
+	/// # Cost
+	///
+	/// 1 linear constraint.
 	pub fn bnot(&self, a: Wire) -> Wire {
 		let all_one = self.add_constant(Word::ALL_ONE);
 		self.bxor(a, all_one)
 	}
 
+	/// Bitwise OR.
+	///
+	/// Returns z = x | y
+	///
+	/// # Cost
+	///
+	/// 1 AND constraint.
 	pub fn bor(&self, a: Wire, b: Wire) -> Wire {
 		let z = self.add_internal();
 		let mut graph = self.graph_mut();
@@ -338,6 +497,13 @@ impl CircuitBuilder {
 		z
 	}
 
+	/// 32-bit integer addition.
+	///
+	/// Performs a 32-bit integer addition of two wires. The high bits of the result are discarded.
+	///
+	/// # Cost
+	///
+	/// 2 AND constraints.
 	pub fn iadd_32(&self, a: Wire, b: Wire) -> Wire {
 		let z = self.add_internal();
 		let mut graph = self.graph_mut();
@@ -345,16 +511,19 @@ impl CircuitBuilder {
 		z
 	}
 
-	/// 64-bit addition with carry input and output.
+	/// 64-bit integer addition with carry input and output.
 	///
 	/// Performs full 64-bit unsigned addition of two wires plus a carry input.
 	///
-	/// Returns (sum, carry_out) where sum is the 64-bit result and carry_out
-	/// indicates overflow.
+	/// Returns `(sum, carry_out)` where:
+	///
+	/// - `sum` is the 64-bit result and
+	/// - `carry_out` is a 64-bit word where every bit position with a carry is set to 1.
 	///
 	/// # Cost
 	///
-	/// 2 AND constraints.
+	/// - 1 AND constraint,
+	/// - 1 linear constraint.
 	pub fn iadd_cin_cout(&self, a: Wire, b: Wire, cin: Wire) -> (Wire, Wire) {
 		let sum = self.add_internal();
 		let cout = self.add_internal();
@@ -367,12 +536,15 @@ impl CircuitBuilder {
 	///
 	/// Performs full 64-bit unsigned subtraction of two wires plus a borrow input.
 	///
-	/// Returns (diff, borrow_out) where diff is the 64-bit result and borrow_out
-	/// indicates underflow.
+	/// Returns `(diff, borrow_out)` where:
+	///
+	/// - `diff` is the 64-bit result and
+	/// - `borrow_out` is a 64-bit word where every bit position with a borrow is set to 1.
 	///
 	/// # Cost
 	///
-	/// 2 AND constraints.
+	/// - 1 AND constraint,
+	/// - 1 linear constraint.
 	pub fn isub_bin_bout(&self, a: Wire, b: Wire, bin: Wire) -> (Wire, Wire) {
 		let diff = self.add_internal();
 		let bout = self.add_internal();
@@ -381,7 +553,20 @@ impl CircuitBuilder {
 		(diff, bout)
 	}
 
-	// emulate rotl_32 using rotr_32. return right away if n == 0.
+	/// 32-bit rotate left.
+	///
+	/// Rotates the lower 32 bits left by n positions. Bits shifted out on the left
+	/// wrap around to the right. The upper 32 bits are zeroed.
+	///
+	/// Returns `(x & 0xFFFFFFFF) rotated left by n`
+	///
+	/// # Panics
+	///
+	/// Panics if n ≥ 32.
+	///
+	/// # Cost
+	///
+	/// 1 AND constraint (0 if n = 0).
 	pub fn rotl_32(&self, x: Wire, n: u32) -> Wire {
 		assert!(n < 32, "rotate amount n={n} out of range");
 		if n == 0 {
@@ -393,6 +578,20 @@ impl CircuitBuilder {
 		z
 	}
 
+	/// 32-bit rotate right.
+	///
+	/// Rotates the lower 32 bits right by n positions. Bits shifted out on the right
+	/// wrap around to the left. The upper 32 bits are zeroed.
+	///
+	/// Returns `(x & 0xFFFFFFFF) rotated right by n`
+	///
+	/// # Panics
+	///
+	/// Panics if n ≥ 32.
+	///
+	/// # Cost
+	///
+	/// 1 AND constraint (0 if n = 0).
 	pub fn rotr_32(&self, x: Wire, n: u32) -> Wire {
 		assert!(n < 32, "rotate amount n={n} out of range");
 		if n == 0 {
@@ -405,7 +604,20 @@ impl CircuitBuilder {
 		z
 	}
 
-	// emulate rotl using rotr. return right away if n == 0.
+	/// 64-bit rotate left.
+	///
+	/// Rotates a 64-bit value left by n positions. Bits shifted out on the left
+	/// wrap around to the right.
+	///
+	/// Returns `x rotated left by n`
+	///
+	/// # Panics
+	///
+	/// Panics if n ≥ 64.
+	///
+	/// # Cost
+	///
+	/// 1 AND constraint (0 if n = 0).
 	pub fn rotl(&self, x: Wire, n: u32) -> Wire {
 		assert!(n < 64, "rotate amount n={n} out of range");
 		if n == 0 {
@@ -417,6 +629,20 @@ impl CircuitBuilder {
 		z
 	}
 
+	/// 64-bit rotate right.
+	///
+	/// Rotates a 64-bit value right by n positions. Bits shifted out on the right
+	/// wrap around to the left.
+	///
+	/// Returns `x rotated right by n`
+	///
+	/// # Panics
+	///
+	/// Panics if n ≥ 64.
+	///
+	/// # Cost
+	///
+	/// 1 AND constraint (0 if n = 0).
 	pub fn rotr(&self, x: Wire, n: u32) -> Wire {
 		assert!(n < 64, "rotate amount n={n} out of range");
 		if n == 0 {
@@ -429,6 +655,20 @@ impl CircuitBuilder {
 		z
 	}
 
+	/// 32-bit logical right shift.
+	///
+	/// Shifts the lower 32 bits right by n positions, filling with zeros from the left.
+	/// The upper 32 bits are zeroed.
+	///
+	/// Returns `(x & 0xFFFFFFFF) >> n`
+	///
+	/// # Panics
+	///
+	/// Panics if n ≥ 32.
+	///
+	/// # Cost
+	///
+	/// 1 AND constraint.
 	pub fn shr_32(&self, x: Wire, n: u32) -> Wire {
 		assert!(n < 32, "shift amount n={n} out of range");
 
@@ -523,8 +763,13 @@ impl CircuitBuilder {
 		}
 	}
 
-	/// Asserts that the given wire equals zero using a single AND constraint.
-	/// This is more efficient than using assert_eq with a zero constant.
+	/// Asserts that the given wire equals zero.
+	///
+	/// Enforces that `x = 0` exactly. Every bit of the 64-bit value must be zero.
+	///
+	/// # Cost
+	///
+	/// 1 AND constraint.
 	pub fn assert_zero(&self, name: impl Into<String>, x: Wire) {
 		let mut graph = self.graph_mut();
 		let gate = graph.emit_gate(self.current_path, Opcode::AssertZero, [x], []);
@@ -532,6 +777,13 @@ impl CircuitBuilder {
 		graph.assertion_names[gate] = path_spec;
 	}
 
+	/// Asserts that the given wire is not zero.
+	///
+	/// Enforces that `x ≠ 0`. At least one bit must be non-zero.
+	///
+	/// # Cost
+	///
+	/// 1 AND constraint.
 	pub fn assert_non_zero(&self, name: impl Into<String>, x: Wire) {
 		let mut graph = self.graph_mut();
 		let gate = graph.emit_gate(self.current_path, Opcode::AssertNonZero, [x], []);
@@ -539,8 +791,14 @@ impl CircuitBuilder {
 		graph.assertion_names[gate] = path_spec;
 	}
 
-	/// asserts that the given wire, interpreted as a MSB-bool, is false.
-	/// this is equivalent to asserting that x & 0x8000000000000000 == 0.
+	/// Asserts that the given wire's MSB (Most Significant Bit) is 0.
+	///
+	/// This treats the wire as an MSB-boolean where:
+	/// - MSB = 0 → false (assertion passes)
+	/// - MSB = 1 → true (assertion fails)
+	///
+	/// All bits except the MSB are ignored. This is commonly used with comparison
+	/// results which return MSB-boolean values.
 	///
 	/// # Cost
 	///
@@ -552,8 +810,14 @@ impl CircuitBuilder {
 		graph.assertion_names[gate] = path_spec;
 	}
 
-	/// asserts that the given wire, interpreted as a MSB-bool, is true.
-	/// this is equivalent to asserting that x & 0x8000000000000000 == 0x8000000000000000.
+	/// Asserts that the given wire's MSB (Most Significant Bit) is 1.
+	///
+	/// This treats the wire as an MSB-boolean where:
+	/// - MSB = 1 → true (assertion passes)
+	/// - MSB = 0 → false (assertion fails)
+	///
+	/// All bits except the MSB are ignored. This is commonly used with comparison
+	/// results which return MSB-boolean values.
 	///
 	/// # Cost
 	///
@@ -566,7 +830,16 @@ impl CircuitBuilder {
 	}
 
 	/// 64-bit × 64-bit → 128-bit unsigned multiplication.
-	/// Returns (hi, lo) where result = (hi << 64) | lo
+	///
+	/// Performs unsigned integer multiplication of two 64-bit values, producing
+	/// a 128-bit result split into high and low 64-bit words.
+	///
+	/// Returns `(hi, lo)` where `a * b = (hi << 64) | lo`
+	///
+	/// # Cost
+	///
+	/// - 1 MUL constraint,
+	/// - 1 AND constraint (for security check).
 	pub fn imul(&self, a: Wire, b: Wire) -> (Wire, Wire) {
 		let hi = self.add_internal();
 		let lo = self.add_internal();
@@ -575,8 +848,20 @@ impl CircuitBuilder {
 		(hi, lo)
 	}
 
-	/// Signed multiplication: 64-bit × 64-bit → 128-bit.
-	/// Returns (hi, lo) where result = (hi << 64) | lo
+	/// 64-bit × 64-bit → 128-bit signed multiplication.
+	///
+	/// Performs signed integer multiplication of two 64-bit values, producing
+	/// a 128-bit result split into high and low 64-bit words. Correctly handles
+	/// two's complement signed integers including overflow cases.
+	///
+	/// Returns `(hi, lo)` where the signed multiplication result equals `(hi << 64) | lo`.
+	/// The high word is sign-extended based on the product's sign.
+	///
+	/// # Cost
+	///
+	/// - 1 MUL constraint
+	/// - 7 AND constraints (2 for sign corrections, 4 for modular additions, 1 for low word
+	///   equality).
 	pub fn smul(&self, a: Wire, b: Wire) -> (Wire, Wire) {
 		let hi = self.add_internal();
 		let lo = self.add_internal();
@@ -587,15 +872,8 @@ impl CircuitBuilder {
 
 	/// Conditional equality assertion.
 	///
-	/// Asserts that two 64-bit wires are equal, but only when the MSB-bool value of `cond` is true.
-	/// When `cond` is MSB-bool-false, the assertion is a no-op.
-	/// the non-most-significant bits of `cond` are ignored / have no impact.
-	///
-	/// Takes wires a, b, and cond and enforces:
-	/// - If cond is MSB-bool-true: a must equal b
-	/// - If cond is MSB-bool-false: no constraint (assertion is ignored)
-	///
-	/// Pattern: AND((a ^ b), (cond ~>> 63), 0)
+	/// Asserts that two 64-bit wires are equal only when a condition is true (MSB = 1).
+	/// When the condition is false (MSB = 0), no constraint is enforced.
 	///
 	/// # Cost
 	///
@@ -619,7 +897,8 @@ impl CircuitBuilder {
 	///
 	/// # Cost
 	///
-	/// 2 AND constraints.
+	/// - 1 AND constraint,
+	/// - 1 linear constraint.
 	pub fn icmp_ult(&self, x: Wire, y: Wire) -> Wire {
 		let out_wire = self.add_internal();
 		let mut graph = self.graph_mut();
