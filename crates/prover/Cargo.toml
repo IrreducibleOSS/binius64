@@ -13,7 +13,7 @@ binius-field = { path = "../field" }
 binius-frontend = { path = "../frontend" }
 binius-math = { path = "../math" }
 binius-transcript = { path = "../transcript" }
-binius-verifier = { path = "../verifier" }
+binius-verifier = { path = "../verifier", default-features = false }
 binius-utils = { path = "../utils" }
 bytemuck.workspace = true
 bytes.workspace = true
