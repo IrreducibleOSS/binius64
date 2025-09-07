@@ -42,7 +42,7 @@ pub(crate) struct Options {
 impl Default for Options {
 	fn default() -> Self {
 		Self {
-			enable_gate_fusion: false,
+			enable_gate_fusion: true,
 			enable_constant_propagation: false,
 		}
 	}
@@ -55,9 +55,6 @@ impl Options {
 		// We do not expect those feature sets to soak here for too long neither we expect that
 		// the features are going to be detected using the environment variables.
 		let mut opts = Self::default();
-		if std::env::var("MONBIJOU_FUSION").is_ok() {
-			opts.enable_gate_fusion = true;
-		}
 		if std::env::var("MONBIJOU_CONSTPROP").is_ok() {
 			opts.enable_constant_propagation = true;
 		}
@@ -123,6 +120,16 @@ impl CircuitBuilder {
 			}
 		}
 
+		let mut builder = ConstraintBuilder::new();
+		for (gate_id, _) in graph.gates.iter() {
+			gate::constrain(gate_id, &graph, &mut builder);
+		}
+
+		// Perform fusion if the corresponding feature flag is turned on.
+		if shared.opts.enable_gate_fusion {
+			gate_fusion::run_pass(&mut builder, all_one);
+		}
+
 		// Allocate a place for each wire in the value vec layout.
 		//
 		// This gives us mappings from wires into the value indices, as well as the constant
@@ -149,21 +156,7 @@ impl CircuitBuilder {
 			value_vec_alloc.into_assignment()
 		};
 
-		let mut builder = ConstraintBuilder::new();
-		for (gate_id, _) in graph.gates.iter() {
-			gate::constrain(gate_id, &graph, &mut builder);
-		}
-		let (mut and_constraints, mut mul_constraints) = builder.build(&wire_mapping, all_one);
-
-		// Perform fusion if the corresponding feature flag is turned on.
-		if shared.opts.enable_gate_fusion {
-			let fusion =
-				gate_fusion::Fusion::new(&mut and_constraints, &mut mul_constraints, &constants);
-			if let Some(mut fusion) = fusion {
-				let stats = fusion.run();
-				eprintln!("{}", stats);
-			}
-		}
+		let (and_constraints, mul_constraints) = builder.build(&wire_mapping, all_one);
 
 		let cs =
 			ConstraintSystem::new(constants, value_vec_layout, and_constraints, mul_constraints);
