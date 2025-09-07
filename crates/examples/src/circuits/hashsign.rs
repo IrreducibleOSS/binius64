@@ -1,5 +1,4 @@
 // Copyright 2025 Irreducible Inc.
-use std::array;
 
 use anyhow::Result;
 use binius_core::Word;
@@ -8,7 +7,7 @@ use binius_frontend::{
 		winternitz_ots::WinternitzSpec,
 		witness_utils::{ValidatorSignatureData, XmssHasherData, populate_xmss_hashers},
 		xmss::XmssSignature,
-		xmss_aggregate::{XmssMultisigHashers, circuit_xmss_multisig},
+		xmss_aggregate::{MultiSigBuilder, XmssMultisigHashers, circuit_xmss_multisig},
 	},
 	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
 	util::pack_bytes_into_wires_le,
@@ -69,36 +68,17 @@ impl ExampleCircuit for HashBasedSigExample {
 			2 => WinternitzSpec::spec_2(),
 			_ => anyhow::bail!("Invalid spec: must be 1 or 2"),
 		};
-
 		let tree_height = params.tree_height;
 		if tree_height > 31 {
 			anyhow::bail!("tree_height {} exceeds the maximum supported height of 31", tree_height);
 		}
 		let num_validators = params.num_validators;
 
-		let param_wire_count = spec.domain_param_len.div_ceil(8);
-		let param: Vec<Wire> = (0..param_wire_count).map(|_| builder.add_inout()).collect();
-		let message: Vec<Wire> = (0..4).map(|_| builder.add_inout()).collect();
-		let epoch = builder.add_inout();
-
-		let validator_roots: Vec<[Wire; 4]> = (0..num_validators)
-			.map(|_| array::from_fn(|_| builder.add_inout()))
-			.collect();
-
+		let ms_builder = MultiSigBuilder::new(builder, &spec);
+		let (param, message, epoch) = ms_builder.create_public_inputs();
+		let validator_roots = ms_builder.create_validator_roots(num_validators);
 		let validator_signatures: Vec<XmssSignature> = (0..num_validators)
-			.map(|_| XmssSignature {
-				nonce: (0..3).map(|_| builder.add_witness()).collect(),
-				epoch, // All validators use the same epoch wire
-				signature_hashes: (0..spec.dimension())
-					.map(|_| array::from_fn(|_| builder.add_witness()))
-					.collect(),
-				public_key_hashes: (0..spec.dimension())
-					.map(|_| array::from_fn(|_| builder.add_witness()))
-					.collect(),
-				auth_path: (0..tree_height)
-					.map(|_| array::from_fn(|_| builder.add_witness()))
-					.collect(),
-			})
+			.map(|_| ms_builder.create_validator_signature(tree_height, epoch))
 			.collect();
 
 		let hashers = circuit_xmss_multisig(
