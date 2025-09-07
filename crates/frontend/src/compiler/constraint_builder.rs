@@ -1,5 +1,5 @@
 use binius_core::constraint_system::{AndConstraint, MulConstraint, ShiftedValueIndex, ValueIndex};
-use cranelift_entity::SecondaryMap;
+use cranelift_entity::{EntitySet, SecondaryMap};
 use smallvec::{SmallVec, smallvec};
 
 use crate::compiler::Wire;
@@ -66,6 +66,20 @@ impl ConstraintBuilder {
 
 		(and_constraints, mul_constraints)
 	}
+
+	pub fn mark_used_wires(&self) -> EntitySet<Wire> {
+		let mut used_set = EntitySet::new();
+		for ac in &self.and_constraints {
+			ac.mark_used(&mut used_set);
+		}
+		for mc in &self.mul_constraints {
+			mc.mark_used(&mut used_set);
+		}
+		for lc in &self.linear_constraints {
+			lc.mark_used(&mut used_set);
+		}
+		used_set
+	}
 }
 
 impl Default for ConstraintBuilder {
@@ -115,6 +129,12 @@ impl WireAndConstraint {
 			c: expand_and_convert_operand(self.c, wire_mapping),
 		}
 	}
+
+	fn mark_used(&self, used_set: &mut EntitySet<Wire>) {
+		mark_used(&self.a, used_set);
+		mark_used(&self.b, used_set);
+		mark_used(&self.c, used_set);
+	}
 }
 
 /// MUL constraint using Wire references
@@ -144,6 +164,11 @@ impl WireLinearConstraint {
 			c: vec![ShiftedValueIndex::plain(dst)],
 		}
 	}
+
+	fn mark_used(&self, used_set: &mut EntitySet<Wire>) {
+		mark_used(&self.rhs, used_set);
+		used_set.insert(self.dst);
+	}
 }
 
 impl WireMulConstraint {
@@ -155,10 +180,23 @@ impl WireMulConstraint {
 			lo: expand_and_convert_operand(self.lo, wire_mapping),
 		}
 	}
+
+	fn mark_used(&self, used_set: &mut EntitySet<Wire>) {
+		mark_used(&self.a, used_set);
+		mark_used(&self.b, used_set);
+		mark_used(&self.hi, used_set);
+		mark_used(&self.lo, used_set);
+	}
 }
 
 /// Operand built from wire expressions
 pub type WireOperand = Vec<ShiftedWire>;
+
+fn mark_used(operand: &WireOperand, used_set: &mut EntitySet<Wire>) {
+	for shifted_wire in operand {
+		used_set.insert(shifted_wire.wire);
+	}
+}
 
 #[derive(Copy, Clone, Debug)]
 pub struct ShiftedWire {

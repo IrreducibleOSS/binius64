@@ -126,8 +126,9 @@ mod tests {
 			n_witness,
 			n_internal: 0,
 			offset_inout: n_const,
-			offset_witness: 4, // next power of 2 after constants
-			total_len: 8,      // next power of 2 after all values
+			offset_witness: 4,      // next power of 2 after constants
+			committed_total_len: 8, // next power of 2 after all values
+			n_scratch: 0,
 		};
 		// Both implement: v0 & v1 ^ v2 = 0
 		let constraint = AndConstraint::plain_abc(
@@ -165,8 +166,9 @@ mod tests {
 			n_witness,
 			n_internal: 0,
 			offset_inout: n_const,
-			offset_witness: 4, // next power of 2 after constants
-			total_len: 8,      // next power of 2 after all values
+			offset_witness: 4,      // next power of 2 after constants
+			committed_total_len: 8, // next power of 2 after all values
+			n_scratch: 0,
 		};
 		// LHS: ZERO & ZERO ^ ZERO = 0 (always satisfied)
 		let lhs_constraint = AndConstraint::plain_abc(
