@@ -158,6 +158,19 @@ where
 		// Receive the trace commitment.
 		let trace_commitment = transcript.message().read::<Output<MerkleHash>>()?;
 
+		// [phase] Verify IntMul Reduction - multiplication constraint verification
+		let intmul_guard = tracing::info_span!(
+			"[phase] Verify IntMul Reduction",
+			phase = "verify_intmul_reduction",
+			perfetto_category = "phase",
+			n_constraints = self.constraint_system.n_mul_constraints()
+		)
+		.entered();
+		let log_n_constraints = checked_log_2(self.constraint_system.n_mul_constraints());
+		let intmul_output =
+			verify_intmul_reduction(LOG_WORD_SIZE_BITS, log_n_constraints, transcript).unwrap();
+		drop(intmul_guard);
+
 		// [phase] Verify BitAnd Reduction - AND constraint verification
 		let bitand_guard = tracing::info_span!(
 			"[phase] Verify BitAnd Reduction",
@@ -179,31 +192,24 @@ where
 		};
 		drop(bitand_guard);
 
-		// [phase] Verify IntMul Reduction - multiplication constraint verification
-		let intmul_guard = tracing::info_span!(
-			"[phase] Verify IntMul Reduction",
-			phase = "verify_intmul_reduction",
-			perfetto_category = "phase",
-			n_constraints = self.constraint_system.n_mul_constraints()
-		)
-		.entered();
+		// Build `OperatorData` for IntMul using the same `r_zhat_prime`
+		// challenge as in BitAnd. Sharing this univariate challenge
+		// improves prover ShiftReduction perf.
 		let intmul_claim = {
-			let log_n_constraints = checked_log_2(self.constraint_system.n_mul_constraints());
 			let IntMulOutput {
 				a_evals,
 				b_evals,
 				c_lo_evals,
 				c_hi_evals,
 				eval_point,
-			}: IntMulOutput<B128> =
-				verify_intmul_reduction(LOG_WORD_SIZE_BITS, log_n_constraints, transcript).unwrap();
+			} = intmul_output;
 
-			let z_challenge = transcript.sample();
+			let r_zhat_prime = bitand_claim.r_zhat_prime;
 			let subspace = BinarySubspace::<B8>::with_dim(LOG_WORD_SIZE_BITS)?.isomorphic();
-			let l_tilde = lagrange_evals(&subspace, z_challenge);
+			let l_tilde = lagrange_evals(&subspace, r_zhat_prime);
 			let make_final_claim = |evals| izip!(evals, &l_tilde).map(|(x, y)| x * y).sum();
 			OperatorData::new(
-				z_challenge,
+				r_zhat_prime,
 				eval_point,
 				[
 					make_final_claim(a_evals),
@@ -213,7 +219,6 @@ where
 				],
 			)
 		};
-		drop(intmul_guard);
 
 		// [phase] Verify Shift Reduction - shift operations and constraint validation
 		let constraint_guard = tracing::info_span!(
