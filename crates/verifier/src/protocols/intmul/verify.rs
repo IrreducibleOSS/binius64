@@ -225,7 +225,20 @@ fn verify_phase_5<F: Field, C: Challenger>(
 	let n_vars = a_c_eval_point.len();
 	assert_eq!(b_eval_point.len(), n_vars);
 
-	let evals = [a_evals, c_lo_evals, c_hi_evals, b_exponent_evals].concat();
+	// This is the eval of `a_0 * b_0` and `c_lo_0`.
+	let overflow_zerocheck_eval = transcript.message().read_scalar::<F>()?;
+
+	let evals = [
+		a_evals,
+		c_lo_evals,
+		c_hi_evals,
+		// For `a_0 * b_0 `bivariate product.
+		&[overflow_zerocheck_eval],
+		// For `c_lo_0` rerand sumcheck.
+		&[overflow_zerocheck_eval],
+		b_exponent_evals,
+	]
+	.concat();
 
 	let BatchSumcheckOutput {
 		batch_coeff,
@@ -234,34 +247,68 @@ fn verify_phase_5<F: Field, C: Challenger>(
 	} = batch_verify(n_vars, 3, &evals, transcript)?;
 	challenges.reverse();
 
-	let scaled_a_c_exponent_evals = read_scalar_slice(transcript, 64 + 128)?;
+	// Read the evals of all multilinears in the bivariate prouct sumcheck: 64 for `a`, 128 for `c`,
+	// 2 for `a_0` and `b_0`
+	let mut bivariate_evals = read_scalar_slice(transcript, 64 + 128 + 2)?;
+	// Read the single eval of the `c_lo_0` rerand sumcheck
+	let c_lo_0_eval = transcript.message().read_scalar::<F>()?;
+	// Read the 64 evals of the `b` rerand sumcheck
 	let b_exponent_evals = read_scalar_slice(transcript, 64)?;
 
+	// Compose the expected evaluation of the batched composition via
+	// the prover's claimed multilinear evals extracted above.
+	// For every pair (p,q) of multilinears, the verifier can be sure that
+	// the MLE of p*q at `a_c_eq_eval` equals the corresponding eval in `evals`.
+	// The last of these pairs implies the MLE of `a_0 * b_0` at `a_c_eq_eval` equals
+	// `overflow_zerocheck_eval`.
 	let a_c_eq_eval = eq_ind(a_c_eval_point, &challenges);
-	let expected_a_c_unbatched_evals = scaled_a_c_exponent_evals
+	let expected_bivariate_unbatched_evals = bivariate_evals
 		.iter()
 		.tuples()
 		.map(|(left, right)| a_c_eq_eval * left * right)
 		.collect::<Vec<F>>();
 
+	// Likewise, the verifier can be sure that the MLE of `c_lo_0` at `a_c_eq_eval`
+	// equals `overflow_zerocheck_eval`. Combined with the MLE of `a_0 * b_0` at `a_c_eq_eval`
+	// being `overflow_zerocheck_eval`, the verifier can conclude the
+	// MLE of `a_0 * b_0 - c_lo_0` at `a_c_eq_eval` equals zero. By the Schwartz-Zippel lemma,
+	// the verifier concludes `a_0_i * b_0_i - c_lo_0_i = 0` for all rows `i`.
+	let expected_c_lo_0_rerand_unbatched_eval = a_c_eq_eval * c_lo_0_eval;
+
 	let b_eq_eval = eq_ind(b_eval_point, &challenges);
-	let expected_b_unbatched_evals = b_exponent_evals
+	let expected_b_rerand_unbatched_evals = b_exponent_evals
 		.iter()
 		.map(|&b_exponent_eval| b_eq_eval * b_exponent_eval)
 		.collect::<Vec<F>>();
 
-	let expected_unbatched_evals =
-		[expected_a_c_unbatched_evals, expected_b_unbatched_evals].concat();
+	let expected_unbatched_evals = [
+		expected_bivariate_unbatched_evals,
+		vec![expected_c_lo_0_rerand_unbatched_eval],
+		expected_b_rerand_unbatched_evals,
+	]
+	.concat();
 	let expected_batched_eval = evaluate_univariate(&expected_unbatched_evals, batch_coeff);
 
+	// Compare expected evaluation against given evaluation `eval`.
 	if expected_batched_eval != eval {
 		return Err(Error::CompositionClaimMismatch);
 	}
 
+	// Evals `b_0_eval`, `a_0_eval`, and `c_lo_0_eval` will be verified following phase 5.
+	let b_0_eval = bivariate_evals
+		.pop()
+		.expect("non-empty scaled a_c exponent evals");
+	let a_0_eval = bivariate_evals
+		.pop()
+		.expect("non-empty scaled a_c exponent evals");
+
 	Ok(Phase5Output {
 		eval_point: challenges,
-		scaled_a_c_exponent_evals,
+		scaled_a_c_exponent_evals: bivariate_evals,
 		b_exponent_evals,
+		a_0_eval,
+		b_0_eval,
+		c_lo_0_eval,
 	})
 }
 
@@ -276,7 +323,12 @@ fn verify_phase_5<F: Field, C: Challenger>(
 ///    - First layer of GPA reduction for the `c_lo || c_hi` combined `c` tree
 ///  - Phase 4: Batching all but last layers and `a`, `c_lo` and `c_hi`
 ///  - Phase 5: Verifying the last (widest) layers of `a`, `c_lo` and `c_hi` batched with
-///    rerandomization degree-1 mlecheck on `b` evaluations from phase 3
+///    rerandomization degree-1 mlecheck on `b` evaluations from phase 3. We must also verify that
+///    `a_0 * b_0 = c_lo_0` across all rows (where these are the least significant bits of the
+///    respective values). This prevents an attack when `a*b = 0`: a malicious prover could set `c =
+///    2^128 - 1`, which satisfies `a*b ≡ c (mod 2^128-1)` since `0 ≡ 2^128-1 (mod 2^128-1)`, but we
+///    need `a*b = c (mod 2^128)`. The check catches this because if `c = 2^128-1` then `c_lo_0 = 1`
+///    (odd), but `a_0 * b_0 = 0` when `a=0` or `b=0`.
 pub fn verify<F: BinaryField, C: Challenger>(
 	log_bits: usize,
 	n_vars: usize,
@@ -330,6 +382,9 @@ pub fn verify<F: BinaryField, C: Challenger>(
 		eval_point: phase_5_eval_point,
 		scaled_a_c_exponent_evals,
 		b_exponent_evals,
+		a_0_eval,
+		b_0_eval,
+		c_lo_0_eval,
 	} = verify_phase_5(
 		log_bits,
 		&phase_4_eval_point,
@@ -343,6 +398,10 @@ pub fn verify<F: BinaryField, C: Challenger>(
 
 	let [a_exponent_evals, c_lo_exponent_evals, c_hi_exponent_evals] =
 		normalize_a_c_exponent_evals(log_bits, scaled_a_c_exponent_evals);
+
+	assert_eq!(a_exponent_evals[0], a_0_eval);
+	assert_eq!(b_exponent_evals[0], b_0_eval);
+	assert_eq!(c_lo_exponent_evals[0], c_lo_0_eval);
 
 	Ok(IntMulOutput {
 		eval_point: phase_5_eval_point,

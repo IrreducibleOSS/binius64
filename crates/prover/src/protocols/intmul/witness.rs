@@ -121,9 +121,6 @@ where
 {
 	/// Constant base witness construction.
 	pub fn constant_base(log_bits: usize, base: F, exponents: S) -> Self {
-		let n_vars = checked_log_2(exponents.as_ref().len());
-		let p_width = P::WIDTH.min(1 << n_vars);
-
 		let bases = iterate(base, |g| g.square())
 			.take(1 << log_bits)
 			.collect::<Vec<_>>();
@@ -132,33 +129,7 @@ where
 			.par_iter()
 			.enumerate()
 			.map(|(bit_offset, base)| {
-				let bits = BitSelector::new(bit_offset, &exponents);
-				let elements = [F::ONE, *base];
-				let values = (0..1 << n_vars.saturating_sub(P::LOG_WIDTH))
-					.map(|i| {
-						let scalars = (0..p_width).map(|j| {
-							// The following code is equivalent to
-							// ```
-							// if bits.get(i << P::LOG_WIDTH | j) {
-							// 	*base
-							// } else {
-							// 	F::ONE
-							// }
-							// ```
-							unsafe {
-								// Safety:
-								// - `i << P::LOG_WIDTH | j` is guaranteed to be in-bounds
-								// - elements has two values
-								*elements.get_unchecked(
-									bits.get_unchecked(i << P::LOG_WIDTH | j) as usize
-								)
-							}
-						});
-						P::from_scalars(scalars)
-					})
-					.collect::<Box<[_]>>();
-
-				FieldBuffer::new(n_vars, values).expect("values length matches n_vars")
+				two_valued_field_buffer(bit_offset, &exponents, [F::ONE, *base])
 			})
 			.collect();
 
@@ -276,6 +247,47 @@ pub fn buffer_bivariate_product<P: PackedField, Data: Deref<Target = [P]>>(
 		.map(|(&a, &b)| a * b)
 		.collect::<Box<[P]>>();
 	FieldBuffer::new(a.log_len(), product).expect("a.len() == b.len() === (a*b).len()")
+}
+
+/// Constructs a field buffer with values selected from `elements` based on the bit values
+/// of `exponents`.
+pub fn two_valued_field_buffer<F, P, S, B>(
+	bit_offset: usize,
+	exponents: &S,
+	elements: [F; 2],
+) -> FieldBuffer<P>
+where
+	F: Field,
+	P: PackedField<Scalar = F>,
+	S: AsRef<[B]> + Sync,
+	B: Bitwise,
+{
+	let n_vars = checked_log_2(exponents.as_ref().len());
+	let p_width = P::WIDTH.min(1 << n_vars);
+	let bits = BitSelector::new(bit_offset, &exponents);
+	let values = (0..1 << n_vars.saturating_sub(P::LOG_WIDTH))
+		.map(|i| {
+			let scalars = (0..p_width).map(|j| {
+				// The following code is equivalent to
+				// ```
+				// if bits.get(i << P::LOG_WIDTH | j) {
+				// 	elements[1]
+				// } else {
+				// 	elements[0]
+				// }
+				// ```
+				unsafe {
+					// Safety:
+					// - `i << P::LOG_WIDTH | j` is guaranteed to be in-bounds
+					// - elements has two values
+					*elements.get_unchecked(bits.get_unchecked(i << P::LOG_WIDTH | j) as usize)
+				}
+			});
+			P::from_scalars(scalars)
+		})
+		.collect::<Box<[_]>>();
+
+	FieldBuffer::new(n_vars, values).expect("values length matches n_vars")
 }
 
 #[cfg(test)]

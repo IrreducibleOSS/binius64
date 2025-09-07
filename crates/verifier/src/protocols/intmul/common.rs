@@ -68,6 +68,9 @@ pub struct Phase5Output<F> {
 	pub eval_point: Vec<F>,
 	pub scaled_a_c_exponent_evals: Vec<F>,
 	pub b_exponent_evals: Vec<F>,
+	pub a_0_eval: F,
+	pub b_0_eval: F,
+	pub c_lo_0_eval: F,
 }
 
 /// Applying the inverse of $\phi^$ to the selector columns.

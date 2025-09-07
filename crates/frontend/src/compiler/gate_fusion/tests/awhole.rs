@@ -122,10 +122,7 @@ fn test_mul_inlining_duplicate_linear_in_mul() {
 
 	let cs = compile(b);
 
-	insta::assert_snapshot!(stringify_constraint_system(&cs), @r"
-	AND[0]: (v[2]≪63 ⊕ v[3]≪63) ∧ (v[2]≪63 ⊕ v[3]≪63) = (v[5]≪63)
-	MUL[0]: (v[2] ⊕ v[3]) * (v[2] ⊕ v[3]) = (HI: v[4], LO: v[5])
-	");
+	insta::assert_snapshot!(stringify_constraint_system(&cs), @"MUL[0]: (v[2] ⊕ v[3]) * (v[2] ⊕ v[3]) = (HI: v[4], LO: v[5])");
 }
 
 #[test]
@@ -149,7 +146,6 @@ fn test_mul_and_and_shared_linear_uses() {
 	let cs = compile(b);
 	insta::assert_snapshot!(stringify_constraint_system(&cs), @r"
 	AND[0]: (v[2] ⊕ v[3]) ∧ (v[4]) = (v[6])
-	AND[1]: (v[2]≪63 ⊕ v[3]≪63) ∧ (v[5]≪63) = (v[8]≪63)
 	MUL[0]: (v[2] ⊕ v[3]) * (v[5]) = (HI: v[7], LO: v[8])
 	");
 }
@@ -178,11 +174,10 @@ fn test_mul_inlining_into_hi_lo() {
 
 	let cs = compile(b);
 	insta::assert_snapshot!(stringify_constraint_system(&cs), @r"
-AND[0]: (v[6]≪63) ∧ (v[7]≪63) = (v[11]≪63)
-AND[1]: (v[2] ⊕ v[3]) ∧ (all-1) = (v[8])
-AND[2]: (v[4] ⊕ v[5]) ∧ (all-1) = (v[9])
-MUL[0]: (v[6]) * (v[7]) = (HI: v[10], LO: v[11])
-");
+	AND[0]: (v[2] ⊕ v[3]) ∧ (all-1) = (v[8])
+	AND[1]: (v[4] ⊕ v[5]) ∧ (all-1) = (v[9])
+	MUL[0]: (v[6]) * (v[7]) = (HI: v[10], LO: v[11])
+	");
 }
 
 #[test]
@@ -205,11 +200,7 @@ fn test_mul_inlining_distinct_linears() {
 	let (_hi, _lo) = b.imul(y1, y2);
 
 	let cs = compile(b);
-	insta::assert_snapshot!(stringify_constraint_system(&cs), @r"
-	AND[0]: (v[2]≪63 ⊕ v[3]≪63) ∧ (v[6]≪63 ⊕ v[5]≪63) = (v[8]≪63)
-	AND[1]: (v[4]≪3) ∧ (all-1) = (v[6])
-	MUL[0]: (v[2] ⊕ v[3]) * (v[6] ⊕ v[5]) = (HI: v[7], LO: v[8])
-	");
+	insta::assert_snapshot!(stringify_constraint_system(&cs), @"MUL[0]: (v[2] ⊕ v[3]) * (v[4]≪3 ⊕ v[5]) = (HI: v[6], LO: v[7])");
 }
 
 #[test]
