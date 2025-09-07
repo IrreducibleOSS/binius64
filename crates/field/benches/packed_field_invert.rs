@@ -21,7 +21,7 @@ fn invert_main<T: PackedField>(val: T) -> T {
 cfg_if! {
 	if #[cfg(feature = "benchmark_alternative_strategies")] {
 		use binius_field::{
-			arch::{HybridRecursiveStrategy, PackedStrategy, PairwiseRecursiveStrategy, PairwiseStrategy,
+			arch::{PackedStrategy, PairwiseRecursiveStrategy, PairwiseStrategy,
 				PairwiseTableStrategy, SimdStrategy,},
 			arithmetic_traits::TaggedInvertOrZero,
 		};
@@ -42,10 +42,6 @@ cfg_if! {
 			val.invert_or_zero()
 		}
 
-		fn invert_hybrid_recursive<T: TaggedInvertOrZero<HybridRecursiveStrategy>>(val: T) -> T {
-			val.invert_or_zero()
-		}
-
 		fn invert_simd<T: TaggedInvertOrZero<SimdStrategy>>(val: T) -> T {
 			val.invert_or_zero()
 		}
@@ -58,7 +54,6 @@ cfg_if! {
 				(pairwise, TaggedInvertOrZero::<PairwiseStrategy>, invert_pairwise),
 				(pairwise_recursive, TaggedInvertOrZero::<PairwiseRecursiveStrategy>, invert_pairwise_recursive),
 				(pairwise_table, TaggedInvertOrZero::<PairwiseTableStrategy>, invert_pairwise_table),
-				(hybrid_recursive, TaggedInvertOrZero::<HybridRecursiveStrategy>, invert_hybrid_recursive),
 				(packed, TaggedInvertOrZero::<PackedStrategy>, invert_packed),
 				(simd, TaggedInvertOrZero::<SimdStrategy>, invert_simd),
 			)

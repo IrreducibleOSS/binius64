@@ -35,7 +35,6 @@ pub(crate) mod univariate_mul_utils_128;
 
 pub(super) mod packed_scaled;
 
-pub(super) mod hybrid_recursive_arithmetics;
 pub(super) mod packed_arithmetic;
 pub(super) mod pairwise_arithmetic;
 pub(super) mod pairwise_recursive_arithmetic;

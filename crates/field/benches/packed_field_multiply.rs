@@ -25,7 +25,7 @@ fn mul_main<T: SelfMul>(lhs: T, rhs: T) -> T {
 cfg_if! {
 	if #[cfg(feature = "benchmark_alternative_strategies")] {
 		use binius_field::{
-			arch::{HybridRecursiveStrategy, PackedStrategy, PairwiseRecursiveStrategy, PairwiseStrategy,
+			arch::{PackedStrategy, PairwiseRecursiveStrategy, PairwiseStrategy,
 				PairwiseTableStrategy, SimdStrategy,},
 			arithmetic_traits::TaggedMul
 		};
@@ -46,10 +46,6 @@ cfg_if! {
 			TaggedMul::<PackedStrategy>::mul(lhs, rhs)
 		}
 
-		fn mul_hybrid_recursive<T: TaggedMul<HybridRecursiveStrategy>>(lhs: T, rhs: T) -> T {
-			TaggedMul::<HybridRecursiveStrategy>::mul(lhs, rhs)
-		}
-
 		fn mul_simd<T: TaggedMul<SimdStrategy>>(lhs: T, rhs: T) -> T {
 			TaggedMul::<SimdStrategy>::mul(lhs, rhs)
 		}
@@ -62,7 +58,6 @@ cfg_if! {
 				(pairwise, TaggedMul::<PairwiseStrategy>, mul_pairwise),
 				(pairwise_recursive, TaggedMul::<PairwiseRecursiveStrategy>, mul_pairwise_recursive),
 				(pairwise_table, TaggedMul::<PairwiseTableStrategy>, mul_pairwise_table),
-				(hybrid_recursive, TaggedMul::<HybridRecursiveStrategy>, mul_hybrid_recursive),
 				(packed, TaggedMul::<PackedStrategy>, mul_packed),
 				(simd, TaggedMul::<SimdStrategy>, mul_simd),
 			)
