@@ -21,7 +21,7 @@ fn square_main<T: PackedField>(val: T) -> T {
 cfg_if! {
 	if #[cfg(feature = "benchmark_alternative_strategies")] {
 		use binius_field::{
-			arch::{HybridRecursiveStrategy, PackedStrategy, PairwiseStrategy, PairwiseRecursiveStrategy,
+			arch::{PackedStrategy, PairwiseStrategy, PairwiseRecursiveStrategy,
 				PairwiseTableStrategy, SimdStrategy,},
 			arithmetic_traits::TaggedSquare
 		};
@@ -42,10 +42,6 @@ cfg_if! {
 			val.square()
 		}
 
-		fn square_hybrid_recursive<T: TaggedSquare<HybridRecursiveStrategy>>(val: T) -> T {
-			val.square()
-		}
-
 		fn square_simd<T: TaggedSquare<SimdStrategy>>(val: T) -> T {
 			val.square()
 		}
@@ -58,7 +54,6 @@ cfg_if! {
 				(pairwise, TaggedSquare::<PairwiseStrategy>, square_pairwise),
 				(pairwise_recursive, TaggedSquare::<PairwiseRecursiveStrategy>, square_pairwise_recursive),
 				(pairwise_table, TaggedSquare::<PairwiseTableStrategy>, square_pairwise_table),
-				(hybrid_recursive, TaggedSquare::<HybridRecursiveStrategy>, square_hybrid_recursive),
 				(packed, TaggedSquare::<PackedStrategy>, square_packed),
 				(simd, TaggedSquare::<SimdStrategy>, square_simd),
 			)
