@@ -1,5 +1,7 @@
 use std::fmt;
 
+use binius_core::{ConstraintSystem, Operand, ShiftedValueIndex};
+
 use crate::compiler::circuit::Circuit;
 
 /// Various stats of a circuit that affect the prover performance.
@@ -8,6 +10,7 @@ pub struct CircuitStat {
 	pub n_eval_insn: usize,
 	pub n_and_constraints: usize,
 	pub n_mul_constraints: usize,
+	pub distinct_shifted_value_indices: usize,
 	pub value_vec_len: usize,
 	pub n_const: usize,
 	pub n_inout: usize,
@@ -25,6 +28,7 @@ impl CircuitStat {
 			n_and_constraints: cs.n_and_constraints(),
 			n_mul_constraints: cs.n_mul_constraints(),
 			value_vec_len: cs.value_vec_layout.committed_total_len,
+			distinct_shifted_value_indices: distinct_shifted_value_indices(cs),
 			n_const: cs.value_vec_layout.n_const,
 			n_inout: cs.value_vec_layout.n_inout,
 			n_witness: cs.value_vec_layout.n_witness,
@@ -40,6 +44,11 @@ impl fmt::Display for CircuitStat {
 		writeln!(f, "Number of evaluation instructions: {}", self.n_eval_insn)?;
 		writeln!(f, "Number of AND constraints: {}", self.n_and_constraints)?;
 		writeln!(f, "Number of MUL constraints: {}", self.n_mul_constraints)?;
+		writeln!(
+			f,
+			"Number of distinct shifted value indices: {}",
+			self.distinct_shifted_value_indices
+		)?;
 		writeln!(f, "Length of value vec: {}", self.value_vec_len)?;
 		writeln!(f, "  Constants: {}", self.n_const)?;
 		writeln!(f, "  Inout: {}", self.n_inout)?;
@@ -47,5 +56,28 @@ impl fmt::Display for CircuitStat {
 		writeln!(f, "  Internal: {}", self.n_internal)?;
 		writeln!(f, "  Scratch: {}", self.n_scratch)?;
 		Ok(())
+	}
+}
+
+fn distinct_shifted_value_indices(cs: &ConstraintSystem) -> usize {
+	use std::collections::HashSet;
+	let mut indices = HashSet::new();
+	for and in &cs.and_constraints {
+		visit_operand(&and.a, &mut indices);
+		visit_operand(&and.b, &mut indices);
+		visit_operand(&and.c, &mut indices);
+	}
+	for mul in &cs.mul_constraints {
+		visit_operand(&mul.a, &mut indices);
+		visit_operand(&mul.b, &mut indices);
+		visit_operand(&mul.lo, &mut indices);
+		visit_operand(&mul.hi, &mut indices);
+	}
+	return indices.len();
+
+	fn visit_operand(operand: &Operand, indices: &mut HashSet<ShiftedValueIndex>) {
+		for term in operand {
+			indices.insert(*term);
+		}
 	}
 }
