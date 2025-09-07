@@ -2,12 +2,12 @@ keccak circuit
 --
 Number of gates: 27625
 Number of evaluation instructions: 27625
-Number of AND constraints: 6025
+Number of AND constraints: 7225
 Number of MUL constraints: 0
-Number of distinct shifted value indices: 135134
+Number of distinct shifted value indices: 41877
 Length of value vec: 8192
   Constants: 23
   Inout: 50
   Witness: 0
-  Internal: 6000
-  Scratch: 21600
+  Internal: 7200
+  Scratch: 20400
