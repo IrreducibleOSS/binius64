@@ -59,16 +59,16 @@ pub fn prove_phase_1<F, P: PackedField<Scalar = F>, C: Challenger>(
 where
 	F: BinaryField + From<AESTowerField8b> + WithUnderlier<Underlier: UnderlierWithBitOps>,
 {
-	let [g_triplet_bitand, g_triplet_intmul]: [MultilinearTriplet<P>; 2] =
+	let g_triplet: MultilinearTriplet<P> =
 		build_g_triplet(words, key_collection, bitand_data, intmul_data)?;
 
-	let h_triplet_bitand = build_h_triplet(bitand_data.r_zhat_prime)?;
-	let h_triplet_intmul = build_h_triplet(intmul_data.r_zhat_prime)?;
+	// BitAnd and IntMul share the same `r_zhat_prime`.
+	let h_triplet = build_h_triplet(bitand_data.r_zhat_prime)?;
 
 	run_phase_1_sumcheck(
-		[g_triplet_bitand, g_triplet_intmul],
-		[h_triplet_bitand, h_triplet_intmul],
-		[bitand_data.batched_eval(), intmul_data.batched_eval()],
+		g_triplet,
+		h_triplet,
+		bitand_data.batched_eval() + intmul_data.batched_eval(),
 		transcript,
 	)
 }
@@ -99,33 +99,28 @@ where
 ///
 /// `SumcheckOutput` containing the challenge vector and final evaluation `gamma`
 #[instrument(skip_all, name = "run_sumcheck")]
-fn run_phase_1_sumcheck<
-	F: Field,
-	P: PackedField<Scalar = F>,
-	C: Challenger,
-	const OPERATOR_COUNT: usize,
->(
-	g_triplets: [MultilinearTriplet<P>; OPERATOR_COUNT],
-	h_triplets: [MultilinearTriplet<P>; OPERATOR_COUNT],
-	sums: [F; OPERATOR_COUNT],
+fn run_phase_1_sumcheck<F: Field, P: PackedField<Scalar = F>, C: Challenger>(
+	g_triplet: MultilinearTriplet<P>,
+	h_triplet: MultilinearTriplet<P>,
+	sum: F,
 	transcript: &mut ProverTranscript<C>,
 ) -> Result<SumcheckOutput<F>, Error> {
 	// Build `BivariateProductSumcheckProver` provers.
-	let mut provers = izip!(g_triplets, h_triplets, sums)
-		.flat_map(|(g_triplet, h_triplet, sum)| {
-			let sll_sum = inner_product_buffers(&g_triplet.sll, &h_triplet.sll);
-			let srl_sum = inner_product_buffers(&g_triplet.srl, &h_triplet.srl);
-			let sra_sum = sum - sll_sum - srl_sum;
-			[
-				(g_triplet.sll, h_triplet.sll, sll_sum),
-				(g_triplet.srl, h_triplet.srl, srl_sum),
-				(g_triplet.sra, h_triplet.sra, sra_sum),
-			]
-		})
+	let mut provers = {
+		let sll_sum = inner_product_buffers(&g_triplet.sll, &h_triplet.sll);
+		let srl_sum = inner_product_buffers(&g_triplet.srl, &h_triplet.srl);
+		let sra_sum = sum - sll_sum - srl_sum;
+		[
+			(g_triplet.sll, h_triplet.sll, sll_sum),
+			(g_triplet.srl, h_triplet.srl, srl_sum),
+			(g_triplet.sra, h_triplet.sra, sra_sum),
+		]
+		.into_iter()
 		.map(|(left_buf, right_buf, sum)| {
 			BivariateProductSumcheckProver::new([left_buf, right_buf], sum)
 		})
-		.collect::<Result<Vec<_>, _>>()?;
+		.collect::<Result<Vec<_>, _>>()?
+	};
 
 	// Perform the sumcheck rounds, collecting challenges.
 	let n_vars = 2 * LOG_WORD_SIZE_BITS;
@@ -210,26 +205,21 @@ fn build_g_triplet<
 	key_collection: &KeyCollection,
 	bitand_operator_data: &PreparedOperatorData<F>,
 	intmul_operator_data: &PreparedOperatorData<F>,
-) -> Result<[MultilinearTriplet<P>; 2], Error> {
+) -> Result<MultilinearTriplet<P>, Error> {
 	const ACC_SIZE: usize = SHIFT_VARIANT_COUNT * (1 << LOG_LEN);
 
-	let (bitand_multilinears, intmul_multilinears) = words
+	let multilinears = words
 		.par_iter()
 		.zip(key_collection.key_ranges.par_iter())
 		.fold(
-			|| {
-				(
-					vec![F::ZERO; ACC_SIZE].into_boxed_slice(),
-					vec![F::ZERO; ACC_SIZE].into_boxed_slice(),
-				)
-			},
-			|(mut bitand_multilinears, mut intmul_multilinears), (word, Range { start, end })| {
+			|| vec![F::ZERO; ACC_SIZE].into_boxed_slice(),
+			|mut multilinears, (word, Range { start, end })| {
 				let keys = &key_collection.keys[*start as usize..*end as usize];
 
 				for key in keys {
-					let (operator_data, accumulators) = match key.operation {
-						Operation::BitwiseAnd => (bitand_operator_data, &mut bitand_multilinears),
-						Operation::IntegerMul => (intmul_operator_data, &mut intmul_multilinears),
+					let operator_data = match key.operation {
+						Operation::BitwiseAnd => bitand_operator_data,
+						Operation::IntegerMul => intmul_operator_data,
 					};
 
 					let acc = key.accumulate(&key_collection.constraint_indices, operator_data);
@@ -245,7 +235,7 @@ fn build_g_triplet<
 					let word_bytes = word.0.to_le_bytes();
 					let masks_map = F::Underlier::BYTE_MASK_MAP;
 					for (&byte, values) in word_bytes.iter().zip(
-						accumulators[start..start + WORD_SIZE_BITS]
+						multilinears[start..start + WORD_SIZE_BITS]
 							.chunks_exact_mut(WORD_SIZE_BYTES),
 					) {
 						let masks = &masks_map[byte as usize];
@@ -261,31 +251,22 @@ fn build_g_triplet<
 					}
 				}
 
-				(bitand_multilinears, intmul_multilinears)
+				multilinears
 			},
 		)
 		.reduce(
-			|| {
-				(
-					vec![F::ZERO; ACC_SIZE].into_boxed_slice(),
-					vec![F::ZERO; ACC_SIZE].into_boxed_slice(),
-				)
-			},
-			|(mut acc_bitand, mut acc_intmul), (local_bitand, local_intmul)| {
-				izip!(acc_bitand.iter_mut(), local_bitand.iter()).for_each(|(acc, local)| {
+			|| vec![F::ZERO; ACC_SIZE].into_boxed_slice(),
+			|mut acc, local| {
+				izip!(acc.iter_mut(), local.iter()).for_each(|(acc, local)| {
 					*acc += *local;
 				});
-				izip!(acc_intmul.iter_mut(), local_intmul.iter()).for_each(|(acc, local)| {
-					*acc += *local;
-				});
-				(acc_bitand, acc_intmul)
+				acc
 			},
 		);
 
-	let bitand_triplet = build_multilinear_triplet_for_operator(&bitand_multilinears)?;
-	let intmul_triplet = build_multilinear_triplet_for_operator(&intmul_multilinears)?;
+	let triplet = build_multilinear_triplet(&multilinears)?;
 
-	Ok([bitand_triplet, intmul_triplet])
+	Ok(triplet)
 }
 
 /// Builds a multilinear triplet for a single operation by combining its operand multilinears.
@@ -293,8 +274,8 @@ fn build_g_triplet<
 /// Takes the raw multilinears for all operands and shift variants of an operation,
 /// applies lambda weighting to each operand, and combines them into a single triplet.
 /// Each operand of index `i` gets weighted by λ^(i+1).
-#[instrument(skip_all, name = "build_multilinear_triplet_for_operator")]
-fn build_multilinear_triplet_for_operator<F: Field, P: PackedField<Scalar = F>>(
+#[instrument(skip_all, name = "build_multilinear_triplet")]
+fn build_multilinear_triplet<F: Field, P: PackedField<Scalar = F>>(
 	multilinears: &[F],
 ) -> Result<MultilinearTriplet<P>, Error> {
 	let [sll_chunk, srl_chunk, sra_chunk] = multilinears
