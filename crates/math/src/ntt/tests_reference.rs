@@ -30,8 +30,12 @@ fn test_equivalence<P: PackedField>(
 	let mut data_a = random_field_buffer::<P>(&mut rng, log_d);
 	let mut data_b = data_a.clone();
 
-	for skip_early in [0, 2, 4] {
-		for skip_late in [0, 2, 4] {
+	for skip_early in [0, 3, 5, 7] {
+		for skip_late in [0, 3, 5, 7] {
+			if skip_early + skip_late > log_d {
+				continue;
+			}
+
 			ntt_a.forward_transform(data_a.to_mut(), skip_early, skip_late);
 			ntt_b.forward_transform(data_b.to_mut(), skip_early, skip_late);
 			assert_eq!(data_a, data_b)
@@ -105,8 +109,12 @@ where
 	let subspace = BinarySubspace::<P::Scalar>::with_dim(10).unwrap();
 	let domain_context = GenericPreExpanded::generate_from_subspace(&subspace);
 	let ntt = NeighborsLastReference { domain_context };
-	for skip_early in [0, 1, 2] {
-		for skip_late in [0, 1, 2] {
+	for skip_early in [0, 2, 5] {
+		for skip_late in [0, 2, 5] {
+			if skip_early + skip_late > log_d {
+				continue;
+			}
+
 			ntt.forward_transform(data.to_mut(), skip_early, skip_late);
 			ntt.inverse_transform(data.to_mut(), skip_early, skip_late);
 			assert_eq!(data, data_orig);
