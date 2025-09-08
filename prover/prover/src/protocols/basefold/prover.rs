@@ -1,7 +1,5 @@
 // Copyright 2025 Irreducible Inc.
 
-use std::vec;
-
 use binius_field::{BinaryField, PackedField};
 use binius_math::{FieldBuffer, ntt::AdditiveNTT};
 use binius_transcript::{
@@ -14,7 +12,7 @@ use binius_verifier::{
 };
 
 use crate::{
-	Error, fri,
+	Error,
 	fri::{FRIFolder, FoldRoundOutput},
 	merkle_tree::MerkleTreeProver,
 	protocols::{basefold::sumcheck::MultilinearSumcheckProver, sumcheck::common::SumcheckProver},
@@ -33,6 +31,7 @@ where
 	VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 {
 	sumcheck_prover: MultilinearSumcheckProver<F, P>,
+	fri_params: &'a FRIParams<F, F>,
 	fri_folder: FRIFolder<'a, F, F, P, NTT, MerkleProver, VCS>,
 	log_n: usize,
 }
@@ -93,6 +92,7 @@ where
 
 		Ok(Self {
 			sumcheck_prover,
+			fri_params,
 			fri_folder,
 			log_n,
 		})
@@ -126,9 +126,10 @@ where
 	pub fn fold(
 		&mut self,
 		challenge: F,
-	) -> Result<FoldRoundOutput<<VCS as MerkleTreeScheme<F>>::Digest>, fri::Error> {
-		let _ = self.sumcheck_prover.fold(challenge);
-		self.fri_folder.execute_fold_round(challenge)
+	) -> Result<FoldRoundOutput<<VCS as MerkleTreeScheme<F>>::Digest>, Error> {
+		self.sumcheck_prover.fold(challenge)?;
+		let result = self.fri_folder.execute_fold_round(challenge)?;
+		Ok(result)
 	}
 
 	/// Runs the entire basefold protocol, writing to the transcript round by round.
@@ -144,12 +145,12 @@ where
 	) -> Result<(), Error> {
 		let _scope = tracing::debug_span!("Basefold").entered();
 
-		let mut round_commitments = vec![];
-
+		let mut round_commitments = Vec::with_capacity(self.fri_params.n_oracles());
 		for _ in 0..self.log_n {
-			let round_msg = self.execute()?;
-
-			transcript.message().write_scalar_slice(&round_msg.0);
+			let round_coeffs = self.execute()?;
+			transcript
+				.message()
+				.write_scalar_slice(round_coeffs.truncate().coeffs());
 
 			let challenge = transcript.sample();
 
@@ -163,7 +164,6 @@ where
 				}
 			}
 		}
-		// prove FRI queries
 		self.finish(transcript)?;
 
 		Ok(())

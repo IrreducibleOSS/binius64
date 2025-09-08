@@ -15,9 +15,6 @@ use crate::{
 	transcript,
 };
 
-// The mle-check in basefold involves a degree 2 univariate round polynomial.
-const NUM_ROUND_COEFFS: usize = 3;
-
 /// Determines for each round if a FRI commitment was made depending on folding arities.
 ///
 /// FRI can be optimized by folding multiple rounds at once. The FriFolder struct
@@ -76,6 +73,9 @@ where
 	Challenger_: Challenger,
 	MTScheme: MerkleTreeScheme<F, Digest: DeserializeBytes>,
 {
+	// The multivariate polynomial evaluated is a degree-2 multilinear composite.
+	const NUM_ROUND_COEFFS: usize = 2;
+
 	let mut challenges = Vec::with_capacity(n_vars);
 	let fri_commit_rounds = is_fri_commit_round(fri_params.fold_arities(), n_vars);
 	let mut round_commitments = vec![];
