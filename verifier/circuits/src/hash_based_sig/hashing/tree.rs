@@ -1,5 +1,5 @@
 // Copyright 2025 Irreducible Inc.
-use binius_frontend::compiler::{CircuitBuilder, Wire};
+use binius_frontend::{CircuitBuilder, Wire};
 
 use super::base::circuit_tweaked_keccak;
 use crate::{concat::Term, keccak::Keccak};
@@ -148,10 +148,7 @@ pub fn hash_tree_node_keccak(
 #[cfg(test)]
 mod tests {
 	use binius_core::{Word, verify::verify_constraints};
-	use binius_frontend::{
-		compiler::{CircuitBuilder, circuit::Circuit},
-		util::pack_bytes_into_wires_le,
-	};
+	use binius_frontend::{Circuit, CircuitBuilder, util::pack_bytes_into_wires_le};
 	use proptest::prelude::*;
 	use sha3::{Digest, Keccak256};
 

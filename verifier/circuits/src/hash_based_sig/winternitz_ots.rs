@@ -1,9 +1,6 @@
 // Copyright 2025 Irreducible Inc.
 use binius_core::Word;
-use binius_frontend::{
-	compiler::{CircuitBuilder, Wire},
-	util::all_true,
-};
+use binius_frontend::{CircuitBuilder, Wire, util::all_true};
 
 use super::{
 	codeword::codeword,

@@ -5,7 +5,7 @@ use anyhow::Result;
 use binius_circuits::{bignum::BigUint, ecdsa::ecrecover, keccak::Keccak};
 use binius_core::word::Word;
 use binius_frontend::{
-	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
+	CircuitBuilder, Wire, WitnessFiller,
 	util::{byteswap, pack_bytes_into_wires_le},
 };
 use clap::Args;

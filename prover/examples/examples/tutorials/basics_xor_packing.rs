@@ -7,7 +7,7 @@
 //! Tutorial guide: https://www.binius.xyz/building/
 
 use binius_core::{verify::verify_constraints, word::Word};
-use binius_frontend::compiler::CircuitBuilder;
+use binius_frontend::CircuitBuilder;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	// First show the naive approach

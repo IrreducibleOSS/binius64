@@ -12,9 +12,8 @@ mod tests;
 
 use binius_core::{ValueIndex, ValueVec};
 pub use builder::BytecodeBuilder;
-pub use const_eval::{evaluate_constant_gate, evaluate_gate_constants};
+pub use const_eval::evaluate_gate_constants;
 use cranelift_entity::SecondaryMap;
-pub use interpreter::{AssertionFailure, ExecutionContext};
 
 use crate::compiler::{
 	circuit::PopulateError,

@@ -8,7 +8,7 @@
 
 use binius_circuits::sha256::Sha256;
 use binius_core::{verify::verify_constraints, word::Word};
-use binius_frontend::{compiler::CircuitBuilder, stat::CircuitStat};
+use binius_frontend::{CircuitBuilder, CircuitStat};
 use sha2::{Digest, Sha256 as StdSha256};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

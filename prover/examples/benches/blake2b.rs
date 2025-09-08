@@ -9,7 +9,7 @@ use binius_examples::{
 	circuits::blake2b::{Blake2bExample, Instance, Params},
 	setup,
 };
-use binius_frontend::compiler::CircuitBuilder;
+use binius_frontend::CircuitBuilder;
 use binius_utils::platform_diagnostics::PlatformDiagnostics;
 use binius_verifier::{
 	config::StdChallenger,

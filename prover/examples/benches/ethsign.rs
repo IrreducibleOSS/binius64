@@ -6,7 +6,7 @@ use binius_examples::{
 	circuits::ethsign::{EthSignExample, Instance, Params},
 	setup,
 };
-use binius_frontend::compiler::CircuitBuilder;
+use binius_frontend::CircuitBuilder;
 use binius_utils::platform_diagnostics::PlatformDiagnostics;
 use binius_verifier::{
 	config::StdChallenger,

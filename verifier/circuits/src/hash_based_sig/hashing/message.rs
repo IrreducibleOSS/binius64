@@ -1,5 +1,5 @@
 // Copyright 2025 Irreducible Inc.
-use binius_frontend::compiler::{CircuitBuilder, Wire};
+use binius_frontend::{CircuitBuilder, Wire};
 use sha3::{Digest, Keccak256};
 
 use super::base::circuit_tweaked_keccak;
@@ -119,10 +119,7 @@ pub fn hash_message(param: &[u8], nonce: &[u8], message: &[u8]) -> [u8; 32] {
 #[cfg(test)]
 mod tests {
 	use binius_core::verify::verify_constraints;
-	use binius_frontend::{
-		compiler::{CircuitBuilder, circuit::Circuit},
-		util::pack_bytes_into_wires_le,
-	};
+	use binius_frontend::{Circuit, CircuitBuilder, util::pack_bytes_into_wires_le};
 	use proptest::prelude::*;
 	use sha3::{Digest, Keccak256};
 

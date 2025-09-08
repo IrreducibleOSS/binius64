@@ -1,9 +1,6 @@
 // Copyright 2025 Irreducible Inc.
 use binius_core::{consts::WORD_SIZE_BITS, word::Word};
-use binius_frontend::{
-	compiler::{CircuitBuilder, Wire},
-	util::num_biguint_from_u64_limbs,
-};
+use binius_frontend::{CircuitBuilder, Wire, util::num_biguint_from_u64_limbs};
 
 use super::{BigUint, PseudoMersenneModReduce, add, biguint_lt, mul, square, sub};
 

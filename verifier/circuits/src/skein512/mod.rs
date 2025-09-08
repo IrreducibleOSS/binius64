@@ -4,7 +4,7 @@ mod constants;
 mod reference;
 
 use binius_core::word::Word;
-use binius_frontend::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
+use binius_frontend::{CircuitBuilder, Wire, WitnessFiller};
 use constants::{C240, R512, TWEAK_TYPE_CFG, TWEAK_TYPE_MSG, TWEAK_TYPE_OUT};
 
 /// Skein512 circuit that processes a fixed number of 64-byte message blocks
@@ -508,7 +508,7 @@ impl Threefish512Block {
 #[cfg(test)]
 mod tests {
 	use binius_core::verify::verify_constraints;
-	use binius_frontend::compiler::CircuitBuilder;
+	use binius_frontend::CircuitBuilder;
 
 	use super::*;
 	use crate::skein512::reference;

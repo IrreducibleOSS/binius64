@@ -5,7 +5,7 @@
 //! HMAC is defined in RFC 2104 and provides message authentication using a shared secret key.
 
 use binius_core::word::Word;
-use binius_frontend::compiler::{CircuitBuilder, Wire};
+use binius_frontend::{CircuitBuilder, Wire};
 
 use super::sha512::sha512_fixed;
 

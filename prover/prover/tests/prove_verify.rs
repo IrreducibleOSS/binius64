@@ -6,7 +6,7 @@ use binius_core::{
 	word::Word,
 };
 use binius_field::arch::OptimalPackedB128;
-use binius_frontend::{compiler, compiler::Wire};
+use binius_frontend::{CircuitBuilder, Wire};
 use binius_prover::{Prover, hash::parallel_compression::ParallelCompressionAdaptor};
 use binius_transcript::ProverTranscript;
 use binius_verifier::{
@@ -53,7 +53,7 @@ fn test_prove_verify_sha256_preimage() {
 		0xb00361a3, 0x96177a9c, 0xb410ff61, 0xf20015ad,
 	];
 
-	let circuit = compiler::CircuitBuilder::new();
+	let circuit = CircuitBuilder::new();
 	let state = State::iv(&circuit);
 	let input: [Wire; 16] = std::array::from_fn(|_| circuit.add_witness());
 	let output: [Wire; 8] = std::array::from_fn(|_| circuit.add_inout());

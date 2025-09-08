@@ -3,7 +3,7 @@
 //! Verifying a Bitcoin header chain.
 
 use binius_core::Word;
-use binius_frontend::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
+use binius_frontend::{CircuitBuilder, Wire, WitnessFiller};
 
 use crate::{
 	bignum::{self, BigUint},

@@ -7,20 +7,49 @@ use crate::compiler::circuit::Circuit;
 
 /// Various stats of a circuit that affect the prover performance.
 pub struct CircuitStat {
+	/// Number of gates in the circuit.
 	pub n_gates: usize,
+	/// Number of instructions in the evaluation form of circuit.
+	///
+	/// Directly proportional to performance of witness filling.
 	pub n_eval_insn: usize,
+	/// Number of AND constraints in the circuit.
+	///
+	/// Affects performance of AND reduction.
 	pub n_and_constraints: usize,
+	/// Number of MUL constraints in the circuit.
+	///
+	/// Affects performance of intmul reduction phase.
 	pub n_mul_constraints: usize,
+	/// Number of distinct shifted value indices in the circuit.
+	///
+	/// A single use of any value is counted here. Additionally, every use of a value with a
+	/// distinct shift type and amount is also counted here.
+	///
+	/// Affects performance of shift reduction phase.
 	pub distinct_shifted_value_indices: usize,
+	/// Length of the value vector.
+	///
+	/// Affects performance of committing.
 	pub value_vec_len: usize,
+	/// Number of constant values used by the circuit.
 	pub n_const: usize,
+	/// Number of public input values in the circuit.
 	pub n_inout: usize,
+	/// Number of private input values in the circuit.
 	pub n_witness: usize,
+	/// Number of internal values in the circuit.
+	///
+	/// Internal values are values produced by gates.
 	pub n_internal: usize,
+	/// Number of scratch values in the circuit.
+	///
+	/// Those values are not committed, those only exist during witness generation.
 	pub n_scratch: usize,
 }
 
 impl CircuitStat {
+	/// Creates a new `CircuitStat` instance by collecting statistics from the given circuit.
 	pub fn collect(circuit: &Circuit) -> Self {
 		let cs = circuit.constraint_system();
 		Self {

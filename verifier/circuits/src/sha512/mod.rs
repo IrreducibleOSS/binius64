@@ -5,7 +5,7 @@ use binius_core::{
 	consts::{LOG_BYTE_BITS, LOG_WORD_SIZE_BITS},
 	word::Word,
 };
-use binius_frontend::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
+use binius_frontend::{CircuitBuilder, Wire, WitnessFiller};
 pub use compress::{Compress, State};
 
 use crate::{
@@ -566,7 +566,7 @@ pub fn sha512_fixed(builder: &CircuitBuilder, message: &[Wire], len_bytes: usize
 #[cfg(test)]
 mod tests {
 	use binius_core::{Word, verify::verify_constraints};
-	use binius_frontend::compiler::{self, CircuitBuilder, Wire};
+	use binius_frontend::{CircuitBuilder, Wire};
 	use hex_literal::hex;
 	use sha2::Digest;
 
@@ -581,7 +581,7 @@ mod tests {
 
 	#[test]
 	fn full_sha512() {
-		let mut b = compiler::CircuitBuilder::new();
+		let mut b = CircuitBuilder::new();
 		let c = mk_circuit(&mut b, 256);
 		let circuit = b.build();
 		let mut w = circuit.new_witness_filler();
@@ -596,7 +596,7 @@ mod tests {
 
 	#[test]
 	fn full_sha512_multi_block() {
-		let mut b = compiler::CircuitBuilder::new();
+		let mut b = CircuitBuilder::new();
 		let c = mk_circuit(&mut b, 256);
 		let circuit = b.build();
 		let mut w = circuit.new_witness_filler();
@@ -613,7 +613,7 @@ mod tests {
 
 	// Helper function to run SHA-512 test with given input and expected digest
 	fn test_sha512_with_input(message_bytes: &[u8], expected_digest: [u8; 64]) {
-		let mut b = compiler::CircuitBuilder::new();
+		let mut b = CircuitBuilder::new();
 		let c = mk_circuit(&mut b, 256);
 		let circuit = b.build();
 		let cs = circuit.constraint_system();
@@ -830,7 +830,7 @@ mod tests {
 	#[test]
 	fn test_bogus_length_rejection() {
 		// Test that providing wrong length causes circuit to reject
-		let mut b = compiler::CircuitBuilder::new();
+		let mut b = CircuitBuilder::new();
 		let c = mk_circuit(&mut b, 256);
 		let circuit = b.build();
 		let mut w = circuit.new_witness_filler();
@@ -853,7 +853,7 @@ mod tests {
 	fn test_length_exceeds_max_rejection() {
 		// Test that providing a len > max_len_bytes causes circuit to reject
 		let max_len = 1; // 1 Wire's worth of content will be supplied
-		let mut b = compiler::CircuitBuilder::new();
+		let mut b = CircuitBuilder::new();
 		let c = mk_circuit(&mut b, max_len);
 		let circuit = b.build();
 		let mut w = circuit.new_witness_filler();
@@ -875,7 +875,7 @@ mod tests {
 	#[test]
 	fn test_invalid_digest_rejection() {
 		// Test that providing wrong digest causes circuit to reject
-		let mut b = compiler::CircuitBuilder::new();
+		let mut b = CircuitBuilder::new();
 		let c = mk_circuit(&mut b, 256);
 		let circuit = b.build();
 		let mut w = circuit.new_witness_filler();
@@ -894,7 +894,7 @@ mod tests {
 	#[test]
 	fn test_wrong_message_content() {
 		// Test that providing wrong message content causes circuit to reject
-		let mut b = compiler::CircuitBuilder::new();
+		let mut b = CircuitBuilder::new();
 		let c = mk_circuit(&mut b, 256);
 		let circuit = b.build();
 		let mut w = circuit.new_witness_filler();
@@ -934,7 +934,7 @@ mod tests {
 		];
 
 		for (max_len, description) in test_cases {
-			let mut b = compiler::CircuitBuilder::new();
+			let mut b = CircuitBuilder::new();
 			let c = mk_circuit(&mut b, max_len);
 			let circuit = b.build();
 
@@ -964,7 +964,7 @@ mod tests {
 
 	#[test]
 	fn test_sha512_to_le_wires() {
-		let mut b = compiler::CircuitBuilder::new();
+		let mut b = CircuitBuilder::new();
 		let c = mk_circuit(&mut b, 64);
 
 		// Obtain LE-packed wires for the digest wires
@@ -997,7 +997,7 @@ mod tests {
 
 	#[test]
 	fn test_message_to_le_wires() {
-		let mut b = compiler::CircuitBuilder::new();
+		let mut b = CircuitBuilder::new();
 		let c = mk_circuit(&mut b, 16); // Small circuit for simple test
 
 		// Obtain LE-packed wires for the message

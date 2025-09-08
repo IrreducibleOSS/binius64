@@ -1,6 +1,6 @@
 // Copyright 2025 Irreducible Inc.
 use binius_core::{consts::WORD_SIZE_BITS, word::Word};
-use binius_frontend::compiler::{CircuitBuilder, Wire};
+use binius_frontend::{CircuitBuilder, Wire};
 
 use super::{
 	addsub::{add, sub},

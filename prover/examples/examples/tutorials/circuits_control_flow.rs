@@ -13,7 +13,7 @@
 use anyhow::Result;
 use binius_circuits::multiplexer::{multi_wire_multiplex, single_wire_multiplex};
 use binius_core::{verify::verify_constraints, word::Word};
-use binius_frontend::compiler::CircuitBuilder;
+use binius_frontend::CircuitBuilder;
 
 fn main() -> Result<()> {
 	println!("=== Control Flow Examples ===\n");

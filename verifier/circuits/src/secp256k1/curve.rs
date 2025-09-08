@@ -1,6 +1,6 @@
 // Copyright 2025 Irreducible Inc.
 use binius_core::consts::WORD_SIZE_BITS;
-use binius_frontend::compiler::{CircuitBuilder, Wire};
+use binius_frontend::{CircuitBuilder, Wire};
 
 use super::{
 	common::{coord_b, coord_beta, coord_field, coord_zero, pow_sqrt, scalar_field},

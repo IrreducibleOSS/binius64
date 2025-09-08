@@ -12,7 +12,7 @@
 use anyhow::Result;
 use binius_circuits::{bytes, popcount};
 use binius_core::{verify::verify_constraints, word::Word};
-use binius_frontend::compiler::CircuitBuilder;
+use binius_frontend::CircuitBuilder;
 
 fn main() -> Result<()> {
 	// Example 1: Byte swapping gadgets

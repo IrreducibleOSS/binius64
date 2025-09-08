@@ -1,5 +1,5 @@
 // Copyright 2025 Irreducible Inc.
-use binius_frontend::compiler::{CircuitBuilder, Wire};
+use binius_frontend::{CircuitBuilder, Wire};
 
 use super::hashing::circuit_tree_hash;
 use crate::{keccak::Keccak, multiplexer::multi_wire_multiplex};

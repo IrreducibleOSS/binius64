@@ -29,7 +29,7 @@
 //! circuit.populate_wire_witness(&mut w).unwrap();
 //! ```
 
-use binius_frontend::compiler::{CircuitBuilder, Wire};
+use binius_frontend::{CircuitBuilder, Wire};
 
 /// Computes the population count (number of 1-bits) of a 64-bit word.
 ///
@@ -114,7 +114,7 @@ mod tests {
 	use super::*;
 
 	/// Helper function to build a test circuit with popcount
-	fn build_popcount_circuit() -> (binius_frontend::compiler::circuit::Circuit, Wire, Wire) {
+	fn build_popcount_circuit() -> (binius_frontend::Circuit, Wire, Wire) {
 		let mut builder = CircuitBuilder::new();
 		let input = builder.add_witness();
 		let output = builder.add_witness();

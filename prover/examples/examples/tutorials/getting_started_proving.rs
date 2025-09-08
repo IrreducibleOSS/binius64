@@ -8,7 +8,7 @@
 
 use anyhow::Result;
 use binius_core::{constraint_system::ConstraintSystem, word::Word};
-use binius_frontend::compiler::CircuitBuilder;
+use binius_frontend::CircuitBuilder;
 use binius_prover::{
 	OptimalPackedB128, Prover, hash::parallel_compression::ParallelCompressionAdaptor,
 };

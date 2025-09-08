@@ -5,7 +5,7 @@ use binius_circuits::bitcoin::{
 	double_sha256::DoubleSha256,
 	merkle_path::{MerklePath, SiblingSide},
 };
-use binius_frontend::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
+use binius_frontend::{CircuitBuilder, Wire, WitnessFiller};
 
 /// Stores some intermediate wires of the circuit, so that they can later be populated with
 /// [`Self::populate_inner`].

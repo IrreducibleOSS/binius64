@@ -1,9 +1,6 @@
 // Copyright 2025 Irreducible Inc.
 use binius_core::word::Word;
-use binius_frontend::{
-	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
-	util::pack_bytes_into_wires_le,
-};
+use binius_frontend::{CircuitBuilder, Wire, WitnessFiller, util::pack_bytes_into_wires_le};
 
 use crate::multiplexer::single_wire_multiplex;
 
@@ -298,7 +295,7 @@ fn compute_expected_base64_char(
 #[cfg(test)]
 mod tests {
 	use binius_core::verify::verify_constraints;
-	use binius_frontend::compiler::CircuitBuilder;
+	use binius_frontend::CircuitBuilder;
 
 	use super::{Base64UrlSafe, Wire};
 
