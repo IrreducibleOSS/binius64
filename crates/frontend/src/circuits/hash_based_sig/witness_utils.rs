@@ -4,17 +4,23 @@
 //! This module provides helper functions for populating witness data
 //! in hash-based signature circuits, including XMSS and Winternitz OTS.
 
+use binius_core::Word;
 use rand::{RngCore, rngs::StdRng};
+use sha3::{Digest, Keccak256};
 
 use super::{
 	hashing::{
 		build_chain_hash, build_message_hash, build_public_key_hash, build_tree_hash,
-		hash_chain_keccak, hash_message, hash_public_key_keccak, hash_tree_node_keccak,
+		hash_chain_keccak, hash_public_key_keccak, hash_tree_node_keccak,
 	},
-	winternitz_ots::{WinternitzSpec, grind_nonce},
+	winternitz_ots::WinternitzSpec,
 	xmss::XmssHashers,
 };
-use crate::compiler::circuit::WitnessFiller;
+use crate::{
+	circuits::hash_based_sig::{hashing::hash_message, winternitz_ots::grind_nonce},
+	compiler::circuit::WitnessFiller,
+	util::pack_bytes_into_wires_le,
+};
 
 /// Builds a complete Merkle tree from leaf nodes.
 ///
@@ -255,8 +261,9 @@ pub fn populate_xmss_hashers(
 		spec.dimension()
 	);
 
-	// Populate message hasher
+	// 1) Populate message hasher
 	let message_hash = hash_message(&data.param_bytes, &data.nonce_bytes, &data.message_bytes);
+
 	let tweaked_message =
 		build_message_hash(&data.param_bytes, &data.nonce_bytes, &data.message_bytes);
 
@@ -269,73 +276,60 @@ pub fn populate_xmss_hashers(
 		.message_hasher
 		.populate_digest(w, message_hash);
 
-	// Populate chain hashers
-	let mut hasher_idx = 0;
-	for (chain_idx, &coord) in data.coords.iter().enumerate() {
-		let mut current_hash = data.sig_hashes[chain_idx];
+	// 2) Pooled step hashers: fill in chain messages, digests, and metadata (remaining steps)
+	let mut idx = 0usize;
+	for chain_idx in 0..spec.dimension() {
+		let mut cur = data.sig_hashes[chain_idx];
+		let xi = data.coords[chain_idx] as usize;
+		let remaining = spec.chain_len() - 1 - xi;
+		for step in 0..remaining {
+			let msg =
+				build_chain_hash(&data.param_bytes, &cur, chain_idx as u64, (xi + step + 1) as u64);
+			let digest: [u8; 32] = Keccak256::digest(&msg).into();
 
-		for step in 0..spec.chain_len() {
-			let position = step + coord as usize;
-			let position_plus_one = position + 1;
+			let keccak = &hashers.winternitz_ots.step_hashers[idx];
+			keccak.populate_message(w, &msg);
+			keccak.populate_digest(w, digest);
 
-			let next_hash =
-				hash_chain_keccak(&data.param_bytes, chain_idx, &current_hash, position, 1);
+			pack_bytes_into_wires_le(w, &hashers.winternitz_ots.step_hash_inputs[idx], &cur);
+			w[hashers.winternitz_ots.step_chain_indices[idx]] = Word::from_u64(chain_idx as u64);
+			w[hashers.winternitz_ots.step_counts[idx]] = Word::from_u64((step + 1) as u64);
+			w[hashers.winternitz_ots.step_positions[idx]] = Word::from_u64((xi + step + 1) as u64);
 
-			let hasher = &hashers.winternitz_ots.chain_hashers[hasher_idx];
-			let chain_message = build_chain_hash(
-				&data.param_bytes,
-				&current_hash,
-				chain_idx as u64,
-				position_plus_one as u64,
-			);
-			hasher.populate_message(w, &chain_message);
-			hasher.populate_digest(w, next_hash);
-
-			if position_plus_one < spec.chain_len() {
-				current_hash = next_hash;
-			}
-
-			hasher_idx += 1;
+			cur = digest;
+			idx += 1;
 		}
 	}
 
-	// Populate public key hasher
-	let pk_message = build_public_key_hash(&data.param_bytes, &data.pk_hashes);
-	let pk_hash = hash_public_key_keccak(&data.param_bytes, &data.pk_hashes);
-	hashers.public_key_hasher.populate_message(w, &pk_message);
-	hashers.public_key_hasher.populate_digest(w, pk_hash);
+	// 3) Public key hasher
+	let pk_msg = build_public_key_hash(&data.param_bytes, &data.pk_hashes);
+	let pk_digest: [u8; 32] = Keccak256::digest(&pk_msg).into();
+	hashers.public_key_hasher.populate_message(w, &pk_msg);
+	hashers.public_key_hasher.populate_digest(w, pk_digest);
 
-	// Populate merkle path hashers
-	let mut current_hash = pk_hash;
-	let mut current_index = data.epoch as usize;
-
-	for (level, auth_sibling) in data.auth_path.iter().enumerate() {
-		let (left, right) = if current_index % 2 == 0 {
-			(&current_hash, auth_sibling)
+	// 4) Merkle path hashers (from leaf to root)
+	let mut current = hash_public_key_keccak(&data.param_bytes, &data.pk_hashes);
+	let mut index = data.epoch as u32;
+	for (level, hasher) in hashers.merkle_path_hashers.iter().enumerate() {
+		let sibling = data.auth_path[level];
+		let is_left = (index & 1) == 0;
+		let (left, right) = if is_left {
+			(current, sibling)
 		} else {
-			(auth_sibling, &current_hash)
+			(sibling, current)
 		};
-
-		let parent = hash_tree_node_keccak(
+		let parent = Keccak256::digest(build_tree_hash(
 			&data.param_bytes,
-			left,
-			right,
+			&left,
+			&right,
 			level as u32,
-			(current_index / 2) as u32,
-		);
-
-		let tree_message = build_tree_hash(
-			&data.param_bytes,
-			left,
-			right,
-			level as u32,
-			(current_index / 2) as u32,
-		);
-
-		hashers.merkle_path_hashers[level].populate_message(w, &tree_message);
-		hashers.merkle_path_hashers[level].populate_digest(w, parent);
-
-		current_hash = parent;
-		current_index /= 2;
+			index >> 1,
+		))
+		.into();
+		let msg = build_tree_hash(&data.param_bytes, &left, &right, level as u32, index >> 1);
+		hasher.populate_message(w, &msg);
+		hasher.populate_digest(w, parent);
+		current = parent;
+		index >>= 1;
 	}
 }

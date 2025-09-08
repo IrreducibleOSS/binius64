@@ -1,12 +1,12 @@
 hashsign circuit
 --
-Number of gates: 3986883
-Number of evaluation instructions: 4076982
-Number of AND constraints: 1837176
+Number of gates: 2385261
+Number of evaluation instructions: 2886906
+Number of AND constraints: 1557465
 Number of MUL constraints: 0
 Length of value vec: 2097152
   Constants: 376
   Inout: 20
-  Witness: 29886
-  Internal: 1790382
-  Scratch: 2332224
+  Witness: 14733
+  Internal: 1538025
+  Scratch: 1640439
