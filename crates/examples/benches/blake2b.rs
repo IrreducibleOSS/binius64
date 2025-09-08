@@ -1,5 +1,7 @@
 // Copyright 2025 Irreducible Inc.
 
+//! Blake2b hash benchmark
+
 use std::env;
 
 use binius_examples::{
@@ -15,61 +17,31 @@ use binius_verifier::{
 };
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 
-/// Generate a feature suffix for benchmark names based on platform diagnostics
-fn get_feature_suffix(_diagnostics: &PlatformDiagnostics) -> String {
-	let mut suffix_parts = Vec::new();
+const DEFAULT_MAX_BYTES: usize = 128; // Default to 128 bytes (1 block)
 
-	// Threading - check if rayon feature is enabled
-	#[cfg(feature = "rayon")]
-	suffix_parts.push("mt");
-	#[cfg(not(feature = "rayon"))]
-	suffix_parts.push("st");
-
-	// Architecture
-	#[cfg(target_arch = "x86_64")]
-	{
-		suffix_parts.push("x86");
-		// Add key features based on compile-time features
-		#[cfg(target_feature = "gfni")]
-		suffix_parts.push("gfni");
-		#[cfg(target_feature = "avx512f")]
-		suffix_parts.push("avx512");
-		#[cfg(all(not(target_feature = "avx512f"), target_feature = "avx2"))]
-		suffix_parts.push("avx2");
-	}
-
-	#[cfg(target_arch = "aarch64")]
-	{
-		suffix_parts.push("arm64");
-		// Check for NEON and AES
-		#[cfg(all(target_feature = "neon", target_feature = "aes"))]
-		suffix_parts.push("neon_aes");
-		#[cfg(all(target_feature = "neon", not(target_feature = "aes")))]
-		suffix_parts.push("neon");
-	}
-
-	suffix_parts.join("_")
-}
-
+/// Benchmark Blake2b hash circuit
 fn bench_blake2b_hash(c: &mut Criterion) {
-	// Parse message length from environment variable or use default
-	let max_msg_len_bytes = env::var("BLAKE2B_MSG_BYTES")
+	// Get maximum message size from environment or use default
+	let max_bytes = env::var("BLAKE2B_MAX_BYTES")
 		.ok()
 		.and_then(|s| s.parse::<usize>().ok())
-		.unwrap_or(128);
+		.unwrap_or(DEFAULT_MAX_BYTES);
 
 	// Gather and print comprehensive platform diagnostics
 	let diagnostics = PlatformDiagnostics::gather();
 	diagnostics.print();
 
 	// Print benchmark-specific parameters
+	let blocks = max_bytes.div_ceil(128);
 	println!("\nBlake2b Benchmark Parameters:");
-	println!("  Message length: {} bytes", max_msg_len_bytes);
-	println!("  Circuit capacity: 16384 bytes (128 blocks × 128 bytes/block)");
-	println!("  Note: Circuit has fixed size regardless of message length");
+	println!("  Circuit capacity: {} bytes ({} blocks × 128 bytes/block)", max_bytes, blocks);
+	println!("  Message length: {} bytes (using full capacity)", max_bytes);
+	println!("  Note: Circuit size grows with max_bytes parameter");
 	println!("=======================================\n");
 
-	let params = Params { max_msg_len_bytes };
+	let params = Params {
+		max_msg_len_bytes: max_bytes,
+	};
 	let instance = Instance {};
 
 	// Setup phase - do this once outside the benchmark loop
@@ -87,82 +59,85 @@ fn bench_blake2b_hash(c: &mut Criterion) {
 	circuit.populate_wire_witness(&mut filler).unwrap();
 	let witness = filler.into_value_vec();
 
-	let feature_suffix = get_feature_suffix(&diagnostics);
-	let bench_name = format!("msg_{}_{}", max_msg_len_bytes, feature_suffix);
+	let feature_suffix = diagnostics.get_feature_suffix();
 
-	// Measure witness generation time
+	// Benchmark 1: Witness generation
 	{
 		let mut group = c.benchmark_group("blake2b_witness_generation");
-		group.throughput(Throughput::Bytes(max_msg_len_bytes as u64));
+		group.throughput(Throughput::Bytes(max_bytes as u64));
+		group.warm_up_time(std::time::Duration::from_secs(2));
+		group.measurement_time(std::time::Duration::from_secs(120));
+		group.sample_size(50);
 
-		group.bench_with_input(
-			BenchmarkId::from_parameter(&bench_name),
-			&max_msg_len_bytes,
-			|b, _| {
-				b.iter(|| {
-					let mut filler = circuit.new_witness_filler();
-					example
-						.populate_witness(instance.clone(), &mut filler)
-						.unwrap();
-					circuit.populate_wire_witness(&mut filler).unwrap();
-					filler.into_value_vec()
-				})
-			},
-		);
+		let bench_name = format!("bytes_{}_{}", max_bytes, feature_suffix);
+		group.bench_function(BenchmarkId::from_parameter(&bench_name), |b| {
+			b.iter(|| {
+				let mut filler = circuit.new_witness_filler();
+				example
+					.populate_witness(instance.clone(), &mut filler)
+					.unwrap();
+				circuit.populate_wire_witness(&mut filler).unwrap();
+				filler.into_value_vec()
+			})
+		});
+
 		group.finish();
 	}
 
-	// Measure proof generation time
+	// Benchmark 2: Proof generation
 	{
 		let mut group = c.benchmark_group("blake2b_proof_generation");
-		group.throughput(Throughput::Bytes(max_msg_len_bytes as u64));
+		group.throughput(Throughput::Bytes(max_bytes as u64));
+		group.warm_up_time(std::time::Duration::from_secs(2));
+		group.measurement_time(std::time::Duration::from_secs(120));
+		group.sample_size(50);
 
-		group.bench_with_input(
-			BenchmarkId::from_parameter(&bench_name),
-			&max_msg_len_bytes,
-			|b, _| {
-				b.iter(|| {
-					let mut transcript = ProverTranscript::new(StdChallenger::default());
-					prover.prove(witness.clone(), &mut transcript).unwrap();
-					transcript
-				})
-			},
-		);
+		let bench_name = format!("bytes_{}_{}", max_bytes, feature_suffix);
+		group.bench_function(BenchmarkId::from_parameter(&bench_name), |b| {
+			b.iter(|| {
+				let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
+				prover
+					.prove(witness.clone(), &mut prover_transcript)
+					.unwrap()
+			})
+		});
+
 		group.finish();
 	}
 
-	// Generate a proof for verification benchmarking and size measurement
+	// Generate one proof for verification benchmark and size reporting
 	let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
 	prover
 		.prove(witness.clone(), &mut prover_transcript)
 		.unwrap();
 	let proof_bytes = prover_transcript.finalize();
-	let proof_size = proof_bytes.len();
 
-	// Measure proof verification time
+	// Benchmark 3: Proof verification
 	{
 		let mut group = c.benchmark_group("blake2b_proof_verification");
-		group.throughput(Throughput::Bytes(max_msg_len_bytes as u64));
+		group.throughput(Throughput::Bytes(max_bytes as u64));
+		group.warm_up_time(std::time::Duration::from_secs(2));
+		group.measurement_time(std::time::Duration::from_secs(120));
+		group.sample_size(50);
 
-		group.bench_with_input(
-			BenchmarkId::from_parameter(&bench_name),
-			&max_msg_len_bytes,
-			|b, _| {
-				b.iter(|| {
-					let mut verifier_transcript =
-						VerifierTranscript::new(StdChallenger::default(), proof_bytes.clone());
-					verifier
-						.verify(witness.public(), &mut verifier_transcript)
-						.unwrap();
-					verifier_transcript.finalize().unwrap()
-				})
-			},
-		);
+		let bench_name = format!("bytes_{}_{}", max_bytes, feature_suffix);
+		group.bench_function(BenchmarkId::from_parameter(&bench_name), |b| {
+			b.iter(|| {
+				let mut verifier_transcript =
+					VerifierTranscript::new(StdChallenger::default(), proof_bytes.clone());
+				verifier
+					.verify(witness.public(), &mut verifier_transcript)
+					.expect("Proof verification failed");
+				// Validate that entire proof was consumed
+				let _ = verifier_transcript.finalize();
+			})
+		});
+
 		group.finish();
 	}
 
 	// Print proof size
-	println!("\nBlake2b proof size for {} bytes message: {} bytes", max_msg_len_bytes, proof_size);
+	println!("\n\nBlake2b proof size for {} bytes message: {} bytes", max_bytes, proof_bytes.len());
 }
 
 criterion_group!(benches, bench_blake2b_hash);
