@@ -72,99 +72,76 @@ pub(crate) struct Shared {
 
 /// Circuit builder for constructing zero-knowledge proof circuits.
 ///
-/// `CircuitBuilder` is your primary interface for constructing circuits in the Binius64
-/// proof system. Think of it as a specialized compiler that lets you express computations
-/// in a way that can be efficiently proven in zero-knowledge.
+/// `CircuitBuilder` provides the primary interface for constructing circuits in the Binius64
+/// proof system. The builder compiles imperative gate operations into a constraint system
+/// suitable for zero-knowledge proof generation.
 ///
-/// # The Circuit Abstraction
+/// # Circuit Model
 ///
-/// A circuit in Binius64 represents a computation as a directed graph where data flows
-/// through gates via "wires". Each wire carries a 64-bit word, and gates transform their
-/// input wires to produce output wires. When you call methods like [`band`] or
-/// [`iadd_32`], you're adding gates to this graph and getting back handles
-/// to the output wires.
+/// A circuit represents computation as a directed acyclic graph where 64-bit values flow
+/// through gates via **wires**. Gates transform input wires to produce output wires.
+/// Methods like [`band`] and [`iadd_32`] add gates to the graph and return handles
+/// to output wires.
 ///
-/// The beauty of this abstraction is that you write imperative-looking code, but behind
-/// the scenes, the builder is constructing a declarative constraint system. When you
-/// finally call [`build`], this graph is compiled into the AND and MUL constraints that
-/// the proof system actually operates on.
+/// During [`build`], the gate graph compiles into AND and MUL constraints
+/// that the proof system operates on directly.
 ///
-/// # Wires and Values
+/// # Wire Types
 ///
-/// Wires are abstract handles to 64-bit values that will exist during proof generation.
-/// They don't contain actual values during circuit construction — they're more like
-/// promises of values to come. There are several types of wires, each serving a
-/// different role in the proof system:
+/// Wires are handles to 64-bit values that exist during proof generation.
+/// During circuit construction, wires represent value placeholders.
 ///
-/// **Constants** are values known at compile time. These are "free" in terms of
-/// constraints because both prover and verifier know them. When you call
-/// [`add_constant`], you're embedding that value directly into the
-/// circuit.
+/// **Constants** - Values known at compile time. Zero constraint cost as both prover
+/// and verifier know these values. Created with [`add_constant`].
 ///
-/// **Public inputs/outputs** (created with [`add_inout`](Self::add_inout)) are values that will be
-/// visible to both the prover and verifier. These form part of the statement being
-/// proven—for example, the hash output in a hash preimage proof.
+/// **Public inputs/outputs** - Values visible to both prover and verifier.
+/// Form part of the proof statement (e.g., hash output in a preimage proof).
+/// Created with [`add_inout`](Self::add_inout).
 ///
-/// **Private witnesses** (created with [`add_witness`](Self::add_witness)) are the secret values
-/// known only to the prover. These are the values you're proving knowledge of without
-/// revealing them—like the preimage in a hash proof or a private key in a signature
-/// verification.
+/// **Private witnesses** - Values known only to the prover.
+/// The circuit proves knowledge of these values without revealing them
+/// (e.g., preimage in a hash proof). Created with [`add_witness`](Self::add_witness).
 ///
-/// Internal wires are created automatically when gates produce outputs. You don't
-/// create these directly; they emerge from operations like [`iadd_32`].
+/// **Internal wires** - Created automatically by gate operations.
+/// Represent intermediate computation values.
 ///
-/// # The MSB-Boolean Convention
+/// # MSB-Boolean Convention
 ///
-/// Throughout this API, you'll encounter operations that produce or consume boolean
-/// values. Rather than using a separate boolean type, Binius64 adopts an unusual
-/// convention: booleans are encoded in the most significant bit (bit 63) of a 64-bit
-/// word. When the MSB is 1, the value is considered "true"; when it's 0, it's "false".
-/// The remaining 63 bits are ignored — they're "don't care" values.
+/// Boolean values encode in the most significant bit (bit 63) of a 64-bit word.
+/// MSB = 1 represents true, MSB = 0 represents false.
+/// The lower 63 bits are "don't care" values.
 ///
-/// This convention allows compiler to exploit a more efficient arithmitization for Binius64.
+/// # Constraint Costs
 ///
-/// # Understanding Costs
+/// **AND constraints** - Baseline unit of cost. Bitwise operations and comparisons
+/// generate 1-2 AND constraints.
 ///
-/// Not all operations are created equal in terms of proof complexity. Here's the
-/// hierarchy of costs you should keep in mind when optimizing circuits:
+/// **MUL constraints** - 64-bit multiplication costs ~3-4× more than AND constraints.
 ///
-/// **AND constraints** form the baseline unit of cost. Operations like bitwise AND
-/// and comparisons generate one or two AND constraints. These are your primary
-/// optimization target.
+/// **Committed values** - Each public input/output and witness adds to proof size
+/// (~0.2× of an AND constraint).
 ///
-/// **MUL constraints** (64-bit multiplication) are the heavyweight operations, costing
-/// roughly 3-4 times more than AND constraints. Use them judiciously.
+/// **Linear operations** - XOR and shifts generate virtual linear constraints.
+/// During compilation these either:
+/// - Fuse into adjacent non-linear gates (near-zero cost)
+/// - Materialize as AND constraints
 ///
-/// **Committing values** also has a cost—each committed word (public inputs/outputs
-/// and witnesses) adds to the proof size, though less than a full AND constraint.
+/// Gate fusion inlines compatible XOR expressions and shifts into existing AND gates.
+/// Incompatible operations (e.g., right shift into left shift) and heuristic limits
+/// prevent some fusions. XORs typically cost <0.1× of an AND constraint,
+/// shifts slightly more.
 ///
-/// **Linear operations** ([`bxor`](Self::bxor) and shifts) are the interesting case. They generate
-/// what we call "virtual" linear constraints — constraints that our underlying proof
-/// system doesn't directly support. During compilation, these must either be:
-/// - Absorbed into nearby non-linear gates through gate fusion (making them nearly free), or
-/// - Materialized as actual AND constraints
+/// # Compilation
 ///
-/// The gate fusion optimization intelligently inlines XOR expressions and compatible
-/// shifts into gates that already require AND constraints. However, it can't inline
-/// everything — incompatible operations (like a right shift into a left shift) and
-/// heuristic limits mean some linear operations will still materialize as constraints.
-/// In practice, XORs are very cheap (think of them as a small fraction of an AND),
-/// while shifts are slightly more expensive but still economical.
+/// The builder uses reference-counted sharing internally. [`subcircuit`] returns
+/// a builder referencing the same graph with hierarchical naming.
 ///
-/// The individual method documentation specifies exact costs, but this hierarchy helps
-/// you reason about circuit efficiency: minimize ANDs and MULs, use XORs liberally,
-/// and be mindful of committed values.
+/// [`build`] triggers compilation:
+/// 1. Validates the circuit structure
+/// 2. Runs optimization passes (constant propagation, gate fusion)
+/// 3. Generates the final constraint system
 ///
-/// # Building and Compilation
-///
-/// The builder uses a reference-counted pointer internally, making it cheap to clone.
-/// When you call [`subcircuit`], you get a new builder that adds gates
-/// to the same underlying graph but with hierarchical naming for better debugging.
-///
-/// The compilation process (triggered by [`build`]) is where the magic happens. It
-/// validates your circuit, runs optimization passes like constant propagation and gate
-/// fusion, and produces the final constraint system. Note that [`build`] consumes the
-/// builder's internal state—you can only call it once per builder instance.
+/// [`build`] consumes internal state and can only be called once per builder instance.
 ///
 /// [`add_constant`]: Self::add_constant
 /// [`add_inout`]: Self::add_inout
