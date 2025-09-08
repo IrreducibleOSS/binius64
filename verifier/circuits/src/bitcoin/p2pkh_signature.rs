@@ -3,7 +3,76 @@
 use binius_core::word::Word;
 use binius_frontend::compiler::{CircuitBuilder, Wire};
 
-use crate::bignum::BigUint;
+use crate::{
+	bignum::BigUint,
+	bytes::swap_bytes_32,
+	ecdsa::scalar_mul::scalar_mul_naive,
+	ripemd::ripemd160_fixed,
+	secp256k1::{Secp256k1, Secp256k1Affine},
+	sha256::sha256_fixed,
+};
+
+/// Builds a circuit that proves knowledge of a Bitcoin private key corresponding to a P2PKH
+/// address.
+///
+/// This circuit implements the complete Bitcoin P2PKH address derivation:
+/// Private Key → \[scalar_mul\] → Curve Point → \[compress\] → Compressed PubKey
+/// → \[sha256\] → SHA256 Digest → \[swap_bytes_32\] → LE Format → \[ripemd160\] → Address
+///
+/// # Arguments
+/// * `builder` - Circuit builder for constructing constraints
+/// * `private_key` - Private key as BigUint (4 limbs, 256 bits)
+/// * `expected_address` - Expected Bitcoin address as RIPEMD160 output (5 × 32-bit words)
+///
+/// # Circuit Flow
+/// 1. Multiply private key by secp256k1 generator point
+/// 2. Compress the resulting public key to 33-byte format
+/// 3. Compute SHA256 hash of compressed public key
+/// 4. Convert SHA256 output from big-endian to little-endian format
+/// 5. Compute RIPEMD160 hash of the SHA256 digest
+/// 6. Assert computed address equals expected address
+///
+/// # Panics
+/// * If private_key doesn't have exactly 4 limbs (256 bits)
+pub fn build_p2pkh_circuit(
+	builder: &CircuitBuilder,
+	private_key: &BigUint,
+	expected_address: [Wire; 5],
+) {
+	assert_eq!(private_key.limbs.len(), 4, "private_key must be exactly 4 limbs (256 bits)");
+
+	// Step 1: Scalar multiplication - private_key × generator → public key point
+	let curve = Secp256k1::new(builder);
+	let generator = Secp256k1Affine::generator(builder);
+
+	let public_key_point = scalar_mul_naive(builder, &curve, 256, private_key, generator);
+
+	// Step 2: Compress public key - (x, y) → 33-byte compressed format
+	let compressed_pubkey = compress_pubkey(builder, &public_key_point.x, &public_key_point.y);
+
+	// Step 3: SHA256 hash - 33 bytes → 32-byte digest
+	let sha256_digest = sha256_fixed(builder, &compressed_pubkey, 33);
+
+	// Step 4: Convert SHA256 output from BE to LE format for RIPEMD160
+	// sha256_fixed returns [Wire; 8] (8 × 32-bit words in big-endian)
+	// We need to swap bytes in each word to get little-endian format
+	let mut swapped_digest = Vec::with_capacity(8);
+	for &word in &sha256_digest {
+		swapped_digest.push(swap_bytes_32(builder, word));
+	}
+
+	// Step 5: RIPEMD160 hash - 32 bytes → 20-byte address
+	let computed_address = ripemd160_fixed(builder, &swapped_digest, 32);
+
+	// Step 6: Verify computed address matches expected address
+	for i in 0..5 {
+		builder.assert_eq(
+			format!("p2pkh_address[{}]", i),
+			computed_address[i],
+			expected_address[i],
+		);
+	}
+}
 
 /// Compresses a secp256k1 public key from uncompressed (x, y) format to compressed format.
 ///
@@ -30,76 +99,172 @@ pub fn compress_pubkey(builder: &CircuitBuilder, x: &BigUint, y: &BigUint) -> Ve
 	assert_eq!(x.limbs.len(), 4, "x-coordinate must be exactly 4 limbs (256 bits)");
 	assert_eq!(y.limbs.len(), 4, "y-coordinate must be exactly 4 limbs (256 bits)");
 
-	// Check if y is even or odd by examining the LSB of the least significant limb
 	let y_is_odd = builder.shl(y.limbs[0], 63);
 
 	// Create prefix: 0x02 if y is even, 0x03 if y is odd
-	let prefix_even = builder.add_constant(Word::from_u64(0x02));
-	let prefix_odd = builder.add_constant(Word::from_u64(0x03));
+	let prefix_even = builder.add_constant(Word::from_u64(0x02 << 24));
+	let prefix_odd = builder.add_constant(Word::from_u64(0x03 << 24));
 	let prefix_byte = builder.select(y_is_odd, prefix_odd, prefix_even);
 
 	// We need to produce 9 words (33 bytes) for sha256_fixed
 	// Each word represents 4 bytes packed in big-endian format
-	let zero = builder.add_constant(Word::ZERO);
-	let mut compressed_words = Vec::with_capacity(9);
-
-	for word_idx in 0..9 {
-		let mut word = zero;
-
-		for byte_pos in 0..4 {
-			let global_byte_idx = word_idx * 4 + byte_pos;
-
-			if global_byte_idx == 0 {
-				// First byte is the prefix
-				word = builder.bxor(word, builder.shl(prefix_byte, (3 - byte_pos) * 8));
-			} else if global_byte_idx <= 32 {
-				// Bytes 1-32 are x coordinate bytes in big-endian order
-				let x_byte_idx = global_byte_idx - 1; // 0-indexed into x coordinate
-
-				// For big-endian output, we want:
-				// x_byte_idx 0 should give us x_bytes[0] (the first byte of the big-endian
-				// representation) x_bytes[0] corresponds to the MSB, which is at position 31 in
-				// little-endian byte ordering x_bytes[31] corresponds to the LSB, which is at
-				// position 0 in little-endian byte ordering
-
-				// So x_byte_idx 0 -> byte position 31 in LE
-				// x_byte_idx 31 -> byte position 0 in LE
-				let le_byte_idx = x_byte_idx; // This is the direct mapping since we defined x_bytes in BE order
-				let limb_idx = le_byte_idx / 8;
-				let byte_in_limb = le_byte_idx % 8;
-
-				let byte_val = extract_byte_from_limb(
-					builder,
-					x.limbs[limb_idx as usize],
-					byte_in_limb as usize,
-				);
-				word = builder.bxor(word, builder.shl(byte_val, (3 - byte_pos) * 8));
-			}
-			// global_byte_idx > 32: leave as zero (padding)
-		}
-
-		compressed_words.push(word);
-	}
-
-	compressed_words
-}
-
-/// Extract a specific byte from a 64-bit limb
-/// byte_idx: 0 = LSB, 7 = MSB
-fn extract_byte_from_limb(builder: &CircuitBuilder, limb: Wire, byte_idx: usize) -> Wire {
-	assert!(byte_idx < 8, "byte_idx must be < 8");
-	let shift = byte_idx * 8;
-	let shifted = builder.shr(limb, shift as u32);
-	builder.band(shifted, builder.add_constant(Word::from_u64(0xFF)))
+	let lower_32_bits = |limb| builder.band(limb, builder.add_constant_64(0xFFFFFFFF));
+	vec![
+		builder.bor(builder.shr(x.limbs[3], 40), prefix_byte),
+		lower_32_bits(builder.shr(x.limbs[3], 8)),
+		lower_32_bits(builder.bor(builder.shl(x.limbs[3], 24), builder.shr(x.limbs[2], 40))),
+		lower_32_bits(builder.shr(x.limbs[2], 8)),
+		lower_32_bits(builder.bor(builder.shl(x.limbs[2], 24), builder.shr(x.limbs[1], 40))),
+		lower_32_bits(builder.shr(x.limbs[1], 8)),
+		lower_32_bits(builder.bor(builder.shl(x.limbs[1], 24), builder.shr(x.limbs[0], 40))),
+		lower_32_bits(builder.shr(x.limbs[0], 8)),
+		lower_32_bits(builder.shl(x.limbs[0], 24)),
+	]
 }
 
 #[cfg(test)]
 mod tests {
 	use binius_core::{verify::verify_constraints, word::Word};
+	use rand::{RngCore, SeedableRng, rngs::StdRng};
 
 	use super::*;
 
-	fn test_compress_helper(x_bytes: [u8; 32], y_bytes: [u8; 32], expected_compressed: [u8; 33]) {
+	// Utility: compute compressed SEC1 public key bytes from a full 32-byte private key using k256
+	fn compressed_pubkey_from_scalar_bytes(private_key: [u8; 32]) -> [u8; 33] {
+		use k256::{
+			FieldBytes, ProjectivePoint, Scalar, U256,
+			elliptic_curve::{
+				ops::{MulByGenerator, Reduce},
+				sec1::ToEncodedPoint,
+			},
+		};
+		let field_bytes = FieldBytes::from(private_key);
+		let scalar = <Scalar as Reduce<U256>>::reduce_bytes(&field_bytes);
+		let affine = ProjectivePoint::mul_by_generator(&scalar).to_affine();
+		let compressed = affine.to_encoded_point(true);
+		let mut out = [0u8; 33];
+		out.copy_from_slice(compressed.as_bytes());
+		out
+	}
+
+	// Utility: generate a (private key, compressed pubkey) pair with full 32-byte randomness
+	fn gen_priv_pub_pair_from_rng(mut rng: impl RngCore) -> ([u8; 32], [u8; 33]) {
+		let mut sk_be = [0u8; 32];
+		rng.fill_bytes(&mut sk_be);
+		let pk_comp = compressed_pubkey_from_scalar_bytes(sk_be);
+		(sk_be, pk_comp)
+	}
+
+	// Utility: validate both compressed pubkey and full P2PKH circuit against a priv/pub pair
+	fn validate_priv_pub_pair(private_key_be: [u8; 32], compressed_pubkey: [u8; 33]) {
+		// 1) Check scalar_mul + compression matches expected compressed pubkey
+		assert_circuit_matches_priv_pub_pair(private_key_be, compressed_pubkey);
+
+		// 2) Check the full P2PKH circuit (SHA256 then RIPEMD160 on compressed pubkey)
+		use bitcoin::{PublicKey, hashes::Hash};
+
+		let builder = CircuitBuilder::new();
+		let private_key = BigUint::new_witness(&builder, 4);
+		let expected_address: [Wire; 5] = std::array::from_fn(|_| builder.add_witness());
+
+		build_p2pkh_circuit(&builder, &private_key, expected_address);
+
+		let circuit = builder.build();
+		let mut w = circuit.new_witness_filler();
+
+		// Populate private key limbs (LE u64s)
+		let mut sk_le = [0u8; 32];
+		for i in 0..32 {
+			sk_le[i] = private_key_be[31 - i];
+		}
+		let limbs: [u64; 4] = [
+			u64::from_le_bytes(sk_le[0..8].try_into().unwrap()),
+			u64::from_le_bytes(sk_le[8..16].try_into().unwrap()),
+			u64::from_le_bytes(sk_le[16..24].try_into().unwrap()),
+			u64::from_le_bytes(sk_le[24..32].try_into().unwrap()),
+		];
+		private_key.populate_limbs(&mut w, &limbs);
+
+		// Compute expected P2PKH address using bitcoin crate and populate expected wires
+		let public_key =
+			PublicKey::from_slice(&compressed_pubkey).expect("Invalid compressed public key");
+		let pubkey_hash = public_key.pubkey_hash();
+		let addr_bytes: [u8; 20] = *pubkey_hash.as_byte_array();
+		for i in 0..5 {
+			let start = i * 4;
+			let v = u32::from_le_bytes([
+				addr_bytes[start],
+				addr_bytes[start + 1],
+				addr_bytes[start + 2],
+				addr_bytes[start + 3],
+			]);
+			w[expected_address[i]] = Word::from_u64(v as u64);
+		}
+
+		circuit.populate_wire_witness(&mut w).unwrap();
+		verify_constraints(circuit.constraint_system(), &w.into_value_vec()).unwrap();
+	}
+
+	// Utility: verify the circuit's scalar_mul + compression against a given private/public pair
+	// private_key_be: 32-byte big-endian private key
+	// expected_compressed_sec1: 33-byte SEC1 compressed public key (prefix + 32-byte x)
+	fn assert_circuit_matches_priv_pub_pair(
+		private_key_be: [u8; 32],
+		expected_compressed_sec1: [u8; 33],
+	) {
+		let builder = CircuitBuilder::new();
+
+		// Inputs and expected outputs
+		let private_key = BigUint::new_witness(&builder, 4);
+		let expected_words: Vec<Wire> = (0..9).map(|_| builder.add_witness()).collect();
+
+		// Compute pubkey in the circuit
+		let curve = Secp256k1::new(&builder);
+		let generator = Secp256k1Affine::generator(&builder);
+		let pub_point = scalar_mul_naive(&builder, &curve, 256, &private_key, generator);
+		let compressed = compress_pubkey(&builder, &pub_point.x, &pub_point.y);
+
+		for i in 0..9 {
+			builder.assert_eq(format!("compressed[{i}]"), compressed[i], expected_words[i]);
+		}
+
+		let circuit = builder.build();
+		let mut w = circuit.new_witness_filler();
+
+		// Populate private key limbs (circuit expects 4x u64 little-endian limbs)
+		let mut sk_le = [0u8; 32];
+		for i in 0..32 {
+			sk_le[i] = private_key_be[31 - i];
+		}
+		let limbs: [u64; 4] = [
+			u64::from_le_bytes(sk_le[0..8].try_into().unwrap()),
+			u64::from_le_bytes(sk_le[8..16].try_into().unwrap()),
+			u64::from_le_bytes(sk_le[16..24].try_into().unwrap()),
+			u64::from_le_bytes(sk_le[24..32].try_into().unwrap()),
+		];
+		private_key.populate_limbs(&mut w, &limbs);
+
+		// Pack expected compressed bytes into 9 big-endian u32 words (low 32 bits used)
+		let mut expected_word_values = [0u32; 9];
+		for i in 0..9 {
+			let start = i * 4;
+			let mut word = 0u32;
+			for j in 0..4 {
+				if start + j < 33 {
+					word |= (expected_compressed_sec1[start + j] as u32) << (24 - j * 8);
+				}
+			}
+			expected_word_values[i] = word;
+		}
+		for i in 0..9 {
+			w[expected_words[i]] = Word::from_u64(expected_word_values[i] as u64);
+		}
+
+		circuit.populate_wire_witness(&mut w).unwrap();
+		verify_constraints(circuit.constraint_system(), &w.into_value_vec()).unwrap();
+	}
+
+	fn test_compress_helper(x_bytes: [u8; 32], y_bytes: [u8; 32], prefix: u8) {
 		let builder = CircuitBuilder::new();
 
 		// Convert byte arrays to BigUint limbs (little-endian)
@@ -198,6 +363,13 @@ mod tests {
 		x.populate_limbs(&mut w, &x_limbs);
 		y.populate_limbs(&mut w, &y_limbs);
 
+		// Create expected compressed public key format (embedded logic)
+		let mut expected_compressed = [0u8; 33];
+		expected_compressed[0] = prefix;
+		for i in 0..32 {
+			expected_compressed[1 + i] = x_bytes[31 - i];
+		}
+
 		// Pack expected compressed bytes into 32-bit words for comparison
 		let mut expected_word_values = [0u32; 9];
 		for i in 0..9 {
@@ -221,6 +393,12 @@ mod tests {
 	}
 
 	#[test]
+	fn test_p2pkh_circuit_privkey_external() {
+		let (sk_be, pk_comp) = gen_priv_pub_pair_from_rng(StdRng::seed_from_u64(0));
+		validate_priv_pub_pair(sk_be, pk_comp);
+	}
+
+	#[test]
 	fn test_compress_simple() {
 		// Simple test with known values to debug byte ordering
 		let x_bytes = [
@@ -236,15 +414,8 @@ mod tests {
 			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		];
 
-		// Expected compressed: prefix 0x02 + x bytes in big-endian
-		let expected_compressed = [
-			0x02, // prefix for even y
-			0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E,
-			0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C,
-			0x1D, 0x1E, 0x1F, 0x20,
-		];
-
-		test_compress_helper(x_bytes, y_bytes, expected_compressed);
+		// Expected compressed: prefix 0x02 + x bytes in big-endian (reverse of LE storage)
+		test_compress_helper(x_bytes, y_bytes, 0x02);
 	}
 
 	#[test]
@@ -262,15 +433,8 @@ mod tests {
 			0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33,
 		];
 
-		// Expected compressed format: 0x03 prefix + x coordinate (y is odd)
-		let expected_compressed = [
-			0x03, // prefix for odd y
-			0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
-			0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
-			0x11, 0x11, 0x11, 0x11,
-		];
-
-		test_compress_helper(x_bytes, y_bytes, expected_compressed);
+		// Expected compressed format: 0x03 prefix + x coordinate big-endian (reverse of LE storage)
+		test_compress_helper(x_bytes, y_bytes, 0x03);
 	}
 
 	#[test]
@@ -288,14 +452,7 @@ mod tests {
 			0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44,
 		];
 
-		// Expected compressed format: 0x02 prefix + x coordinate (y is even)
-		let expected_compressed = [
-			0x02, // prefix for even y
-			0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
-			0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
-			0xAA, 0xAA, 0xAA, 0xAA,
-		];
-
-		test_compress_helper(x_bytes, y_bytes, expected_compressed);
+		// Expected compressed format: 0x02 prefix + x coordinate big-endian (reverse of LE storage)
+		test_compress_helper(x_bytes, y_bytes, 0x02);
 	}
 }
