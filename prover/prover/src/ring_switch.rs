@@ -3,8 +3,7 @@
 use std::{iter, ops::Deref};
 
 use binius_field::{
-	BinaryField, ExtensionField, Field, PackedExtension, PackedField, UnderlierWithBitOps,
-	WithUnderlier,
+	BinaryField, ExtensionField, Field, PackedExtension, PackedField,
 	byte_iteration::{
 		ByteIteratorCallback, can_iterate_bytes, create_partial_sums_lookup_tables, iterate_bytes,
 	},
@@ -170,102 +169,11 @@ where
 	elems
 }
 
-/// Computes the linear combination of the rows of a B1 matrix by an extension field coefficient
-/// vector.
-///
-/// The matrix `mat` is a B1 matrix row-major order, with coefficients packed into `F` elements.
-/// The number of columns is equal to the extension degree of `F` over [`B1`]. The row coefficients
-/// are `F` extension field elements in the vector `vec`.
-///
-/// ## Arguments
-///
-/// * `mat` - the [`B1`] matrix, with `F::N_BITS` columns
-/// * `vec` - the row coefficients
-///
-/// ## Preconditions
-///
-/// * the length of the matrix, in `B1` elements, must equal vector length, in `F` elements, times
-///   the field extension degree
-pub fn fold_1b_rows<F, P, Data>(mat: &FieldBuffer<P, Data>, vec: &FieldBuffer<P>) -> FieldBuffer<F>
-where
-	F: BinaryField + WithUnderlier<Underlier: UnderlierWithBitOps>,
-	P: PackedField<Scalar = F>,
-	Data: Deref<Target = [P]>,
-{
-	let log_scalar_bit_width = <F as ExtensionField<B1>>::LOG_DEGREE;
-	assert_eq!(mat.log_len(), vec.log_len()); // precondition
-
-	(vec.as_ref(), mat.as_ref())
-		.into_par_iter()
-		.fold(
-			|| FieldBuffer::zeros(log_scalar_bit_width),
-			|mut acc, (vec_packed_i, mat_packed_i)| {
-				for (vec_i, mat_i) in iter::zip(vec_packed_i.iter(), mat_packed_i.iter()) {
-					// The first branch is an optimized version of the second one for the case
-					// when `F` can be byte-iterated.
-					// Use a precompute mask table to get 8 masks for every byte in `F`.
-					if can_iterate_bytes::<F>() {
-						struct Callback<'a, P: PackedField<Scalar: WithUnderlier>> {
-							vec_i: <P::Scalar as WithUnderlier>::Underlier,
-							acc: &'a mut FieldBuffer<P>,
-						}
-
-						impl<P: PackedField<Scalar: WithUnderlier<Underlier: UnderlierWithBitOps>>>
-							ByteIteratorCallback for Callback<'_, P>
-						{
-							#[inline]
-							fn call(&mut self, bytes: impl Iterator<Item = u8>) {
-								let mask_map =
-									<P::Scalar as WithUnderlier>::Underlier::BYTE_MASK_MAP;
-
-								for (byte_index, byte) in bytes.enumerate() {
-									let offset = byte_index * 8;
-									let masks = &mask_map[byte as usize];
-
-									for (bit_index, &mask) in masks.iter().enumerate() {
-										unsafe {
-											*self
-												.acc
-												.as_mut()
-												.get_unchecked_mut(offset + bit_index) += P::Scalar::from_underlier(self.vec_i & mask)
-										}
-									}
-								}
-							}
-						}
-
-						iterate_bytes(
-							&[mat_i],
-							&mut Callback {
-								vec_i: vec_i.to_underlier(),
-								acc: &mut acc,
-							},
-						);
-					} else {
-						for (acc_i, bit_i) in iter::zip(acc.as_mut(), mat_i.iter_bases()) {
-							*acc_i += vec_i * bit_i;
-						}
-					}
-				}
-				acc
-			},
-		)
-		.reduce(
-			|| FieldBuffer::zeros(log_scalar_bit_width),
-			|mut lhs, rhs| {
-				for (lhs_i, &rhs_i) in izip!(lhs.as_mut(), rhs.as_ref()) {
-					*lhs_i += rhs_i;
-				}
-				lhs
-			},
-		)
-}
-
-/// Optimized version of [`fold_1b_rows`] specifically for B128 fields.
+/// Optimized version of folding 1-bit rows specifically for B128 fields.
 ///
 /// This function computes the linear combination of the rows of a B1 matrix by B128 extension
-/// field coefficient vectors. It implements the same computation as [`fold_1b_rows`] but uses
-/// the Method of Four Russians optimization to achieve better performance for B128 fields.
+/// field coefficient vectors. It uses the Method of Four Russians optimization to achieve better
+/// performance for B128 fields.
 ///
 /// The optimization works by:
 /// 1. Processing 4 elements at a time (2^2 chunks) for better cache locality
@@ -570,43 +478,8 @@ mod test {
 		let folded_method2 = fold_elems_inplace(bit_matrix_packed.clone(), &prefix_tensor);
 		let method2_result = evaluate_inplace(folded_method2, suffix).unwrap();
 
-		// Method 3: Tensor expand suffix, call fold_1b_rows, then evaluate_inplace on prefix
-		let suffix_tensor = eq_ind_partial_eval::<P>(suffix);
-		let folded_method3 = fold_1b_rows(&bit_matrix_packed, &suffix_tensor);
-		let method3_result = evaluate_inplace(folded_method3, prefix).unwrap();
-
 		// Compare all three results
 		assert_eq!(reference_result, method2_result, "Method 2 does not match reference");
-		assert_eq!(reference_result, method3_result, "Method 3 does not match reference");
-	}
-
-	#[test]
-	fn test_fold_1b_rows_for_b128_consistency() {
-		let mut rng = StdRng::seed_from_u64(0);
-		type P = PackedBinaryGhash4x128b;
-
-		// Parameters - test with various sizes
-		for n in [4, 6, 8, 10] {
-			// Generate a random B128 matrix with 2^n elements
-			let mat = random_field_buffer::<P>(&mut rng, n);
-
-			// Generate a random B128 vector with 2^n elements
-			let vec = random_field_buffer::<P>(&mut rng, n);
-
-			// Call the generic fold_1b_rows function
-			let result_generic = fold_1b_rows(&mat, &vec);
-
-			// Call the specialized fold_1b_rows_for_b128 function
-			let result_specialized = fold_1b_rows_for_b128(&mat, &vec);
-
-			// Both results should be identical
-			assert_eq!(
-				result_generic.as_ref(),
-				result_specialized.as_ref(),
-				"fold_1b_rows_for_b128 does not match fold_1b_rows for n = {}",
-				n
-			);
-		}
 	}
 
 	#[test]

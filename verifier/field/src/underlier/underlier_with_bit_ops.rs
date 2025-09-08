@@ -26,23 +26,6 @@ pub trait UnderlierWithBitOps:
 	const ONE: Self;
 	const ONES: Self;
 
-	// A map from a byte to 8 values, where `i`-th value is filled with a `i`-th bit from the byte.
-	const BYTE_MASK_MAP: [[Self; 8]; 256] = const {
-		let mut map = [[Self::ZERO; 8]; 256];
-		let mut byte = 0;
-		while byte < 256 {
-			let mut bit = 0;
-			while bit < 8 {
-				if (byte & (1 << bit)) != 0 {
-					map[byte][bit] = Self::ONES;
-				}
-				bit += 1;
-			}
-			byte += 1;
-		}
-		map
-	};
-
 	/// Fill value with the given bit
 	/// `val` must be 0 or 1.
 	fn fill_with_bit(val: u8) -> Self;
