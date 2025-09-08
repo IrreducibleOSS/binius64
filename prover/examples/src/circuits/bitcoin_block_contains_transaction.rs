@@ -1,12 +1,11 @@
 // Copyright 2025 Irreducible Inc.
 //! Proof that a Bitcoin block contains a certain transaction.
 
-use binius_frontend::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
-
-use super::{
+use binius_circuits::bitcoin::{
 	double_sha256::DoubleSha256,
 	merkle_path::{MerklePath, SiblingSide},
 };
+use binius_frontend::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
 
 /// Stores some intermediate wires of the circuit, so that they can later be populated with
 /// [`Self::populate_inner`].
