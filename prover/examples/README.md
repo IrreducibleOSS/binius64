@@ -9,7 +9,6 @@ This crate provides example circuits for the Binius zero-knowledge proof system.
 ## Available Examples
 
 - **sha256**: SHA-256 hash function implementation demonstrating efficient binary field arithmetic
-- **zklogin**: Zero-knowledge authentication circuit for JWT verification
 
 Each example is a standalone binary that can be run with customizable parameters to test different configurations and input sizes.
 
@@ -330,7 +329,6 @@ path = "examples/my_circuit.rs"
 
 Look at these examples for reference:
 - `sha256.rs` - Shows parameter/instance separation, random data generation
-- `zklogin.rs` - Shows complex witness population with external data generation
 
 ## Prover binary
 

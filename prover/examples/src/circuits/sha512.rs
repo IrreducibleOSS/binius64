@@ -2,10 +2,8 @@
 use std::array;
 
 use anyhow::{Result, ensure};
-use binius_frontend::{
-	circuits::sha512::Sha512,
-	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
-};
+use binius_circuits::sha512::Sha512;
+use binius_frontend::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
 use clap::Args;
 use rand::prelude::*;
 use sha2::Digest;

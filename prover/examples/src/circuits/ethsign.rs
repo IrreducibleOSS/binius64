@@ -2,9 +2,9 @@
 use std::array;
 
 use anyhow::Result;
+use binius_circuits::{bignum::BigUint, ecdsa::ecrecover, keccak::Keccak};
 use binius_core::word::Word;
 use binius_frontend::{
-	circuits::{bignum::BigUint, ecdsa::ecrecover, keccak::Keccak},
 	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
 	util::{byteswap, pack_bytes_into_wires_le},
 };
