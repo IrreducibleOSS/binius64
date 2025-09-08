@@ -11,7 +11,7 @@ workspace = true
 anyhow.workspace = true
 binius-core = { path = "../core" }
 binius-frontend = { path = "../frontend" }
-binius-verifier = { path = "../verifier" }
+binius-verifier = { path = "../verifier", default-features = false }
 binius-prover = { path = "../prover", default-features = false }
 binius-utils = { path = "../utils", features = ["platform-diagnostics"] }
 clap.workspace = true
@@ -51,7 +51,7 @@ harness = false
 [features]
 default = ["rayon"]
 perfetto = ["tracing-profile/perfetto"]
-rayon = ["binius-prover/rayon"]
+rayon = ["binius-prover/rayon", "binius-verifier/rayon"]
 
 [[example]]
 name = "prover"
