@@ -7,7 +7,7 @@ use binius_circuits::{
 	bignum::BigUint,
 	bitcoin::p2pkh_signature::{addr_bytes_to_le_words, build_p2pkh_circuit},
 };
-use binius_frontend::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
+use binius_frontend::{CircuitBuilder, Wire, WitnessFiller};
 use bitcoin::{Network, PrivateKey, secp256k1::Secp256k1};
 use bitcoin_hashes::Hash;
 use clap::Args;

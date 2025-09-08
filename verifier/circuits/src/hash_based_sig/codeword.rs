@@ -1,5 +1,5 @@
 // Copyright 2025 Irreducible Inc.
-use binius_frontend::compiler::{CircuitBuilder, Wire};
+use binius_frontend::{CircuitBuilder, Wire};
 
 /// Extract codeword coordinates from a message hash.
 ///
@@ -120,7 +120,7 @@ pub fn extract_coordinates(hash: &[u8], dimension: usize, resolution_bits: usize
 #[cfg(test)]
 mod tests {
 	use binius_core::{Word, verify::verify_constraints};
-	use binius_frontend::compiler::{CircuitBuilder, Wire};
+	use binius_frontend::{CircuitBuilder, Wire};
 
 	use super::*;
 

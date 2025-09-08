@@ -1,6 +1,6 @@
 // Copyright 2025 Irreducible Inc.
 use binius_core::word::Word;
-use binius_frontend::compiler::{CircuitBuilder, Wire};
+use binius_frontend::{CircuitBuilder, Wire};
 
 /// Computes the RIPEMD-160 compression function on a single 512-bit block.
 ///

@@ -1,4 +1,7 @@
 // Copyright 2025 Irreducible Inc.
+
+//! Various utilities for circuit building.
+
 use binius_core::{Word, consts::WORD_SIZE_BITS};
 
 use crate::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};

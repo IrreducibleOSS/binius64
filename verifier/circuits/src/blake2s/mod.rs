@@ -46,7 +46,7 @@ mod test_vectors;
 mod tests;
 
 use binius_core::word::Word;
-use binius_frontend::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
+use binius_frontend::{CircuitBuilder, Wire, WitnessFiller};
 use constants::{IV, SIGMA};
 
 /// Blake2s G mixing function - the core cryptographic primitive.

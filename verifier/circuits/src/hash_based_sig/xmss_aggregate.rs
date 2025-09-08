@@ -5,7 +5,7 @@
 //! has their own independent XMSS tree and signs at their designated epoch.
 //! The aggregation creates a single proof that all signatures are valid.
 
-use binius_frontend::compiler::{CircuitBuilder, Wire};
+use binius_frontend::{CircuitBuilder, Wire};
 
 use super::{
 	winternitz_ots::WinternitzSpec,

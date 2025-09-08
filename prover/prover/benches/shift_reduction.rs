@@ -2,7 +2,7 @@
 
 use binius_circuits::sha256::Sha256;
 use binius_core::{ValueVec, constraint_system::ConstraintSystem};
-use binius_frontend::compiler::CircuitBuilder;
+use binius_frontend::CircuitBuilder;
 use binius_prover::protocols::shift::{OperatorData, build_key_collection, prove};
 use binius_transcript::ProverTranscript;
 use binius_utils::checked_arithmetics::strict_log_2;
@@ -28,7 +28,7 @@ pub fn create_sha256_cs_with_witness(
 		builder.add_inout(),
 		builder.add_inout(),
 	];
-	let message: Vec<binius_frontend::compiler::Wire> = (0..message_len_bytes.div_ceil(8usize))
+	let message: Vec<binius_frontend::Wire> = (0..message_len_bytes.div_ceil(8usize))
 		.map(|_| builder.add_witness())
 		.collect();
 

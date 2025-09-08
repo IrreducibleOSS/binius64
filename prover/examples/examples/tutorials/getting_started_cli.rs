@@ -9,7 +9,7 @@
 use anyhow::Result;
 use binius_core::word::Word;
 use binius_examples::{Cli, ExampleCircuit};
-use binius_frontend::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
+use binius_frontend::{CircuitBuilder, Wire, WitnessFiller};
 use clap::Args;
 
 /// A simple hash preimage circuit for demonstrating the CLI framework

@@ -4,7 +4,7 @@
 //! This module provides utility functions for byte-level operations on 64-bit words,
 //! including byte swapping (endianness conversion).
 
-use binius_frontend::compiler::{CircuitBuilder, Wire};
+use binius_frontend::{CircuitBuilder, Wire};
 
 /// Swaps bytes within each 32-bit half of a 64-bit word independently.
 ///

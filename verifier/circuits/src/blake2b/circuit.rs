@@ -5,7 +5,7 @@
 //! constraint system. It follows the RFC 7693 specification.
 
 use binius_core::word::Word;
-use binius_frontend::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
+use binius_frontend::{CircuitBuilder, Wire, WitnessFiller};
 
 use super::constants::{BLOCK_BYTES, IV, ROUNDS, SIGMA};
 
@@ -316,7 +316,7 @@ pub fn g_mixing(
 #[cfg(test)]
 mod tests {
 	use binius_core::{verify::verify_constraints, word::Word};
-	use binius_frontend::compiler::CircuitBuilder;
+	use binius_frontend::CircuitBuilder;
 
 	use crate::blake2b::{circuit::g_mixing, reference};
 

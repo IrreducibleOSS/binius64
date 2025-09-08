@@ -3,7 +3,7 @@
 
 use anyhow::{Result, ensure};
 use binius_circuits::blake2s::Blake2s;
-use binius_frontend::compiler::{CircuitBuilder, circuit::WitnessFiller};
+use binius_frontend::{CircuitBuilder, WitnessFiller};
 use clap::Args;
 use rand::{RngCore, SeedableRng, rngs::StdRng};
 

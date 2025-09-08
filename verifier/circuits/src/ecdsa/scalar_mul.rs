@@ -1,6 +1,6 @@
 // Copyright 2025 Irreducible Inc.
 use binius_core::consts::WORD_SIZE_BITS;
-use binius_frontend::compiler::{CircuitBuilder, Wire};
+use binius_frontend::{CircuitBuilder, Wire};
 
 use crate::{
 	bignum::{BigUint, assert_eq, select as select_biguint},
@@ -342,7 +342,7 @@ pub fn shamirs_trick_naive(
 #[cfg(test)]
 mod tests {
 	use binius_core::word::Word;
-	use binius_frontend::compiler::CircuitBuilder;
+	use binius_frontend::CircuitBuilder;
 	use k256::{
 		ProjectivePoint, Scalar, U256,
 		elliptic_curve::{ops::MulByGenerator, scalar::FromUintUnchecked, sec1::ToEncodedPoint},

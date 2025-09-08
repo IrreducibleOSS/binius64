@@ -5,7 +5,7 @@
 //! in hash-based signature circuits, including XMSS and Winternitz OTS.
 
 use binius_core::Word;
-use binius_frontend::{compiler::circuit::WitnessFiller, util::pack_bytes_into_wires_le};
+use binius_frontend::{WitnessFiller, util::pack_bytes_into_wires_le};
 use rand::{RngCore, rngs::StdRng};
 use sha3::{Digest, Keccak256};
 

@@ -11,7 +11,7 @@
 
 use anyhow::Result;
 use binius_core::{verify::verify_constraints, word::Word};
-use binius_frontend::compiler::CircuitBuilder;
+use binius_frontend::CircuitBuilder;
 
 fn main() -> Result<()> {
 	println!("=== Data Structures Example ===\n");

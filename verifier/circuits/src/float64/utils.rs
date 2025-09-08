@@ -1,6 +1,6 @@
 // Copyright 2025 Irreducible Inc.
 use binius_core::Word;
-use binius_frontend::compiler::{CircuitBuilder, Wire};
+use binius_frontend::{CircuitBuilder, Wire};
 
 /// Simple view of a decoded binary64 payload.
 #[derive(Clone, Copy)]

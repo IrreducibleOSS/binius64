@@ -3,7 +3,7 @@
 use anyhow::{Result, ensure};
 use binius_circuits::blake2b::{Blake2bCircuit, blake2b};
 use binius_examples::{Cli, ExampleCircuit};
-use binius_frontend::compiler::{CircuitBuilder, circuit::WitnessFiller};
+use binius_frontend::{CircuitBuilder, WitnessFiller};
 use clap::Args;
 use rand::prelude::*;
 

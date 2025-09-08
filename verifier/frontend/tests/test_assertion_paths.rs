@@ -1,6 +1,6 @@
 // Copyright 2025 Irreducible Inc.
 use binius_core::word::Word;
-use binius_frontend::compiler::CircuitBuilder;
+use binius_frontend::CircuitBuilder;
 
 #[test]
 fn test_assertion_failure_shows_path() {

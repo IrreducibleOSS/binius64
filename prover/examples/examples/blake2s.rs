@@ -2,7 +2,7 @@
 use anyhow::{Result, ensure};
 use binius_circuits::blake2s::Blake2s;
 use binius_examples::{Cli, ExampleCircuit};
-use binius_frontend::compiler::{CircuitBuilder, circuit::WitnessFiller};
+use binius_frontend::{CircuitBuilder, WitnessFiller};
 use blake2::{Blake2s256, Digest};
 use clap::Args;
 use rand::prelude::*;

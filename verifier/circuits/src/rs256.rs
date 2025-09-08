@@ -1,5 +1,5 @@
 // Copyright 2025 Irreducible Inc.
-use binius_frontend::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
+use binius_frontend::{CircuitBuilder, Wire, WitnessFiller};
 use num_integer::Integer;
 
 use super::fixed_byte_vec::FixedByteVec;

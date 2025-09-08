@@ -5,7 +5,7 @@ pub mod snapshot;
 
 use anyhow::Result;
 use binius_core::constraint_system::{ConstraintSystem, ValueVec};
-use binius_frontend::compiler::{CircuitBuilder, circuit::WitnessFiller};
+use binius_frontend::{CircuitBuilder, WitnessFiller};
 use binius_prover::{
 	OptimalPackedB128, Prover, hash::parallel_compression::ParallelCompressionAdaptor,
 };

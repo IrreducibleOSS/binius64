@@ -2,7 +2,7 @@
 use anyhow::Result;
 use binius_circuits::keccak::permutation::Permutation;
 use binius_core::word::Word;
-use binius_frontend::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
+use binius_frontend::{CircuitBuilder, Wire, WitnessFiller};
 use clap::Args;
 use rand::{Rng, SeedableRng, rngs::StdRng};
 

@@ -1,6 +1,6 @@
 // Copyright 2025 Irreducible Inc.
 use binius_core::word::Word;
-use binius_frontend::compiler::{CircuitBuilder, Wire};
+use binius_frontend::{CircuitBuilder, Wire};
 
 const IV: [u64; 8] = [
 	0x6a09e667f3bcc908,
@@ -180,11 +180,7 @@ impl Compress {
 		}
 	}
 
-	pub fn populate_m(
-		&self,
-		w: &mut binius_frontend::compiler::circuit::WitnessFiller,
-		m: [u8; 128],
-	) {
+	pub fn populate_m(&self, w: &mut binius_frontend::WitnessFiller, m: [u8; 128]) {
 		debug_assert_eq!(self.m.len(), 16);
 
 		for i in 0..16 {
@@ -284,7 +280,7 @@ fn small_sigma_1(b: &CircuitBuilder, x: Wire) -> Wire {
 #[cfg(test)]
 mod tests {
 	use binius_core::{verify::verify_constraints, word::Word};
-	use binius_frontend::compiler::{self, Wire};
+	use binius_frontend::{CircuitBuilder, Wire};
 
 	use super::{Compress, State};
 
@@ -307,7 +303,7 @@ mod tests {
 			0x2192992a274fc1a8, 0x36ba3c23a3feebbd, 0x454d4423643ce80e, 0x2a9ac94fa54ca49f,
 		];
 
-		let circuit = compiler::CircuitBuilder::new();
+		let circuit = CircuitBuilder::new();
 		let state = State::iv(&circuit);
 		let input: [Wire; 16] = std::array::from_fn(|_| circuit.add_witness());
 		let output: [Wire; 8] = std::array::from_fn(|_| circuit.add_inout());
@@ -340,7 +336,7 @@ mod tests {
 		// This creates ~100 layers with a lot of computations and a very large number of layers
 		// (hundreds of thousands) with a few gates each.
 		const N: usize = 1 << 10;
-		let circuit = compiler::CircuitBuilder::new();
+		let circuit = CircuitBuilder::new();
 
 		println!("{N} sha512 compress1024 invocations");
 
@@ -355,7 +351,7 @@ mod tests {
 
 			// Build a new instance of the sha512 verification subcircuit, passing the inputs `m` to
 			// it. For the first compression `m` is public but everything else if private.
-			let m: [compiler::Wire; 16] = if i == 0 {
+			let m: [Wire; 16] = if i == 0 {
 				std::array::from_fn(|_| sha512_builder.add_inout())
 			} else {
 				std::array::from_fn(|_| sha512_builder.add_witness())
@@ -382,7 +378,7 @@ mod tests {
 	fn sha512_parallel() {
 		// Test multiple SHA-512 compressions in parallel (no chaining)
 		const N: usize = 1 << 10;
-		let circuit = compiler::CircuitBuilder::new();
+		let circuit = CircuitBuilder::new();
 
 		println!("{N} sha512 compress1024 invocations in parallel");
 
@@ -394,7 +390,7 @@ mod tests {
 
 			// Each SHA-512 instance gets its own IV and input (all committed)
 			let state = State::iv(&sha512_builder);
-			let m: [compiler::Wire; 16] = std::array::from_fn(|_| sha512_builder.add_inout());
+			let m: [Wire; 16] = std::array::from_fn(|_| sha512_builder.add_inout());
 			let compress = Compress::new(&sha512_builder, state, m);
 
 			compress_vec.push(compress);

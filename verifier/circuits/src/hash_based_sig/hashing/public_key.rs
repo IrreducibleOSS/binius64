@@ -1,5 +1,5 @@
 // Copyright 2025 Irreducible Inc.
-use binius_frontend::compiler::{CircuitBuilder, Wire};
+use binius_frontend::{CircuitBuilder, Wire};
 
 use super::base::circuit_tweaked_keccak;
 // Note: PublicKeyTweak reuses TREE_TWEAK (0x01) for consistency with XMSS spec
@@ -98,10 +98,7 @@ pub fn hash_public_key_keccak(domain_param: &[u8], pk_hashes: &[[u8; 32]]) -> [u
 #[cfg(test)]
 mod tests {
 	use binius_core::verify::verify_constraints;
-	use binius_frontend::{
-		compiler::{CircuitBuilder, circuit::Circuit},
-		util::pack_bytes_into_wires_le,
-	};
+	use binius_frontend::{Circuit, CircuitBuilder, util::pack_bytes_into_wires_le};
 	use proptest::prelude::*;
 	use sha3::{Digest, Keccak256};
 

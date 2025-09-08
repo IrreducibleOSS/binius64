@@ -40,13 +40,6 @@ impl BytecodeBuilder {
 		self.emit_reg(src2);
 	}
 
-	pub fn emit_bnot(&mut self, dst: u32, src: u32) {
-		self.n_eval_insn += 1;
-		self.emit_u8(0x04);
-		self.emit_reg(dst);
-		self.emit_reg(src);
-	}
-
 	pub fn emit_bxor_multi(&mut self, dst: u32, srcs: &[u32]) {
 		self.n_eval_insn += 1;
 		self.emit_u8(0x06); // Opcode for multi-way XOR
@@ -127,15 +120,6 @@ impl BytecodeBuilder {
 		self.emit_reg(cin);
 	}
 
-	pub fn emit_isub_bout(&mut self, dst_diff: u32, dst_bout: u32, src1: u32, src2: u32) {
-		self.n_eval_insn += 1;
-		self.emit_u8(0x22);
-		self.emit_reg(dst_diff);
-		self.emit_reg(dst_bout);
-		self.emit_reg(src1);
-		self.emit_reg(src2);
-	}
-
 	pub fn emit_isub_bin_bout(
 		&mut self,
 		dst_diff: u32,
@@ -204,23 +188,6 @@ impl BytecodeBuilder {
 		self.emit_reg(dst);
 		self.emit_reg(src);
 		self.emit_u8(rotate);
-	}
-
-	// Mask operations
-	pub fn emit_mask_low(&mut self, dst: u32, src: u32, n_bits: u8) {
-		self.n_eval_insn += 1;
-		self.emit_u8(0x50);
-		self.emit_reg(dst);
-		self.emit_reg(src);
-		self.emit_u8(n_bits);
-	}
-
-	pub fn emit_mask_high(&mut self, dst: u32, src: u32, n_bits: u8) {
-		self.n_eval_insn += 1;
-		self.emit_u8(0x51);
-		self.emit_reg(dst);
-		self.emit_reg(src);
-		self.emit_u8(n_bits);
 	}
 
 	// Assertions

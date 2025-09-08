@@ -10,10 +10,7 @@ use cranelift_entity::SecondaryMap;
 use crate::compiler::{
 	eval_form::EvalForm,
 	gate_graph::{GateGraph, Wire},
-	pathspec::PathSpec,
 };
-
-const MAX_ASSERTION_MESSAGES: usize = 100;
 
 /// Error returned when populating wire witness fails due to assertion failures.
 #[derive(Debug)]
@@ -39,31 +36,14 @@ impl fmt::Display for PopulateError {
 
 impl error::Error for PopulateError {}
 
+/// A helper struct for filling witness values in a circuit.
 pub struct WitnessFiller<'a> {
 	pub(crate) circuit: &'a Circuit,
 	pub(crate) value_vec: ValueVec,
-	pub(crate) ignore_assertions: bool,
-	pub(crate) assertion_failed_message_vec: Vec<(PathSpec, String)>,
-	pub(crate) assertion_failed_count: usize,
 }
 
 impl<'a> WitnessFiller<'a> {
-	pub fn flag_assertion_failed(
-		&mut self,
-		path_spec: PathSpec,
-		condition: impl FnOnce(&mut Self) -> String,
-	) {
-		if self.ignore_assertions {
-			return;
-		}
-		self.assertion_failed_count += 1;
-		if self.assertion_failed_message_vec.len() < MAX_ASSERTION_MESSAGES {
-			let assertion_message = condition(self);
-			self.assertion_failed_message_vec
-				.push((path_spec, assertion_message));
-		}
-	}
-
+	/// Destruct the witness filler and extracts the underlying value vector.
 	pub fn into_value_vec(self) -> ValueVec {
 		self.value_vec
 	}
@@ -83,6 +63,10 @@ impl<'a> std::ops::IndexMut<Wire> for WitnessFiller<'a> {
 	}
 }
 
+/// An artifact that represents a built circuit.
+///
+/// The difference from [`ConstraintSystem`] is that a circuit retains enough information to
+/// perform circuit evaluation to generate internal witness values.
 pub struct Circuit {
 	gate_graph: GateGraph,
 	constraint_system: ConstraintSystem,
@@ -114,13 +98,11 @@ impl Circuit {
 		self.wire_mapping[wire]
 	}
 
+	/// Creates a new witness filler for this circuit.
 	pub fn new_witness_filler(&self) -> WitnessFiller<'_> {
 		WitnessFiller {
 			circuit: self,
 			value_vec: ValueVec::new(self.constraint_system.value_vec_layout.clone()),
-			assertion_failed_message_vec: Vec::new(),
-			assertion_failed_count: 0,
-			ignore_assertions: false,
 		}
 	}
 
@@ -131,16 +113,21 @@ impl Circuit {
 	///
 	/// This function expects that the input wires are already filled. The input wires are
 	///
-	/// - [`super::CircuitBuilder::add_inout`],
-	/// - [`super::CircuitBuilder::add_witness`] that were not created by the gates,
+	/// - [`CircuitBuilder::add_inout`],
+	/// - [`CircuitBuilder::add_witness`] that were not created by the gates,
 	///
-	/// The wires created by [`super::CircuitBuilder::add_constant`] (and its convenience methods)
+	/// The wires created by [`CircuitBuilder::add_constant`] (and its convenience methods)
 	/// are automatically populated by this function as well.
 	///
 	/// # Errors
 	///
 	/// In case the circuit is not satisfiable (any assertion fails), this function will return
 	/// an error with a list of assertion failure messages.
+	///
+	///
+	/// [`CircuitBuilder::add_constant`]: super::CircuitBuilder::add_constant
+	/// [`CircuitBuilder::add_inout`]: super::CircuitBuilder::add_inout
+	/// [`CircuitBuilder::add_witness`]: super::CircuitBuilder::add_witness
 	pub fn populate_wire_witness(&self, w: &mut WitnessFiller) -> Result<(), PopulateError> {
 		// Fill the constant part from the witness.
 		for (index, constant) in self.constraint_system.constants.iter().enumerate() {

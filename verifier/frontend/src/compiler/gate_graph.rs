@@ -341,65 +341,9 @@ impl GateGraph {
 		}
 	}
 
-	/// Returns the gate that defines the given wire, if any
-	pub fn get_wire_def(&self, wire: Wire) -> Option<Gate> {
-		self.wire_def[wire]
-	}
-
 	/// Returns all gates that use the given wire
 	pub fn get_wire_uses(&self, wire: Wire) -> &HashSet<Gate> {
 		&self.wire_uses[wire]
-	}
-
-	/// Returns true if the wire is used by any gate
-	pub fn is_wire_used(&self, wire: Wire) -> bool {
-		!self.wire_uses[wire].is_empty()
-	}
-
-	/// Returns the number of gates that use the given wire
-	pub fn wire_use_count(&self, wire: Wire) -> usize {
-		self.wire_uses[wire].len()
-	}
-
-	/// Returns true if the wire has exactly one use
-	pub fn is_wire_single_use(&self, wire: Wire) -> bool {
-		self.wire_uses[wire].len() == 1
-	}
-
-	/// Gets the single gate that uses this wire, if there is exactly one
-	pub fn get_wire_single_use(&self, wire: Wire) -> Option<Gate> {
-		let uses = &self.wire_uses[wire];
-		if uses.len() == 1 {
-			uses.iter().next().copied()
-		} else {
-			None
-		}
-	}
-
-	/// Returns all input wires of a gate
-	pub fn get_gate_inputs(&self, gate: Gate) -> Vec<Wire> {
-		let gate_data = &self.gates[gate];
-		let gate_param = gate_data.gate_param();
-
-		let mut inputs = Vec::new();
-		inputs.extend_from_slice(gate_param.constants);
-		inputs.extend_from_slice(gate_param.inputs);
-		inputs
-	}
-
-	/// Returns all output wires of a gate
-	pub fn get_gate_outputs(&self, gate: Gate) -> Vec<Wire> {
-		let gate_data = &self.gates[gate];
-		let gate_param = gate_data.gate_param();
-
-		let mut outputs = Vec::new();
-		outputs.extend_from_slice(gate_param.outputs);
-		outputs
-	}
-
-	/// Returns an iterator over all wires and their data
-	pub fn iter_wires(&self) -> impl Iterator<Item = (Wire, &WireData)> {
-		self.wires.iter()
 	}
 
 	/// Returns an iterator over all constant wires and their data
@@ -484,9 +428,49 @@ impl Default for GateGraph {
 
 #[cfg(test)]
 mod tests {
-
 	use super::*;
 	use crate::compiler::gate::opcode::Opcode;
+
+	// Test helper functions
+	fn get_wire_def(graph: &GateGraph, wire: Wire) -> Option<Gate> {
+		graph.wire_def[wire]
+	}
+
+	fn wire_use_count(graph: &GateGraph, wire: Wire) -> usize {
+		graph.wire_uses[wire].len()
+	}
+
+	fn is_wire_single_use(graph: &GateGraph, wire: Wire) -> bool {
+		graph.wire_uses[wire].len() == 1
+	}
+
+	fn get_wire_single_use(graph: &GateGraph, wire: Wire) -> Option<Gate> {
+		let uses = &graph.wire_uses[wire];
+		if uses.len() == 1 {
+			uses.iter().next().copied()
+		} else {
+			None
+		}
+	}
+
+	fn get_gate_inputs(graph: &GateGraph, gate: Gate) -> Vec<Wire> {
+		let gate_data = &graph.gates[gate];
+		let gate_param = gate_data.gate_param();
+
+		let mut inputs = Vec::new();
+		inputs.extend_from_slice(gate_param.constants);
+		inputs.extend_from_slice(gate_param.inputs);
+		inputs
+	}
+
+	fn get_gate_outputs(graph: &GateGraph, gate: Gate) -> Vec<Wire> {
+		let gate_data = &graph.gates[gate];
+		let gate_param = gate_data.gate_param();
+
+		let mut outputs = Vec::new();
+		outputs.extend_from_slice(gate_param.outputs);
+		outputs
+	}
 
 	#[test]
 	fn test_use_def_analysis() {
@@ -509,10 +493,10 @@ mod tests {
 		graph.rebuild_use_def_chains();
 
 		// Check that gate1 defines out1
-		assert_eq!(graph.get_wire_def(out1), Some(gate1));
+		assert_eq!(get_wire_def(&graph, out1), Some(gate1));
 
 		// Check that gate2 defines out2
-		assert_eq!(graph.get_wire_def(out2), Some(gate2));
+		assert_eq!(get_wire_def(&graph, out2), Some(gate2));
 
 		// Check that in1 and in2 are used by gate1
 		assert!(graph.get_wire_uses(in1).contains(&gate1));
@@ -522,21 +506,21 @@ mod tests {
 		assert!(graph.get_wire_uses(out1).contains(&gate2));
 
 		// Check wire use counts
-		assert_eq!(graph.wire_use_count(in1), 2); // Used by gate1 and gate2
-		assert_eq!(graph.wire_use_count(in2), 1);
-		assert_eq!(graph.wire_use_count(out1), 1);
-		assert_eq!(graph.wire_use_count(out2), 0);
+		assert_eq!(wire_use_count(&graph, in1), 2); // Used by gate1 and gate2
+		assert_eq!(wire_use_count(&graph, in2), 1);
+		assert_eq!(wire_use_count(&graph, out1), 1);
+		assert_eq!(wire_use_count(&graph, out2), 0);
 
 		// Check single use queries
-		assert!(!graph.is_wire_single_use(in1)); // Used twice
-		assert!(graph.is_wire_single_use(in2));
-		assert!(graph.is_wire_single_use(out1));
-		assert!(!graph.is_wire_single_use(out2)); // No uses
+		assert!(!is_wire_single_use(&graph, in1)); // Used twice
+		assert!(is_wire_single_use(&graph, in2));
+		assert!(is_wire_single_use(&graph, out1));
+		assert!(!is_wire_single_use(&graph, out2)); // No uses
 
 		// Check get_wire_single_use
-		assert_eq!(graph.get_wire_single_use(in1), None); // Used twice
-		assert_eq!(graph.get_wire_single_use(out1), Some(gate2));
-		assert_eq!(graph.get_wire_single_use(out2), None); // No uses
+		assert_eq!(get_wire_single_use(&graph, in1), None); // Used twice
+		assert_eq!(get_wire_single_use(&graph, out1), Some(gate2));
+		assert_eq!(get_wire_single_use(&graph, out2), None); // No uses
 	}
 
 	#[test]
@@ -556,11 +540,11 @@ mod tests {
 		graph.rebuild_use_def_chains();
 
 		// Constants are not defined by gates
-		assert_eq!(graph.get_wire_def(const_wire), None);
+		assert_eq!(get_wire_def(&graph, const_wire), None);
 
 		// But they should be tracked as used
 		assert!(graph.get_wire_uses(const_wire).contains(&gate));
-		assert_eq!(graph.wire_use_count(const_wire), 1);
+		assert_eq!(wire_use_count(&graph, const_wire), 1);
 	}
 
 	#[test]
@@ -580,14 +564,14 @@ mod tests {
 		graph.wire_uses.clear();
 
 		// Verify it's cleared
-		assert_eq!(graph.get_wire_def(out), None);
+		assert_eq!(get_wire_def(&graph, out), None);
 		assert!(graph.get_wire_uses(in1).is_empty());
 
 		// Rebuild
 		graph.rebuild_use_def_chains();
 
 		// Verify it's restored
-		assert!(graph.get_wire_def(out).is_some());
+		assert!(get_wire_def(&graph, out).is_some());
 		assert!(!graph.get_wire_uses(in1).is_empty());
 		assert!(!graph.get_wire_uses(in2).is_empty());
 	}
@@ -606,7 +590,7 @@ mod tests {
 		// No need to rebuild use-def chains for this test
 		// as we're just checking the gate structure
 
-		let inputs = graph.get_gate_inputs(gate);
+		let inputs = get_gate_inputs(&graph, gate);
 		// Bxor has 1 constant input (ALL_ONE) + 2 regular inputs
 		assert_eq!(inputs.len(), 3);
 		assert!(inputs.contains(&in1));
@@ -618,7 +602,7 @@ mod tests {
 			_ => panic!("Expected constant wire"),
 		}
 
-		let outputs = graph.get_gate_outputs(gate);
+		let outputs = get_gate_outputs(&graph, gate);
 		assert_eq!(outputs.len(), 1);
 		assert!(outputs.contains(&out));
 	}
