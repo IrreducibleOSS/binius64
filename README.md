@@ -85,7 +85,7 @@ Prover:
 
 Binius64 is developed by [Irreducible](https://www.irreducible.com).
 
-## Licensing
+## License
 
 This project is split into the Prover components and the Verifier components, which are published with different licensing terms.
 
@@ -96,3 +96,21 @@ The Verifier constitutes a subset of the prover, which is entirely contained in 
 See [Licensing](https://www.binius.xyz/basics/licensing) a simple explanation of these licensing terms.
 
 Irreducible offers commercial licenses for teams who would like to build products on top of the Binius64 Prover without the AGPL-3.0 limitations. [Contact Irreducible](https://www.irreducible.com/contact) for more details.
+
+```
+Binius64, the binary proof system
+Copyright (C) 2025 Irreducible, Inc.
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+```
