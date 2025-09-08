@@ -123,23 +123,29 @@ mod blake2b_tests {
 	/// Helper function to test circuit with any message
 	fn test_circuit_with_message(input: &[u8]) -> [u8; 64] {
 		let builder = CircuitBuilder::new();
-		let circuit_impl = Blake2bCircuit::new(&builder);
+		// Create circuit with exact size for the input
+		let circuit_impl = Blake2bCircuit::new_with_length(&builder, input.len());
 		let circuit = builder.build();
 		let cs = circuit.constraint_system();
 		let mut w = circuit.new_witness_filler();
 
+		// Compute expected digest using reference implementation
+		let expected_digest_vec = reference::blake2b(input, 64);
+		let mut expected_digest = [0u8; 64];
+		expected_digest.copy_from_slice(&expected_digest_vec);
+
 		// Use the new populate methods
 		circuit_impl.populate_message(&mut w, input);
-		circuit_impl.populate_length(&mut w, input);
+		circuit_impl.populate_digest(&mut w, &expected_digest);
 
 		// Populate wire witness
 		circuit.populate_wire_witness(&mut w).unwrap();
 
-		// Extract circuit output
+		// Extract circuit output (which should match the expected digest)
 		let circuit_hash: [u8; 64] = core::array::from_fn(|i| {
 			let word_idx = i / 8;
 			let byte_idx = i % 8;
-			let word_val = w[circuit_impl.output[word_idx]].0;
+			let word_val = w[circuit_impl.digest[word_idx]].0;
 			((word_val >> (byte_idx * 8)) & 0xFF) as u8
 		});
 
