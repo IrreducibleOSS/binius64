@@ -518,7 +518,7 @@ impl<DC: DomainContext + Sync, const LOG_BASE_LEN: usize> AdditiveNTT
 		// one packed element.
 		let layer = min(independent_layers.start, maximum_log_num_shares);
 		let log_d_chunk = log_d - layer;
-		data.par_chunks_mut(1 << (log_d_chunk - P::LOG_WIDTH))
+		data.par_chunks_exact_mut(1 << (log_d_chunk - P::LOG_WIDTH))
 			.enumerate()
 			.for_each(|(block, chunk)| {
 				forward_depth_first::<_, LOG_BASE_LEN>(
