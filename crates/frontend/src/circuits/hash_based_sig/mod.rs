@@ -4,6 +4,7 @@ pub mod codeword;
 pub mod hashing;
 pub mod merkle_tree;
 pub mod winternitz_ots;
+pub mod winternitz_ots_bounded;
 pub mod witness_utils;
 pub mod xmss;
 pub mod xmss_aggregate;
