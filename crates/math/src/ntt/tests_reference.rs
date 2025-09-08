@@ -24,22 +24,57 @@ fn test_equivalence<P: PackedField>(
 ) where
 	P::Scalar: BinaryField,
 {
-	let log_d = 8;
+	// log_d = 8
+	{
+		let log_d = 8;
 
-	let mut rng = StdRng::seed_from_u64(0);
-	let mut data_a = random_field_buffer::<P>(&mut rng, log_d);
-	let mut data_b = data_a.clone();
+		let mut rng = StdRng::seed_from_u64(0);
+		let mut data_a = random_field_buffer::<P>(&mut rng, log_d);
+		let mut data_b = data_a.clone();
 
-	for skip_early in [0, 3, 5, 7] {
-		for skip_late in [0, 3, 5, 7] {
-			if skip_early + skip_late > log_d {
-				continue;
+		for skip_early in [0, 3, 5, 7] {
+			for skip_late in [0, 3, 5, 7] {
+				if skip_early + skip_late > log_d {
+					continue;
+				}
+
+				ntt_a.forward_transform(data_a.to_mut(), skip_early, skip_late);
+				ntt_b.forward_transform(data_b.to_mut(), skip_early, skip_late);
+				assert_eq!(data_a, data_b)
 			}
-
-			ntt_a.forward_transform(data_a.to_mut(), skip_early, skip_late);
-			ntt_b.forward_transform(data_b.to_mut(), skip_early, skip_late);
-			assert_eq!(data_a, data_b)
 		}
+	}
+
+	// log_d = 1
+	{
+		let log_d = 1;
+		let mut rng = StdRng::seed_from_u64(0);
+		let mut data_a = random_field_buffer::<P>(&mut rng, log_d);
+		let mut data_b = data_a.clone();
+
+		ntt_a.forward_transform(data_a.to_mut(), 0, 0);
+		ntt_b.forward_transform(data_b.to_mut(), 0, 0);
+		assert_eq!(data_a, data_b);
+
+		ntt_a.forward_transform(data_a.to_mut(), 1, 0);
+		ntt_b.forward_transform(data_b.to_mut(), 1, 0);
+		assert_eq!(data_a, data_b);
+
+		ntt_a.forward_transform(data_a.to_mut(), 0, 1);
+		ntt_b.forward_transform(data_b.to_mut(), 0, 1);
+		assert_eq!(data_a, data_b);
+	}
+
+	// log_d = 0 (i.e. no transformation should happen)
+	{
+		let log_d = 0;
+		let mut rng = StdRng::seed_from_u64(0);
+		let mut data_a = random_field_buffer::<P>(&mut rng, log_d);
+		let mut data_b = data_a.clone();
+
+		ntt_a.forward_transform(data_a.to_mut(), 0, 0);
+		ntt_b.forward_transform(data_b.to_mut(), 0, 0);
+		assert_eq!(data_a, data_b);
 	}
 }
 
