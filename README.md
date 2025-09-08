@@ -63,7 +63,7 @@ Multithreading is enabled by default using [Rayon](https://github.com/rayon-rs/r
 
 ## Repo Structure
 
-Binius64 consists of several specialized crates, which are split between two directories, `verifier/` and `prover/`. These directories contains the project's Verifier and Prover, respectively, which are offered under different licensing terms. See the [Licensing](#Licensing) section below for information. The Prover crates depend on the Verifier crates, but Verifier crates do _not_ depend on Prover crates.
+Binius64 consists of several specialized crates, which are split between two directories, `verifier/` and `prover/`. These directories contains the project's Verifier and Prover, respectively, which are offered under different licensing terms. See the [Licensing](#licensing) section below for information. The Prover crates depend on the Verifier crates, but Verifier crates do _not_ depend on Prover crates.
 
 Verifier:
 
@@ -85,7 +85,7 @@ Prover:
 
 Binius64 is developed by [Irreducible](https://www.irreducible.com).
 
-## License
+## Licensing
 
 This project is split into the Prover components and the Verifier components, which are published with different licensing terms.
 
@@ -97,20 +97,20 @@ See [Licensing](https://www.binius.xyz/basics/licensing) a simple explanation of
 
 Irreducible offers commercial licenses for teams who would like to build products on top of the Binius64 Prover without the AGPL-3.0 limitations. [Contact Irreducible](https://www.irreducible.com/contact) for more details.
 
-```
-Binius64, the binary proof system
-Copyright (C) 2025 Irreducible, Inc.
+### License
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+   Binius64, the binary proof system \
+   Copyright (C) 2025 Irreducible, Inc.
 
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU Affero General Public License for more details.
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
 
-You should have received a copy of the GNU Affero General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
-```
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU Affero General Public License for more details.
+
+   You should have received a copy of the GNU Affero General Public License
+   along with this program.  If not, see <https://www.gnu.org/licenses/>.
