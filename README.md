@@ -42,7 +42,7 @@ The `prover/examples/` directory contains example circuits, which you can run us
 For example, to run an example proving a SHA-512 preimage:
 
 ```bash
-$ RUSTFLAGS="-Ctarget-cpu=native" cargo run --release --example prove --max-len-bytes 65536 --exact-len
+$ RUSTFLAGS="-Ctarget-cpu=native" cargo run --release --example sha512 prove --max-len-bytes 65536 --exact-len-bytes
    Finished `release` profile [optimized + debuginfo] target(s) in 0.09s
      Running `target/release/examples/sha512 prove --max-len-bytes 65536 --exact-len-bytes`
 Building circuit [ 2.99s | 100.00% ]
