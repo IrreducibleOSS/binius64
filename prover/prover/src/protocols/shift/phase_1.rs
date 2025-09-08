@@ -19,6 +19,7 @@ use binius_verifier::{
 		sumcheck::{SumcheckOutput, common::RoundCoeffs},
 	},
 };
+use bytemuck::zeroed_vec;
 use itertools::izip;
 use tracing::instrument;
 
@@ -172,6 +173,22 @@ fn run_phase_1_sumcheck<F: Field, P: PackedField<Scalar = F>, C: Challenger>(
 	})
 }
 
+// A map from a byte to 8 values, where `i`-th value has a value of a `i`-th bit from the byte (0 or
+// 1)
+const BITS_MAP: [[u8; 8]; 256] = {
+	let mut map = [[0u8; 8]; 256];
+	let mut byte = 0;
+	while byte < 256 {
+		let mut bit_index = 0;
+		while bit_index < 8 {
+			map[byte][bit_index] = if (byte >> bit_index) & 1 == 1 { 1 } else { 0 };
+			bit_index += 1;
+		}
+		byte += 1;
+	}
+	map
+};
+
 /// Constructs the "g" multilinear triplets for both BITAND and INTMUL operations.
 ///
 /// This function builds the g multilinear polynomials used in phase 1 of the shift protocol.
@@ -212,7 +229,7 @@ fn build_g_triplet<
 		.par_iter()
 		.zip(key_collection.key_ranges.par_iter())
 		.fold(
-			|| vec![F::ZERO; ACC_SIZE].into_boxed_slice(),
+			|| zeroed_vec::<F>(ACC_SIZE).into_boxed_slice(),
 			|mut multilinears, (word, Range { start, end })| {
 				let keys = &key_collection.keys[*start as usize..*end as usize];
 
@@ -233,19 +250,19 @@ fn build_g_triplet<
 					// }
 					let start = key.id as usize * WORD_SIZE_BITS;
 					let word_bytes = word.0.to_le_bytes();
-					let masks_map = F::Underlier::BYTE_MASK_MAP;
 					for (&byte, values) in word_bytes.iter().zip(
 						multilinears[start..start + WORD_SIZE_BITS]
 							.chunks_exact_mut(WORD_SIZE_BYTES),
 					) {
-						let masks = &masks_map[byte as usize];
+						let masks = &BITS_MAP[byte as usize];
 						for bit_index in 0..8 {
 							// Safety:
 							// - `values` is guaranteed to be 8 elements long due to the chunking
 							// - `bit_index` is always in bounds because we iterate over 0..8
 							unsafe {
 								*values.get_unchecked_mut(bit_index).to_underlier_ref_mut() ^=
-									*masks.get_unchecked(bit_index) & acc_underlier;
+									F::Underlier::fill_with_bit(*masks.get_unchecked(bit_index))
+										& acc_underlier;
 							}
 						}
 					}
@@ -255,7 +272,7 @@ fn build_g_triplet<
 			},
 		)
 		.reduce(
-			|| vec![F::ZERO; ACC_SIZE].into_boxed_slice(),
+			|| zeroed_vec::<F>(ACC_SIZE).into_boxed_slice(),
 			|mut acc, local| {
 				izip!(acc.iter_mut(), local.iter()).for_each(|(acc, local)| {
 					*acc += *local;
