@@ -46,7 +46,7 @@ impl DeserializeBytes for ValueIndex {
 /// A different variants of shifting a value.
 ///
 /// Note that there is no shift left arithmetic because it is redundant.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ShiftVariant {
 	/// Shift logical left.
 	Sll,
@@ -94,7 +94,7 @@ impl DeserializeBytes for ShiftVariant {
 ///
 /// The canonical formto represent a value without any shifting is [`ShiftVariant::Sll`] with
 /// amount equals 0.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, Ord, PartialOrd)]
 pub struct ShiftedValueIndex {
 	/// The index of this value in the input values vector.
 	pub value_index: ValueIndex,
