@@ -87,7 +87,7 @@ where
 	let len = 1 << (log_elems - P::LOG_WIDTH + rs_code.log_inv_rate());
 	let mut encoded = Vec::with_capacity(len);
 
-	tracing::debug_span!("Reed–Solomon Encode").in_scope(|| {
+	tracing::debug_span!("Reed-Solomon Encode").in_scope(|| {
 		rs_code.encode_ext_batch(ntt, message, encoded.spare_capacity_mut(), log_batch_size)
 	})?;
 
