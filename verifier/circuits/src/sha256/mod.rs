@@ -398,7 +398,7 @@ impl Sha256 {
 	/// big-endian words: `lo_word ^ (hi_word << 32)`.
 	///
 	/// This method converts both 32-bit big-endian words to little-endian format simultaneously,
-	/// which is useful for interfacing with other circuits that expect LE format (e.g., zklogin).
+	/// which is useful for interfacing with other circuits that expect LE format.
 	///
 	/// # Returns
 	/// A vector of wires containing the message repacked in little-endian format (8 bytes per wire)

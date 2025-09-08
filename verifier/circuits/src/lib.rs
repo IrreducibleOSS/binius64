@@ -23,4 +23,3 @@ pub mod sha512;
 pub mod skein512;
 pub mod slice;
 pub mod subset_sum;
-pub mod zklogin;
