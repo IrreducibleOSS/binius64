@@ -1,10 +1,8 @@
 // Copyright 2025 Irreducible Inc.
 use anyhow::Result;
+use binius_circuits::keccak::permutation::Permutation;
 use binius_core::word::Word;
-use binius_frontend::{
-	circuits::keccak::permutation::Permutation,
-	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
-};
+use binius_frontend::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
 use clap::Args;
 use rand::{Rng, SeedableRng, rngs::StdRng};
 
@@ -69,9 +67,7 @@ impl ExampleCircuit for KeccakExample {
 		// Compute expected final state by running the permutation outside the circuit
 		let mut expected_final_state = initial_state;
 		for _ in 0..self.n_permutations {
-			binius_frontend::circuits::keccak::reference::keccak_f1600_reference(
-				&mut expected_final_state,
-			);
+			binius_circuits::keccak::reference::keccak_f1600_reference(&mut expected_final_state);
 		}
 
 		// Populate expected final state witness

@@ -1,14 +1,14 @@
 // Copyright 2025 Irreducible Inc.
 
 use anyhow::Result;
+use binius_circuits::hash_based_sig::{
+	winternitz_ots::WinternitzSpec,
+	witness_utils::{ValidatorSignatureData, XmssHasherData, populate_xmss_hashers},
+	xmss::XmssSignature,
+	xmss_aggregate::{MultiSigBuilder, XmssMultisigHashers, circuit_xmss_multisig},
+};
 use binius_core::Word;
 use binius_frontend::{
-	circuits::hash_based_sig::{
-		winternitz_ots::WinternitzSpec,
-		witness_utils::{ValidatorSignatureData, XmssHasherData, populate_xmss_hashers},
-		xmss::XmssSignature,
-		xmss_aggregate::{MultiSigBuilder, XmssMultisigHashers, circuit_xmss_multisig},
-	},
 	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
 	util::pack_bytes_into_wires_le,
 };

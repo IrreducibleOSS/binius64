@@ -1,8 +1,8 @@
 // Copyright 2025 Irreducible Inc.
 
 use anyhow::bail;
+use binius_circuits::bitcoin::header_chain::HeaderChain;
 use binius_frontend::{
-	circuits::bitcoin::header_chain::HeaderChain,
 	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
 	util::pack_bytes_into_wires_le,
 };
