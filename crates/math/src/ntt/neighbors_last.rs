@@ -15,7 +15,7 @@ use binius_utils::rayon::{
 use super::{AdditiveNTT, DomainContext};
 use crate::{FieldSlice, FieldSliceMut};
 
-const DEFAULT_LOG_BASE_LEN: usize = 4;
+const DEFAULT_LOG_BASE_LEN: usize = 8;
 
 /// Reference implementation of [`AdditiveNTT`].
 ///
