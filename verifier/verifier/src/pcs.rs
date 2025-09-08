@@ -31,7 +31,7 @@ use crate::{
 /// * `codeword_commitment` - VCS commitment to the codeword
 /// * `fri_params` - the FRI parameters
 /// * `vcs` - the vector commitment scheme
-pub fn verify_transcript<F, MTScheme, Challenger_>(
+pub fn verify<F, MTScheme, Challenger_>(
 	transcript: &mut VerifierTranscript<Challenger_>,
 	evaluation_claim: F,
 	eval_point: &[F],
