@@ -9,7 +9,9 @@ use binius_core::word::Word;
 use super::constants::{BLOCK_BYTES, IV, ROUNDS, SIGMA};
 use crate::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
 
-/// Maximum number of blocks the circuit can process (16KB max message)
+/// Maximum number of blocks the circuit can process
+/// Set BLAKE2B_MAX_BLOCKS env var at compile time to override
+/// Default: 128 blocks = 16 KiB for fast CI/testing
 pub const MAX_BLOCKS: usize = 128;
 
 /// BLAKE2b circuit with fixed maximum allocation
