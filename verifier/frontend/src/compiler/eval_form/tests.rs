@@ -197,49 +197,49 @@ fn test_assert_eq_cond() {
 #[test]
 fn test_select_msb_behavior() {
 	// Test that select uses MSB to choose between values
-	// select(dst, a, b, cond) writes a to dst if MSB(cond)=0, b if MSB(cond)=1
+	// select(dst, cond, t, f) writes f to dst if MSB(cond)=0, t if MSB(cond)=1
 
-	// MSB=0 should select 'a' (wire 0)
+	// MSB=0 should select 'f' (wire 1)
 	InterpreterTest::new()
 		.with_values(vec![
-			Word(42),        // wire 0: a
-			Word(99),        // wire 1: b
+			Word(42),        // wire 0: t
+			Word(99),        // wire 1: f
 			msb_false(0xFF), // wire 2: cond with MSB=0
 			Word::ZERO,      // wire 3: dst (will be overwritten)
 		])
-		.select(3, 0, 1, 2) // dst=3, a=0, b=1, cond=2
-		.expect_values(vec![(3, Word(42))]); // dst should have value of a
+		.select(3, 2, 0, 1) // dst=3, cond=2, t=0, f=1
+		.expect_values(vec![(3, Word(99))]); // dst should have value of f
 
-	// MSB=1 should select 'b' (wire 1)
+	// MSB=1 should select 't' (wire 0)
 	InterpreterTest::new()
 		.with_values(vec![
-			Word(42),    // wire 0: a
-			Word(99),    // wire 1: b
+			Word(42),    // wire 0: t
+			Word(99),    // wire 1: f
 			msb_true(0), // wire 2: cond with MSB=1
 			Word::ZERO,  // wire 3: dst
 		])
-		.select(3, 0, 1, 2)
-		.expect_values(vec![(3, Word(99))]); // dst should have value of b
+		.select(3, 2, 0, 1)
+		.expect_values(vec![(3, Word(42))]); // dst should have value of t
 
-	// Test with all bits except MSB set (should still select 'a')
+	// Test with all bits except MSB set (should still select 'f')
 	InterpreterTest::new()
 		.with_values(vec![
-			Word(1),                  // wire 0: a
-			Word(2),                  // wire 1: b
+			Word(1),                  // wire 0: t
+			Word(2),                  // wire 1: f
 			Word(0x7FFFFFFFFFFFFFFF), // wire 2: cond (all bits except MSB)
 			Word::ZERO,               // wire 3: dst
 		])
-		.select(3, 0, 1, 2)
-		.expect_values(vec![(3, Word(1))]);
+		.select(3, 2, 0, 1)
+		.expect_values(vec![(3, Word(2))]);
 
-	// Test with all bits set (should select 'b')
+	// Test with all bits set (should select 't')
 	InterpreterTest::new()
 		.with_values(vec![
-			Word(100),                // wire 0: a
-			Word(200),                // wire 1: b
+			Word(100),                // wire 0: t
+			Word(200),                // wire 1: f
 			Word(0xFFFFFFFFFFFFFFFF), // wire 2: cond (all bits set)
 			Word::ZERO,               // wire 3: dst
 		])
-		.select(3, 0, 1, 2)
-		.expect_values(vec![(3, Word(200))]);
+		.select(3, 2, 0, 1)
+		.expect_values(vec![(3, Word(100))]);
 }

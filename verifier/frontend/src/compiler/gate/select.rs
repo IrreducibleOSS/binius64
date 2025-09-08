@@ -64,7 +64,7 @@ pub fn emit_eval_bytecode(
 	let [cond, t, f] = inputs else { unreachable!() };
 	let [out] = outputs else { unreachable!() };
 
-	builder.emit_select(wire_to_reg(*out), wire_to_reg(*f), wire_to_reg(*t), wire_to_reg(*cond));
+	builder.emit_select(wire_to_reg(*out), wire_to_reg(*cond), wire_to_reg(*t), wire_to_reg(*f));
 }
 
 #[cfg(test)]
