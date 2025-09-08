@@ -20,13 +20,12 @@ use crate::{
 	Error, merkle_tree::MerkleTreeProver, protocols::basefold::prover::BaseFoldProver, ring_switch,
 };
 
-/// Ring switched PCS prover for non-interactively proving an evaluation claim of a one bit
-/// polynomial.
+/// Prover for the FRI-Binius 1-bit multilinear polynomial commitment scheme.
 ///
-/// The prover combines ring switching and basefold to prove a small field multilinear evaluation
-/// at a large field point. The prover first performs the ring switching phase of the proof,
-/// establishing completeness. Then, the large field pcs (basefold) is invoked to establish
-/// soundness.
+/// The polynomial commitment scheme composes the ring switching reduction with the BaseFold
+/// interactive argument.
+///
+/// See [`binius_verifier::pcs`] module documentation for more details.
 pub struct OneBitPCSProver<'a, NTT, MerkleProver, VCS>
 where
 	NTT: AdditiveNTT<Field = B128> + Sync,
@@ -44,7 +43,7 @@ where
 	MerkleProver: MerkleTreeProver<B128, Scheme = VCS>,
 	VCS: MerkleTreeScheme<B128, Digest: SerializeBytes>,
 {
-	/// Create a new ring switched PCS prover.
+	/// Creates a new PCS prover.
 	///
 	/// ## Arguments
 	///
@@ -65,10 +64,7 @@ where
 		}
 	}
 
-	/// Prove the ring switched PCS with a transcript.
-	///
-	/// The prover begins by performing the ring switching phase of the proof, establishing
-	/// completeness. Then, the large field pcs (basefold) is invoked to establish soundness.
+	/// Prove the committed polynomial's evaluation at a given point.
 	///
 	/// ## Arguments
 	///
@@ -79,17 +75,17 @@ where
 	///   elements is `packed_multilin.len() * B128::N_BITS`.
 	/// * `evaluation_point` - the evaluation point of the B1 multilinear
 	/// * `transcript` - the transcript of the prover's proof
-	pub fn prove_with_transcript<P, TranscriptChallenger>(
+	pub fn prove<P, Challenger_>(
 		&self,
 		committed_codeword: &'a [P],
 		committed: &'a MerkleProver::Committed,
 		packed_multilin: FieldBuffer<P>,
 		evaluation_point: Vec<B128>,
-		transcript: &mut ProverTranscript<TranscriptChallenger>,
+		transcript: &mut ProverTranscript<Challenger_>,
 	) -> Result<(), Error>
 	where
 		P: PackedField<Scalar = B128>,
-		TranscriptChallenger: Challenger,
+		Challenger_: Challenger,
 	{
 		assert_eq!(
 			packed_multilin.log_len() + <B128 as ExtensionField<B1>>::LOG_DEGREE,
@@ -278,24 +274,24 @@ mod test {
 			codeword,
 		} = fri::commit_interleaved(&fri_params, &ntt, &merkle_prover, packed_mle.to_ref())?;
 
-		let mut prover_challenger = ProverTranscript::new(StdChallenger::default());
-		prover_challenger.message().write(&codeword_commitment);
+		let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
+		prover_transcript.message().write(&codeword_commitment);
 
 		let ring_switch_pcs_prover = OneBitPCSProver::new(&ntt, &merkle_prover, &fri_params);
-		ring_switch_pcs_prover.prove_with_transcript(
+		ring_switch_pcs_prover.prove(
 			&codeword,
 			&codeword_committed,
 			packed_mle,
 			evaluation_point.clone(),
-			&mut prover_challenger,
+			&mut prover_transcript,
 		)?;
 
-		let mut verifier_challenger = prover_challenger.into_verifier();
+		let mut verifier_transcript = prover_transcript.into_verifier();
 
-		let retrieved_codeword_commitment = verifier_challenger.message().read()?;
+		let retrieved_codeword_commitment = verifier_transcript.message().read()?;
 
 		verify(
-			&mut verifier_challenger,
+			&mut verifier_transcript,
 			evaluation_claim,
 			&evaluation_point,
 			retrieved_codeword_commitment,
