@@ -168,7 +168,7 @@ where
 		.entered();
 		let log_n_constraints = checked_log_2(self.constraint_system.n_mul_constraints());
 		let intmul_output =
-			verify_intmul_reduction(LOG_WORD_SIZE_BITS, log_n_constraints, transcript).unwrap();
+			verify_intmul_reduction(LOG_WORD_SIZE_BITS, log_n_constraints, transcript)?;
 		drop(intmul_guard);
 
 		// [phase] Verify BitAnd Reduction - AND constraint verification
