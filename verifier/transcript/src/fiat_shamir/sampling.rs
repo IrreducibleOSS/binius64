@@ -5,6 +5,8 @@
 //!
 //! These interfaces are taken from [p3_challenger](https://github.com/Plonky3/Plonky3/blob/main/challenger/src/lib.rs) in [Plonky3].
 //!
+//! Plonky3 is dual-licensed under MIT OR Apache 2.0. We use it under Apache 2.0.
+//!
 //! [Plonky3]: <https://github.com/plonky3/plonky3>
 
 use std::array;

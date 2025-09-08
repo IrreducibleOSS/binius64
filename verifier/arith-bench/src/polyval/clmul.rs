@@ -18,6 +18,11 @@
 //!
 //! This implementation is adapted from the RustCrypto/universal-hashes repository:
 //! <https://github.com/RustCrypto/universal-hashes>.
+//!
+//! The RustCrypto implementation was based on work by Eric Lagergren.
+//!
+//! Modified by Irreducible Inc. (2024-2025): Adapted from x86-specific intrinsics
+//! to use generic Underlier traits for hardware-agnostic implementation.
 
 use crate::underlier::{OpsClmul, PackedUnderlier, Underlier};
 
