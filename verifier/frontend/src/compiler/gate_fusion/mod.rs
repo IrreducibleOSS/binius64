@@ -16,6 +16,7 @@
 //! constraint which means we don't have to commit that value and thus we don't need an AND
 //! constraint!
 
+use cranelift_entity::EntitySet;
 use legraph::LeGraph;
 
 use crate::compiler::{Wire, constraint_builder::ConstraintBuilder};
@@ -30,11 +31,12 @@ mod tests;
 
 use stat::Stat;
 
-pub fn run_pass(cb: &mut ConstraintBuilder, all_one: Wire) {
+pub fn run_pass(cb: &mut ConstraintBuilder, pinned_wires: &EntitySet<Wire>, all_one: Wire) {
 	let mut stat = Stat::new(cb);
 
 	let mut leg = LeGraph::new(cb, &mut stat);
 	commit_set::run_decide_commit_set(&mut leg, &mut stat);
+	leg.lin_committed.extend(pinned_wires.iter());
 	let patches = patch::build(cb, &leg, all_one);
 	patch::apply_patches(cb, patches);
 }

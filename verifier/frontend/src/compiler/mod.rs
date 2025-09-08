@@ -6,6 +6,7 @@ use std::{
 };
 
 use binius_core::{constraint_system::ConstraintSystem, word::Word};
+use cranelift_entity::EntitySet;
 
 use crate::compiler::{
 	circuit::Circuit,
@@ -66,6 +67,7 @@ impl Options {
 pub(crate) struct Shared {
 	pub(crate) graph: GateGraph,
 	pub(crate) opts: Options,
+	pub(crate) force_committed: EntitySet<Wire>,
 }
 
 /// # Clone
@@ -95,7 +97,11 @@ impl CircuitBuilder {
 		let root = graph.path_spec_tree.root();
 		CircuitBuilder {
 			current_path: root,
-			shared: Rc::new(RefCell::new(Some(Shared { graph, opts }))),
+			shared: Rc::new(RefCell::new(Some(Shared {
+				graph,
+				opts,
+				force_committed: EntitySet::new(),
+			}))),
 		}
 	}
 
@@ -128,7 +134,7 @@ impl CircuitBuilder {
 
 		// Perform fusion if the corresponding feature flag is turned on.
 		if shared.opts.enable_gate_fusion {
-			gate_fusion::run_pass(&mut builder, all_one);
+			gate_fusion::run_pass(&mut builder, &shared.force_committed, all_one);
 		}
 
 		let constrained_wires = builder.mark_used_wires();
@@ -196,6 +202,19 @@ impl CircuitBuilder {
 			current_path: nested_path,
 			shared: self.shared.clone(),
 		}
+	}
+
+	/// Force commit the given wire.
+	///
+	/// This annotate the wire to be forcefully committed. This instructs optimization passes
+	/// (ATOW only gate fusion) to forcibly materialize wire.
+	pub fn force_commit(&self, wire: Wire) {
+		self.shared
+			.borrow_mut()
+			.as_mut()
+			.unwrap()
+			.force_committed
+			.insert(wire);
 	}
 
 	fn graph_mut(&self) -> RefMut<'_, GateGraph> {
