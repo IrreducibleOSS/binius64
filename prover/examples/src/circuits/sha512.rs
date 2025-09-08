@@ -23,7 +23,7 @@ pub struct Params {
 	/// Build circuit for exact message length (makes length a compile-time constant instead of
 	/// runtime witness).
 	#[arg(long, default_value_t = false)]
-	pub exact_len_bytes: bool,
+	pub exact_len: bool,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -44,7 +44,7 @@ impl ExampleCircuit for Sha512Example {
 
 	fn build(params: Params, builder: &mut CircuitBuilder) -> Result<Self> {
 		let max_len = params.max_len_bytes.div_ceil(8);
-		let len_bytes = if params.exact_len_bytes {
+		let len_bytes = if params.exact_len {
 			builder.add_constant_64(params.max_len_bytes as u64)
 		} else {
 			builder.add_witness()
