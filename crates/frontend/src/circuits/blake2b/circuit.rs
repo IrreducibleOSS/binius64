@@ -10,12 +10,9 @@ use super::constants::{BLOCK_BYTES, IV, ROUNDS, SIGMA};
 use crate::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
 
 /// Maximum number of blocks the circuit can process
-/// Inferred from BLAKE2B_MAX_BYTES env var (bytes / 128)
-/// Default: 16 blocks = 2 KiB for fast CI/testing
-pub const MAX_BLOCKS: usize = option_env!("BLAKE2B_MAX_BYTES")
-	.and_then(|s| s.parse::<usize>().ok())
-	.map(|bytes| bytes.div_ceil(128))
-	.unwrap_or(16);
+/// Set BLAKE2B_MAX_BLOCKS env var at compile time to override
+/// Default: 128 blocks = 16 KiB for fast CI/testing
+pub const MAX_BLOCKS: usize = 128;
 
 /// BLAKE2b circuit with fixed maximum allocation
 pub struct Blake2bCircuit {
