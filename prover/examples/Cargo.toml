@@ -57,14 +57,6 @@ default = ["rayon"]
 perfetto = ["tracing-profile/perfetto"]
 rayon = ["binius-prover/rayon", "binius-verifier/rayon"]
 
-[[example]]
-name = "prover"
-path = "examples/prover.rs"
-
-[[example]]
-name = "verifier"
-path = "examples/verifier.rs"
-
 # Tutorial examples
 [[example]]
 name = "getting_started_first_circuits"
