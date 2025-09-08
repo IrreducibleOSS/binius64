@@ -4,7 +4,7 @@ Number of gates: 2385261
 Number of evaluation instructions: 2886906
 Number of AND constraints: 1557465
 Number of MUL constraints: 0
-Number of distinct shifted value indices: 14239376
+Number of distinct shifted value indices: 6611606
 Length of value vec: 2097152
   Constants: 376
   Inout: 20
