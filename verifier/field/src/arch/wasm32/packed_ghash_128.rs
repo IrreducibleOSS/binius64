@@ -1,10 +1,10 @@
 // Copyright 2023-2025 Irreducible Inc.
 // Copyright (c) 2019-2023 RustCrypto Developers
 
-//! ARMv8 `PMULL`-accelerated implementation of GHASH.
+//! WASM32 implementation of GHASH.
 //!
-//! Based on the optimized GHASH implementation using carryless multiplication
-//! instructions available on ARMv8 processors with NEON support.
+//! Based on the portable GHASH implementation adapted for WebAssembly
+//! using WASM SIMD instructions where available.
 
 use std::{arch::wasm32::*, ops::Mul};
 

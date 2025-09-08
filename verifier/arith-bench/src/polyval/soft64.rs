@@ -23,6 +23,9 @@
 //! <https://bearssl.org/gitweb/?p=BearSSL;a=blob;f=src/hash/ghash_ctmul64.c;hb=4b6046412>
 //!
 //! Copyright (c) 2016 Thomas Pornin <pornin@bolet.org>
+//!
+//! Modified by Irreducible Inc. (2024-2025): Extracted core multiplication
+//! algorithm and adapted for standalone use in the Binius field framework.
 
 use crate::arch::portable64::{U64x2, bmul64, rev64};
 

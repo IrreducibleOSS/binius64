@@ -11,6 +11,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// Modified by Irreducible Inc. (2025): Translated from C++ to Rust
+// Original: lib/gf2k/sysdep.h from google/longfellow-zk
 
 //! Hardware-accelerated GHASH multiplication using CLMUL instructions.
 //!
