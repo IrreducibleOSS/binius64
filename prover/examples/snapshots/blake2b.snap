@@ -1,0 +1,13 @@
+blake2b circuit
+--
+Number of gates: 1363
+Number of evaluation instructions: 1363
+Number of AND constraints: 1064
+Number of MUL constraints: 0
+Number of distinct shifted value indices: 4121
+Length of value vec: 2048
+  Constants: 12
+  Inout: 0
+  Witness: 24
+  Internal: 1056
+  Scratch: 1451

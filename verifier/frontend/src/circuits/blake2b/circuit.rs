@@ -9,212 +9,210 @@ use binius_core::word::Word;
 use super::constants::{BLOCK_BYTES, IV, ROUNDS, SIGMA};
 use crate::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
 
-/// Maximum number of blocks the circuit can process
-/// Set BLAKE2B_MAX_BLOCKS env var at compile time to override
-/// Default: 128 blocks = 16 KiB for fast CI/testing
-pub const MAX_BLOCKS: usize = 128;
-
-/// BLAKE2b circuit with fixed maximum allocation
+/// BLAKE2b circuit following single-block pattern
+/// Processes messages block-by-block like Blake2s
 pub struct Blake2bCircuit {
-	/// Message blocks (16 words of 64 bits each per block)
-	pub message_blocks: [[Wire; 16]; MAX_BLOCKS],
+	/// Message size in bytes this circuit supports
+	pub length: usize,
 
-	/// Number of blocks actually used (0 to MAX_BLOCKS)
-	pub num_blocks: Wire,
+	/// Witness wires for the input message (little-endian 64-bit words)
+	pub message: Vec<Wire>,
 
-	/// Total message length in bytes
-	pub message_length: Wire,
-
-	/// Initial hash state (can be keyed)
-	pub initial_state: [Wire; 8],
-
-	/// Final hash output
-	pub output: [Wire; 8],
+	/// Witness wires for the expected 512-bit digest (8 × 64-bit words)
+	pub digest: [Wire; 8],
 }
 
 impl Blake2bCircuit {
 	/// Create a new BLAKE2b circuit with standard 64-byte output
 	pub fn new(builder: &CircuitBuilder) -> Self {
-		Self::new_with_params(builder, 64)
+		Self::new_with_length(builder, BLOCK_BYTES) // Default to 1 block
 	}
 
-	/// Create a new BLAKE2b circuit with specified output length
-	pub fn new_with_params(builder: &CircuitBuilder, outlen: usize) -> Self {
+	/// Create a new BLAKE2b circuit for messages up to `max_msg_len_bytes`
+	pub fn new_with_length(builder: &CircuitBuilder, max_msg_len_bytes: usize) -> Self {
+		Self::new_with_params(builder, max_msg_len_bytes, 64)
+	}
+
+	/// Create a new BLAKE2b circuit with specified message length and output length
+	pub fn new_with_params(
+		builder: &CircuitBuilder,
+		max_msg_len_bytes: usize,
+		outlen: usize,
+	) -> Self {
 		assert!(outlen > 0 && outlen <= 64, "Output length must be 1-64 bytes");
+		// Allow zero-length messages
 
-		// Allocate message blocks
-		let message_blocks =
-			core::array::from_fn(|_| core::array::from_fn(|_| builder.add_witness()));
+		// Create witness wires for message (packed as 64-bit words)
+		// For empty messages, we still need at least one wire for padding
+		let num_message_words = max_msg_len_bytes.div_ceil(8).max(1);
+		let message: Vec<Wire> = (0..num_message_words)
+			.map(|_| builder.add_witness())
+			.collect();
 
-		let num_blocks = builder.add_witness();
-		let message_length = builder.add_witness();
+		// Create witness wires for digest
+		let digest = std::array::from_fn(|_| builder.add_witness());
 
-		// Initialize state with IVs XORed with parameter block
-		// Parameter block: 0x0101kknn where nn=outlen, kk=keylen (0), fanout=depth=1
-		let param_block = 0x01010000 | (outlen as u64);
-
-		let initial_state = core::array::from_fn(|i| {
-			if i == 0 {
-				builder.add_constant(Word(IV[i] ^ param_block))
-			} else {
-				builder.add_constant(Word(IV[i]))
-			}
-		});
-
-		// Process the message
-		let mut h = initial_state;
-		process_message(builder, &message_blocks, num_blocks, message_length, &mut h);
-
-		let output = h;
+		// Build the circuit
+		Self::build_circuit(builder, max_msg_len_bytes, &message, digest, outlen);
 
 		Self {
-			message_blocks,
-			num_blocks,
-			message_length,
-			initial_state,
-			output,
+			length: max_msg_len_bytes,
+			message,
+			digest,
 		}
 	}
 
 	/// Populate the message data into the witness
 	pub fn populate_message(&self, w: &mut WitnessFiller, message: &[u8]) {
-		let blocks = Self::prepare_message_blocks(message);
+		assert!(message.len() <= self.length, "Message exceeds circuit capacity");
 
-		// Populate message blocks
-		for (block_idx, block) in blocks.iter().enumerate() {
-			for (word_idx, &word) in block.iter().enumerate() {
-				w[self.message_blocks[block_idx][word_idx]] = Word(word);
+		// Pack message bytes into 64-bit words (little-endian)
+		for (i, chunk) in message.chunks(8).enumerate() {
+			let mut word_value = 0u64;
+			for (j, &byte) in chunk.iter().enumerate() {
+				word_value |= (byte as u64) << (j * 8);
 			}
+			w[self.message[i]] = Word(word_value);
 		}
-		// Unused blocks are automatically initialized to zero
+
+		// Pad remaining message words with zeros
+		for i in message.len().div_ceil(8)..self.message.len() {
+			w[self.message[i]] = Word(0);
+		}
 	}
 
-	/// Populate the message length into the witness
-	pub fn populate_length(&self, w: &mut WitnessFiller, message: &[u8]) {
-		w[self.message_length] = Word(message.len() as u64);
-		w[self.num_blocks] = Word(Self::calculate_num_blocks(message.len()));
-	}
-
-	/// Populate the expected digest output for verification (if needed)
+	/// Populate the expected digest output for verification
 	pub fn populate_digest(&self, w: &mut WitnessFiller, digest: &[u8; 64]) {
-		// Note: The output is computed by the circuit, not populated directly
-		// This method is provided for completeness but typically isn't needed
-		// as the circuit computes the digest from the message
-		for (i, &byte) in digest.iter().enumerate() {
-			let word_idx = i / 8;
-			let byte_idx = i % 8;
-			let current = w[self.output[word_idx]].0;
-			let mask = !(0xFFu64 << (byte_idx * 8));
-			let new_val = (current & mask) | ((byte as u64) << (byte_idx * 8));
-			w[self.output[word_idx]] = Word(new_val);
+		// Pack digest bytes into 64-bit words (little-endian)
+		for i in 0..8 {
+			let mut word_value = 0u64;
+			for j in 0..8 {
+				word_value |= (digest[i * 8 + j] as u64) << (j * 8);
+			}
+			w[self.digest[i]] = Word(word_value);
 		}
 	}
 
-	/// Helper to prepare message blocks from raw bytes
-	fn prepare_message_blocks(message: &[u8]) -> Vec<[u64; 16]> {
-		let mut blocks = Vec::new();
-		let mut offset = 0;
-
-		// Process all complete blocks except the last one
-		while offset + 128 < message.len() {
-			let mut block = [0u64; 16];
-
-			// Copy 128 bytes to block (16 words × 8 bytes)
-			for i in 0..128 {
-				let byte_val = message[offset + i];
-				let word_idx = i / 8;
-				let byte_idx = i % 8;
-				block[word_idx] |= (byte_val as u64) << (byte_idx * 8);
-			}
-
-			blocks.push(block);
-			offset += 128;
-		}
-
-		// Handle the final block (always exists, may be partial or full)
-		// This includes the case where we have exactly 128*n bytes
-		{
-			let mut block = [0u64; 16];
-			let remaining = message.len() - offset;
-
-			// Copy remaining bytes
-			for i in 0..remaining {
-				let byte_val = message[offset + i];
-				let word_idx = i / 8;
-				let byte_idx = i % 8;
-				block[word_idx] |= (byte_val as u64) << (byte_idx * 8);
-			}
-
-			blocks.push(block);
-		}
-
-		blocks
-	}
-
-	/// Calculate the number of blocks needed for a message
-	fn calculate_num_blocks(message_len: usize) -> u64 {
-		if message_len == 0 {
+	/// Build the BLAKE2b circuit constraints.
+	///
+	/// This constructs the circuit that verifies a fixed-length message
+	/// produces the expected BLAKE2b digest. The circuit handles:
+	///
+	/// 1. Message padding to 128-byte blocks
+	/// 2. Sequential block processing (one compression per block)
+	/// 3. Proper counter management for multi-block messages
+	/// 4. Final block detection and processing
+	fn build_circuit(
+		builder: &CircuitBuilder,
+		length: usize,
+		message: &[Wire],
+		expected_digest: [Wire; 8],
+		outlen: usize,
+	) {
+		// Calculate number of blocks needed
+		let num_blocks = if length == 0 {
 			1
 		} else {
-			message_len.div_ceil(128) as u64
+			length.div_ceil(BLOCK_BYTES)
+		};
+		let zero = builder.add_constant(Word::ZERO);
+
+		// Initialize state with IVs XORed with parameter block
+		// Parameter block: 0x0101kknn where nn=outlen, kk=keylen (0), fanout=depth=1
+		let param_block = 0x01010000 | (outlen as u64);
+
+		let init_state = [
+			builder.add_constant(Word(IV[0] ^ param_block)),
+			builder.add_constant(Word(IV[1])),
+			builder.add_constant(Word(IV[2])),
+			builder.add_constant(Word(IV[3])),
+			builder.add_constant(Word(IV[4])),
+			builder.add_constant(Word(IV[5])),
+			builder.add_constant(Word(IV[6])),
+			builder.add_constant(Word(IV[7])),
+		];
+
+		let mut h = init_state;
+		let mut final_digest = [zero; 8];
+
+		// Process each block sequentially
+		for block_idx in 0..num_blocks {
+			// Prepare message block with proper padding
+			let mut m = [zero; 16];
+
+			// Fill message words from input
+			for word_idx in 0..16 {
+				let byte_start = block_idx * BLOCK_BYTES + word_idx * 8;
+
+				if byte_start < length {
+					// Get the corresponding 64-bit word from message
+					let msg_word_idx = byte_start / 8;
+
+					if msg_word_idx < message.len() {
+						let msg_word = message[msg_word_idx];
+
+						// Handle partial word at message boundary
+						if byte_start + 8 > length {
+							// Need to mask off bytes beyond message length
+							let valid_bytes = length - byte_start;
+							let mask = builder.add_constant(Word((1u64 << (valid_bytes * 8)) - 1));
+							m[word_idx] = builder.band(msg_word, mask);
+						} else {
+							m[word_idx] = msg_word;
+						}
+					}
+				}
+				// Else m[word_idx] remains zero (padding)
+			}
+
+			// Determine if this is the final block
+			let is_final_block = block_idx == num_blocks - 1;
+
+			// Set up byte counter
+			let t_low = if is_final_block {
+				builder.add_constant(Word(length as u64))
+			} else {
+				builder.add_constant(Word(((block_idx + 1) * BLOCK_BYTES) as u64))
+			};
+			let t_high = zero; // Always 0 for messages < 2^64 bytes
+
+			// Set finalization flag
+			let last_flag = if is_final_block {
+				builder.add_constant(Word(0xFFFFFFFFFFFFFFFF))
+			} else {
+				zero
+			};
+
+			// Process the block
+			h = compress(builder, &h, &m, t_low, t_high, last_flag);
+
+			// Save as final digest if this is the last block
+			if is_final_block {
+				final_digest.copy_from_slice(&h);
+			}
+		}
+
+		// Assert that the computed digest matches the expected digest
+		for i in 0..8 {
+			builder.assert_eq(format!("digest[{}]", i), final_digest[i], expected_digest[i]);
 		}
 	}
 }
 
-/// Process variable-length message with masking
-fn process_message(
+/// BLAKE2b compression function - processes a single 128-byte block
+fn compress(
 	builder: &CircuitBuilder,
-	message_blocks: &[[Wire; 16]; MAX_BLOCKS],
-	num_blocks: Wire,
-	message_length: Wire,
-	h: &mut [Wire; 8],
-) {
-	let zero = builder.add_constant(Word::ZERO);
-
-	for i in 0..MAX_BLOCKS {
-		// Check if this block is active
-		let block_index = builder.add_constant(Word(i as u64));
-		let is_active = builder.icmp_ult(block_index, num_blocks);
-
-		// Calculate byte counter for this block
-		// For block i: if i < num_blocks-1, counter = (i+1) * 128
-		//             if i == num_blocks-1, counter = message_length
-		let next_block_index = builder.add_constant(Word((i + 1) as u64));
-		let is_last = builder.icmp_eq(next_block_index, num_blocks);
-
-		let block_counter_normal = builder.add_constant(Word(((i + 1) * BLOCK_BYTES) as u64));
-		let block_counter = builder.select(is_last, message_length, block_counter_normal);
-
-		// Save current state
-		let h_before = *h;
-
-		// Compress this block (will be no-op if not active due to masking)
-		compress(builder, h, &message_blocks[i], block_counter, zero, is_last);
-
-		// Select between updated and original state based on is_active
-		for j in 0..8 {
-			h[j] = builder.select(is_active, h[j], h_before[j]);
-		}
-	}
-}
-
-/// BLAKE2b compression function
-pub fn compress(
-	builder: &CircuitBuilder,
-	h: &mut [Wire; 8],
+	h: &[Wire; 8],
 	m: &[Wire; 16],
 	t_low: Wire,
 	t_high: Wire,
 	last_block_flag: Wire,
-) {
+) -> [Wire; 8] {
 	// Initialize working vector
 	let mut v = [builder.add_constant(Word::ZERO); 16];
 
 	// v[0..8] = h[0..8]
-	#[allow(clippy::manual_memcpy)]
-	for i in 0..8 {
-		v[i] = h[i];
-	}
+	v[0..8].copy_from_slice(h);
 
 	// v[8..16] = IV[0..8]
 	for i in 0..8 {
@@ -226,7 +224,7 @@ pub fn compress(
 	v[13] = builder.bxor(v[13], t_high);
 
 	// Conditionally invert v[14] for last block
-	v[14] = builder.select(last_block_flag, builder.bnot(v[14]), v[14]);
+	v[14] = builder.bxor(v[14], last_block_flag);
 
 	// 12 rounds of mixing
 	for round in 0..ROUNDS {
@@ -244,9 +242,12 @@ pub fn compress(
 	}
 
 	// Finalization: h[i] = h[i] XOR v[i] XOR v[i+8]
+	let mut h_new = [builder.add_constant(Word::ZERO); 8];
 	for i in 0..8 {
-		h[i] = builder.bxor_multi(&[h[i], v[i], v[i + 8]]);
+		h_new[i] = builder.bxor_multi(&[h[i], v[i], v[i + 8]]);
 	}
+
+	h_new
 }
 
 /// BLAKE2b G mixing function
@@ -277,7 +278,7 @@ pub fn g_mixing(
 ) {
 	let zero = builder.add_constant(Word::ZERO);
 
-	// a = a + b + x (use separate additions without carry chaining)
+	// a = a + b + x
 	let (temp1, _) = builder.iadd_cin_cout(v[a], v[b], zero);
 	let (v_a_new1, _) = builder.iadd_cin_cout(temp1, x, zero);
 	v[a] = v_a_new1;
@@ -294,7 +295,7 @@ pub fn g_mixing(
 	let xor2 = builder.bxor(v[b], v[c]);
 	v[b] = builder.rotr(xor2, 24);
 
-	// a = a + b + y (use separate additions without carry chaining)
+	// a = a + b + y
 	let (temp2, _) = builder.iadd_cin_cout(v[a], v[b], zero);
 	let (v_a_new2, _) = builder.iadd_cin_cout(temp2, y, zero);
 	v[a] = v_a_new2;
