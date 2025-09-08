@@ -102,6 +102,38 @@ fn test_mul_single_case() {
 }
 
 #[test]
+fn test_karatsuba_sqr_single_case() {
+	let builder = CircuitBuilder::new();
+
+	let n = 64;
+	let a = BigUint::new_witness(&builder, n);
+	let mul = karatsuba_mul(&builder, &a, &a);
+
+	let cs = builder.build();
+	let mut w = cs.new_witness_filler();
+
+	for &l in &a.limbs {
+		w[l] = Word::ALL_ONE;
+	}
+
+	// (2**n - 1)**2 = 2**2n - 2**(n+1) + 1
+
+	cs.populate_wire_witness(&mut w).unwrap();
+
+	assert_eq!(w[mul.limbs[0]], Word::ONE);
+
+	for i in 1..n {
+		assert_eq!(w[mul.limbs[i]], Word::ZERO);
+	}
+
+	assert_eq!(w[mul.limbs[n]] ^ Word::ONE, Word::ALL_ONE);
+
+	for i in n + 1..2 * n {
+		assert_eq!(w[mul.limbs[i]], Word::ALL_ONE);
+	}
+}
+
+#[test]
 fn test_prime_field() {
 	let mut rng = StdRng::seed_from_u64(0);
 
@@ -393,6 +425,39 @@ proptest! {
 		}
 
 		assert!(cs.populate_wire_witness(&mut w).is_err());
+	}
+
+	#[test]
+	fn prop_mul_and_karatsuba_mul_agree(
+		(a_vals, b_vals) in (0usize..6)
+			.prop_flat_map(|log_limbs_len| {
+				let limbs_len = 1 << log_limbs_len;
+				let a = prop::collection::vec(any::<u64>(), limbs_len);
+				let b = prop::collection::vec(any::<u64>(), limbs_len);
+				(a, b)
+			})
+	) {
+		let builder = CircuitBuilder::new();
+
+		assert_eq!(a_vals.len(), b_vals.len());
+
+		let a = BigUint::new_witness(&builder, a_vals.len());
+		let b = BigUint::new_witness(&builder, b_vals.len());
+
+		let textbook_product = mul(&builder, &a, &b);
+		let karatsuba_product = karatsuba_mul(&builder, &a, &b);
+		let equal = biguint_eq(&builder, &textbook_product, &karatsuba_product);
+
+		builder.assert_true("karatsuba_mul() conforms to mul()", equal);
+
+		let cs = builder.build();
+		let mut w = cs.new_witness_filler();
+
+		a.populate_limbs(&mut w, &a_vals);
+		b.populate_limbs(&mut w, &b_vals);
+
+		cs.populate_wire_witness(&mut w).unwrap();
+		verify_constraints(cs.constraint_system(), &w.into_value_vec()).unwrap();
 	}
 
 	#[test]
