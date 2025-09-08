@@ -3,7 +3,7 @@ use binius_field::{BinaryField, PackedField};
 use binius_math::{
 	BinarySubspace, FieldBuffer,
 	ntt::{
-		AdditiveNTT, NeighborsLastMultiThread, NeighborsLastSingleThread,
+		AdditiveNTT, DomainContext, NeighborsLastMultiThread, NeighborsLastSingleThread,
 		domain_context::GenericPreExpanded,
 	},
 	test_utils::random_field_buffer,
@@ -39,15 +39,14 @@ fn bench_ntts<P: PackedField>(
 	thread_pool: &ThreadPool,
 	num_threads: usize,
 	data: &mut FieldBuffer<P>,
+	domain_context: &(impl DomainContext<Field = P::Scalar> + Sync),
+	domain_context_name: &str,
 	skip_early: usize,
 	skip_late: usize,
 ) where
 	P::Scalar: BinaryField,
 {
 	let log_d = data.log_len();
-
-	let subspace = BinarySubspace::with_dim(log_d - skip_late).unwrap();
-	let domain_context_generic = GenericPreExpanded::generate_from_subspace(&subspace);
 
 	let parameter = format!(
 		"threads={num_threads}/log_d={log_d}/skip_early={skip_early}/skip_late={skip_late}"
@@ -63,48 +62,30 @@ fn bench_ntts<P: PackedField>(
 	};
 	group.throughput(throughput);
 
-	macro_rules! run_bench {
-		($ntt:ident, $ntt_name:expr) => {
-			group.bench_function(BenchmarkId::new($ntt_name, &parameter), |b| {
-				thread_pool.install(|| {
-					b.iter(|| $ntt.forward_transform(data.to_mut(), skip_early, skip_late))
-				})
-			});
+	for log_base_len in [4, 8, 12, 16] {
+		// single-threaded
+		let ntt = NeighborsLastSingleThread {
+			domain_context,
+			log_base_len,
 		};
-	}
+		let ntt_name = format!("singlethread/log_base_len={log_base_len}/{domain_context_name}");
+		group.bench_function(BenchmarkId::new(&ntt_name, &parameter), |b| {
+			thread_pool
+				.install(|| b.iter(|| ntt.forward_transform(data.to_mut(), skip_early, skip_late)))
+		});
 
-	macro_rules! run_bench_single_thread {
-		($($log_base_len:literal),*) => {
-			$(
-				{
-					let ntt: NeighborsLastSingleThread<_, $log_base_len> = NeighborsLastSingleThread {
-						domain_context: &domain_context_generic,
-					};
-					let ntt_name: &str = concat!("neighbors_last/singlethread/generic/log_base_len=", $log_base_len, "/precompute/forward");
-					run_bench!(ntt, ntt_name);
-				}
-			)*
+		// multi-threaded
+		let ntt = NeighborsLastMultiThread {
+			domain_context,
+			log_base_len,
+			log_num_shares: num_threads.ilog2() as usize,
 		};
+		let ntt_name = format!("multithread/log_base_len={log_base_len}/{domain_context_name}");
+		group.bench_function(BenchmarkId::new(&ntt_name, &parameter), |b| {
+			thread_pool
+				.install(|| b.iter(|| ntt.forward_transform(data.to_mut(), skip_early, skip_late)))
+		});
 	}
-
-	run_bench_single_thread!(0, 4, 8, 16);
-
-	macro_rules! run_bench_multi_thread {
-		($($log_base_len:literal),*) => {
-			$(
-				{
-					let ntt: NeighborsLastMultiThread<_, $log_base_len> = NeighborsLastMultiThread {
-						domain_context: &domain_context_generic,
-						log_num_shares: num_threads.ilog2() as usize,
-					};
-					let ntt_name: &str = concat!("neighbors_last/multithread/generic/log_base_len=", $log_base_len, "/precompute/forward");
-					run_bench!(ntt, ntt_name);
-				}
-			)*
-		};
-	}
-
-	run_bench_multi_thread!(0, 4, 8, 16);
 }
 
 /// Calls `bench_ntts` with a fixed `PackedField` but different parameters.
@@ -125,6 +106,9 @@ fn bench_params<P: PackedField>(
 			.unwrap();
 		for log_d in [18, 24, 27] {
 			let mut data = random_field_buffer::<P>(&mut rng, log_d);
+			let subspace = BinarySubspace::with_dim(log_d).unwrap();
+			let domain_context_generic = GenericPreExpanded::generate_from_subspace(&subspace);
+			let domain_context_name = "precompute";
 
 			if log_d >= 24 {
 				group.sample_size(10);
@@ -140,6 +124,8 @@ fn bench_params<P: PackedField>(
 						&thread_pool,
 						num_threads,
 						&mut data,
+						&domain_context_generic,
+						domain_context_name,
 						skip_early,
 						skip_late,
 					);
