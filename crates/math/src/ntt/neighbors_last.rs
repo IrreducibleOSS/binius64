@@ -2,6 +2,7 @@
 
 use std::{
 	cmp::{max, min},
+	ops::Range,
 	slice::from_raw_parts_mut,
 };
 
@@ -89,15 +90,14 @@ impl<DC: DomainContext> AdditiveNTT for NeighborsLastReference<DC> {
 
 /// Runs a **part** of an NTT butterfly network, in depth-first order.
 ///
-/// Concretely, it processes a specific block in the butterfly network, which is given by `layer`
-/// and `block`, but continues to process future layers of this memory chunk, until `layer_bound`
-/// (exclusive).
+/// Concretely, it processes a specific memory block in the butterfly network, which is given by
+/// `layer` and `block`. For this memory block, it processes the layers given by `layer_range`.
 ///
 /// For example, suppose `layer=2` and `block=2`.
 /// That means we are in an NTT butterfly network in layer 2 (the third layer) and block 2 (the
 /// third block in this layer, there are four blocks in total in this layer). `data` contains the
 /// data of this block, so it's only a chunk of the total data used in the NTT. Now suppose
-/// `layer_bound=5`. Then we will process the following butterfly blocks:
+/// `layer_range=2..5`. Then we will process the following butterfly blocks:
 /// - `layer=2` `block=2`
 /// - `layer=3` `block=4`
 /// - `layer=3` `block=5`
@@ -116,21 +116,23 @@ impl<DC: DomainContext> AdditiveNTT for NeighborsLastReference<DC> {
 ///
 /// - `2^(log_d) == data.len() * packing_width`
 /// - `data.len() >= 2`
-/// - `domain_context` holds all the twiddles up to `layer_bound` (exclusive)
+/// - `domain_context` holds all the twiddles up to `layer_range.end` (exclusive)
+/// - `layer <= layer_range.start`
 fn forward_depth_first<P: PackedField, const LOG_BASE_LEN: usize>(
 	domain_context: &impl DomainContext<Field = P::Scalar>,
 	data: &mut [P],
 	log_d: usize,
 	layer: usize,
 	block: usize,
-	layer_bound: usize,
+	mut layer_range: Range<usize>,
 ) {
 	// check preconditions
 	debug_assert_eq!(data.len() * (1 << P::LOG_WIDTH), 1 << log_d);
 	debug_assert!(data.len() >= 2);
-	debug_assert!(layer_bound <= domain_context.log_domain_size());
+	debug_assert!(layer_range.end <= domain_context.log_domain_size());
+	debug_assert!(layer <= layer_range.start);
 
-	if layer >= layer_bound {
+	if layer >= layer_range.end {
 		return;
 	}
 
@@ -138,23 +140,27 @@ fn forward_depth_first<P: PackedField, const LOG_BASE_LEN: usize>(
 	// we also need to do that if the number of scalars is just two times our packing width, i.e. if
 	// we only have two packed elements in our data slice
 	if log_d <= LOG_BASE_LEN || data.len() <= 2 {
-		forward_breadth_first(domain_context, data, log_d, layer, block, layer_bound);
+		forward_breadth_first(domain_context, data, log_d, layer, block, layer_range);
 		return;
 	}
 
-	// process only one layer of this block
 	let block_size_half = 1 << (log_d - 1 - P::LOG_WIDTH);
-	let twiddle = domain_context.twiddle(layer, block);
-	let twiddle = P::broadcast(twiddle);
-	for idx0 in 0..block_size_half {
-		let idx1 = block_size_half | idx0;
-		// perform butterfly
-		let mut u = data[idx0];
-		let mut v = data[idx1];
-		u += v * twiddle;
-		v += u;
-		data[idx0] = u;
-		data[idx1] = v;
+	if layer >= layer_range.start {
+		// process only one layer of this block
+		let twiddle = domain_context.twiddle(layer, block);
+		let twiddle = P::broadcast(twiddle);
+		for idx0 in 0..block_size_half {
+			let idx1 = block_size_half | idx0;
+			// perform butterfly
+			let mut u = data[idx0];
+			let mut v = data[idx1];
+			u += v * twiddle;
+			v += u;
+			data[idx0] = u;
+			data[idx1] = v;
+		}
+
+		layer_range.start += 1;
 	}
 
 	// then recurse
@@ -164,7 +170,7 @@ fn forward_depth_first<P: PackedField, const LOG_BASE_LEN: usize>(
 		log_d - 1,
 		layer + 1,
 		block << 1,
-		layer_bound,
+		layer_range.clone(),
 	);
 	forward_depth_first::<_, LOG_BASE_LEN>(
 		domain_context,
@@ -172,7 +178,7 @@ fn forward_depth_first<P: PackedField, const LOG_BASE_LEN: usize>(
 		log_d - 1,
 		layer + 1,
 		(block << 1) + 1,
-		layer_bound,
+		layer_range,
 	);
 }
 
@@ -183,23 +189,26 @@ fn forward_depth_first<P: PackedField, const LOG_BASE_LEN: usize>(
 /// - `2^(log_d) == data.len() * packing_width`
 /// - `data.len() >= 2`
 /// - `domain_context` holds all the twiddles up to `layer_bound` (exclusive)
+/// - `layer <= layer_range.start`
 fn forward_breadth_first<P: PackedField>(
 	domain_context: &impl DomainContext<Field = P::Scalar>,
 	data: &mut [P],
 	log_d: usize,
 	layer: usize,
 	block: usize,
-	layer_bound: usize,
+	layer_range: Range<usize>,
 ) {
 	// check preconditions
 	debug_assert_eq!(data.len() * (1 << P::LOG_WIDTH), 1 << log_d);
 	debug_assert!(data.len() >= 2);
-	debug_assert!(layer_bound <= domain_context.log_domain_size());
+	debug_assert!(layer_range.end <= domain_context.log_domain_size());
+	debug_assert!(layer <= layer_range.start);
 
 	let num_packed_layers_left = log_d - P::LOG_WIDTH;
 	let first_interleaved_layer = layer + num_packed_layers_left;
-	let packed_layers = layer..min(first_interleaved_layer, layer_bound);
-	let interleaved_layers = first_interleaved_layer..layer_bound;
+	let first_interleaved_layer = max(first_interleaved_layer, layer_range.start);
+	let packed_layers = layer_range.start..min(first_interleaved_layer, layer_range.end);
+	let interleaved_layers = first_interleaved_layer..layer_range.end;
 
 	// Run the layers where packing_width >= block_size_half.
 	// In these layers, we can always process whole packed elements, we don't need to interleave
@@ -411,20 +420,14 @@ impl<DC: DomainContext, const LOG_BASE_LEN: usize> AdditiveNTT
 			return;
 		}
 
-		// number of scalars per block in layer skip_early
-		let log_d_chunk = log_d - skip_early;
-		data.chunks_mut(1 << (log_d_chunk - P::LOG_WIDTH))
-			.enumerate()
-			.for_each(|(block, chunk)| {
-				forward_depth_first::<_, LOG_BASE_LEN>(
-					&self.domain_context,
-					chunk,
-					log_d_chunk,
-					skip_early,
-					block,
-					log_d - skip_late,
-				);
-			});
+		forward_depth_first::<_, LOG_BASE_LEN>(
+			&self.domain_context,
+			data,
+			log_d,
+			0,
+			0,
+			skip_early..(log_d - skip_late),
+		);
 	}
 
 	fn inverse_transform<P: PackedField<Scalar = Self::Field>>(
@@ -493,18 +496,27 @@ impl<DC: DomainContext + Sync, const LOG_BASE_LEN: usize> AdditiveNTT
 		// By default this would just be `self.log_num_shares`, but we will potentially decrease it
 		// in order to make sure that `2^log_num_shares * 2 <= data.len()`. This serves two
 		// purposes:
-		// - when we do the shared rounds, each thread should have at 2 packed elements to work
-		//   with, see the precondition of [`forward_shared_layer`]
+		// - when we do the shared rounds, each thread should have at least 2 packed elements to
+		//   work with, see the precondition of [`forward_shared_layer`]
 		// - when we do the independent rounds, again each share should have `chunk.len() >= 2`
 		//   because this is required by [`forward_depth_first`]
-		let actual_log_num_shares = min(self.log_num_shares, log_d - P::LOG_WIDTH - 1);
+		let maximum_log_num_shares = log_d - P::LOG_WIDTH - 1;
+		let actual_log_num_shares = min(self.log_num_shares, maximum_log_num_shares);
 		let first_independent_layer = actual_log_num_shares;
 
-		for layer in skip_early..min(first_independent_layer, log_d - skip_late) {
+		let last_layer = log_d - skip_late;
+		let shared_layers = skip_early..min(first_independent_layer, last_layer);
+		let independent_layers = max(first_independent_layer, skip_early)..last_layer;
+
+		for layer in shared_layers {
 			forward_shared_layer(&self.domain_context, data, log_d, layer, actual_log_num_shares);
 		}
 
-		let layer = max(first_independent_layer, skip_early);
+		// One might think that we could just call `forward_depth_first` with
+		// `layer=independent_layers.start`. However, this would mean that the chunk size (that we
+		// split into using `par_chunks_mut`) could be just one packed element, or even less than
+		// one packed element.
+		let layer = min(independent_layers.start, maximum_log_num_shares);
 		let log_d_chunk = log_d - layer;
 		data.par_chunks_mut(1 << (log_d_chunk - P::LOG_WIDTH))
 			.enumerate()
@@ -515,7 +527,7 @@ impl<DC: DomainContext + Sync, const LOG_BASE_LEN: usize> AdditiveNTT
 					log_d_chunk,
 					layer,
 					block,
-					log_d - skip_late,
+					independent_layers.clone(),
 				);
 			});
 	}
