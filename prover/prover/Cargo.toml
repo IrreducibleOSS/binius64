@@ -8,13 +8,13 @@ authors.workspace = true
 workspace = true
 
 [dependencies]
-binius-core = { path = "../core" }
-binius-field = { path = "../field" }
-binius-frontend = { path = "../frontend" }
-binius-math = { path = "../math" }
-binius-transcript = { path = "../transcript" }
-binius-verifier = { path = "../verifier", default-features = false }
-binius-utils = { path = "../utils" }
+binius-core = { path = "../../verifier/core" }
+binius-field = { path = "../../verifier/field" }
+binius-frontend = { path = "../../verifier/frontend" }
+binius-math = { path = "../../verifier/math" }
+binius-transcript = { path = "../../verifier/transcript" }
+binius-verifier = { path = "../../verifier/verifier", default-features = false }
+binius-utils = { path = "../../verifier/utils" }
 bytemuck.workspace = true
 bytes.workspace = true
 derive_more.workspace = true
@@ -28,7 +28,7 @@ rand.workspace = true
 trait-set.workspace = true
 
 [dev-dependencies]
-binius-math = { path = "../math", features = ["test-utils"] }
+binius-math = { path = "../../verifier/math", features = ["test-utils"] }
 blake2.workspace = true
 criterion.workspace = true
 proptest.workspace = true

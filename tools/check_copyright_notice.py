@@ -15,11 +15,11 @@ COMPANY = "Irreducible Inc."
 VALID_PATTERN = re.compile(rf"^// Copyright (\d{{4}}-)?{YEAR} {re.escape(COMPANY)}$")
 
 
-def get_rust_files():
-    """Get all Rust files in crates/ using git ls-files."""
+def get_rust_files(dirname):
+    """Get all Rust files in crates directory using git ls-files."""
     try:
         result = subprocess.run(
-            ["git", "ls-files", "crates/"],
+            ["git", "ls-files", f"{dirname}/"],
             capture_output=True,
             text=True,
             check=True,
@@ -27,7 +27,7 @@ def get_rust_files():
         rust_files = [f for f in result.stdout.strip().split("\n") if f.endswith(".rs")]
         return sorted(rust_files)
     except subprocess.CalledProcessError:
-        return sorted(str(p) for p in Path("crates").rglob("*.rs"))
+        return sorted(str(p) for p in Path(dirname).rglob("*.rs"))
 
 
 def check_file(filepath):
@@ -78,9 +78,9 @@ def main():
     )
     args = parser.parse_args()
 
-    files = get_rust_files()
+    files = get_rust_files("verifier") + get_rust_files("prover")
     if not files:
-        print("No Rust files found in crates/")
+        print("No Rust files found in verifier/ and prover/")
         return 1
 
     # Group files by their first line
