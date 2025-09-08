@@ -418,8 +418,7 @@ impl<'a> Interpreter<'a> {
 
 		let cond_val = self.load(ctx, cond);
 
-		// Only assert if condition is non-zero
-		if cond_val != Word::ZERO {
+		if cond_val.is_msb_true() {
 			let val1 = self.load(ctx, src1);
 			let val2 = self.load(ctx, src2);
 
