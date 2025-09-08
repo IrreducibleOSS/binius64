@@ -16,7 +16,7 @@ For further documentation, visit
 
 ## Dependencies
 
-- [rustup](https://rustup.rs/): We recommend using to install the Rust compiler and Cargo toolchain.
+- [rustup](https://rustup.rs/): We recommend using rustup to install the Rust compiler and Cargo toolchain.
 
 ## Usage
 
@@ -91,9 +91,9 @@ This project is split into the Prover components and the Verifier components, wh
 
 The Prover encompasses the entire project and is open-source under the [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html) license.
 
-The Verifier constitutes a subset of the prover, which is entirely contained in the `verifier/` directory. The Verifier is dually licensed under [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html) and the permissive [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0) license. Projects using _only_ the Verifier may use it under the Apache 2.0 terms, without regard for AGPL-3.0.
+The Verifier constitutes a subset of the prover, which is entirely contained in the `verifier/` directory. The Verifier is dually licensed under [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html) and the permissive [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0) license. **Projects using only the Verifier may use it under the Apache 2.0 terms, without regard for AGPL-3.0.**
 
-See [Licensing](https://www.binius.xyz/basics/licensing) a simple explanation of these licensing terms.
+See [Licensing](https://www.binius.xyz/basics/licensing) for a simple explanation of these licensing terms.
 
 Irreducible offers commercial licenses for teams who would like to build products on top of the Binius64 Prover without the AGPL-3.0 limitations. [Contact Irreducible](https://www.irreducible.com/contact) for more details.
 
