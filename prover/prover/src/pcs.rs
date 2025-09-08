@@ -56,6 +56,8 @@ where
 		merkle_prover: &'a MerkleProver,
 		fri_params: &'a FRIParams<B128, B128>,
 	) -> Self {
+		let rs_code = fri_params.rs_code();
+		assert_eq!(&ntt.subspace(rs_code.log_len()), rs_code.subspace()); // precondition
 		Self {
 			ntt,
 			merkle_prover,
