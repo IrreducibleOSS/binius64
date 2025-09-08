@@ -27,28 +27,41 @@ use crate::{
 /// at a large field point. The prover first performs the ring switching phase of the proof,
 /// establishing completeness. Then, the large field pcs (basefold) is invoked to establish
 /// soundness.
-pub struct OneBitPCSProver<P: PackedField> {
-	packed_multilin: FieldBuffer<P>,
-	evaluation_point: Vec<P::Scalar>,
+pub struct OneBitPCSProver<'a, NTT, MerkleProver, VCS>
+where
+	NTT: AdditiveNTT<Field = B128> + Sync,
+	MerkleProver: MerkleTreeProver<B128, Scheme = VCS>,
+	VCS: MerkleTreeScheme<B128, Digest: SerializeBytes>,
+{
+	ntt: &'a NTT,
+	merkle_prover: &'a MerkleProver,
+	fri_params: &'a FRIParams<B128, B128>,
 }
 
-impl<P: PackedField<Scalar = B128>> OneBitPCSProver<P> {
+impl<'a, NTT, MerkleProver, VCS> OneBitPCSProver<'a, NTT, MerkleProver, VCS>
+where
+	NTT: AdditiveNTT<Field = B128> + Sync,
+	MerkleProver: MerkleTreeProver<B128, Scheme = VCS>,
+	VCS: MerkleTreeScheme<B128, Digest: SerializeBytes>,
+{
 	/// Create a new ring switched PCS prover.
 	///
 	/// ## Arguments
 	///
-	/// * `packed_multilin` - a packed field buffer that the prover interprets as a multilinear
-	///   polynomial over its B1 subcomponents, in multilinear Lagrange basis. The number of B1
-	///   elements is `packed_multilin.len() * B128::N_BITS`.
-	/// * `evaluation_point` - the evaluation point of the B1 multilinear
-	pub fn new(packed_multilin: FieldBuffer<P>, evaluation_point: Vec<B128>) -> Self {
-		assert_eq!(
-			packed_multilin.log_len() + <B128 as ExtensionField<B1>>::LOG_DEGREE,
-			evaluation_point.len()
-		); // precondition
+	/// * `ntt` - the NTT for the FRI parameters
+	/// * `merkle_prover` - the merkle tree prover
+	/// * `fri_params` - the FRI parameters
+	pub fn new(
+		ntt: &'a NTT,
+		merkle_prover: &'a MerkleProver,
+		fri_params: &'a FRIParams<B128, B128>,
+	) -> Self {
+		let rs_code = fri_params.rs_code();
+		assert_eq!(&ntt.subspace(rs_code.log_len()), rs_code.subspace()); // precondition
 		Self {
-			packed_multilin,
-			evaluation_point,
+			ntt,
+			merkle_prover,
+			fri_params,
 		}
 	}
 
@@ -59,37 +72,40 @@ impl<P: PackedField<Scalar = B128>> OneBitPCSProver<P> {
 	///
 	/// ## Arguments
 	///
-	/// * `transcript` - the transcript of the prover's proof
-	/// * `ntt` - the NTT for the FRI parameters
-	/// * `merkle_prover` - the merkle tree prover
-	/// * `fri_params` - the FRI parameters
 	/// * `committed_codeword` - the committed codeword
 	/// * `committed` - the committed merkle tree
-	pub fn prove_with_transcript<'a, TranscriptChallenger, NTT, MerkleProver, VCS>(
-		self,
-		transcript: &mut ProverTranscript<TranscriptChallenger>,
-		ntt: &'a NTT,
-		merkle_prover: &'a MerkleProver,
-		fri_params: &'a FRIParams<B128, B128>,
+	/// * `packed_multilin` - a packed field buffer that the prover interprets as a multilinear
+	///   polynomial over its B1 subcomponents, in multilinear Lagrange basis. The number of B1
+	///   elements is `packed_multilin.len() * B128::N_BITS`.
+	/// * `evaluation_point` - the evaluation point of the B1 multilinear
+	/// * `transcript` - the transcript of the prover's proof
+	pub fn prove_with_transcript<P, TranscriptChallenger>(
+		&self,
 		committed_codeword: &'a [P],
 		committed: &'a MerkleProver::Committed,
+		packed_multilin: FieldBuffer<P>,
+		evaluation_point: Vec<B128>,
+		transcript: &mut ProverTranscript<TranscriptChallenger>,
 	) -> Result<(), Error>
 	where
+		P: PackedField<Scalar = B128>,
 		TranscriptChallenger: Challenger,
-		NTT: AdditiveNTT<Field = B128> + Sync,
-		MerkleProver: MerkleTreeProver<B128, Scheme = VCS>,
-		VCS: MerkleTreeScheme<B128, Digest: SerializeBytes>,
 	{
+		assert_eq!(
+			packed_multilin.log_len() + <B128 as ExtensionField<B1>>::LOG_DEGREE,
+			evaluation_point.len()
+		); // precondition
+
 		// κ, the base-2 log of the packing degree
 		let log_scalar_bit_width = <B128 as ExtensionField<B1>>::LOG_DEGREE;
 
 		// eval_point_suffix is the evaluation point, skipping the first κ coordinates
-		let eval_point_suffix = &self.evaluation_point[log_scalar_bit_width..];
+		let eval_point_suffix = &evaluation_point[log_scalar_bit_width..];
 		let suffix_tensor = tracing::debug_span!("Expand evaluation suffix query")
 			.in_scope(|| eq_ind_partial_eval::<P>(eval_point_suffix));
 
 		let s_hat_v = tracing::debug_span!("Compute ring-switching partial evaluations")
-			.in_scope(|| ring_switch::fold_1b_rows_for_b128(&self.packed_multilin, &suffix_tensor));
+			.in_scope(|| ring_switch::fold_1b_rows_for_b128(&packed_multilin, &suffix_tensor));
 		transcript.message().write_scalar_slice(s_hat_v.as_ref());
 
 		// basis decompose/recombine s_hat_v across opposite dimension
@@ -105,11 +121,9 @@ impl<P: PackedField<Scalar = B128>> OneBitPCSProver<P> {
 			inner_product(s_hat_u, eq_r_double_prime.as_ref().iter().copied());
 
 		let big_field_basefold_prover = self.setup_for_fri_sumcheck(
+			packed_multilin,
 			&eq_r_double_prime,
 			suffix_tensor,
-			ntt,
-			merkle_prover,
-			fri_params,
 			committed_codeword,
 			committed,
 			computed_sumcheck_claim,
@@ -128,10 +142,9 @@ impl<P: PackedField<Scalar = B128>> OneBitPCSProver<P> {
 	///
 	/// ## Arguments
 	///
-	/// * `r_double_prime` - the batching scalars
-	/// * `ntt` - the NTT for the FRI parameters
-	/// * `merkle_prover` - the merkle tree prover
-	/// * `fri_params` - the FRI parameters
+	/// * `packed_multilin` - the packed multilinear
+	/// * `r_double_prime_tensor` - the batching scalars
+	/// * `eval_point_suffix_tensor` - the evaluation point suffix tensor
 	/// * `committed_codeword` - the committed codeword
 	/// * `committed` - the committed merkle tree
 	/// * `basefold_sumcheck_claim` - the sumcheck claim for the basefold prover
@@ -139,22 +152,17 @@ impl<P: PackedField<Scalar = B128>> OneBitPCSProver<P> {
 	/// ## Returns
 	///
 	/// * `basefold_prover` - the basefold prover
-	#[allow(clippy::too_many_arguments)]
-	fn setup_for_fri_sumcheck<'a, NTT, MerkleProver, VCS>(
-		self,
+	fn setup_for_fri_sumcheck<P>(
+		&self,
+		packed_multilin: FieldBuffer<P>,
 		r_double_prime_tensor: &FieldBuffer<B128>,
 		eval_point_suffix_tensor: FieldBuffer<P>,
-		ntt: &'a NTT,
-		merkle_prover: &'a MerkleProver,
-		fri_params: &'a FRIParams<B128, B128>,
 		committed_codeword: &'a [P],
 		committed: &'a MerkleProver::Committed,
 		basefold_sumcheck_claim: B128,
 	) -> Result<BaseFoldProver<'a, B128, P, NTT, MerkleProver, VCS>, Error>
 	where
-		NTT: AdditiveNTT<Field = B128> + Sync,
-		MerkleProver: MerkleTreeProver<B128, Scheme = VCS>,
-		VCS: MerkleTreeScheme<B128, Digest: SerializeBytes>,
+		P: PackedField<Scalar = B128>,
 	{
 		// Compute the multilinear extension of the ring switching equality indicator.
 		//
@@ -169,14 +177,14 @@ impl<P: PackedField<Scalar = B128>> OneBitPCSProver<P> {
 			});
 
 		BaseFoldProver::new(
-			self.packed_multilin,
+			packed_multilin,
 			rs_eq_ind,
 			basefold_sumcheck_claim,
 			committed_codeword,
 			committed,
-			merkle_prover,
-			ntt,
-			fri_params,
+			self.merkle_prover,
+			self.ntt,
+			self.fri_params,
 		)
 	}
 }
@@ -273,14 +281,13 @@ mod test {
 		let mut prover_challenger = ProverTranscript::new(StdChallenger::default());
 		prover_challenger.message().write(&codeword_commitment);
 
-		let ring_switch_pcs_prover = OneBitPCSProver::new(packed_mle, evaluation_point.clone());
+		let ring_switch_pcs_prover = OneBitPCSProver::new(&ntt, &merkle_prover, &fri_params);
 		ring_switch_pcs_prover.prove_with_transcript(
-			&mut prover_challenger,
-			&ntt,
-			&merkle_prover,
-			&fri_params,
 			&codeword,
 			&codeword_committed,
+			packed_mle,
+			evaluation_point.clone(),
+			&mut prover_challenger,
 		)?;
 
 		let mut verifier_challenger = prover_challenger.into_verifier();

@@ -252,15 +252,15 @@ where
 			perfetto_category = "phase"
 		)
 		.entered();
-		let pcs_prover = OneBitPCSProver::new(witness_packed, eval_point);
+		let pcs_prover =
+			OneBitPCSProver::new(&self.ntt, &self.merkle_prover, verifier.fri_params());
 
 		pcs_prover.prove_with_transcript(
-			transcript,
-			&self.ntt,
-			&self.merkle_prover,
-			verifier.fri_params(),
 			&trace_codeword,
 			&trace_committed,
+			witness_packed,
+			eval_point,
+			transcript,
 		)?;
 		drop(pcs_guard);
 
