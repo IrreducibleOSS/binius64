@@ -138,7 +138,7 @@ where
 	///
 	/// ## Returns
 	///  * the FRI fold round output
-	pub fn prove_with_transcript<T: Challenger>(
+	pub fn prove<T: Challenger>(
 		mut self,
 		transcript: &mut ProverTranscript<T>,
 	) -> Result<(), Error> {
@@ -261,7 +261,7 @@ mod test {
 			&fri_params,
 		)?;
 
-		prover.prove_with_transcript(&mut prover_transcript)?;
+		prover.prove(&mut prover_transcript)?;
 
 		let mut verifier_transcript = prover_transcript.into_verifier();
 

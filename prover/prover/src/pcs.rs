@@ -116,72 +116,27 @@ where
 		let computed_sumcheck_claim =
 			inner_product(s_hat_u, eq_r_double_prime.as_ref().iter().copied());
 
-		let big_field_basefold_prover = self.setup_for_fri_sumcheck(
-			packed_multilin,
-			&eq_r_double_prime,
-			suffix_tensor,
-			committed_codeword,
-			committed,
-			computed_sumcheck_claim,
-		)?;
-
-		big_field_basefold_prover.prove_with_transcript(transcript)?;
-
-		Ok(())
-	}
-
-	/// Initializes the basefold prover.
-	///
-	/// Initializes the basefold prover by first computing the ring switch equality indicator.
-	/// Then, it creates a new basefold prover with the sumcheck composition [s_hat_u *
-	/// eq_r_double_prime]
-	///
-	/// ## Arguments
-	///
-	/// * `packed_multilin` - the packed multilinear
-	/// * `r_double_prime_tensor` - the batching scalars
-	/// * `eval_point_suffix_tensor` - the evaluation point suffix tensor
-	/// * `committed_codeword` - the committed codeword
-	/// * `committed` - the committed merkle tree
-	/// * `basefold_sumcheck_claim` - the sumcheck claim for the basefold prover
-	///
-	/// ## Returns
-	///
-	/// * `basefold_prover` - the basefold prover
-	fn setup_for_fri_sumcheck<P>(
-		&self,
-		packed_multilin: FieldBuffer<P>,
-		r_double_prime_tensor: &FieldBuffer<B128>,
-		eval_point_suffix_tensor: FieldBuffer<P>,
-		committed_codeword: &'a [P],
-		committed: &'a MerkleProver::Committed,
-		basefold_sumcheck_claim: B128,
-	) -> Result<BaseFoldProver<'a, B128, P, NTT, MerkleProver, VCS>, Error>
-	where
-		P: PackedField<Scalar = B128>,
-	{
 		// Compute the multilinear extension of the ring switching equality indicator.
 		//
 		// This is functionally equivalent to crate::ring_switch::rs_eq_ind, except that
 		// we reuse the already-computed tensor expansions of the challenges.
-		let rs_eq_ind =
-			tracing::debug_span!("Compute ring-switching equality indicator").in_scope(|| {
-				ring_switch::fold_b128_elems_inplace(
-					eval_point_suffix_tensor,
-					r_double_prime_tensor,
-				)
-			});
+		let rs_eq_ind = tracing::debug_span!("Compute ring-switching equality indicator")
+			.in_scope(|| ring_switch::fold_b128_elems_inplace(suffix_tensor, &eq_r_double_prime));
 
-		BaseFoldProver::new(
+		let basefold_prover = BaseFoldProver::new(
 			packed_multilin,
 			rs_eq_ind,
-			basefold_sumcheck_claim,
+			computed_sumcheck_claim,
 			committed_codeword,
 			committed,
 			self.merkle_prover,
 			self.ntt,
 			self.fri_params,
-		)
+		)?;
+
+		basefold_prover.prove(transcript)?;
+
+		Ok(())
 	}
 }
 
