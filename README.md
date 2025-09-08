@@ -44,7 +44,7 @@ For example, to run an example proving a SHA-512 preimage:
 ```bash
 $ RUSTFLAGS="-Ctarget-cpu=native" cargo run --release --example prove --max-len-bytes 65536 --exact-len
    Finished `release` profile [optimized + debuginfo] target(s) in 0.09s
-     Running `target/release/examples/sha512 prove --max-len-bytes 65536 --exact-len-bytes`
+     Running `target/release/examples/sha512 prove --max-len-bytes 65536 --exact-len`
 Building circuit [ 2.99s | 100.00% ]
 
 Setup [ 619.81ms | 100.00% ] { log_inv_rate = 1 }
