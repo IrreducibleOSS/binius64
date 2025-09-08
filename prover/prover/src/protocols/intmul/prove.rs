@@ -393,8 +393,7 @@ where
 		// Compute the evaluation of `c_lo_0` at `a_c_eval_point`.
 		let c_lo_0_eval = {
 			let c_lo_bits = BitSelector::new(0, c_lo_exponents);
-			let p_width = P::WIDTH.min(1 << log_bits);
-
+			let p_width = P::WIDTH.min(c_lo_bits.len());
 			eq_ind_partial_eval::<P>(a_c_eval_point)
 				.as_ref()
 				.iter()
