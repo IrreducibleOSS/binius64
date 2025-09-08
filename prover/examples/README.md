@@ -332,7 +332,7 @@ Look at these examples for reference:
 
 ## Prover binary
 
-The `prover` example binary reads a constraint system and witnesses from disk and produces a serialized proof. This is useful for cross-host proof generation pipelines.
+The `prover` binary reads a constraint system and witnesses from disk and produces a serialized proof. This is useful for cross-host proof generation pipelines.
 
 Arguments:
 - `--cs-path PATH`: path to the constraint system binary
@@ -351,7 +351,7 @@ cargo run --release --example sha256 -- save \
     --non-pub-data-path out/sha256/non_public.bin
 
 # 2) Produce a proof from those files
-cargo run --release --example prover -- \
+cargo run --release --bin prover -- \
     --cs-path out/sha256/cs.bin \
     --pub-witness-path out/sha256/public.bin \
     --non-pub-data-path out/sha256/non_public.bin \
@@ -361,7 +361,7 @@ cargo run --release --example prover -- \
 
 ## Verifier binary
 
-The `verifier` example binary reads a constraint system, a public witness, and a proof from disk and verifies the proof. It also checks that the challenger type embedded in the proof matches the verifier’s expected challenger (HasherChallenger<Sha256>), returning an error if it doesn’t.
+The `verifier` binary reads a constraint system, a public witness, and a proof from disk and verifies the proof. It also checks that the challenger type embedded in the proof matches the verifier's expected challenger (HasherChallenger<Sha256>), returning an error if it doesn't.
 
 Arguments:
 - `--cs-path PATH`: path to the constraint system binary
@@ -373,7 +373,7 @@ Usage:
 
 ```bash
 # Verify the proof generated above
-cargo run --release --example verifier -- \
+cargo run --release --bin verifier -- \
     --cs-path out/sha256/cs.bin \
     --pub-witness-path out/sha256/public.bin \
     --proof-path out/sha256/proof.bin \
