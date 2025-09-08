@@ -277,19 +277,19 @@ fn test_eval() {
 
 	// GaoMateer domain context
 	let domain_context = domain_context::GaoMateerPreExpanded::<F>::generate(LOG_D);
-	let ntt: NeighborsLastSingleThread<_> = NeighborsLastSingleThread { domain_context };
+	let ntt = NeighborsLastSingleThread::new(domain_context);
 	test_equivalence(&ntt);
 
 	// Generic domain context with the usual subspace
 	let subspace = BinarySubspace::with_dim(LOG_D).unwrap();
 	let domain_context = domain_context::GenericPreExpanded::<F>::generate_from_subspace(&subspace);
-	let ntt: NeighborsLastSingleThread<_> = NeighborsLastSingleThread { domain_context };
+	let ntt = NeighborsLastSingleThread::new(domain_context);
 	test_equivalence(&ntt);
 
 	// Generic domain context context with a subspace whose first basis element is _not_ 1
 	let basis = vec![F::new(5), F::new(7), F::new(22), F::new(95)];
 	let subspace = BinarySubspace::new_unchecked(basis);
 	let domain_context = domain_context::GenericPreExpanded::<F>::generate_from_subspace(&subspace);
-	let ntt: NeighborsLastSingleThread<_> = NeighborsLastSingleThread { domain_context };
+	let ntt = NeighborsLastSingleThread::new(domain_context);
 	test_equivalence(&ntt);
 }

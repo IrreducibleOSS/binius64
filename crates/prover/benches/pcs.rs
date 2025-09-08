@@ -42,10 +42,7 @@ fn bench_pcs(c: &mut Criterion) {
 			BinarySubspace::<B128>::with_dim(log_len).expect("Failed to create subspace");
 		let domain_context = GenericPreExpanded::generate_from_subspace(&subspace);
 		let log_num_shares = binius_utils::rayon::current_num_threads().ilog2() as usize;
-		let ntt = NeighborsLastMultiThread::<_, 4> {
-			domain_context,
-			log_num_shares,
-		};
+		let ntt = NeighborsLastMultiThread::new(domain_context, log_num_shares);
 
 		let fri_params = FRIParams::choose_with_constant_fold_arity(
 			&ntt,

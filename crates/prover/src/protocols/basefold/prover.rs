@@ -240,7 +240,7 @@ mod test {
 
 		let subspace = fri_params.rs_code().subspace();
 		let domain_context = GenericOnTheFly::generate_from_subspace(subspace);
-		let ntt: NeighborsLastSingleThread<_> = NeighborsLastSingleThread { domain_context };
+		let ntt = NeighborsLastSingleThread::new(domain_context);
 
 		let CommitOutput {
 			commitment: codeword_commitment,

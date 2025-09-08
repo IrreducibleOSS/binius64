@@ -24,18 +24,57 @@ fn test_equivalence<P: PackedField>(
 ) where
 	P::Scalar: BinaryField,
 {
-	let log_d = 8;
+	// log_d = 8
+	{
+		let log_d = 8;
 
-	let mut rng = StdRng::seed_from_u64(0);
-	let mut data_a = random_field_buffer::<P>(&mut rng, log_d);
-	let mut data_b = data_a.clone();
+		let mut rng = StdRng::seed_from_u64(0);
+		let mut data_a = random_field_buffer::<P>(&mut rng, log_d);
+		let mut data_b = data_a.clone();
 
-	for skip_early in [0, 2, 4] {
-		for skip_late in [0, 2, 4] {
-			ntt_a.forward_transform(data_a.to_mut(), skip_early, skip_late);
-			ntt_b.forward_transform(data_b.to_mut(), skip_early, skip_late);
-			assert_eq!(data_a, data_b)
+		for skip_early in [0, 3, 5, 7] {
+			for skip_late in [0, 3, 5, 7] {
+				if skip_early + skip_late > log_d {
+					continue;
+				}
+
+				ntt_a.forward_transform(data_a.to_mut(), skip_early, skip_late);
+				ntt_b.forward_transform(data_b.to_mut(), skip_early, skip_late);
+				assert_eq!(data_a, data_b)
+			}
 		}
+	}
+
+	// log_d = 1
+	{
+		let log_d = 1;
+		let mut rng = StdRng::seed_from_u64(0);
+		let mut data_a = random_field_buffer::<P>(&mut rng, log_d);
+		let mut data_b = data_a.clone();
+
+		ntt_a.forward_transform(data_a.to_mut(), 0, 0);
+		ntt_b.forward_transform(data_b.to_mut(), 0, 0);
+		assert_eq!(data_a, data_b);
+
+		ntt_a.forward_transform(data_a.to_mut(), 1, 0);
+		ntt_b.forward_transform(data_b.to_mut(), 1, 0);
+		assert_eq!(data_a, data_b);
+
+		ntt_a.forward_transform(data_a.to_mut(), 0, 1);
+		ntt_b.forward_transform(data_b.to_mut(), 0, 1);
+		assert_eq!(data_a, data_b);
+	}
+
+	// log_d = 0 (i.e. no transformation should happen)
+	{
+		let log_d = 0;
+		let mut rng = StdRng::seed_from_u64(0);
+		let mut data_a = random_field_buffer::<P>(&mut rng, log_d);
+		let mut data_b = data_a.clone();
+
+		ntt_a.forward_transform(data_a.to_mut(), 0, 0);
+		ntt_b.forward_transform(data_b.to_mut(), 0, 0);
+		assert_eq!(data_a, data_b);
 	}
 }
 
@@ -45,33 +84,41 @@ fn test_equivalence_ntts<P: PackedField>(
 	P::Scalar: BinaryField,
 {
 	let ntt_ref = NeighborsLastReference { domain_context };
-	let ntt_single_2: NeighborsLastSingleThread<_, 2> =
-		NeighborsLastSingleThread { domain_context };
-	let ntt_single_6: NeighborsLastSingleThread<_, 6> =
-		NeighborsLastSingleThread { domain_context };
-	let ntt_multi_0: NeighborsLastMultiThread<_> = NeighborsLastMultiThread {
+	let ntt_single_2 = NeighborsLastSingleThread {
 		domain_context,
+		log_base_len: 2,
+	};
+	let ntt_single_6 = NeighborsLastSingleThread {
+		domain_context,
+		log_base_len: 6,
+	};
+	let ntt_multi_3_0 = NeighborsLastMultiThread {
+		domain_context,
+		log_base_len: 3,
 		log_num_shares: 0,
 	};
-	let ntt_multi_1: NeighborsLastMultiThread<_> = NeighborsLastMultiThread {
+	let ntt_multi_3_1 = NeighborsLastMultiThread {
 		domain_context,
+		log_base_len: 3,
 		log_num_shares: 1,
 	};
-	let ntt_multi_2: NeighborsLastMultiThread<_> = NeighborsLastMultiThread {
+	let ntt_multi_3_2 = NeighborsLastMultiThread {
 		domain_context,
+		log_base_len: 3,
 		log_num_shares: 2,
 	};
-	let ntt_multi_1000: NeighborsLastMultiThread<_> = NeighborsLastMultiThread {
+	let ntt_multi_3_1000 = NeighborsLastMultiThread {
 		domain_context,
+		log_base_len: 3,
 		log_num_shares: 1000,
 	};
 
 	test_equivalence::<P>(&ntt_ref, &ntt_single_2);
 	test_equivalence::<P>(&ntt_ref, &ntt_single_6);
-	test_equivalence::<P>(&ntt_ref, &ntt_multi_0);
-	test_equivalence::<P>(&ntt_ref, &ntt_multi_1);
-	test_equivalence::<P>(&ntt_ref, &ntt_multi_2);
-	test_equivalence::<P>(&ntt_ref, &ntt_multi_1000);
+	test_equivalence::<P>(&ntt_ref, &ntt_multi_3_0);
+	test_equivalence::<P>(&ntt_ref, &ntt_multi_3_1);
+	test_equivalence::<P>(&ntt_ref, &ntt_multi_3_2);
+	test_equivalence::<P>(&ntt_ref, &ntt_multi_3_1000);
 }
 
 fn test_equivalence_ntts_domain_contexts<P: PackedField>()
@@ -105,8 +152,12 @@ where
 	let subspace = BinarySubspace::<P::Scalar>::with_dim(10).unwrap();
 	let domain_context = GenericPreExpanded::generate_from_subspace(&subspace);
 	let ntt = NeighborsLastReference { domain_context };
-	for skip_early in [0, 1, 2] {
-		for skip_late in [0, 1, 2] {
+	for skip_early in [0, 2, 5] {
+		for skip_late in [0, 2, 5] {
+			if skip_early + skip_late > log_d {
+				continue;
+			}
+
 			ntt.forward_transform(data.to_mut(), skip_early, skip_late);
 			ntt.inverse_transform(data.to_mut(), skip_early, skip_late);
 			assert_eq!(data, data_orig);

@@ -88,10 +88,7 @@ where
 		// number of threads, because the threads/cores have different performance (but in the NTT
 		// each share has the same amount of work)
 		let log_num_shares = binius_utils::rayon::current_num_threads().ilog2() as usize;
-		let ntt = NeighborsLastMultiThread {
-			domain_context,
-			log_num_shares,
-		};
+		let ntt = NeighborsLastMultiThread::new(domain_context, log_num_shares);
 
 		let merkle_prover = BinaryMerkleTreeProver::<_, ParallelMerkleHasher, _>::new(compression);
 
