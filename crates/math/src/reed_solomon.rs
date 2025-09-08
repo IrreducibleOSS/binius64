@@ -121,7 +121,7 @@ impl<F: BinaryField> ReedSolomonCode<F> {
 		let mut code = FieldSliceMut::from_slice(self.log_len() + log_batch_size, code)?;
 
 		let _scope = tracing::trace_span!(
-			"Reed–Solomon encode",
+			"Reed-Solomon encode",
 			log_len = self.log_len(),
 			log_batch_size = log_batch_size,
 			symbol_bits = F::N_BITS,

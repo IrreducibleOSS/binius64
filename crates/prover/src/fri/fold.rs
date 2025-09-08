@@ -66,7 +66,7 @@ where
 	) -> Result<Self, Error> {
 		if len_packed_slice(committed_codeword) < 1 << params.log_len() {
 			bail!(Error::InvalidArgs(
-				"Reed–Solomon code length must match interleaved codeword length".to_string(),
+				"Reed-Solomon code length must match interleaved codeword length".to_string(),
 			));
 		}
 
