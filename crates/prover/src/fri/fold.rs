@@ -332,7 +332,7 @@ mod tests {
 	use binius_math::{
 		BinarySubspace,
 		fold::fold_cols,
-		ntt::{NeighborsLastSingleThread, domain_context::GenericOnTheFly},
+		ntt::{NeighborsLastReference, domain_context::GenericOnTheFly},
 		test_utils::{random_field_buffer, random_scalars},
 	};
 	use binius_verifier::config::B128;
@@ -351,7 +351,7 @@ mod tests {
 	fn test_help_fri_compatible_ntt_domains(log_dim: usize, arity: usize) {
 		let subspace = BinarySubspace::with_dim(32).unwrap();
 		let domain_context = GenericOnTheFly::generate_from_subspace(&subspace);
-		let ntt: NeighborsLastSingleThread<_> = NeighborsLastSingleThread { domain_context };
+		let ntt = NeighborsLastReference { domain_context };
 
 		let mut rng = StdRng::seed_from_u64(0);
 		let msg = random_field_buffer(&mut rng, log_dim + arity);

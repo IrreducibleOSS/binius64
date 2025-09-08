@@ -109,7 +109,7 @@ impl<DC: DomainContext> AdditiveNTT for NeighborsLastReference<DC> {
 /// (Just in a different order. We listed breadth-first order, we would process them in
 /// depth-first order.)
 ///
-/// The const generic `LOG_BASE_LEN` determines for which `log_d` we call the breadth-first
+/// The argument `log_base_len` determines for which `log_d` we call the breadth-first
 /// implementation as a base case.
 ///
 /// ## Preconditions
@@ -118,13 +118,14 @@ impl<DC: DomainContext> AdditiveNTT for NeighborsLastReference<DC> {
 /// - `data.len() >= 2`
 /// - `domain_context` holds all the twiddles up to `layer_range.end` (exclusive)
 /// - `layer <= layer_range.start`
-fn forward_depth_first<P: PackedField, const LOG_BASE_LEN: usize>(
+fn forward_depth_first<P: PackedField>(
 	domain_context: &impl DomainContext<Field = P::Scalar>,
 	data: &mut [P],
 	log_d: usize,
 	layer: usize,
 	block: usize,
 	mut layer_range: Range<usize>,
+	log_base_len: usize,
 ) {
 	// check preconditions
 	debug_assert_eq!(data.len() * (1 << P::LOG_WIDTH), 1 << log_d);
@@ -139,7 +140,7 @@ fn forward_depth_first<P: PackedField, const LOG_BASE_LEN: usize>(
 	// if the problem size is small, we just do breadth_first (to get rid of the stack overhead)
 	// we also need to do that if the number of scalars is just two times our packing width, i.e. if
 	// we only have two packed elements in our data slice
-	if log_d <= LOG_BASE_LEN || data.len() <= 2 {
+	if log_d <= log_base_len || data.len() <= 2 {
 		forward_breadth_first(domain_context, data, log_d, layer, block, layer_range);
 		return;
 	}
@@ -164,21 +165,23 @@ fn forward_depth_first<P: PackedField, const LOG_BASE_LEN: usize>(
 	}
 
 	// then recurse
-	forward_depth_first::<_, LOG_BASE_LEN>(
+	forward_depth_first(
 		domain_context,
 		&mut data[..block_size_half],
 		log_d - 1,
 		layer + 1,
 		block << 1,
 		layer_range.clone(),
+		log_base_len,
 	);
-	forward_depth_first::<_, LOG_BASE_LEN>(
+	forward_depth_first(
 		domain_context,
 		&mut data[block_size_half..],
 		log_d - 1,
 		layer + 1,
 		(block << 1) + 1,
 		layer_range,
+		log_base_len,
 	);
 }
 
@@ -382,21 +385,29 @@ fn input_check<P: PackedField>(
 /// For small inputs, it can be comparatively slow!
 ///
 /// The implementation is depth-first, but calls a breadth-first implementation as a base case.
-/// The const generic `LOG_BASE_LEN` determines for scalar input length we call the breadth-first
-/// implementation as a base case.
 ///
 /// Note that "neighbors last" refers to the memory layout for the NTT: In the _last_ layer of this
 /// NTT algorithm, neighboring elements speak to each other. In the classic FFT that's usually the
 /// case for "decimation in frequency".
 #[derive(Debug)]
-pub struct NeighborsLastSingleThread<DC, const LOG_BASE_LEN: usize = DEFAULT_LOG_BASE_LEN> {
+pub struct NeighborsLastSingleThread<DC> {
 	/// The domain context from which the twiddles are pulled.
 	pub domain_context: DC,
+	/// Determines when to switch from depth-first to the breadth-first base case.
+	pub log_base_len: usize,
 }
 
-impl<DC: DomainContext, const LOG_BASE_LEN: usize> AdditiveNTT
-	for NeighborsLastSingleThread<DC, LOG_BASE_LEN>
-{
+impl<DC> NeighborsLastSingleThread<DC> {
+	/// Convenience constructor which sets `log_base_len` to a reasonable default.
+	pub fn new(domain_context: DC) -> Self {
+		Self {
+			domain_context,
+			log_base_len: DEFAULT_LOG_BASE_LEN,
+		}
+	}
+}
+
+impl<DC: DomainContext> AdditiveNTT for NeighborsLastSingleThread<DC> {
 	type Field = DC::Field;
 
 	fn forward_transform<P: PackedField<Scalar = Self::Field>>(
@@ -420,13 +431,14 @@ impl<DC: DomainContext, const LOG_BASE_LEN: usize> AdditiveNTT
 			return;
 		}
 
-		forward_depth_first::<_, LOG_BASE_LEN>(
+		forward_depth_first(
 			&self.domain_context,
 			data,
 			log_d,
 			0,
 			0,
 			skip_early..(log_d - skip_late),
+			self.log_base_len,
 		);
 	}
 
@@ -450,25 +462,34 @@ impl<DC: DomainContext, const LOG_BASE_LEN: usize> AdditiveNTT
 /// For small inputs, it can be comparatively slow!
 ///
 /// The implementation is depth-first, but calls a breadth-first implementation as a base case.
-/// The const generic `LOG_BASE_LEN` determines for scalar input length we call the breadth-first
-/// implementation as a base case.
 ///
 /// Note that "neighbors last" refers to the memory layout for the NTT: In the _last_ layer of this
 /// NTT algorithm, neighboring elements speak to each other. In the classic FFT that's usually the
 /// case for "decimation in frequency".
 #[derive(Debug)]
-pub struct NeighborsLastMultiThread<DC, const LOG_BASE_LEN: usize = DEFAULT_LOG_BASE_LEN> {
+pub struct NeighborsLastMultiThread<DC> {
 	/// The domain context from which the twiddles are pulled.
 	pub domain_context: DC,
+	/// Determines when to switch from depth-first to the breadth-first base case.
+	pub log_base_len: usize,
 	/// The base-2 logarithm of number of equal-sized shares that the problem should be split into.
 	/// Each share needs to do the same amount of work. If you have equally powered cores
 	/// available, this should be the base-2 logarithm of the number of cores.
 	pub log_num_shares: usize,
 }
 
-impl<DC: DomainContext + Sync, const LOG_BASE_LEN: usize> AdditiveNTT
-	for NeighborsLastMultiThread<DC, LOG_BASE_LEN>
-{
+impl<DC> NeighborsLastMultiThread<DC> {
+	/// Convenience constructor which sets `log_base_len` to a reasonable default.
+	pub fn new(domain_context: DC, log_num_shares: usize) -> Self {
+		Self {
+			domain_context,
+			log_base_len: DEFAULT_LOG_BASE_LEN,
+			log_num_shares,
+		}
+	}
+}
+
+impl<DC: DomainContext + Sync> AdditiveNTT for NeighborsLastMultiThread<DC> {
 	type Field = DC::Field;
 
 	fn forward_transform<P: PackedField<Scalar = Self::Field>>(
@@ -521,13 +542,14 @@ impl<DC: DomainContext + Sync, const LOG_BASE_LEN: usize> AdditiveNTT
 		data.par_chunks_exact_mut(1 << (log_d_chunk - P::LOG_WIDTH))
 			.enumerate()
 			.for_each(|(block, chunk)| {
-				forward_depth_first::<_, LOG_BASE_LEN>(
+				forward_depth_first(
 					&self.domain_context,
 					chunk,
 					log_d_chunk,
 					layer,
 					block,
 					independent_layers.clone(),
+					self.log_base_len,
 				);
 			});
 	}

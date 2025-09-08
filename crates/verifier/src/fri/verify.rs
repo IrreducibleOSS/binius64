@@ -105,7 +105,7 @@ where
 	{
 		let subspace = self.params.rs_code().subspace();
 		let domain_context = GenericOnTheFly::generate_from_subspace(subspace);
-		let ntt = NeighborsLastSingleThread { domain_context };
+		let ntt = NeighborsLastSingleThread::new(domain_context);
 
 		// Verify that the last oracle sent is a codeword.
 		let terminate_codeword_len =

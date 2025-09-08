@@ -262,7 +262,7 @@ mod test {
 		// Commit packed mle codeword
 		let subspace = BinarySubspace::with_dim(fri_params.rs_code().log_len())?;
 		let domain_context = GenericOnTheFly::generate_from_subspace(&subspace);
-		let ntt: NeighborsLastSingleThread<_> = NeighborsLastSingleThread { domain_context };
+		let ntt = NeighborsLastSingleThread::new(domain_context);
 
 		let CommitOutput {
 			commitment: codeword_commitment,
@@ -511,7 +511,7 @@ mod test {
 
 		let subspace = BinarySubspace::with_dim(fri_params.rs_code().log_len()).unwrap();
 		let domain_context = GenericOnTheFly::generate_from_subspace(&subspace);
-		let ntt: NeighborsLastSingleThread<_> = NeighborsLastSingleThread { domain_context };
+		let ntt = NeighborsLastSingleThread::new(domain_context);
 
 		let commit_result =
 			fri::commit_interleaved(&fri_params, &ntt, &merkle_prover, packed_buffer.to_ref());

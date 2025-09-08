@@ -51,7 +51,7 @@ fn test_commit_prove_verify_success<F, FA, P>(
 
 	let subspace = BinarySubspace::with_dim(params.rs_code().log_len()).unwrap();
 	let domain_context = GenericOnTheFly::generate_from_subspace(&subspace);
-	let ntt: NeighborsLastSingleThread<_> = NeighborsLastSingleThread { domain_context };
+	let ntt = NeighborsLastSingleThread::new(domain_context);
 
 	let n_round_commitments = arities.len();
 

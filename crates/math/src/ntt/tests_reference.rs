@@ -84,26 +84,18 @@ fn test_equivalence_ntts<P: PackedField>(
 	P::Scalar: BinaryField,
 {
 	let ntt_ref = NeighborsLastReference { domain_context };
-	let ntt_single_2: NeighborsLastSingleThread<_, 2> =
-		NeighborsLastSingleThread { domain_context };
-	let ntt_single_6: NeighborsLastSingleThread<_, 6> =
-		NeighborsLastSingleThread { domain_context };
-	let ntt_multi_0: NeighborsLastMultiThread<_> = NeighborsLastMultiThread {
+	let ntt_single_2 = NeighborsLastSingleThread {
 		domain_context,
-		log_num_shares: 0,
+		log_base_len: 2,
 	};
-	let ntt_multi_1: NeighborsLastMultiThread<_> = NeighborsLastMultiThread {
+	let ntt_single_6 = NeighborsLastSingleThread {
 		domain_context,
-		log_num_shares: 1,
+		log_base_len: 6,
 	};
-	let ntt_multi_2: NeighborsLastMultiThread<_> = NeighborsLastMultiThread {
-		domain_context,
-		log_num_shares: 2,
-	};
-	let ntt_multi_1000: NeighborsLastMultiThread<_> = NeighborsLastMultiThread {
-		domain_context,
-		log_num_shares: 1000,
-	};
+	let ntt_multi_0 = NeighborsLastMultiThread::new(domain_context, 0);
+	let ntt_multi_1 = NeighborsLastMultiThread::new(domain_context, 1);
+	let ntt_multi_2 = NeighborsLastMultiThread::new(domain_context, 2);
+	let ntt_multi_1000 = NeighborsLastMultiThread::new(domain_context, 1000);
 
 	test_equivalence::<P>(&ntt_ref, &ntt_single_2);
 	test_equivalence::<P>(&ntt_ref, &ntt_single_6);
