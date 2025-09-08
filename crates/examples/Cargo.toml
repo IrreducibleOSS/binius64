@@ -24,6 +24,8 @@ rand.workspace = true
 base64.workspace = true
 jwt-simple.workspace = true
 sha2.workspace = true
+ureq.workspace = true
+hex.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
