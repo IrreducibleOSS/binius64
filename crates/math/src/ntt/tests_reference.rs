@@ -92,17 +92,33 @@ fn test_equivalence_ntts<P: PackedField>(
 		domain_context,
 		log_base_len: 6,
 	};
-	let ntt_multi_0 = NeighborsLastMultiThread::new(domain_context, 0);
-	let ntt_multi_1 = NeighborsLastMultiThread::new(domain_context, 1);
-	let ntt_multi_2 = NeighborsLastMultiThread::new(domain_context, 2);
-	let ntt_multi_1000 = NeighborsLastMultiThread::new(domain_context, 1000);
+	let ntt_multi_3_0 = NeighborsLastMultiThread {
+		domain_context,
+		log_base_len: 3,
+		log_num_shares: 0,
+	};
+	let ntt_multi_3_1 = NeighborsLastMultiThread {
+		domain_context,
+		log_base_len: 3,
+		log_num_shares: 1,
+	};
+	let ntt_multi_3_2 = NeighborsLastMultiThread {
+		domain_context,
+		log_base_len: 3,
+		log_num_shares: 2,
+	};
+	let ntt_multi_3_1000 = NeighborsLastMultiThread {
+		domain_context,
+		log_base_len: 3,
+		log_num_shares: 1000,
+	};
 
 	test_equivalence::<P>(&ntt_ref, &ntt_single_2);
 	test_equivalence::<P>(&ntt_ref, &ntt_single_6);
-	test_equivalence::<P>(&ntt_ref, &ntt_multi_0);
-	test_equivalence::<P>(&ntt_ref, &ntt_multi_1);
-	test_equivalence::<P>(&ntt_ref, &ntt_multi_2);
-	test_equivalence::<P>(&ntt_ref, &ntt_multi_1000);
+	test_equivalence::<P>(&ntt_ref, &ntt_multi_3_0);
+	test_equivalence::<P>(&ntt_ref, &ntt_multi_3_1);
+	test_equivalence::<P>(&ntt_ref, &ntt_multi_3_2);
+	test_equivalence::<P>(&ntt_ref, &ntt_multi_3_1000);
 }
 
 fn test_equivalence_ntts_domain_contexts<P: PackedField>()
