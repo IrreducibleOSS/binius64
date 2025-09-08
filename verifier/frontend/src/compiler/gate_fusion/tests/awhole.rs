@@ -5,7 +5,7 @@ use crate::compiler::{CircuitBuilder, Options, gate_fusion::commit_set::MAX_DEPT
 
 /// Returns a string that represents the given constraint system in a textual form.
 ///
-/// As an example see crates/frontend/ceck/src/grammar.pest and crates/frontend/ceck/testsuite.
+/// As an example see verifier/frontend/ceck/src/grammar.pest and verifier/frontend/ceck/testsuite.
 fn stringify_constraint_system(cs: &ConstraintSystem) -> String {
 	use std::fmt::Write;
 
