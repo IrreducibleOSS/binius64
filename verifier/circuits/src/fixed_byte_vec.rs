@@ -1,9 +1,6 @@
 // Copyright 2025 Irreducible Inc.
 use binius_core::word::Word;
-use binius_frontend::{
-	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
-	util::pack_bytes_into_wires_le,
-};
+use binius_frontend::{CircuitBuilder, Wire, WitnessFiller, util::pack_bytes_into_wires_le};
 
 /// A vector of bytes of an arbitrary size up to and including the configured `max_len`.
 ///

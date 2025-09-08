@@ -2,7 +2,7 @@
 use std::{env, fs, path::PathBuf};
 
 use anyhow::{Context, Result};
-use binius_frontend::{compiler::circuit::Circuit, stat::CircuitStat};
+use binius_frontend::{Circuit, CircuitStat};
 
 /// Get the workspace root directory by using CARGO_MANIFEST_DIR
 fn workspace_root() -> Result<PathBuf> {

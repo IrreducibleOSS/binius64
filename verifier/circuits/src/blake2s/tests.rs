@@ -40,7 +40,7 @@
 //! - Zero-padding soundness constraints properly enforced
 //! - All RFC 7693 test vectors pass
 
-use binius_frontend::{compiler::CircuitBuilder, stat::CircuitStat};
+use binius_frontend::{CircuitBuilder, CircuitStat};
 use blake2::{Blake2s256, Digest};
 use proptest::prelude::*;
 use rand::{Rng, SeedableRng, rngs::StdRng};

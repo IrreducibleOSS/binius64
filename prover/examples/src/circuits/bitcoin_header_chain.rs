@@ -2,10 +2,7 @@
 
 use anyhow::bail;
 use binius_circuits::bitcoin::header_chain::HeaderChain;
-use binius_frontend::{
-	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
-	util::pack_bytes_into_wires_le,
-};
+use binius_frontend::{CircuitBuilder, Wire, WitnessFiller, util::pack_bytes_into_wires_le};
 use clap::Args;
 
 use crate::ExampleCircuit;

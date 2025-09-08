@@ -1,6 +1,6 @@
 // Copyright 2025 Irreducible Inc.
 use binius_circuits::keccak::permutation::Permutation;
-use binius_frontend::compiler::{CircuitBuilder, Wire};
+use binius_frontend::{CircuitBuilder, Wire};
 
 #[test]
 fn keccak() {

@@ -215,10 +215,6 @@ pub enum Shift {
 }
 
 impl Shift {
-	pub fn is_none(&self) -> bool {
-		matches!(self, Self::None)
-	}
-
 	/// Try to compose two shift operations.
 	///
 	/// Returns None if the shifts are incompatible.
@@ -532,11 +528,6 @@ pub fn xor_multi(terms: impl IntoIterator<Item = WireExprTerm>) -> WireExpr {
 // Empty operand helper
 pub fn empty() -> WireExpr {
 	WireExpr(smallvec![])
-}
-
-/// Create a linear constraint: rhs = dst
-pub fn linear(rhs: impl Into<WireExpr>, dst: impl Into<WireExpr>) -> (WireExpr, WireExpr) {
-	(rhs.into(), dst.into())
 }
 
 // Implement conversions

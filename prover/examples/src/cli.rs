@@ -3,7 +3,7 @@ use std::{fs, path::Path};
 
 use anyhow::Result;
 use binius_core::constraint_system::{ValueVec, ValuesData};
-use binius_frontend::{compiler::CircuitBuilder, stat::CircuitStat};
+use binius_frontend::{CircuitBuilder, CircuitStat};
 use binius_utils::serialization::SerializeBytes;
 use clap::{Arg, Args, Command, FromArgMatches, Subcommand};
 

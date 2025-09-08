@@ -3,8 +3,7 @@ use std::iter::repeat_with;
 
 use binius_core::{verify::verify_constraints, word::Word};
 use binius_frontend::{
-	compiler::{CircuitBuilder, circuit::WitnessFiller},
-	util::num_biguint_from_u64_limbs as from_u64_limbs,
+	CircuitBuilder, WitnessFiller, util::num_biguint_from_u64_limbs as from_u64_limbs,
 };
 use num_integer::Integer;
 use proptest::prelude::*;

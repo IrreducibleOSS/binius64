@@ -5,7 +5,7 @@ use binius_core::{
 	consts::{LOG_BYTE_BITS, LOG_WORD_SIZE_BITS},
 	word::Word,
 };
-use binius_frontend::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
+use binius_frontend::{CircuitBuilder, Wire, WitnessFiller};
 pub use compress::{Compress, State};
 
 use crate::{
@@ -608,13 +608,13 @@ mod tests {
 	use std::array;
 
 	use binius_core::{Word, verify::verify_constraints};
-	use binius_frontend::compiler::{self, Wire};
+	use binius_frontend::{CircuitBuilder, Wire};
 	use hex_literal::hex;
 	use sha2::Digest;
 
 	use super::*;
 
-	fn mk_circuit(b: &mut compiler::CircuitBuilder, max_len: usize) -> Sha256 {
+	fn mk_circuit(b: &mut CircuitBuilder, max_len: usize) -> Sha256 {
 		let len = b.add_witness();
 		let digest: [Wire; 4] = std::array::from_fn(|_| b.add_inout());
 		let message = (0..max_len).map(|_| b.add_inout()).collect();
@@ -623,7 +623,7 @@ mod tests {
 
 	#[test]
 	fn full_sha256() {
-		let mut b = compiler::CircuitBuilder::new();
+		let mut b = CircuitBuilder::new();
 		let c = mk_circuit(&mut b, 256);
 		let circuit = b.build();
 		let mut w = circuit.new_witness_filler();
@@ -638,7 +638,7 @@ mod tests {
 
 	#[test]
 	fn full_sha256_multi_block() {
-		let mut b = compiler::CircuitBuilder::new();
+		let mut b = CircuitBuilder::new();
 		let c = mk_circuit(&mut b, 256);
 		let circuit = b.build();
 		let mut w = circuit.new_witness_filler();
@@ -655,7 +655,7 @@ mod tests {
 
 	// Helper function to run SHA-256 test with given input and expected digest
 	fn test_sha256_with_input(message_bytes: &[u8], expected_digest: [u8; 32]) {
-		let mut b = compiler::CircuitBuilder::new();
+		let mut b = CircuitBuilder::new();
 		let c = mk_circuit(&mut b, 256);
 		let circuit = b.build();
 		let cs = circuit.constraint_system();
@@ -832,7 +832,7 @@ mod tests {
 	#[test]
 	fn test_bogus_length_rejection() {
 		// Test that providing wrong length causes circuit to reject
-		let mut b = compiler::CircuitBuilder::new();
+		let mut b = CircuitBuilder::new();
 		let c = mk_circuit(&mut b, 256);
 		let circuit = b.build();
 		let mut w = circuit.new_witness_filler();
@@ -855,7 +855,7 @@ mod tests {
 	fn test_length_exceeds_max_rejection() {
 		// Test that providing a length > max_len_bytes causes circuit to reject
 		let max_len = 3;
-		let mut b = compiler::CircuitBuilder::new();
+		let mut b = CircuitBuilder::new();
 		let c = mk_circuit(&mut b, max_len);
 		let circuit = b.build();
 		let mut w = circuit.new_witness_filler();
@@ -877,7 +877,7 @@ mod tests {
 	#[test]
 	fn test_invalid_digest_rejection() {
 		// Test that providing wrong digest causes circuit to reject
-		let mut b = compiler::CircuitBuilder::new();
+		let mut b = CircuitBuilder::new();
 		let c = mk_circuit(&mut b, 256);
 		let circuit = b.build();
 		let mut w = circuit.new_witness_filler();
@@ -896,7 +896,7 @@ mod tests {
 	#[test]
 	fn test_wrong_message_content() {
 		// Test that providing wrong message content causes circuit to reject
-		let mut b = compiler::CircuitBuilder::new();
+		let mut b = CircuitBuilder::new();
 		let c = mk_circuit(&mut b, 256);
 		let circuit = b.build();
 		let mut w = circuit.new_witness_filler();
@@ -935,7 +935,7 @@ mod tests {
 		];
 
 		for (max_len, description) in test_cases {
-			let mut b = compiler::CircuitBuilder::new();
+			let mut b = CircuitBuilder::new();
 			let c = mk_circuit(&mut b, max_len);
 			let circuit = b.build();
 
@@ -965,7 +965,7 @@ mod tests {
 
 	#[test]
 	fn test_sha256_to_le_wires() {
-		let mut b = compiler::CircuitBuilder::new();
+		let mut b = CircuitBuilder::new();
 		let c = mk_circuit(&mut b, 64);
 
 		// Obtain LE-packed wires for the digest wires
@@ -996,7 +996,7 @@ mod tests {
 
 	#[test]
 	fn test_message_to_le_wires() {
-		let mut b = compiler::CircuitBuilder::new();
+		let mut b = CircuitBuilder::new();
 		let c = mk_circuit(&mut b, 16); // Small circuit for simple test
 
 		// Obtain LE-packed wires for the message
@@ -1076,7 +1076,7 @@ mod tests {
 	#[should_panic(expected = "message.len() (1) must equal len_bytes.div_ceil(4) (2)")]
 	fn test_sha256_fixed_with_insufficient_wires() {
 		use super::sha256_fixed;
-		let builder = compiler::CircuitBuilder::new();
+		let builder = CircuitBuilder::new();
 
 		// Create only 1 wire but claim message is 5 bytes (which needs 2 wires)
 		let message_wires: Vec<Wire> = vec![builder.add_witness()];

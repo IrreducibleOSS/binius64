@@ -1,7 +1,7 @@
 // Copyright 2025 Irreducible Inc.
 //! The Bitcoin double-SHA256 hash function.
 
-use binius_frontend::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
+use binius_frontend::{CircuitBuilder, Wire, WitnessFiller};
 use sha2::Digest;
 
 use crate::sha256::Sha256;

@@ -1,10 +1,7 @@
 // Copyright 2025 Irreducible Inc.
 //! The merkle proof for a transaction in a Bitcoin block.
 
-use binius_frontend::{
-	compiler::{CircuitBuilder, Wire, circuit::WitnessFiller},
-	util::pack_bytes_into_wires_le,
-};
+use binius_frontend::{CircuitBuilder, Wire, WitnessFiller, util::pack_bytes_into_wires_le};
 
 use super::double_sha256::DoubleSha256;
 

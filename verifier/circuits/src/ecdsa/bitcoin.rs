@@ -1,8 +1,5 @@
 // Copyright 2025 Irreducible Inc.
-use binius_frontend::{
-	compiler::{CircuitBuilder, Wire},
-	util::all_true,
-};
+use binius_frontend::{CircuitBuilder, Wire, util::all_true};
 
 use super::scalar_mul::shamirs_trick_endomorphism;
 use crate::{

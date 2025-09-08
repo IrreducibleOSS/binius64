@@ -3,7 +3,7 @@ pub mod permutation;
 pub mod reference;
 
 use binius_core::word::Word;
-use binius_frontend::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
+use binius_frontend::{CircuitBuilder, Wire, WitnessFiller};
 use permutation::Permutation;
 
 use crate::multiplexer::{multi_wire_multiplex, single_wire_multiplex};
@@ -298,7 +298,7 @@ mod tests {
 	use std::iter::repeat_n;
 
 	use binius_core::verify::verify_constraints;
-	use binius_frontend::compiler::{CircuitBuilder, Wire};
+	use binius_frontend::{CircuitBuilder, Wire};
 	use rand::{Rng, SeedableRng, rngs::StdRng};
 	use sha3::{Digest, Keccak256};
 

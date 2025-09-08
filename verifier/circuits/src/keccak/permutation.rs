@@ -2,7 +2,7 @@
 use std::array;
 
 use binius_core::word::Word;
-use binius_frontend::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
+use binius_frontend::{CircuitBuilder, Wire, WitnessFiller};
 
 use crate::keccak::reference::{R, RC, idx};
 pub const PADDING_BYTE: u8 = 0x01;
@@ -137,7 +137,7 @@ impl Permutation {
 #[cfg(test)]
 mod tests {
 	use binius_core::{verify::verify_constraints, word::Word};
-	use binius_frontend::compiler::CircuitBuilder;
+	use binius_frontend::CircuitBuilder;
 	use rand::{Rng, SeedableRng, rngs::StdRng};
 
 	use super::*;

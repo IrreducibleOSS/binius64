@@ -2,7 +2,7 @@
 use std::iter;
 
 use binius_core::word::Word;
-use binius_frontend::compiler::{CircuitBuilder, Wire, circuit::WitnessFiller};
+use binius_frontend::{CircuitBuilder, Wire, WitnessFiller};
 
 /// Represents an arbitrarily large unsigned integer using a vector of `Wire`s
 ///

@@ -7,7 +7,7 @@ use binius_core::{
 	word::Word,
 };
 use binius_field::{AESTowerField8b, BinaryField, Field};
-use binius_frontend::compiler::CircuitBuilder;
+use binius_frontend::{CircuitBuilder, Wire};
 use binius_math::{
 	BinarySubspace,
 	inner_product::{inner_product, inner_product_buffers},
@@ -41,7 +41,7 @@ pub fn create_sha256_cs_with_witness() -> (ConstraintSystem, ValueVec) {
 		builder.add_inout(),
 		builder.add_inout(),
 	];
-	let message: Vec<binius_frontend::compiler::Wire> = (0..max_len.div_ceil(8))
+	let message: Vec<Wire> = (0..max_len.div_ceil(8))
 		.map(|_| builder.add_witness())
 		.collect();
 
@@ -75,8 +75,7 @@ pub fn create_concat_cs_with_witness() -> (ConstraintSystem, ValueVec) {
 
 	// Create wires for concat circuit
 	let len_joined = builder.add_inout();
-	let joined: Vec<binius_frontend::compiler::Wire> =
-		(0..max_n_joined / 8).map(|_| builder.add_inout()).collect();
+	let joined: Vec<Wire> = (0..max_n_joined / 8).map(|_| builder.add_inout()).collect();
 
 	// Create terms: "Hello" + " " + "World!"
 	let terms = vec![
@@ -134,10 +133,8 @@ pub fn create_slice_cs_with_witness() -> (ConstraintSystem, ValueVec) {
 	// Create wires for slice circuit
 	let len_input = builder.add_witness();
 	let len_slice = builder.add_witness();
-	let input: Vec<binius_frontend::compiler::Wire> =
-		(0..4).map(|_| builder.add_witness()).collect();
-	let slice: Vec<binius_frontend::compiler::Wire> =
-		(0..2).map(|_| builder.add_witness()).collect();
+	let input: Vec<Wire> = (0..4).map(|_| builder.add_witness()).collect();
+	let slice: Vec<Wire> = (0..2).map(|_| builder.add_witness()).collect();
 	let offset = builder.add_witness();
 
 	// Create the Slice circuit

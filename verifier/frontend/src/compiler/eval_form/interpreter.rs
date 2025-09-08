@@ -122,7 +122,6 @@ impl<'a> Interpreter<'a> {
 				0x01 => self.exec_band(ctx),
 				0x02 => self.exec_bor(ctx),
 				0x03 => self.exec_bxor(ctx),
-				0x04 => self.exec_bnot(ctx),
 				0x05 => self.exec_select(ctx),
 				0x06 => self.exec_bxor_multi(ctx),
 				0x07 => self.exec_fax(ctx),
@@ -135,7 +134,6 @@ impl<'a> Interpreter<'a> {
 				// Arithmetic
 				0x20 => self.exec_iadd_cout(ctx),
 				0x21 => self.exec_iadd_cin_cout(ctx),
-				0x22 => self.exec_isub_bout(ctx),
 				0x23 => self.exec_isub_bin_bout(ctx),
 				0x30 => self.exec_imul(ctx),
 				0x31 => self.exec_smul(ctx),
@@ -189,13 +187,6 @@ impl<'a> Interpreter<'a> {
 		let src1 = self.read_reg();
 		let src2 = self.read_reg();
 		let val = self.load(ctx, src1) ^ self.load(ctx, src2);
-		self.store(ctx, dst, val);
-	}
-
-	fn exec_bnot(&mut self, ctx: &mut ExecutionContext<'_>) {
-		let dst = self.read_reg();
-		let src = self.read_reg();
-		let val = !self.load(ctx, src);
 		self.store(ctx, dst, val);
 	}
 
@@ -284,18 +275,6 @@ impl<'a> Interpreter<'a> {
 			.iadd_cin_cout(self.load(ctx, src2), cin_bit);
 		self.store(ctx, dst_sum, sum);
 		self.store(ctx, dst_cout, cout);
-	}
-
-	fn exec_isub_bout(&mut self, ctx: &mut ExecutionContext<'_>) {
-		let dst_diff = self.read_reg();
-		let dst_bout = self.read_reg();
-		let src1 = self.read_reg();
-		let src2 = self.read_reg();
-		let (diff, bout) = self
-			.load(ctx, src1)
-			.isub_bin_bout(self.load(ctx, src2), Word::ZERO);
-		self.store(ctx, dst_diff, diff);
-		self.store(ctx, dst_bout, bout);
 	}
 
 	fn exec_isub_bin_bout(&mut self, ctx: &mut ExecutionContext<'_>) {

@@ -8,7 +8,7 @@
 //! Tutorial guide: https://www.binius.xyz/building/
 
 use binius_core::verify::verify_constraints;
-use binius_frontend::compiler::CircuitBuilder;
+use binius_frontend::CircuitBuilder;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let builder = CircuitBuilder::new();

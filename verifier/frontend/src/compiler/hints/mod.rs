@@ -26,6 +26,7 @@ pub trait Hint: Send + Sync {
 	fn execute(&self, dimensions: &[usize], inputs: &[Word], outputs: &mut [Word]);
 
 	/// Get the shape of this hint (n_inputs, n_outputs)
+	#[allow(unused)]
 	fn shape(&self, dimensions: &[usize]) -> (usize, usize);
 }
 
@@ -55,16 +56,6 @@ impl HintRegistry {
 		outputs: &mut [Word],
 	) {
 		self.handlers[hint_id].execute(dimensions, inputs, outputs);
-	}
-
-	/// Get the number of registered hints
-	pub fn len(&self) -> usize {
-		self.handlers.len()
-	}
-
-	/// Check if the registry is empty
-	pub fn is_empty(&self) -> bool {
-		self.handlers.is_empty()
 	}
 }
 
