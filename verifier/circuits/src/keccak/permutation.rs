@@ -79,6 +79,15 @@ impl Permutation {
 		let d3 = b.bxor(c2, b.rotl(c4, 1));
 		let d4 = b.bxor(c3, b.rotl(c0, 1));
 
+		// Fusing every linear expression into its AND leads to too many distinct shifted value
+		// indices and that slows down the shift reduction phase. Empirically we found out that
+		// preventing committing those here leads to better performance.
+		b.force_commit(d0);
+		b.force_commit(d1);
+		b.force_commit(d2);
+		b.force_commit(d3);
+		b.force_commit(d4);
+
 		// A'[x,y] = A[x,y] ^ D[x]
 		for y in 0..5 {
 			state[idx(0, y)] = b.bxor(state[idx(0, y)], d0);
