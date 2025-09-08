@@ -1,6 +1,6 @@
 // Copyright 2025 Irreducible Inc.
 
-use binius_field::{ExtensionField, PackedField};
+use binius_field::{ExtensionField, PackedExtension, PackedField};
 use binius_math::{
 	FieldBuffer, inner_product::inner_product, multilinear::eq::eq_ind_partial_eval,
 	ntt::AdditiveNTT, tensor_algebra::TensorAlgebra,
@@ -17,7 +17,11 @@ use binius_verifier::{
 };
 
 use crate::{
-	Error, merkle_tree::MerkleTreeProver, protocols::basefold::prover::BaseFoldProver, ring_switch,
+	Error,
+	fri::{self, CommitOutput},
+	merkle_tree::MerkleTreeProver,
+	protocols::basefold::prover::BaseFoldProver,
+	ring_switch,
 };
 
 /// Prover for the FRI-Binius 1-bit multilinear polynomial commitment scheme.
@@ -62,6 +66,29 @@ where
 			merkle_prover,
 			fri_params,
 		}
+	}
+
+	/// Commit to a multilinear polynomial using FRI.
+	///
+	/// ## Arguments
+	///
+	/// * `packed_multilin` - a packed field buffer that the prover interprets as a multilinear
+	///   polynomial over its B1 subcomponents, in multilinear Lagrange basis. The number of B1
+	///   elements is `packed_multilin.len() * B128::N_BITS`.
+	pub fn commit<P>(
+		&self,
+		packed_multilin: FieldBuffer<P>,
+	) -> Result<CommitOutput<P, VCS::Digest, MerkleProver::Committed>, Error>
+	where
+		P: PackedField<Scalar = B128> + PackedExtension<B128>,
+	{
+		fri::commit_interleaved(
+			self.fri_params,
+			self.ntt,
+			self.merkle_prover,
+			packed_multilin.to_ref(),
+		)
+		.map_err(Into::into)
 	}
 
 	/// Prove the committed polynomial's evaluation at a given point.
@@ -165,8 +192,7 @@ mod test {
 
 	use super::OneBitPCSProver;
 	use crate::{
-		fri::{self, CommitOutput},
-		hash::parallel_compression::ParallelCompressionAdaptor,
+		fri::CommitOutput, hash::parallel_compression::ParallelCompressionAdaptor,
 		merkle_tree::prover::BinaryMerkleTreeProver,
 	};
 
@@ -223,16 +249,16 @@ mod test {
 		let domain_context = GenericOnTheFly::generate_from_subspace(&subspace);
 		let ntt = NeighborsLastSingleThread::new(domain_context);
 
+		let ring_switch_pcs_prover = OneBitPCSProver::new(&ntt, &merkle_prover, &fri_params);
+
 		let CommitOutput {
 			commitment: codeword_commitment,
 			committed: codeword_committed,
 			codeword,
-		} = fri::commit_interleaved(&fri_params, &ntt, &merkle_prover, packed_mle.to_ref())?;
+		} = ring_switch_pcs_prover.commit(packed_mle.clone())?;
 
 		let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
 		prover_transcript.message().write(&codeword_commitment);
-
-		let ring_switch_pcs_prover = OneBitPCSProver::new(&ntt, &merkle_prover, &fri_params);
 		ring_switch_pcs_prover.prove(
 			&codeword,
 			&codeword_committed,
@@ -471,8 +497,8 @@ mod test {
 		let domain_context = GenericOnTheFly::generate_from_subspace(&subspace);
 		let ntt = NeighborsLastSingleThread::new(domain_context);
 
-		let commit_result =
-			fri::commit_interleaved(&fri_params, &ntt, &merkle_prover, packed_buffer.to_ref());
+		let pcs_prover = OneBitPCSProver::new(&ntt, &merkle_prover, &fri_params);
+		let commit_result = pcs_prover.commit(packed_buffer);
 
 		commit_result.expect("FRI commit should work with packing width 4");
 	}

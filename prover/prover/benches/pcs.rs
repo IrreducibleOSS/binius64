@@ -7,7 +7,7 @@ use binius_math::{
 	test_utils::{random_field_buffer, random_scalars},
 };
 use binius_prover::{
-	fri, fri::CommitOutput, hash::parallel_compression::ParallelCompressionAdaptor,
+	fri::CommitOutput, hash::parallel_compression::ParallelCompressionAdaptor,
 	merkle_tree::prover::BinaryMerkleTreeProver, pcs::OneBitPCSProver,
 };
 use binius_transcript::ProverTranscript;
@@ -53,11 +53,10 @@ fn bench_pcs(c: &mut Criterion) {
 		)
 		.expect("Failed to create FRI params");
 
+		let pcs_prover = OneBitPCSProver::new(&ntt, &merkle_prover, &fri_params);
+
 		group.bench_function(format!("commit/log_len={log_len}"), |b| {
-			b.iter(|| {
-				fri::commit_interleaved(&fri_params, &ntt, &merkle_prover, packed_multilin.to_ref())
-					.unwrap()
-			});
+			b.iter(|| pcs_prover.commit(packed_multilin.clone()).unwrap());
 		});
 
 		// Commit the packed multilinear
@@ -65,7 +64,8 @@ fn bench_pcs(c: &mut Criterion) {
 			commitment: codeword_commitment,
 			committed: codeword_committed,
 			codeword,
-		} = fri::commit_interleaved(&fri_params, &ntt, &merkle_prover, packed_multilin.to_ref())
+		} = pcs_prover
+			.commit(packed_multilin.clone())
 			.expect("Failed to commit");
 
 		group.bench_function(format!("prove/log_len={log_len}"), |b| {
@@ -75,8 +75,6 @@ fn bench_pcs(c: &mut Criterion) {
 			// Generate random evaluation point
 			let evaluation_point =
 				random_scalars(&mut rng, log_len + <B128 as ExtensionField<B1>>::LOG_DEGREE);
-
-			let pcs_prover = OneBitPCSProver::new(&ntt, &merkle_prover, &fri_params);
 
 			b.iter(|| {
 				pcs_prover
