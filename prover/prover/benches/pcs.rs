@@ -76,16 +76,15 @@ fn bench_pcs(c: &mut Criterion) {
 			let evaluation_point =
 				random_scalars(&mut rng, log_len + <B128 as ExtensionField<B1>>::LOG_DEGREE);
 
+			let pcs_prover = OneBitPCSProver::new(&ntt, &merkle_prover, &fri_params);
+
 			b.iter(|| {
-				let pcs_prover =
-					OneBitPCSProver::new(packed_multilin.clone(), evaluation_point.clone());
 				pcs_prover.prove_with_transcript(
-					&mut prover_transcript,
-					&ntt,
-					&merkle_prover,
-					&fri_params,
 					&codeword,
 					&codeword_committed,
+					packed_multilin.clone(),
+					evaluation_point.clone(),
+					&mut prover_transcript,
 				)
 			});
 		});
