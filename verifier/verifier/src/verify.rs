@@ -256,7 +256,7 @@ where
 			perfetto_category = "phase"
 		)
 		.entered();
-		pcs::verify_transcript(
+		pcs::verify(
 			transcript,
 			witness_eval,
 			&eval_point,

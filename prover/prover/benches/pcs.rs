@@ -79,13 +79,15 @@ fn bench_pcs(c: &mut Criterion) {
 			let pcs_prover = OneBitPCSProver::new(&ntt, &merkle_prover, &fri_params);
 
 			b.iter(|| {
-				pcs_prover.prove_with_transcript(
-					&codeword,
-					&codeword_committed,
-					packed_multilin.clone(),
-					evaluation_point.clone(),
-					&mut prover_transcript,
-				)
+				pcs_prover
+					.prove(
+						&codeword,
+						&codeword_committed,
+						packed_multilin.clone(),
+						evaluation_point.clone(),
+						&mut prover_transcript,
+					)
+					.unwrap()
 			});
 		});
 	}

@@ -255,7 +255,7 @@ where
 		let pcs_prover =
 			OneBitPCSProver::new(&self.ntt, &self.merkle_prover, verifier.fri_params());
 
-		pcs_prover.prove_with_transcript(
+		pcs_prover.prove(
 			&trace_codeword,
 			&trace_committed,
 			witness_packed,
