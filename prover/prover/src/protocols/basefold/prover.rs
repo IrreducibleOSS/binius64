@@ -18,10 +18,16 @@ use crate::{
 	protocols::{basefold::sumcheck::MultilinearSumcheckProver, sumcheck::common::SumcheckProver},
 };
 
-/// Basefold Prover that writes to a transcript for non interactive proofs.
+/// Prover for the BaseFold protocol.
 ///
-/// The prover executes FRI and Sumcheck in parallel, sampling random challenges
-/// for FRI and Sumcheck from the transcript.
+/// The [BaseFold] protocol is a sumcheck-PIOP to IP compiler, used in the [DP24] polynomial
+/// commitment scheme. The verifier module [`binius_verifier::protocols::basefold`] provides a
+/// description of the protocol.
+///
+/// This struct exposes a round-by-round interface for one instance of the interactive protocol.
+///
+/// [BaseFold]: <https://link.springer.com/chapter/10.1007/978-3-031-68403-6_5>
+/// [DP24]: <https://eprint.iacr.org/2024/504>
 pub struct BaseFoldProver<'a, F, P, NTT, MerkleProver, VCS>
 where
 	F: BinaryField,
@@ -44,14 +50,7 @@ where
 	MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 	VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 {
-	/// Creates a new Basefold prover.
-	///
-	/// The Basefold protocol runs FRI and Sumcheck in parallel, using shared random
-	/// challenges to prove the evaluation claim of a committed polynomial. The eval
-	/// claim is represented as the inner product of the committed mle and the tensor
-	/// expanded eval point. Sumcheck is used to reduce this summation to an evaluation
-	/// at a random point, FRI is used both commit to the multilinear and perform the
-	/// multilinear evaluation at the challenge point.
+	/// Constructs a new prover.
 	///
 	/// ## Arguments
 	///
@@ -132,10 +131,10 @@ where
 		Ok(result)
 	}
 
-	/// Runs the entire basefold protocol, writing to the transcript round by round.
+	/// Runs the protocol to completion.
 	///
 	/// ## Arguments
-	/// * `transcript` - the transcript to write to
+	/// * `transcript` - the prover's view of the proof transcript
 	///
 	/// ## Returns
 	///  * the FRI fold round output
@@ -248,8 +247,8 @@ mod test {
 			codeword,
 		} = fri::commit_interleaved(&fri_params, &ntt, &merkle_prover, multilinear.to_ref())?;
 
-		let mut prover_challenger = ProverTranscript::new(StdChallenger::default());
-		prover_challenger.message().write(&codeword_commitment);
+		let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
+		prover_transcript.message().write(&codeword_commitment);
 
 		let prover = BaseFoldProver::new(
 			multilinear,
@@ -262,23 +261,23 @@ mod test {
 			&fri_params,
 		)?;
 
-		prover.prove_with_transcript(&mut prover_challenger)?;
+		prover.prove_with_transcript(&mut prover_transcript)?;
 
-		let mut verifier_challenger = prover_challenger.into_verifier();
+		let mut verifier_transcript = prover_transcript.into_verifier();
 
-		let retrieved_codeword_commitment = verifier_challenger.message().read()?;
+		let retrieved_codeword_commitment = verifier_transcript.message().read()?;
 
 		let basefold::ReducedOutput {
 			final_fri_value,
 			final_sumcheck_value,
 			challenges,
 		} = basefold::verify(
-			retrieved_codeword_commitment,
-			&mut verifier_challenger,
-			evaluation_claim,
 			&fri_params,
 			merkle_prover.scheme(),
 			n_vars,
+			retrieved_codeword_commitment,
+			evaluation_claim,
+			&mut verifier_transcript,
 		)?;
 
 		if !basefold::sumcheck_fri_consistency(

@@ -87,12 +87,12 @@ where
 		final_sumcheck_value,
 		challenges,
 	} = basefold::verify(
-		codeword_commitment,
-		transcript,
-		verifier_computed_sumcheck_claim,
 		fri_params,
 		vcs,
 		eval_point.len() - packing_degree,
+		codeword_commitment,
+		verifier_computed_sumcheck_claim,
+		transcript,
 	)?;
 
 	let (_, eval_point_high) = eval_point.split_at(packing_degree);
