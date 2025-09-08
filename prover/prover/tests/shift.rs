@@ -1,12 +1,13 @@
 // Copyright 2025 Irreducible Inc.
 
+use binius_circuits::sha256::Sha256;
 use binius_core::{
 	constraint_system::{AndConstraint, ConstraintSystem, MulConstraint, ValueVec},
 	verify::{eval_operand, verify_constraints},
 	word::Word,
 };
 use binius_field::{AESTowerField8b, BinaryField, Field};
-use binius_frontend::{circuits::sha256::Sha256, compiler::CircuitBuilder};
+use binius_frontend::compiler::CircuitBuilder;
 use binius_math::{
 	BinarySubspace,
 	inner_product::{inner_product, inner_product_buffers},
@@ -67,7 +68,7 @@ pub fn create_sha256_cs_with_witness() -> (ConstraintSystem, ValueVec) {
 }
 
 pub fn create_concat_cs_with_witness() -> (ConstraintSystem, ValueVec) {
-	use binius_frontend::circuits::concat::{Concat, Term};
+	use binius_circuits::concat::{Concat, Term};
 
 	let builder = CircuitBuilder::new();
 	let max_n_joined: usize = 32; // Maximum joined size
@@ -126,7 +127,7 @@ pub fn create_concat_cs_with_witness() -> (ConstraintSystem, ValueVec) {
 }
 
 pub fn create_slice_cs_with_witness() -> (ConstraintSystem, ValueVec) {
-	use binius_frontend::circuits::slice::Slice;
+	use binius_circuits::slice::Slice;
 
 	let builder = CircuitBuilder::new();
 

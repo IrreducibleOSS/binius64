@@ -1,7 +1,8 @@
 // Copyright 2025 Irreducible Inc.
 
+use binius_circuits::sha256::Sha256;
 use binius_core::{ValueVec, constraint_system::ConstraintSystem};
-use binius_frontend::{circuits::sha256::Sha256, compiler::CircuitBuilder};
+use binius_frontend::compiler::CircuitBuilder;
 use binius_prover::protocols::shift::{OperatorData, build_key_collection, prove};
 use binius_transcript::ProverTranscript;
 use binius_utils::checked_arithmetics::strict_log_2;

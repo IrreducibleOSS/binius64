@@ -1,10 +1,8 @@
 // Copyright 2025 Irreducible Inc.
 use anyhow::{Result, ensure};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD as BASE64_URL_SAFE_NO_PAD};
-use binius_frontend::{
-	circuits::zklogin::{Config, ZkLogin},
-	compiler::{CircuitBuilder, circuit::WitnessFiller},
-};
+use binius_circuits::zklogin::{Config, ZkLogin};
+use binius_frontend::compiler::{CircuitBuilder, circuit::WitnessFiller};
 use clap::Args;
 use jwt_simple::prelude::*;
 use rand::prelude::*;

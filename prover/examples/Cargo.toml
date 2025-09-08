@@ -9,6 +9,7 @@ workspace = true
 
 [dependencies]
 anyhow.workspace = true
+binius-circuits = { path = "../../verifier/circuits" }
 binius-core = { path = "../../verifier/core" }
 binius-frontend = { path = "../../verifier/frontend" }
 binius-verifier = { path = "../../verifier/verifier", default-features = false }
@@ -29,6 +30,7 @@ hex.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
+hex-literal.workspace = true
 
 [[bench]]
 name = "blake2b"

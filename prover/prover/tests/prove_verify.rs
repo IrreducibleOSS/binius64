@@ -1,15 +1,12 @@
 // Copyright 2025 Irreducible Inc.
 
+use binius_circuits::sha256::{Compress, State};
 use binius_core::{
 	constraint_system::{ConstraintSystem, ValueVec},
 	word::Word,
 };
 use binius_field::arch::OptimalPackedB128;
-use binius_frontend::{
-	circuits::sha256::{Compress, State},
-	compiler,
-	compiler::Wire,
-};
+use binius_frontend::{compiler, compiler::Wire};
 use binius_prover::{Prover, hash::parallel_compression::ParallelCompressionAdaptor};
 use binius_transcript::ProverTranscript;
 use binius_verifier::{

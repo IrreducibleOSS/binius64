@@ -2,10 +2,8 @@
 //! Blake2s circuit benchmark wrapper
 
 use anyhow::{Result, ensure};
-use binius_frontend::{
-	circuits::blake2s::Blake2s,
-	compiler::{CircuitBuilder, circuit::WitnessFiller},
-};
+use binius_circuits::blake2s::Blake2s;
+use binius_frontend::compiler::{CircuitBuilder, circuit::WitnessFiller};
 use clap::Args;
 use rand::{RngCore, SeedableRng, rngs::StdRng};
 
