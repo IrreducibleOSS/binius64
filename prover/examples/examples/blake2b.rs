@@ -1,11 +1,9 @@
 // Copyright 2025 Irreducible Inc.
 
 use anyhow::{Result, ensure};
+use binius_circuits::blake2b::{Blake2bCircuit, blake2b};
 use binius_examples::{Cli, ExampleCircuit};
-use binius_frontend::{
-	circuits::blake2b::{Blake2bCircuit, blake2b},
-	compiler::{CircuitBuilder, circuit::WitnessFiller},
-};
+use binius_frontend::compiler::{CircuitBuilder, circuit::WitnessFiller};
 use clap::Args;
 use rand::prelude::*;
 
