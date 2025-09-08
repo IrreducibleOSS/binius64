@@ -4,7 +4,7 @@ use binius_core::ConstraintSystemError;
 
 use crate::{
 	fri, pcs,
-	protocols::{shift, sumcheck},
+	protocols::{intmul, shift, sumcheck},
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -15,6 +15,8 @@ pub enum Error {
 	FRI(#[from] fri::Error),
 	#[error("NTT error: {0}")]
 	PCS(#[from] pcs::Error),
+	#[error("IntMul error: {0}")]
+	IntMul(#[from] intmul::Error),
 	#[error("sumcheck error: {0}")]
 	Sumcheck(#[from] sumcheck::Error),
 	#[error("Math error: {0}")]
