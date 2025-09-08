@@ -318,7 +318,7 @@ Notes:
 
 ## Adding to Cargo.toml
 
-Add your example to `crates/examples/Cargo.toml`:
+Add your example to `prover/examples/Cargo.toml`:
 
 ```toml
 [[example]]

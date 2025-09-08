@@ -1067,7 +1067,7 @@ proptest! {
 //
 // After analysis, both constraint count tests and snapshot tests provide value:
 //
-// 1. **Snapshot Tests** (crates/examples/snapshots/blake2s.snap):
+// 1. **Snapshot Tests** (prover/examples/snapshots/blake2s.snap):
 //    - Capture the complete circuit structure (gates, evaluation instructions, etc.)
 //    - Provide regression detection for structural changes
 //    - Currently shows: 3523 AND constraints for the example configuration

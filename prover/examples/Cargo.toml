@@ -9,11 +9,11 @@ workspace = true
 
 [dependencies]
 anyhow.workspace = true
-binius-core = { path = "../core" }
-binius-frontend = { path = "../frontend" }
-binius-verifier = { path = "../verifier", default-features = false }
+binius-core = { path = "../../verifier/core" }
+binius-frontend = { path = "../../verifier/frontend" }
+binius-verifier = { path = "../../verifier/verifier", default-features = false }
 binius-prover = { path = "../prover", default-features = false }
-binius-utils = { path = "../utils", features = ["platform-diagnostics"] }
+binius-utils = { path = "../../verifier/utils", features = ["platform-diagnostics"] }
 clap.workspace = true
 tracing.workspace = true
 tracing-profile.workspace = true

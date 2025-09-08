@@ -269,7 +269,7 @@ The codebase includes significant architecture-specific optimizations:
 - **aarch64**: NEON SIMD instructions
 - **Portable**: Fallback implementations for all architectures
 
-When adding new optimized code paths, follow the existing pattern in `crates/field/src/arch/` with separate modules for each architecture and feature detection.
+When adding new optimized code paths, follow the existing pattern in `verifier/field/src/arch/` with separate modules for each architecture and feature detection.
 
 ### Word-Level Parallelism
 The Binius64 design achieves efficiency through word-level parallelism:

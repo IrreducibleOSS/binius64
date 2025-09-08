@@ -31,7 +31,7 @@ lto = "fat"
 
 ### Examples
 
-The `crates/frontend/src/circuits/` directory contains examples of pre-built circuits including SHA256, base64, and equality checking. To run tests for specific circuits:
+The `verifier/frontend/src/circuits/` directory contains examples of pre-built circuits including SHA256, base64, and equality checking. To run tests for specific circuits:
 
 ```bash
 cargo test -p binius-frontend

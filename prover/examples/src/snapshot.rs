@@ -11,7 +11,7 @@ fn workspace_root() -> Result<PathBuf> {
 		Please run this command via 'cargo run --example <name>' or 'cargo test'.",
 	)?;
 
-	// CARGO_MANIFEST_DIR points to crates/examples, so go up two levels to reach workspace root
+	// CARGO_MANIFEST_DIR points to prover/examples, so go up two levels to reach workspace root
 	let workspace_root = PathBuf::from(manifest_dir)
 		.parent()
 		.and_then(|p| p.parent())
@@ -24,7 +24,7 @@ fn workspace_root() -> Result<PathBuf> {
 /// Get the snapshot file path for a circuit example
 pub fn snapshot_path(circuit_name: &str) -> Result<PathBuf> {
 	let root = workspace_root()?;
-	Ok(root.join(format!("crates/examples/snapshots/{}.snap", circuit_name)))
+	Ok(root.join(format!("prover/examples/snapshots/{}.snap", circuit_name)))
 }
 
 /// Format circuit statistics for snapshot

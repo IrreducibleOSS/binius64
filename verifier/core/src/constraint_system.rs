@@ -1434,7 +1434,7 @@ mod serialization_tests {
 		let mut buf = Vec::new();
 		witness.serialize(&mut buf).unwrap();
 
-		let test_data_path = std::path::Path::new("crates/core/test_data/witness_v1.bin");
+		let test_data_path = std::path::Path::new("verifier/core/test_data/witness_v1.bin");
 
 		if let Some(parent) = test_data_path.parent() {
 			std::fs::create_dir_all(parent).unwrap();
@@ -1630,7 +1630,7 @@ mod serialization_tests {
 		let mut buf = Vec::new();
 		proof.serialize(&mut buf).unwrap();
 
-		let test_data_path = std::path::Path::new("crates/core/test_data/proof_v1.bin");
+		let test_data_path = std::path::Path::new("verifier/core/test_data/proof_v1.bin");
 
 		if let Some(parent) = test_data_path.parent() {
 			std::fs::create_dir_all(parent).unwrap();
