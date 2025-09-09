@@ -152,7 +152,7 @@ where
 			commitment: trace_commitment,
 			committed: trace_committed,
 			codeword: trace_codeword,
-		} = pcs_prover.commit(witness_packed.clone())?;
+		} = pcs_prover.commit(witness_packed.to_ref())?;
 		transcript.message().write(&trace_commitment);
 
 		drop(witness_commit_guard);

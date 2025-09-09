@@ -1,5 +1,7 @@
 // Copyright 2025 Irreducible Inc.
 
+use std::ops::Deref;
+
 use binius_field::{ExtensionField, PackedExtension, PackedField};
 use binius_math::{
 	FieldBuffer, inner_product::inner_product, multilinear::eq::eq_ind_partial_eval,
@@ -75,12 +77,13 @@ where
 	/// * `packed_multilin` - a packed field buffer that the prover interprets as a multilinear
 	///   polynomial over its B1 subcomponents, in multilinear Lagrange basis. The number of B1
 	///   elements is `packed_multilin.len() * B128::N_BITS`.
-	pub fn commit<P>(
+	pub fn commit<P, Data>(
 		&self,
-		packed_multilin: FieldBuffer<P>,
+		packed_multilin: FieldBuffer<P, Data>,
 	) -> Result<CommitOutput<P, VCS::Digest, MerkleProver::Committed>, Error>
 	where
 		P: PackedField<Scalar = B128> + PackedExtension<B128>,
+		Data: Deref<Target = [P]>,
 	{
 		fri::commit_interleaved(
 			self.fri_params,
@@ -255,7 +258,7 @@ mod test {
 			commitment: codeword_commitment,
 			committed: codeword_committed,
 			codeword,
-		} = ring_switch_pcs_prover.commit(packed_mle.clone())?;
+		} = ring_switch_pcs_prover.commit(packed_mle.to_ref())?;
 
 		let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
 		prover_transcript.message().write(&codeword_commitment);
