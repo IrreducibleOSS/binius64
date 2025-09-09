@@ -9,6 +9,7 @@ use binius_core::{
 };
 use binius_field::{
 	AESTowerField8b as B8, BinaryField, PackedAESBinaryField16x8b, PackedExtension, PackedField,
+	UnderlierWithBitOps, WithUnderlier,
 };
 use binius_math::{
 	BinarySubspace, FieldBuffer,
@@ -66,7 +67,10 @@ where
 impl<P, MerkleHash, ParallelMerkleCompress, ParallelMerkleHasher>
 	Prover<P, ParallelMerkleCompress, ParallelMerkleHasher>
 where
-	P: PackedField<Scalar = B128> + PackedExtension<B128> + PackedExtension<B1>,
+	P: PackedField<Scalar = B128>
+		+ PackedExtension<B128>
+		+ PackedExtension<B1>
+		+ WithUnderlier<Underlier: UnderlierWithBitOps>,
 	MerkleHash: Digest + BlockSizeUser + FixedOutputReset,
 	ParallelMerkleHasher: ParallelDigest<Digest = MerkleHash>,
 	ParallelMerkleCompress: ParallelPseudoCompression<Output<MerkleHash>, 2>,

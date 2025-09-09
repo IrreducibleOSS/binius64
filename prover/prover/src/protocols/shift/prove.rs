@@ -101,7 +101,7 @@ impl<F: Field> PreparedOperatorData<F> {
 ///
 /// # Requirements
 /// - `words` must have power-of-2 length for efficient multilinear operations
-pub fn prove<F, P: PackedField<Scalar = F>, C: Challenger>(
+pub fn prove<F, P, C: Challenger>(
 	log_public_words: usize,
 	key_collection: &KeyCollection,
 	words: &[Word],
@@ -111,6 +111,7 @@ pub fn prove<F, P: PackedField<Scalar = F>, C: Challenger>(
 ) -> Result<SumcheckOutput<F>, Error>
 where
 	F: BinaryField + From<AESTowerField8b> + WithUnderlier<Underlier: UnderlierWithBitOps>,
+	P: PackedField<Scalar = F> + WithUnderlier<Underlier: UnderlierWithBitOps>,
 {
 	// Sample lambdas, one for each operator.
 	let bitand_lambda = transcript.sample();
