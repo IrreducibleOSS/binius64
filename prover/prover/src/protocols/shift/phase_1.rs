@@ -50,7 +50,7 @@ const LOG_LEN: usize = LOG_WORD_SIZE_BITS + LOG_WORD_SIZE_BITS;
 /// Proves the first phase of the shift reduction.
 /// Computes the g and h multilinears and performs the sumcheck.
 #[instrument(skip_all, name = "prover_phase_1")]
-pub fn prove_phase_1<F, P: PackedField<Scalar = F>, C: Challenger>(
+pub fn prove_phase_1<F, P, C: Challenger>(
 	key_collection: &KeyCollection,
 	words: &[Word],
 	bitand_data: &PreparedOperatorData<F>,
@@ -59,6 +59,7 @@ pub fn prove_phase_1<F, P: PackedField<Scalar = F>, C: Challenger>(
 ) -> Result<SumcheckOutput<F>, Error>
 where
 	F: BinaryField + From<AESTowerField8b> + WithUnderlier<Underlier: UnderlierWithBitOps>,
+	P: PackedField<Scalar = F> + WithUnderlier<Underlier: UnderlierWithBitOps>,
 {
 	let g_triplet: MultilinearTriplet<P> =
 		build_g_triplet(words, key_collection, bitand_data, intmul_data)?;
@@ -173,22 +174,6 @@ fn run_phase_1_sumcheck<F: Field, P: PackedField<Scalar = F>, C: Challenger>(
 	})
 }
 
-// A map from a byte to 8 values, where `i`-th value has a value of a `i`-th bit from the byte (0 or
-// 1)
-const BITS_MAP: [[u8; 8]; 256] = {
-	let mut map = [[0u8; 8]; 256];
-	let mut byte = 0;
-	while byte < 256 {
-		let mut bit_index = 0;
-		while bit_index < 8 {
-			map[byte][bit_index] = if (byte >> bit_index) & 1 == 1 { 1 } else { 0 };
-			bit_index += 1;
-		}
-		byte += 1;
-	}
-	map
-};
-
 /// Constructs the "g" multilinear triplets for both BITAND and INTMUL operations.
 ///
 /// This function builds the g multilinear polynomials used in phase 1 of the shift protocol.
@@ -216,20 +201,43 @@ const BITS_MAP: [[u8; 8]; 256] = {
 #[instrument(skip_all, name = "build_g_triplet")]
 fn build_g_triplet<
 	F: BinaryField + WithUnderlier<Underlier: UnderlierWithBitOps>,
-	P: PackedField<Scalar = F>,
+	P: PackedField<Scalar = F> + WithUnderlier<Underlier: UnderlierWithBitOps>,
 >(
 	words: &[Word],
 	key_collection: &KeyCollection,
 	bitand_operator_data: &PreparedOperatorData<F>,
 	intmul_operator_data: &PreparedOperatorData<F>,
 ) -> Result<MultilinearTriplet<P>, Error> {
-	const ACC_SIZE: usize = SHIFT_VARIANT_COUNT * (1 << LOG_LEN);
+	let acc_size: usize = SHIFT_VARIANT_COUNT << (LOG_LEN.saturating_sub(P::LOG_WIDTH));
+
+	assert!(
+		P::WIDTH <= 8,
+		"the optimizations below work only when the width of `P` is less than 8 (which is true for all packed 128b fields we use for now)"
+	);
+
+	// Field element that is represented by all ones
+	let all_ones_f = F::from_underlier(UnderlierWithBitOps::fill_with_bit(1));
+	// Map from u8 with `P::WIDTH` meaningful bits to the `P` where each element has
+	// all zeroes or all ones depending on the corresponding bit value.
+	let packed_masks_map = (0..1 << P::WIDTH)
+		.map(|i| {
+			let mut mask = P::zero();
+			for bit_index in 0..P::WIDTH {
+				if (i >> bit_index) & 1 == 1 {
+					mask.set(bit_index, all_ones_f);
+				}
+			}
+			mask.to_underlier()
+		})
+		.collect::<Vec<_>>();
+	// A mask for low `P::WIDTH` bits.
+	let low_bits_mask = (1u8 << P::WIDTH) - 1;
 
 	let multilinears = words
 		.par_iter()
 		.zip(key_collection.key_ranges.par_iter())
 		.fold(
-			|| zeroed_vec::<F>(ACC_SIZE).into_boxed_slice(),
+			|| zeroed_vec::<P>(acc_size).into_boxed_slice(),
 			|mut multilinears, (word, Range { start, end })| {
 				let keys = &key_collection.keys[*start as usize..*end as usize];
 
@@ -240,7 +248,7 @@ fn build_g_triplet<
 					};
 
 					let acc = key.accumulate(&key_collection.constraint_indices, operator_data);
-					let acc_underlier = acc.to_underlier();
+					let acc_underlier = P::broadcast(acc).to_underlier();
 
 					// The following loop is an optimized version of the following
 					// for i in 0..WORD_SIZE_BITS {
@@ -248,21 +256,30 @@ fn build_g_triplet<
 					//         values[start + i] += acc;
 					//     }
 					// }
-					let start = key.id as usize * WORD_SIZE_BITS;
+					let start = key.id as usize * (WORD_SIZE_BITS >> P::LOG_WIDTH);
 					let word_bytes = word.0.to_le_bytes();
 					for (&byte, values) in word_bytes.iter().zip(
-						multilinears[start..start + WORD_SIZE_BITS]
-							.chunks_exact_mut(WORD_SIZE_BYTES),
+						multilinears[start..start + (WORD_SIZE_BITS >> P::LOG_WIDTH)]
+							.chunks_exact_mut(WORD_SIZE_BYTES >> P::LOG_WIDTH),
 					) {
-						let masks = &BITS_MAP[byte as usize];
-						for bit_index in 0..8 {
-							// Safety:
-							// - `values` is guaranteed to be 8 elements long due to the chunking
-							// - `bit_index` is always in bounds because we iterate over 0..8
+						for value_index in 0..(8 >> P::LOG_WIDTH) {
 							unsafe {
-								*values.get_unchecked_mut(bit_index).to_underlier_ref_mut() ^=
-									F::Underlier::fill_with_bit(*masks.get_unchecked(bit_index))
-										& acc_underlier;
+								let packed_mask_index =
+									((byte >> (value_index * P::WIDTH)) & low_bits_mask) as usize;
+
+								// Safety:
+								// - `packed_masks_map` is guaranteed to have enough elements to be
+								//   indexed with a `P::WIDTH`-bits value.
+								let packed_mask =
+									*packed_masks_map.get_unchecked(packed_mask_index);
+
+								// Safety:
+								// - `values` is guaranteed to be (8 >> P::LOG_WIDTH) elements long
+								//   due to the chunking
+								// - `value_index` is always in bounds because we iterate over 0..(8
+								//   >> P::LOG_WIDTH)
+								*values.get_unchecked_mut(value_index) +=
+									P::from_underlier(packed_mask & acc_underlier);
 							}
 						}
 					}
@@ -272,7 +289,7 @@ fn build_g_triplet<
 			},
 		)
 		.reduce(
-			|| zeroed_vec::<F>(ACC_SIZE).into_boxed_slice(),
+			|| zeroed_vec::<P>(acc_size).into_boxed_slice(),
 			|mut acc, local| {
 				izip!(acc.iter_mut(), local.iter()).for_each(|(acc, local)| {
 					*acc += *local;
@@ -292,18 +309,23 @@ fn build_g_triplet<
 /// applies lambda weighting to each operand, and combines them into a single triplet.
 /// Each operand of index `i` gets weighted by λ^(i+1).
 #[instrument(skip_all, name = "build_multilinear_triplet")]
-fn build_multilinear_triplet<F: Field, P: PackedField<Scalar = F>>(
-	multilinears: &[F],
+fn build_multilinear_triplet<P: PackedField>(
+	multilinears: &[P],
 ) -> Result<MultilinearTriplet<P>, Error> {
+	assert!(
+		P::LOG_WIDTH < LOG_LEN,
+		"P::WIDTH is not supposed to exceed 8, so this statement must hold"
+	);
+
 	let [sll_chunk, srl_chunk, sra_chunk] = multilinears
-		.chunks(1 << LOG_LEN)
+		.chunks(1 << (LOG_LEN - P::LOG_WIDTH))
 		.collect::<Vec<_>>()
 		.try_into()
 		.expect("chunk has SHIFT_VARIANT_COUNT parts of size 1 << LOG_LEN");
 
-	let sll = FieldBuffer::from_values(sll_chunk)?;
-	let srl = FieldBuffer::from_values(srl_chunk)?;
-	let sra = FieldBuffer::from_values(sra_chunk)?;
+	let sll = FieldBuffer::new(LOG_LEN, sll_chunk.to_vec().into_boxed_slice())?;
+	let srl = FieldBuffer::new(LOG_LEN, srl_chunk.to_vec().into_boxed_slice())?;
+	let sra = FieldBuffer::new(LOG_LEN, sra_chunk.to_vec().into_boxed_slice())?;
 
 	Ok(MultilinearTriplet { sll, srl, sra })
 }
