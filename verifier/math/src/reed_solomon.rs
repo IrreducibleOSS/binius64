@@ -17,7 +17,7 @@ use binius_utils::{
 use getset::{CopyGetters, Getters};
 
 use super::{binary_subspace::BinarySubspace, error::Error as MathError, ntt::AdditiveNTT};
-use crate::FieldSliceMut;
+use crate::{FieldSliceMut, ntt::DomainContext};
 
 /// [Reed–Solomon] codes over binary fields.
 ///
@@ -29,7 +29,7 @@ use crate::FieldSliceMut;
 /// [Reed–Solomon]: <https://en.wikipedia.org/wiki/Reed%E2%80%93Solomon_error_correction>
 /// [LCH14]: <https://arxiv.org/abs/1404.3458>
 #[derive(Debug, Clone, Getters, CopyGetters)]
-pub struct ReedSolomonCode<F: BinaryField> {
+pub struct ReedSolomonCode<F> {
 	#[get = "pub"]
 	subspace: BinarySubspace<F>,
 	log_dimension: usize,
@@ -48,11 +48,20 @@ impl<F: BinaryField> ReedSolomonCode<F> {
 		log_dimension: usize,
 		log_inv_rate: usize,
 	) -> Result<Self, Error> {
-		if log_dimension + log_inv_rate > ntt.log_domain_size() {
+		Self::with_domain_context_subspace(ntt.domain_context(), log_dimension, log_inv_rate)
+	}
+
+	pub fn with_domain_context_subspace(
+		domain_context: &impl DomainContext<Field = F>,
+		log_dimension: usize,
+		log_inv_rate: usize,
+	) -> Result<Self, Error> {
+		let subspace_dim = log_dimension + log_inv_rate;
+		if subspace_dim > domain_context.log_domain_size() {
 			return Err(Error::SubspaceDimensionMismatch);
 		}
-		let subspace_dim = log_dimension + log_inv_rate;
-		Self::with_subspace(ntt.subspace(subspace_dim), log_dimension, log_inv_rate)
+		let subspace = domain_context.subspace(subspace_dim);
+		Self::with_subspace(subspace, log_dimension, log_inv_rate)
 	}
 
 	pub fn with_subspace(
