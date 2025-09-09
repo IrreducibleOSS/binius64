@@ -1,13 +1,26 @@
 sha512 circuit
 --
-Number of gates: 48779
-Number of evaluation instructions: 49886
-Number of AND constraints: 21349
-Number of MUL constraints: 0
-Number of distinct shifted value indices: 63034
-Length of value vec: 32768
-  Constants: 377
-  Inout: 264
-  Witness: 273
-  Internal: 20811
-  Scratch: 54941
+Gates & Instructions
+├─ Number of gates: 48,779
+├─ Number of evaluation instructions: 49,886
+└─ Distinct shifted value indices: 63,034
+
+Constraints
+├─ AND constraints: 21,349 used (65.2% of 2^15)
+│  [▓▓▓▓▓▓░░░░] spare: 11,419
+└─ MUL constraints: 0 used (0.0% of 2^0)
+   [░░░░░░░░░░] spare: 1
+
+Value Vector
+├─ Public Section: 641 used (62.6% of 2^10)
+│  [▓▓▓▓▓▓░░░░] spare: 383
+│  ├─ Constants: 377
+│  └─ Inout: 264
+├─ Private Section: 21,084 used (66.4%)
+│  [▓▓▓▓▓▓░░░░] spare: 10,660
+│  ├─ Witness: 273
+│  └─ Internal: 20,811
+├─ Total Committed: 21,725 used (66.3% of 2^15)
+│  [▓▓▓▓▓▓░░░░] spare: 11,043
+└─ Scratch (uncommitted): 54,941
+
