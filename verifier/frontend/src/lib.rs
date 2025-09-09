@@ -26,7 +26,7 @@
 #![warn(missing_docs)]
 
 mod compiler;
-mod stat;
+pub mod stat;
 
 pub mod util;
 
