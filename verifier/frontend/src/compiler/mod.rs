@@ -940,6 +940,26 @@ impl CircuitBuilder {
 		self.icmp_ult(y, x)
 	}
 
+	/// Unsigned greater-than-or-equal comparison.
+	///
+	/// Compares two 64-bit wires as unsigned integers.
+	///
+	/// Returns:
+	/// - a wire whose MSB-bool value is true if x >= y
+	/// - a wire whose MSB-bool value is false if x < y
+	///
+	/// the non-most-significant bits of the output wire are undefined.
+	///
+	/// # Cost
+	///
+	/// - 1 AND constraint,
+	/// - 1 linear constraint.
+	pub fn icmp_uge(&self, x: Wire, y: Wire) -> Wire {
+		// x >= y is equivalent to !(x < y)
+		let lt = self.icmp_ult(x, y);
+		self.bnot(lt)
+	}
+
 	/// Equality comparison.
 	///
 	/// Compares two 64-bit wires for equality.
