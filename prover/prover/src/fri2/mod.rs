@@ -5,9 +5,11 @@ use binius_transcript::{
 	fiat_shamir::{CanSampleBits, Challenger},
 };
 use binius_utils::rayon::iter::{IndexedParallelIterator, ParallelIterator};
+#[allow(unused_imports)]
+use binius_verifier::fri2::FRIVerifier;
 use binius_verifier::{
 	fri2::{
-		FRIParams, FRIVerifier, RoundType,
+		FRIParams, RoundType,
 		fold::{fold_chunk, fold_chunk_without_ntt},
 	},
 	hash::PseudoCompressionFunction,
@@ -372,10 +374,11 @@ mod tests {
 		let rs_code = ReedSolomonCode::new(poly.log_len() - fold_arities[0], log_inv_rate).unwrap();
 		let params = FRIParams::new(
 			StdCompression::default(),
+			commit_layer,
+			poly.log_len(),
 			rs_code,
 			fold_arities,
 			num_queries,
-			commit_layer,
 		);
 
 		test_with_params(poly.as_ref(), &params);

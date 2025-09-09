@@ -4,18 +4,29 @@ use binius_field::BinaryField;
 use binius_math::{ReedSolomonCode, ntt::DomainContext};
 
 /// Parameters for FRI.
+///
+/// Generics:
+/// - `F`: The field over which the protocol is executed.
+/// - `H`, `C`: Choice of hashing and compression function for the merkle trees.
 #[derive(Debug, Clone)]
 pub struct FRIParams<F, H, C> {
+	/// The hashing algorithm used for hashing leaves in the merkle trees.
 	digest: PhantomData<H>,
+	/// The compression algorithm used for compressing nodes in the merkle trees.
 	compression: C,
+	/// The layer used for committing in the merkle trees.
+	commit_layer: usize,
+	/// Information about the folding rounds in FRI.
 	round_types: Vec<RoundType>,
+	/// The code used for encoding the message at the beginning of FRI.
 	rs_code: ReedSolomonCode<F>,
 	// TODO remove?
 	fold_arities: Vec<usize>,
+	/// The number of queries in the QUERY phase.
 	num_queries: usize,
-	commit_layer: usize,
 }
 
+/// Information about one folding round in FRI.
 #[derive(Debug, Clone)]
 pub enum RoundType {
 	InitialCommitment {
@@ -36,14 +47,27 @@ impl<F, H, C> FRIParams<F, H, C>
 where
 	F: BinaryField,
 {
+	/// Create FRI parameters.
+	///
+	/// Arguments:
+	/// - `compression`: The compression function used in the merkle trees.
+	/// - `commit_layer`: The layer of commitment in the merkle trees.
+	/// - `poly_log_len`: Base-2 logarithm of the length of the multilinear polynomial that will be committed.
+	/// - `rs_code`: The code for used for encoding the message at the beginning of FRI. \
+	///   Must satisfy `rs_code.log_dim() + fold_arities[0] >= poly_log_len`.
+	/// - `fold_arities`: The arities for folding. Each arity must be at least 1, and there must be at least one folding arity.
+	/// - `num_queries`: The number of queries in the QUERY phase.
 	pub fn new(
 		compression: C,
+		commit_layer: usize,
+		poly_log_len: usize,
 		rs_code: ReedSolomonCode<F>,
 		fold_arities: Vec<usize>,
 		num_queries: usize,
-		commit_layer: usize,
 	) -> Self {
 		assert!(!fold_arities.is_empty());
+		assert!(rs_code.log_dim() + fold_arities[0] >= poly_log_len);
+
 		// we count the initial commitment as a "round", hence the "+1"
 		let num_rounds = rs_code.log_dim() + fold_arities[0] + 1;
 		let mut round_types = vec![RoundType::Vacant; num_rounds];
@@ -81,33 +105,33 @@ where
 		Self {
 			digest: PhantomData,
 			compression,
+			commit_layer,
 			rs_code,
 			fold_arities,
 			num_queries,
-			commit_layer,
 			round_types,
 		}
 	}
 
 	pub fn new_with_good_choices(
 		compression: C,
-		log_msg_len: usize,
+		poly_log_len: usize,
 		domain_context: &impl DomainContext<Field = F>,
 	) -> Self {
 		// FIXME TODO make calculation for good choices
 		let commit_layer = 0;
 		let num_queries = 100;
-		let fold_arities = vec![1; log_msg_len];
+		let fold_arities = vec![1; poly_log_len];
 		let log_inv_rate = 1;
-		assert!(fold_arities[0] < log_msg_len);
+		assert!(fold_arities[0] < poly_log_len);
 		let rs_code = ReedSolomonCode::with_domain_context_subspace(
 			domain_context,
-			log_msg_len - fold_arities[0],
+			poly_log_len - fold_arities[0],
 			log_inv_rate,
 		)
 		.unwrap();
 
-		Self::new(compression, rs_code, fold_arities, num_queries, commit_layer)
+		Self::new(compression, commit_layer, poly_log_len, rs_code, fold_arities, num_queries)
 	}
 
 	pub fn compression(&self) -> &C {
