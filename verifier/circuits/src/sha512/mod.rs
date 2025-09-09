@@ -123,8 +123,8 @@ impl Sha512 {
 		// equivalent to `(message.len() * 3 + 17).div_ceil(128)`.
 		let n_words: usize = n_blocks << 4; // 16 words per block
 
-		// Assert that len_bytes <= max_len_bytes by checking that !(max_len_bytes < len_bytes)
-		let too_long = builder.icmp_ult(builder.add_constant_64(max_len_bytes as u64), len_bytes);
+		// Check that len_bytes > max_len_bytes is false.
+		let too_long = builder.icmp_ugt(len_bytes, builder.add_constant_64(max_len_bytes as u64));
 		builder.assert_false("1.len_check", too_long);
 
 		// ---- 2. Message padding and compression setup
@@ -265,7 +265,7 @@ impl Sha512 {
 				let is_message_word =
 					builder.icmp_ult(builder.add_constant_64(word_index as u64 + 1), w_bd);
 				let is_past_message =
-					builder.icmp_ult(w_bd, builder.add_constant_64(word_index as u64));
+					builder.icmp_ugt(builder.add_constant_64(word_index as u64), w_bd);
 
 				// ---- 3b. Full message words
 				if word_index < message.len() {

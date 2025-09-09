@@ -125,8 +125,7 @@ impl Base64UrlSafe {
 /// Verifies that the length is within bounds (0 < len_decoded <= max_len_decoded).
 fn verify_length_bounds(builder: &CircuitBuilder, len_bytes: Wire, max_len_bytes: usize) {
 	// Check if len_decoded > max_len_decoded (which should be false)
-	// len_decoded > max_len_decoded is equivalent to max_len_decoded < len_decoded
-	let too_long = builder.icmp_ult(builder.add_constant_64(max_len_bytes as u64), len_bytes);
+	let too_long = builder.icmp_ugt(len_bytes, builder.add_constant_64(max_len_bytes as u64));
 	builder.assert_false("length_check", too_long);
 }
 
