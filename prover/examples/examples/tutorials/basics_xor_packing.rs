@@ -4,7 +4,7 @@
 //!
 //! Demonstrates how multiple XOR operations can be packed into a single constraint.
 //!
-//! Tutorial guide: https://www.binius.xyz/building/
+//! Guide: https://www.binius.xyz/building/
 
 use binius_core::{verify::verify_constraints, word::Word};
 use binius_frontend::CircuitBuilder;

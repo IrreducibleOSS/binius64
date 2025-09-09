@@ -1,4 +1,7 @@
 // Copyright 2025 Irreducible Inc.
+
+//! Circuit statistics module for analyzing constraint counts and circuit complexity.
+
 use std::fmt;
 
 use binius_core::{ConstraintSystem, Operand, ShiftedValueIndex};

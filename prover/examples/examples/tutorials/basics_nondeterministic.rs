@@ -4,7 +4,7 @@
 //!
 //! Demonstrates modular arithmetic verification using hints for quotient/remainder.
 //!
-//! Tutorial guide: https://www.binius.xyz/building/
+//! Guide: https://www.binius.xyz/building/
 
 use binius_core::verify::verify_constraints;
 use binius_frontend::CircuitBuilder;

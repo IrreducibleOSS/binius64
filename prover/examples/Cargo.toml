@@ -14,6 +14,7 @@ binius-circuits = { path = "../../verifier/circuits" }
 binius-core = { path = "../../verifier/core" }
 binius-frontend = { path = "../../verifier/frontend" }
 binius-prover = { path = "../prover", default-features = false }
+binius-transcript = { path = "../../verifier/transcript" }
 binius-utils = { path = "../../verifier/utils", features = ["platform-diagnostics"] }
 binius-verifier = { path = "../../verifier/verifier", default-features = false }
 bitcoin_hashes.workspace = true
@@ -61,16 +62,8 @@ rayon = ["binius-prover/rayon", "binius-verifier/rayon"]
 
 # Tutorial examples
 [[example]]
-name = "getting_started_first_circuits"
-path = "examples/tutorials/getting_started_first_circuits.rs"
-
-[[example]]
-name = "getting_started_proving"
-path = "examples/tutorials/getting_started_proving.rs"
-
-[[example]]
-name = "getting_started_cli"
-path = "examples/tutorials/getting_started_cli.rs"
+name = "basics_masked_and"
+path = "examples/tutorials/basics_masked_and.rs"
 
 [[example]]
 name = "basics_word_semantics"
@@ -95,3 +88,7 @@ path = "examples/tutorials/circuits_gadgets.rs"
 [[example]]
 name = "circuits_data_structures"
 path = "examples/tutorials/circuits_data_structures.rs"
+
+[[example]]
+name = "end_to_end_example"
+path = "examples/tutorials/end_to_end_example.rs"

@@ -8,7 +8,7 @@
 //! - Loop patterns and early exit simulation
 //! - Variable-length data handling
 //!
-//! Tutorial guide: https://www.binius.xyz/building/
+//! Guide: https://www.binius.xyz/building/
 
 use anyhow::Result;
 use binius_circuits::multiplexer::{multi_wire_multiplex, single_wire_multiplex};

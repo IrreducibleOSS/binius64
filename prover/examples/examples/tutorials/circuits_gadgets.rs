@@ -7,7 +7,7 @@
 //! - Popcount gadget for counting 1-bits
 //! - How gadgets compose multiple gates internally
 //!
-//! Tutorial guide: https://www.binius.xyz/building/
+//! Guide: https://www.binius.xyz/building/
 
 use anyhow::Result;
 use binius_circuits::{bytes, popcount};

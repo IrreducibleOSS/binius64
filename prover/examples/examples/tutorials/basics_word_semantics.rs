@@ -5,7 +5,7 @@
 //! Shows how Binius64 performs different operations on 64-bit words,
 //! demonstrating various gate semantics.
 //!
-//! Tutorial guide: https://www.binius.xyz/building/
+//! Guide: https://www.binius.xyz/building/
 
 use binius_core::verify::verify_constraints;
 use binius_frontend::CircuitBuilder;
