@@ -26,7 +26,22 @@ pub enum VerificationError {
 	InvalidProof,
 }
 
-/// Verifier for the FRI "COMMIT" phase.
+/// Provides the ability to run the FRI protocol from the verifier side.
+///
+/// This FRI implementation is special in the following ways:
+/// - The folding arity can be bigger than 1, and can be non-constant (i.e. vary from round to round).
+/// - The folding is compatible with evaluation of a multilinear stored in Lagrange basis. Concretely, the final value returned by [`Self::verify_queries`] is the evaluation of the original message interpreted as a multilinear in Lagrange basis, at the point which is given by the folding challenges.
+/// - It's an _internal_ choice of this implementation how things are encoded, in particular whether it uses "interleaved codewords" or not.
+///
+/// Generics:
+/// - `F`: The field over which the protocol is executed.
+/// - `H`, `C`: Choice of hashing and compression function, see [`MerkleTreeVerifier`].
+/// - `NTT`: The NTT type used for encoding and folding.
+///
+/// Usage:
+/// - To read the commitment to the initial codeword, use [`Self::read_initial_commitment`].
+/// - To run the COMMMIT phase, call [`Self::verify_fold_round`] exactly [`Self::num_fold_rounds`] many times.
+/// - To run the QUERY phase, call [`Self::verify_queries`].
 pub struct FRIVerifier<'a, F, H: OutputSizeUser, C, DC> {
 	params: &'a FRIParams<F, H, C>,
 	domain_context: DC,
@@ -43,6 +58,12 @@ where
 	C: PseudoCompressionFunction<Output<H>, 2>,
 	DC: DomainContext<Field = F>,
 {
+	/// Reads the FRI initial codeword commitment. Returns a verifier instance which allows to run the FRI protocol on the codeword.
+	///
+	/// Arguments:
+	/// - `params`: Parameters used for the FRI protocol.
+	/// - `domain_context`: The `DomainContext` instance used later for folding.
+	/// - `transcript`: The [`TranscriptReader`] used for reading the commitment.
 	pub fn read_initial_commitment(
 		params: &'a FRIParams<F, H, C>,
 		domain_context: DC,
@@ -73,6 +94,21 @@ where
 		}
 	}
 
+	/// The number of times [`Self::verify_fold_round`] must be called.
+	pub fn num_fold_rounds(&self) -> usize {
+		self.params.num_rounds() - 1
+	}
+
+	/// Verifies a fold round of FRI in the COMMIT phase. Must be called `Self::num_fold_rounds` many times.
+	///
+	/// Concretely, it does:
+	/// - either nothing, if we skip this round because of a higher fold arity
+	/// - or observes the commitment to the folded codeword
+	/// - (if it's the last folding, it reads the full codeword instead of a commitment)
+	///
+	/// Arguments:
+	/// - `fold_challenge`: The scalar used to fold the codeword (which should be sampled randomly).
+	/// - `transcript`: The [`TranscriptReader`] which is used for reading the commitment (if there is one to observe).
 	pub fn verify_fold_round(
 		&mut self,
 		challenge: F,
@@ -110,6 +146,18 @@ where
 		Ok(())
 	}
 
+	/// Verifies the queries in the QUERY phase.
+	///
+	/// Concretely, for all queries, it:
+	/// - samples the query challenge
+	/// - read the respective openings on all the committed codewords
+	/// - checks that the folding was done correctly
+	///
+	/// It also folds the terminal codeword and checks that it yields a constant codeword.
+	/// It returns the value of this constant codeword, which equals the evaluation of the multilinear at the point given by the folding challenges.
+	///
+	/// Arguments:
+	/// - `transcript`: The [`VerifierTranscript`] used for sampling the query challenges and reading openings on the decommitment tape.
 	pub fn verify_queries(
 		&mut self,
 		transcript: &mut VerifierTranscript<impl Challenger>,
@@ -174,7 +222,7 @@ where
 			assert!(fold_challenges.next().is_none());
 		}
 
-		// check terminal codeword
+		// fold terminal_codeword to final_codeword
 		let terminal_codeword = self.terminal_codeword.as_mut().unwrap();
 		let log_len = log2_strict_usize(terminal_codeword.len());
 		let log_final_len = self.params.rs_code().log_inv_rate();
@@ -192,9 +240,10 @@ where
 				)
 			})
 			.collect();
+
+		// check that final_codeword is constant
 		assert_eq!(final_codeword.len(), 1 << log_final_len);
 		let folded_value = final_codeword[0];
-		// check that the final_codeword is constant
 		for val in final_codeword {
 			if val != folded_value {
 				return Err(VerificationError::InvalidProof);

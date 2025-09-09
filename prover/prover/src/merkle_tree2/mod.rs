@@ -14,9 +14,9 @@ use digest::{Digest, Output, OutputSizeUser, core_api::BlockSizeUser};
 /// Also note that the prover consumes the `leaves`, i.e., it owns them.
 ///
 /// Usage:
-/// - To construct the merkle tree and commit to it, use [`Self::write_commitment`].
+/// - To construct the merkle tree and commit to it, use [`Self::write_commitment`]. \
 ///   This can be read by the verifier using [`MerkleTreeVerifier::read_commitment`].
-/// - Then (later), to construct an opening proof (merkle path), use [`Self::prove_opening`].
+/// - Then (later), to construct an opening proof (merkle path), use [`Self::prove_opening`]. \
 ///   This can be checked by the verifier using [`MerkleTreeVerifier::verify_opening`].
 pub struct MerkleTreeProver<T, H: OutputSizeUser, C> {
 	/// The hashing algorithm used for hashing the leaves.
@@ -134,14 +134,17 @@ where
 		}
 	}
 
+	/// Provides access to the leaf batches in form of a [`IndexedParallelIterator`].
 	pub fn par_leaf_batches(&self) -> impl IndexedParallelIterator<Item = &[T]> {
 		self.leaves.par_chunks_exact(1 << self.log_batch_size)
 	}
 
+	/// Number of leaves. (Not leaf batches!)
 	pub fn log_leaves(&self) -> usize {
 		self.log_leaf_batches + self.log_batch_size
 	}
 
+	/// Base-2 logarithm of leaf batch size.
 	pub fn log_batch_size(&self) -> usize {
 		self.log_batch_size
 	}

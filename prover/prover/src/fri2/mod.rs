@@ -7,7 +7,7 @@ use binius_transcript::{
 use binius_utils::rayon::iter::{IndexedParallelIterator, ParallelIterator};
 use binius_verifier::{
 	fri2::{
-		FRIParams, RoundType,
+		FRIParams, FRIVerifier, RoundType,
 		fold::{fold_chunk, fold_chunk_without_ntt},
 	},
 	hash::PseudoCompressionFunction,
@@ -17,6 +17,22 @@ use digest::{Digest, Output, OutputSizeUser, core_api::BlockSizeUser};
 
 use crate::merkle_tree2::MerkleTreeProver;
 
+/// Provides the ability to run the FRI protocol from the prover side.
+///
+/// See [`FRIVerifier`] for information about the FRI protocol.
+///
+/// Generics:
+/// - `F`: The field over which the protocol is executed.
+/// - `H`, `C`: Choice of hashing and compression function, see [`MerkleTreeProver`].
+/// - `NTT`: The NTT type used for encoding and folding.
+///
+/// Usage:
+/// - To encode the message (multilinear polynomial) and commit to it, use [`Self::write_initial_commitment`]. \
+///   This can be read by the verifier using [`FRIVerifier::read_initial_commitment`].
+/// - To run the COMMMIT phase, call [`Self::prove_fold_round`] exactly [`Self::num_fold_rounds`] many times. \
+///   This can be observed by the verifier using [`FRIVerifier::verify_fold_round`].
+/// - To run the QUERY phase, call [`Self::prove_queries`]. \
+///   This can be checked by the verifier using [`FRIVerifier::verify_queries`].
 pub struct FRIProver<'a, F, H: OutputSizeUser, C, NTT> {
 	params: &'a FRIParams<F, H, C>,
 	ntt: &'a NTT,
@@ -33,6 +49,15 @@ where
 	C: PseudoCompressionFunction<Output<H>, 2> + Sync,
 	NTT: AdditiveNTT<Field = F> + Sync,
 {
+	/// Encodes the message (multilinear polynomial) and commits to it. Returns a prover instance which allows to run the FRI protocol on the codeword.
+	///
+	/// The counterpart on the verifier side is [`FRIVerifier::read_initial_commitment`].
+	///
+	/// Arguments:
+	/// - `params`: Parameters used for the FRI protocol.
+	/// - `poly`: The multilinear polynomial that one wants to commit to, in Lagrange basis.
+	/// - `ntt`: The NTT instance used for encoding, and later for folding.
+	/// - `transcript`: The [`TranscriptWriter`] used for writing the commitment.
 	pub fn write_initial_commitment<P: PackedField<Scalar = F>>(
 		params: &'a FRIParams<F, H, C>,
 		poly: &[P],
@@ -49,7 +74,7 @@ where
 
 		// encode poly to initial codeword
 		assert_eq!(poly.len(), 1 << (log_len - params.rs_code().log_inv_rate() - P::LOG_WIDTH));
-		let mut codeword = Vec::with_capacity(1 << (log_len - P::LOG_WIDTH));
+		let mut codeword: Vec<P> = Vec::with_capacity(1 << (log_len - P::LOG_WIDTH));
 		params
 			.rs_code()
 			.encode_batch(ntt, poly, codeword.spare_capacity_mut(), log_batch_size)
@@ -99,6 +124,23 @@ where
 		}
 	}
 
+	/// The number of times [`Self::prove_fold_round`] must be called.
+	pub fn num_fold_rounds(&self) -> usize {
+		self.params.num_rounds() - 1
+	}
+
+	/// Proves a fold round of FRI in the COMMIT phase. Must be called `Self::num_fold_rounds` many times.
+	///
+	/// Concretely, it does:
+	/// - either nothing, if we skip this round because of a higher fold arity
+	/// - or folds the previously committed codeword and commits to it
+	/// - (if it's the last folding, it writes the full codeword instead of a commitment)
+	///
+	/// The counterpart on the verifier side is [`FRIVerifier::verify_fold_round`].
+	///
+	/// Arguments:
+	/// - `fold_challenge`: The scalar used to fold the codeword (which should be sampled randomly).
+	/// - `transcript`: The [`TranscriptWriter`] which is used for writing the commitment (if there is one to make).
 	pub fn prove_fold_round(
 		&mut self,
 		fold_challenge: F,
@@ -137,6 +179,7 @@ where
 		self.rounds_done += 1;
 	}
 
+	/// Internal function used for folding a codeword.
 	fn fold_previous_codeword(&mut self) -> Vec<F> {
 		let prover = self.merkle_tree_provers.last().unwrap();
 		let log_len = prover.log_leaves();
@@ -174,10 +217,16 @@ where
 		folded
 	}
 
-	pub fn num_fold_rounds(&self) -> usize {
-		self.params.num_rounds() - 1
-	}
-
+	/// Proves the queries in the QUERY phase.
+	///
+	/// Concretely, for all queries, it:
+	/// - samples the query challenge
+	/// - opens the respective commitments on all the committed codewords
+	///
+	/// The counterpart on the verifier side is [`FRIVerifier::verify_queries`].
+	///
+	/// Arguments:
+	/// - `transcript`: The [`ProverTranscript`] used for sampling the query challenges and opening the commitments on the decommitment tape.
 	pub fn prove_queries(&self, transcript: &mut ProverTranscript<impl Challenger>) {
 		assert_eq!(self.rounds_done, self.params.num_rounds());
 

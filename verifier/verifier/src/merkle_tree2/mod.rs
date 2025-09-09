@@ -124,6 +124,7 @@ where
 		}
 	}
 
+	/// Number of leaf batches.
 	pub fn log_leaf_batches(&self) -> usize {
 		self.log_leaf_batches
 	}
