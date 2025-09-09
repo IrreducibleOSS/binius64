@@ -171,6 +171,9 @@ jobs:
   # This job ensures all CI checks pass
   ci-all-checks:
     runs-on: ubuntu-latest
+    # Run if: dependencies succeeded OR it's a Graphite MQ PR (even with skipped deps)
+    # This ensures Graphite MQ can't merge with skipped tests
+    if: success() || startsWith(github.head_ref, 'gtmq_')
     needs:
       - copyright-check
       - pre-commit
@@ -179,10 +182,10 @@ jobs:
       - rust-doc
       - circuits-snapshot
     steps:
-      - name: All checks passed
+      - name: Verify all jobs succeeded
         run: |
-          echo "✅ All CI checks passed successfully"
-          echo ""
+          set -e  # Exit immediately if any command fails
+
           echo "Job results:"
           echo "copyright-check: ${{ needs.copyright-check.result }}"
           echo "pre-commit: ${{ needs.pre-commit.result }}"
@@ -190,3 +193,17 @@ jobs:
           echo "rust-tests: ${{ needs.rust-tests.result }}"
           echo "rust-doc: ${{ needs.rust-doc.result }}"
           echo "circuits-snapshot: ${{ needs.circuits-snapshot.result }}"
+          echo ""
+
+          echo "Job results (JSON):"
+          echo '${{ toJson(needs) }}' | jq .
+          echo ""
+
+          echo "Verifying all jobs actually ran and succeeded..."
+
+          # note:
+          # - 'all(...)' returns true only if the condition is true for ALL items
+          # - '--exit-status' makes jq exit with code 1 if the check fails (causing job to fail)
+          jq --exit-status 'all(.result == "success")' <<< '${{ toJson(needs) }}'
+
+          echo "✅ All CI checks passed successfully"
