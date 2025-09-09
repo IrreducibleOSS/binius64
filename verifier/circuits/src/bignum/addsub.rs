@@ -6,6 +6,16 @@ use super::biguint::BigUint;
 
 /// Add two equally-sized `BigUints`s with carry propagation.
 ///
+/// See `add_with_carry_out`; this routine additionally asserts that no overflow happens.
+pub fn add(builder: &CircuitBuilder, a: &BigUint, b: &BigUint) -> BigUint {
+	let (sum, carry_out) = add_with_carry_out(builder, a, b);
+	// Assert that no overflow happened.
+	builder.assert_false("add_carry_out_zero", carry_out);
+	sum
+}
+
+/// Add two equally-sized `BigUints`s with carry propagation.
+///
 /// Computes `a + b` with proper carry handling between limbs. The result
 /// has the same number of limbs as the inputs. Overflow beyond the most
 /// significant limb is checked and must be zero.
@@ -16,19 +26,32 @@ use super::biguint::BigUint;
 /// * `b` - Second operand (must have same number of limbs as `a`)
 ///
 /// # Returns
-/// Sum as a `BigUint` with the same number of limbs as the inputs
+/// A tuple of `BigUint` sum of size equal to the inputs and a carry out boolean wire.
 ///
 /// # Panics
 /// - Panics if `a` and `b` have different number of limbs
-pub fn add(builder: &CircuitBuilder, a: &BigUint, b: &BigUint) -> BigUint {
-	assert_eq!(a.limbs.len(), b.limbs.len(), "add: inputs must have the same number of limbs");
+pub fn add_with_carry_out(builder: &CircuitBuilder, a: &BigUint, b: &BigUint) -> (BigUint, Wire) {
+	assert_eq!(
+		a.limbs.len(),
+		b.limbs.len(),
+		"add_with_carry_out: inputs must have the same number of limbs"
+	);
 
 	let mut accumulator = vec![vec![]; a.limbs.len()];
 	for i in 0..a.limbs.len() {
 		accumulator[i].push(a.limbs[i]);
 		accumulator[i].push(b.limbs[i]);
 	}
-	compute_stack_adds(builder, &accumulator)
+
+	let (sum, carry_out) = compute_stack_adds_with_carry_outs(builder, &accumulator);
+	assert_eq!(carry_out.len(), if a.limbs.is_empty() { 0 } else { 1 });
+	(
+		sum,
+		carry_out
+			.first()
+			.copied()
+			.unwrap_or(builder.add_constant(Word::ZERO)),
+	)
 }
 
 /// Subtracts two equally-sized `BigUints`s with carry propagation.
@@ -74,6 +97,26 @@ pub fn sub(builder: &CircuitBuilder, a: &BigUint, b: &BigUint) -> BigUint {
 
 /// Computes multi-operand addition with carry propagation across limb positions.
 ///
+/// See `compute_stack_adds_with_carry_outs`; this routine additionally asserts that no
+/// carry out happens.
+pub(super) fn compute_stack_adds(builder: &CircuitBuilder, limb_stacks: &[Vec<Wire>]) -> BigUint {
+	let (sum, carry_outs) = compute_stack_adds_with_carry_outs(builder, limb_stacks);
+
+	// Assert all final carries are zero (i.e no overflow).
+	//
+	// It is sufficient to check the MSB of each wire in `carries` because:
+	//
+	// - The `carries` vector stores carry_out from each iadd_cin_cout gate.
+	// - The carry bit for each addition is stored in the MSB of the carry_out wire.
+	for (i, carry_out) in carry_outs.into_iter().enumerate() {
+		builder.assert_false(format!("compute_stack_adds_carry_zero_{i}"), carry_out);
+	}
+
+	sum
+}
+
+/// Computes multi-operand addition with carry propagation across limb positions.
+///
 /// This function is the core of bignum arithmetic, handling the addition of multiple
 /// values at each limb position with proper carry propagation to higher limbs.
 /// It's used by other bignum operations to resolve partial products and sums.
@@ -83,10 +126,14 @@ pub fn sub(builder: &CircuitBuilder, a: &BigUint, b: &BigUint) -> BigUint {
 /// * `limb_stacks` - Array where `limb_stacks[i]` contains all values to be added at limb position
 ///   `i`.
 ///
-/// # Constraints
-/// - Final carries must be zero (enforced by circuit constraints) This ensures the result fits in
-///   the allocated number of limbs without overflow
-pub(super) fn compute_stack_adds(builder: &CircuitBuilder, limb_stacks: &[Vec<Wire>]) -> BigUint {
+/// # Returns
+/// The sum produced by the addition chain, as well as a number of boolean wires representing carry
+/// outs in the most significant limb; converting these booleans to 0/1 integers and summing
+/// produces the value of overflow limb.
+pub(super) fn compute_stack_adds_with_carry_outs(
+	builder: &CircuitBuilder,
+	limb_stacks: &[Vec<Wire>],
+) -> (BigUint, Vec<Wire>) {
 	let mut sums = Vec::new();
 	let mut carries = Vec::new();
 	let zero = builder.add_constant(Word::ZERO);
@@ -116,16 +163,5 @@ pub(super) fn compute_stack_adds(builder: &CircuitBuilder, limb_stacks: &[Vec<Wi
 		carries = new_carries;
 	}
 
-	// Assert all final carries are zero (i.e no overflow).
-	//
-	// It is sufficient to check the MSB of each wire in `carries` because:
-	//
-	// - The `carries` vector stores carry_out from each iadd_cin_cout gate.
-	// - The carry bit for each addition is stored in the MSB of the carry_out wire.
-	for (i, carry) in carries.into_iter().enumerate() {
-		let carry_msb = builder.shr(carry, 63);
-		builder.assert_eq(format!("compute_stack_adds_carry_zero_{i}"), carry_msb, zero);
-	}
-
-	BigUint { limbs: sums }
+	(BigUint { limbs: sums }, carries)
 }
