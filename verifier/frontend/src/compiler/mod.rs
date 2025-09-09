@@ -922,6 +922,25 @@ impl CircuitBuilder {
 		out_wire
 	}
 
+	/// Inequality comparison.
+	///
+	/// Compares two 64-bit wires for inequality.
+	///
+	/// Returns:
+	/// - a wire whose MSB-bool value is true if a != b
+	/// - a wire whose MSB-bool value is false if a == b
+	///
+	/// the non-most-significant bits of the output wire are undefined.
+	///
+	/// # Cost
+	///
+	/// - 1 AND constraint,
+	/// - 1 linear constraint.
+	pub fn icmp_ne(&self, x: Wire, y: Wire) -> Wire {
+		let eq = self.icmp_eq(x, y);
+		self.bnot(eq)
+	}
+
 	/// Byte extraction.
 	///
 	/// Extracts byte j from a 64-bit word (j=0 is least significant byte).

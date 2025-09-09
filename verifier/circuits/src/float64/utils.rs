@@ -103,8 +103,8 @@ pub fn var_shr_with_sticky(
 		let cond01 = bit_lsb(b, d_eff, 5);
 		let cond = bit_msb01(b, d_eff, 5);
 		let lost = b.band(v, b.add_constant_64((1u64 << 32) - 1));
-		let lost_eq0 = b.icmp_eq(lost, zero(b));
-		let lost_nz01 = msb_to_lsb01(b, b.bnot(lost_eq0));
+		let lost_ne0 = b.icmp_ne(lost, zero(b));
+		let lost_nz01 = msb_to_lsb01(b, lost_ne0);
 		sticky01 = b.bor(sticky01, b.band(lost_nz01, cond01));
 		let shifted = b.shr(v, 32);
 		v = b.select(cond, shifted, v);
@@ -114,8 +114,8 @@ pub fn var_shr_with_sticky(
 		let cond01 = bit_lsb(b, d_eff, 4);
 		let cond = bit_msb01(b, d_eff, 4);
 		let lost = b.band(v, b.add_constant_64((1u64 << 16) - 1));
-		let lost_eq0 = b.icmp_eq(lost, zero(b));
-		let lost_nz01: Wire = msb_to_lsb01(b, b.bnot(lost_eq0));
+		let lost_ne0 = b.icmp_ne(lost, zero(b));
+		let lost_nz01 = msb_to_lsb01(b, lost_ne0);
 		sticky01 = b.bor(sticky01, b.band(lost_nz01, cond01));
 		let shifted = b.shr(v, 16);
 		v = b.select(cond, shifted, v);
@@ -125,8 +125,8 @@ pub fn var_shr_with_sticky(
 		let cond01 = bit_lsb(b, d_eff, 3);
 		let cond = bit_msb01(b, d_eff, 3);
 		let lost = b.band(v, b.add_constant_64((1u64 << 8) - 1));
-		let lost_eq0 = b.icmp_eq(lost, zero(b));
-		let lost_nz01 = msb_to_lsb01(b, b.bnot(lost_eq0));
+		let lost_ne0 = b.icmp_ne(lost, zero(b));
+		let lost_nz01 = msb_to_lsb01(b, lost_ne0);
 		sticky01 = b.bor(sticky01, b.band(lost_nz01, cond01));
 		let shifted = b.shr(v, 8);
 		v = b.select(cond, shifted, v);
@@ -136,8 +136,8 @@ pub fn var_shr_with_sticky(
 		let cond01 = bit_lsb(b, d_eff, 2);
 		let cond = bit_msb01(b, d_eff, 2);
 		let lost = b.band(v, b.add_constant_64((1u64 << 4) - 1));
-		let lost_eq0 = b.icmp_eq(lost, zero(b));
-		let lost_nz01 = msb_to_lsb01(b, b.bnot(lost_eq0));
+		let lost_ne0 = b.icmp_ne(lost, zero(b));
+		let lost_nz01 = msb_to_lsb01(b, lost_ne0);
 		sticky01 = b.bor(sticky01, b.band(lost_nz01, cond01));
 		let shifted = b.shr(v, 4);
 		v = b.select(cond, shifted, v);
@@ -147,8 +147,8 @@ pub fn var_shr_with_sticky(
 		let cond01 = bit_lsb(b, d_eff, 1);
 		let cond = bit_msb01(b, d_eff, 1);
 		let lost = b.band(v, b.add_constant_64((1u64 << 2) - 1));
-		let lost_eq0 = b.icmp_eq(lost, zero(b));
-		let lost_nz01 = msb_to_lsb01(b, b.bnot(lost_eq0));
+		let lost_ne0 = b.icmp_ne(lost, zero(b));
+		let lost_nz01 = msb_to_lsb01(b, lost_ne0);
 		sticky01 = b.bor(sticky01, b.band(lost_nz01, cond01));
 		let shifted = b.shr(v, 2);
 		v = b.select(cond, shifted, v);
@@ -158,8 +158,8 @@ pub fn var_shr_with_sticky(
 		let cond01 = bit_lsb(b, d_eff, 0);
 		let cond = bit_msb01(b, d_eff, 0);
 		let lost = b.band(v, b.add_constant_64(1));
-		let lost_eq0 = b.icmp_eq(lost, zero(b));
-		let lost_nz01 = msb_to_lsb01(b, b.bnot(lost_eq0));
+		let lost_ne0 = b.icmp_ne(lost, zero(b));
+		let lost_nz01 = msb_to_lsb01(b, lost_ne0);
 		sticky01 = b.bor(sticky01, b.band(lost_nz01, cond01));
 		let shifted = b.shr(v, 1);
 		v = b.select(cond, shifted, v);
@@ -326,8 +326,8 @@ pub fn shr128_to_u64_const(b: &CircuitBuilder, hi: Wire, lo: Wire, s: u32) -> Wi
 pub fn sticky_from_low_k(b: &CircuitBuilder, lo: Wire, k: u32) -> Wire {
 	debug_assert!(k < 64);
 	let mask = b.add_constant_64((1u64 << k) - 1);
-	let eq0 = b.icmp_eq(b.band(lo, mask), zero(b));
-	msb_to_lsb01(b, b.bnot(eq0))
+	let ne0 = b.icmp_ne(b.band(lo, mask), zero(b));
+	msb_to_lsb01(b, ne0)
 }
 
 /// Unpack and classify a binary64 word.
