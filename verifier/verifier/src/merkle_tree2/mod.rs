@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{cmp::min, marker::PhantomData};
 
 use crate::hash::{PseudoCompressionFunction, hash_serialize};
 use binius_transcript::TranscriptReader;
@@ -66,14 +66,16 @@ where
 		compression: C,
 		log_leaves: usize,
 		log_batch_size: usize,
-		commit_layer: usize,
+		mut commit_layer: usize,
 		transcript: &mut TranscriptReader<impl Buf>,
 	) -> Self {
+		let log_leaf_batches = log_leaves.checked_sub(log_batch_size).unwrap();
+
+		// if commit_layer is bigger than tree depth, cut it down
+		commit_layer = min(commit_layer, log_leaf_batches);
+
 		// read commited layer with index `commit_layer` from `transcript`
 		let commitment = transcript.read_vec(1 << commit_layer).unwrap();
-
-		let log_leaf_batches = log_leaves.checked_sub(log_batch_size).unwrap();
-		assert!(commit_layer <= log_leaf_batches);
 
 		// return instance which can be used later for verifying openings
 		Self {

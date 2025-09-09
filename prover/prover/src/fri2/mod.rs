@@ -260,3 +260,152 @@ where
 		}
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use binius_field::{PackedBinaryGhash1x128b, PackedBinaryGhash2x128b, PackedBinaryGhash4x128b};
+	use binius_math::{
+		FieldBuffer, FieldSlice, ReedSolomonCode,
+		multilinear::evaluate::evaluate,
+		ntt::{
+			NeighborsLastMultiThread,
+			domain_context::{GenericOnTheFly, GenericPreExpanded},
+		},
+		test_utils::random_field_buffer,
+	};
+	use binius_transcript::fiat_shamir::CanSample;
+	use binius_utils::checked_arithmetics::log2_strict_usize;
+	use binius_verifier::{
+		config::StdChallenger,
+		hash::{StdCompression, StdDigest},
+	};
+	use rand::prelude::*;
+
+	use super::*;
+
+	type H = StdDigest;
+	type C = StdCompression;
+
+	fn test_with_params<P: PackedField>(poly: &[P], params: &FRIParams<P::Scalar, H, C>)
+	where
+		P::Scalar: BinaryField,
+	{
+		// create prover transcipt
+		let challenger = StdChallenger::default();
+		let mut prover_transcript = ProverTranscript::new(challenger);
+
+		// prove
+		{
+			// prepare prover
+			let domain_context =
+				GenericPreExpanded::generate_from_subspace(params.rs_code().subspace());
+			let ntt = NeighborsLastMultiThread::new(domain_context, 4);
+
+			// commit
+			let mut fri_prover = FRIProver::write_initial_commitment(
+				params,
+				poly,
+				&ntt,
+				&mut prover_transcript.message(),
+			);
+
+			// prove COMMIT phase
+			for _ in 0..fri_prover.num_fold_rounds() {
+				let fold_challenge = prover_transcript.sample();
+				fri_prover.prove_fold_round(fold_challenge, &mut prover_transcript.message());
+			}
+
+			// prove QUERY phase
+			fri_prover.prove_queries(&mut prover_transcript);
+		}
+
+		// create verifier transcript
+		let mut verifier_transcript = prover_transcript.into_verifier();
+
+		// used for calling `evaluate` later
+		let mut verifier_fold_challenges = Vec::new();
+
+		let final_value;
+		// verify
+		{
+			// prepare verifier
+			let domain_context =
+				GenericOnTheFly::generate_from_subspace(params.rs_code().subspace());
+
+			// read commitment
+			let mut fri_verifier = FRIVerifier::read_initial_commitment(
+				params,
+				domain_context,
+				&mut verifier_transcript.message(),
+			);
+
+			// verify COMMIT phase
+			for _ in 0..fri_verifier.num_fold_rounds() {
+				let fold_challenge = verifier_transcript.sample();
+				verifier_fold_challenges.push(fold_challenge);
+				fri_verifier
+					.verify_fold_round(fold_challenge, &mut verifier_transcript.message())
+					.unwrap();
+			}
+
+			// verify QUERY phase
+			final_value = fri_verifier
+				.verify_queries(&mut verifier_transcript)
+				.unwrap();
+		}
+
+		let poly_buffer =
+			FieldSlice::from_slice(log2_strict_usize(poly.len()) + P::LOG_WIDTH, poly).unwrap();
+		let evaluation = evaluate(&poly_buffer, &verifier_fold_challenges).unwrap();
+		assert_eq!(final_value, evaluation);
+	}
+
+	fn test_with_config<P: PackedField>(
+		poly: &FieldBuffer<P>,
+		fold_arities: Vec<usize>,
+		log_inv_rate: usize,
+		commit_layer: usize,
+	) where
+		P::Scalar: BinaryField,
+	{
+		let num_queries = 5;
+		let rs_code = ReedSolomonCode::new(poly.log_len() - fold_arities[0], log_inv_rate).unwrap();
+		let params = FRIParams::new(
+			StdCompression::default(),
+			rs_code,
+			fold_arities,
+			num_queries,
+			commit_layer,
+		);
+
+		test_with_params(poly.as_ref(), &params);
+	}
+
+	fn test_with_packing<P: PackedField>()
+	where
+		P::Scalar: BinaryField,
+	{
+		let log_len = 6;
+
+		// generate multilinear
+		let mut rng = StdRng::seed_from_u64(0);
+		let poly = random_field_buffer::<P>(&mut rng, log_len);
+
+		// check for different configs
+		for log_inv_rate in [0, 1, 2] {
+			for commit_layer in [0, 2, 1000] {
+				test_with_config(&poly, vec![1; 6], log_inv_rate, commit_layer);
+				test_with_config(&poly, vec![2, 2, 2], log_inv_rate, commit_layer);
+				test_with_config(&poly, vec![3], log_inv_rate, commit_layer);
+				test_with_config(&poly, vec![1, 3], log_inv_rate, commit_layer);
+			}
+		}
+	}
+
+	#[test]
+	fn test_ghash() {
+		test_with_packing::<PackedBinaryGhash1x128b>();
+		test_with_packing::<PackedBinaryGhash2x128b>();
+		test_with_packing::<PackedBinaryGhash4x128b>();
+	}
+}

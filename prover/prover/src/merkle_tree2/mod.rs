@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{cmp::min, marker::PhantomData};
 
 use binius_transcript::TranscriptWriter;
 use binius_utils::{SerializeBytes, checked_arithmetics::log2_strict_usize, rayon::prelude::*};
@@ -60,11 +60,14 @@ where
 		compression: C,
 		leaves: Vec<T>,
 		log_batch_size: usize,
-		commit_layer: usize,
+		mut commit_layer: usize,
 		transcript: &mut TranscriptWriter<impl BufMut>,
 	) -> Self {
 		let log_leaves = log2_strict_usize(leaves.len());
 		let log_leaf_batches = log_leaves.checked_sub(log_batch_size).unwrap();
+
+		// if commit_layer is bigger than tree depth, cut it down
+		commit_layer = min(commit_layer, log_leaf_batches);
 
 		// hash the leaves
 		let mut leaf_batch_digests: Vec<Output<H>> = Vec::new();
@@ -78,7 +81,6 @@ where
 
 		// construct inner nodes
 		let mut nodes = vec![leaf_batch_digests];
-		assert!(commit_layer <= log_leaf_batches);
 		for log_len in (commit_layer..log_leaf_batches).rev() {
 			let mut layer = Vec::with_capacity(1 << log_len);
 			// compress the previous layer
@@ -156,12 +158,11 @@ mod tests {
 
 	use super::*;
 	use binius_field::{BinaryField128bGhash, Random};
-	use binius_transcript::{ProverTranscript, fiat_shamir::HasherChallenger};
+	use binius_transcript::ProverTranscript;
 	use binius_utils::DeserializeBytes;
+	use binius_verifier::config::StdChallenger;
 	use binius_verifier::hash::{StdCompression, StdDigest};
 	use binius_verifier::merkle_tree2::MerkleTreeVerifier;
-	use blake2::Blake2b;
-	use digest::consts::U32;
 	use rand::prelude::*;
 
 	fn test_commit_prove_verify<
@@ -182,7 +183,7 @@ mod tests {
 		type H = StdDigest;
 
 		// create prover transcipt
-		let challenger = HasherChallenger::<Blake2b<U32>>::default();
+		let challenger = StdChallenger::default();
 		let mut prover_transcript = ProverTranscript::new(challenger);
 
 		// commit
@@ -230,7 +231,7 @@ mod tests {
 		let mut rng = StdRng::seed_from_u64(0);
 		let leaves: Vec<F> = repeat_with(|| F::random(&mut rng)).take(32).collect();
 
-		for commit_layer in 0..2 {
+		for commit_layer in [0, 1, 2, 1000] {
 			// log_batch_size = 0
 			test_commit_prove_verify(leaves.clone(), 0, commit_layer, &[0, 21, 31]);
 			// log_batch_size = 2

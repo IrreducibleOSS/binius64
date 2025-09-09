@@ -61,6 +61,7 @@ where
 		while let Some(&fold_arity) = fold_arities_iter.next() {
 			assert!(fold_arity > 0);
 			index += fold_arity;
+			assert!(fold_arity <= log_len);
 			log_len -= fold_arity;
 			round_types[index] = match fold_arities_iter.peek() {
 				Some(&&next_fold_arity) => {
