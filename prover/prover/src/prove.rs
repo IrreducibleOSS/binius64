@@ -34,7 +34,6 @@ use itertools::izip;
 use super::error::Error;
 use crate::{
 	and_reduction::{prover::OblongZerocheckProver, utils::multivariate::OneBitOblongMultilinear},
-	fri,
 	fri::CommitOutput,
 	hash::{ParallelDigest, parallel_compression::ParallelPseudoCompression},
 	merkle_tree::prover::BinaryMerkleTreeProver,
@@ -146,17 +145,16 @@ where
 			perfetto_category = "phase"
 		)
 		.entered();
+
+		let pcs_prover =
+			OneBitPCSProver::new(&self.ntt, &self.merkle_prover, verifier.fri_params());
 		let CommitOutput {
 			commitment: trace_commitment,
 			committed: trace_committed,
 			codeword: trace_codeword,
-		} = fri::commit_interleaved(
-			verifier.fri_params(),
-			&self.ntt,
-			&self.merkle_prover,
-			witness_packed.to_ref(),
-		)?;
+		} = pcs_prover.commit(witness_packed.clone())?;
 		transcript.message().write(&trace_commitment);
+
 		drop(witness_commit_guard);
 
 		// [phase] IntMul Reduction - multiplication constraint reduction
@@ -252,9 +250,6 @@ where
 			perfetto_category = "phase"
 		)
 		.entered();
-		let pcs_prover =
-			OneBitPCSProver::new(&self.ntt, &self.merkle_prover, verifier.fri_params());
-
 		pcs_prover.prove(
 			&trace_codeword,
 			&trace_committed,
