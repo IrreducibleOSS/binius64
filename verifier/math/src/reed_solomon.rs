@@ -117,7 +117,7 @@ impl<F: BinaryField> ReedSolomonCode<F> {
 	/// ## Throws
 	///
 	/// * If the `code` buffer does not have capacity for `len() << log_batch_size` field elements.
-	fn encode_batch_inplace<P: PackedField<Scalar = F>, NTT: AdditiveNTT<Field = F> + Sync>(
+	pub fn encode_batch_inplace<P: PackedField<Scalar = F>, NTT: AdditiveNTT<Field = F> + Sync>(
 		&self,
 		ntt: &NTT,
 		code: &mut [P],
@@ -190,7 +190,7 @@ impl<F: BinaryField> ReedSolomonCode<F> {
 	///
 	/// * [`Error::EncoderSubspaceMismatch`] if the NTT subspace doesn't match the code's subspace.
 	/// * [`Error::Math`] if the output buffer has incorrect dimensions.
-	fn encode_batch<P: PackedField<Scalar = F>, NTT: AdditiveNTT<Field = F> + Sync>(
+	pub fn encode_batch<P: PackedField<Scalar = F>, NTT: AdditiveNTT<Field = F> + Sync>(
 		&self,
 		ntt: &NTT,
 		data: &[P],
