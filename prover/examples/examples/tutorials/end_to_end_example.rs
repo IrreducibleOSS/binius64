@@ -22,10 +22,8 @@ use binius_verifier::{
 use sha2::{Digest, Sha256 as StdSha256};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-	// Phase 1: Building the actual circuit
 	let builder = CircuitBuilder::new();
 
-	// both `content` and `nonce` will be 32 bytes, or in other words 4 64-bit wires.
 	let content: Vec<_> = (0..4).map(|_| builder.add_witness()).collect();
 	let nonce: Vec<_> = (0..4).map(|_| builder.add_witness()).collect();
 	let commitment: [_; 4] = core::array::from_fn(|_| builder.add_inout());
@@ -35,13 +33,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let sha256 = Sha256::new(&builder, len_bytes, commitment, message);
 	let circuit = builder.build();
 
-	// Phase 2: Population of wire values
 	let mut witness = circuit.new_witness_filler();
 	witness[len_bytes] = Word(64); // feed the circuit a wire containing the preimage length, in bytes.
 
-	// Message with random 32-byte nonce
 	let mut content_bytes = [0u8; 32];
-	content_bytes[..32].copy_from_slice(&b"A sample, exactly 32 bytes long."[..]);
+	content_bytes[..32].copy_from_slice(&b"A secret, exactly 32 bytes long."[..]);
 	let nonce_bytes: [u8; 32] = rand::random();
 	let mut message_bytes = [0u8; 64];
 	message_bytes[..32].copy_from_slice(&content_bytes);
@@ -55,22 +51,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	circuit.populate_wire_witness(&mut witness)?;
 
-	// Phase 3: Verification that constraints hold over wires
 	let cs = circuit.constraint_system();
 	let witness_vec = witness.into_value_vec();
 	verify_constraints(cs, &witness_vec)?;
 
 	println!("✓ the wire values you populated satisfy the circuit's constraints");
 
-	let log_inv_rate = 1;
-
-	let verifier =
-		Verifier::<StdDigest, _>::setup(cs.clone(), log_inv_rate, StdCompression::default())?;
-
-	let prover = Prover::<OptimalPackedB128, _, StdDigest>::setup(
-		verifier.clone(),
-		ParallelCompressionAdaptor::new(StdCompression::default()),
-	)?;
+	let compression = ParallelCompressionAdaptor::new(StdCompression::default());
+	let verifier = Verifier::<StdDigest, _>::setup(cs.clone(), 1, StdCompression::default())?;
+	let prover = Prover::<OptimalPackedB128, _, StdDigest>::setup(verifier.clone(), compression)?;
 
 	let challenger = StdChallenger::default();
 	let mut prover_transcript = ProverTranscript::new(challenger.clone());
