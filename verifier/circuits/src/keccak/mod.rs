@@ -92,10 +92,10 @@ impl Keccak {
 			let block_end = b.add_constant_64(((block_no + 1) * RATE_BYTES) as u64);
 			let last_word_start = b.add_constant_64(((block_no + 1) * RATE_BYTES - 8) as u64);
 
-			let lt_start = b.icmp_ult(len_bytes, block_start);
+			let gte_start = b.icmp_ule(block_start, len_bytes);
 			let lt_end = b.icmp_ult(len_bytes, block_end);
 			let lt_last_word = b.icmp_ult(len_bytes, last_word_start);
-			let is_final_block = b.band(b.bnot(lt_start), lt_end);
+			let is_final_block = b.band(gte_start, lt_end);
 
 			// flag that this block is the final block per the claimed length
 			end_block_index =
