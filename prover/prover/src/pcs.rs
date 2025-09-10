@@ -65,15 +65,15 @@ where
 		&self,
 		packed_multilin: FieldBuffer<P, Data>,
 		transcript: &mut TranscriptWriter<impl BufMut>,
-	) -> FRIProver<B128, H, C, NTT>
+	) -> FRIProver<'_, B128, H, C, NTT>
 	where
 		P: PackedField<Scalar = B128>,
 		Data: Deref<Target = [P]>,
 	{
 		FRIProver::write_initial_commitment(
-			&self.fri_params,
+			self.fri_params,
 			packed_multilin.as_ref(),
-			&self.ntt,
+			self.ntt,
 			transcript,
 		)
 	}
