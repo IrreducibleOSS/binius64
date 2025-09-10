@@ -14,10 +14,6 @@ fn fold_pair<F: BinaryField>(
 	let (mut u, mut v) = values;
 	v += u;
 	u += v * twiddle;
-	// println!(
-	// 	"fold_pair finished with u={u} v={v} fold_challenge={fold_challenge} and folded val {}",
-	// 	extrapolate_line_packed(u, v, fold_challenge)
-	// );
 	// fold
 	extrapolate_line_packed(u, v, fold_challenge)
 }
