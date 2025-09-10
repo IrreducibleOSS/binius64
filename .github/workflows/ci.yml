@@ -96,13 +96,13 @@ jobs:
             command: |
               cargo nextest run --workspace --release --no-fail-fast
               cargo test --doc --workspace
-            rustflags: "-C debug-assertions"
+            rustflags: "-C debug-assertions -C target-cpu=native"
           - name: "test-all-features"
             command: |
               ALL_FEATURES_WO_BAIL_PANIC=$(.github/scripts/get-features-without-bail-panic.sh | tail -1)
               echo "ALL_FEATURES_WO_BAIL_PANIC: $ALL_FEATURES_WO_BAIL_PANIC"
               cargo nextest run --workspace --release --features "$ALL_FEATURES_WO_BAIL_PANIC" --no-fail-fast
-            rustflags: "-C debug-assertions"
+            rustflags: "-C debug-assertions -C target-cpu=native"
           - name: "wasm-build"
             command: |
               cargo build -p binius-math -p binius-field -p binius-prover -p binius-verifier --target wasm32-wasip1 --tests --benches
