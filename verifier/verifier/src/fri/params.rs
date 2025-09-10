@@ -25,8 +25,6 @@ pub struct FRIParams<F, H, C> {
 	round_types: Vec<RoundType>,
 	/// The code used for encoding the message at the beginning of FRI.
 	rs_code: ReedSolomonCode<F>,
-	// TODO remove?
-	fold_arities: Vec<usize>,
 	/// The number of queries in the QUERY phase.
 	num_queries: usize,
 }
@@ -112,7 +110,6 @@ where
 			compression,
 			commit_layer,
 			rs_code,
-			fold_arities,
 			num_queries,
 			round_types,
 		}
