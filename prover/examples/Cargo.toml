@@ -86,9 +86,5 @@ name = "circuits_gadgets"
 path = "examples/tutorials/circuits_gadgets.rs"
 
 [[example]]
-name = "circuits_data_structures"
-path = "examples/tutorials/circuits_data_structures.rs"
-
-[[example]]
 name = "end_to_end_example"
 path = "examples/tutorials/end_to_end_example.rs"
