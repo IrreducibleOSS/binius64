@@ -470,9 +470,7 @@ pub fn fp64_pack_finite_or_inf(
 	let finite_or_zero = b.select(mant_is_zero, sign, finite_packed);
 
 	// overflow_to_inf when exp_after_round >= 2047
-	let exp_eq_2047 = b.icmp_eq(exp_after_round, exp_2047);
-	let exp_gt_2047 = b.icmp_ult(exp_2047, exp_after_round);
-	let overflow_to_inf = b.bor(exp_eq_2047, exp_gt_2047);
+	let overflow_to_inf = b.icmp_ule(exp_2047, exp_after_round);
 	let inf_payload = b.shl(exp_2047, 52);
 	let packed_inf = b.bor(sign, inf_payload);
 
