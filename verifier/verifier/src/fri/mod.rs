@@ -135,7 +135,6 @@ where
 			RoundType::TerminalCodeword { log_len } => {
 				self.fold_challenges.push(Vec::new());
 				let terminal_codeword = transcript.read_vec(1 << log_len).unwrap();
-				println!("terminal_codeword={terminal_codeword:?}");
 				self.terminal_codeword = Some(terminal_codeword);
 			}
 			_ => panic!("round type mismatch"),

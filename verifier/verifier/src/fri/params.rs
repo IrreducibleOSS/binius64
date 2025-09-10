@@ -1,7 +1,12 @@
-use std::marker::PhantomData;
+use std::{
+	cmp::{max, min},
+	marker::PhantomData,
+};
 
 use binius_field::BinaryField;
 use binius_math::{ReedSolomonCode, ntt::DomainContext};
+use binius_utils::checked_arithmetics::log2_ceil_usize;
+use digest::{Output, OutputSizeUser};
 
 /// Parameters for FRI.
 ///
@@ -43,7 +48,7 @@ pub enum RoundType {
 	},
 }
 
-impl<F, H, C> FRIParams<F, H, C>
+impl<F, H: OutputSizeUser, C> FRIParams<F, H, C>
 where
 	F: BinaryField,
 {
@@ -120,17 +125,67 @@ where
 		security_bits: usize,
 		domain_context: &impl DomainContext<Field = F>,
 	) -> Self {
-		// FIXME TODO make calculation for good choices
-		let commit_layer = 0;
-		let num_queries = 100;
-		let fold_arities = vec![1; poly_log_len];
-		assert!(fold_arities[0] < poly_log_len);
+		// find good constant arity
+		// NOTE: This is copied over from the old FRI implementation.
+		let log_block_length = poly_log_len + log_inv_rate;
+		let digest_size = size_of::<Output<H>>();
+		let field_size = size_of::<F>();
+		let mut fold_arity = (1..=log_block_length)
+			.map(|arity| {
+				(
+					// for given arity, return a tuple (arity, estimate of query_proof_size).
+					// this estimate is basd on the following approximation of a single
+					// query_proof_size, where $\vartheta$ is the arity: $\big((n-\vartheta) +
+					// (n-2\vartheta) + \ldots\big)\text{digest_size} +
+					// \frac{n-\vartheta}{\vartheta}2^{\vartheta}\text{field_size}.$
+					arity,
+					((log_block_length) / 2 * digest_size + (1 << arity) * field_size)
+						* (log_block_length - arity)
+						/ arity,
+				)
+			})
+			// now scan and terminate the iterator when query_proof_size increases.
+			.scan(None, |old: &mut Option<(usize, usize)>, new| {
+				let should_continue = !matches!(*old, Some(ref old) if new.1 > old.1);
+				*old = Some(new);
+				should_continue.then_some(new)
+			})
+			.last()
+			.map(|(arity, _)| arity)
+			.unwrap_or(1);
+		fold_arity = min(fold_arity, poly_log_len);
+
+		// pick RS code accordingly
 		let rs_code = ReedSolomonCode::with_domain_context_subspace(
 			domain_context,
-			poly_log_len - fold_arities[0],
+			poly_log_len - fold_arity,
 			log_inv_rate,
 		)
 		.unwrap();
+
+		// compute number of queries according to required security
+		// NOTE: This is copied over from the old FRI implementation.
+		let field_size = 2.0_f64.powi(F::N_BITS as i32);
+		let sumcheck_err = (2 * rs_code.log_dim()) as f64 / field_size;
+		// 2 ⋅ ℓ' / |T_{τ}|
+		let folding_err = rs_code.len() as f64 / field_size;
+		// 2^{ℓ' + R} / |T_{τ}|
+		let per_query_err = 0.5 * (1f64 + 2.0f64.powi(-(rs_code.log_inv_rate() as i32)));
+		let allowed_query_err = 2.0_f64.powi(-(security_bits as i32)) - sumcheck_err - folding_err;
+		assert!(allowed_query_err > 0.0);
+		let num_queries = allowed_query_err.log(per_query_err).ceil() as usize;
+
+		// choose commit layer of the merkle trees according to how many openings they need to do
+		let commit_layer = log2_ceil_usize(num_queries);
+
+		// fill fold_arities
+		// NOTE: This is copied over from the old FRI implementation.
+		let num_fold_commitments =
+			poly_log_len.saturating_sub(commit_layer.saturating_sub(log_inv_rate)) / fold_arity;
+		let num_fold_commitments = max(num_fold_commitments, 1);
+		let fold_arities = vec![fold_arity; num_fold_commitments];
+
+		assert!(fold_arities[0] < poly_log_len);
 
 		Self::new(compression, commit_layer, poly_log_len, rs_code, fold_arities, num_queries)
 	}
