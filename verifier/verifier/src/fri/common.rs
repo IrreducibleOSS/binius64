@@ -103,7 +103,7 @@ where
 		// `optimal_verify_layer` will never trigger; i.e., we will have log2_ceil_usize(n_queries)
 		// ≤ tree_depth there. it can be shown that this strategy beats any strategy which
 		// terminates later than it does (in other words, by doing this, we are NOT terminating
-		// TOO early!). this doesn't mean that we should't terminate EVEN earlier (maybe we
+		// TOO early!). this doesn't mean that we shouldn't terminate EVEN earlier (maybe we
 		// should). but this approach is conservative and simple; and it's easy to show that you
 		// won't lose by doing this.
 
