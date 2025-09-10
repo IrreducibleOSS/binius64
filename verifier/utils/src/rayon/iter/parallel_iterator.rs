@@ -106,7 +106,11 @@ pub(crate) trait ParallelIteratorInner: Sized + Iterator {
 	}
 
 	#[inline]
-	fn map_with<F, T, R>(self, mut init: T, map_op: F) -> impl ParallelIteratorInner<Item = R>
+	fn map_with<F, T, R>(
+		self,
+		mut init: T,
+		map_op: F,
+	) -> std::iter::Map<Self, impl FnMut(Self::Item) -> R>
 	where
 		F: Fn(&mut T, Self::Item) -> R,
 	{
@@ -114,7 +118,11 @@ pub(crate) trait ParallelIteratorInner: Sized + Iterator {
 	}
 
 	#[inline]
-	fn map_init<F, INIT, T, R>(self, init: INIT, map_op: F) -> impl ParallelIteratorInner<Item = R>
+	fn map_init<F, INIT, T, R>(
+		self,
+		init: INIT,
+		map_op: F,
+	) -> std::iter::Map<Self, impl FnMut(Self::Item) -> R>
 	where
 		F: Fn(&mut T, Self::Item) -> R,
 		INIT: Fn() -> T,
@@ -683,7 +691,11 @@ pub trait ParallelIterator: Sized {
 	}
 
 	#[inline]
-	fn map_with<F, T, R>(self, init: T, map_op: F) -> impl ParallelIterator<Item = R>
+	fn map_with<F, T, R>(
+		self,
+		init: T,
+		map_op: F,
+	) -> ParallelWrapper<std::iter::Map<Self::Inner, impl FnMut(Self::Item) -> R>>
 	where
 		F: Fn(&mut T, Self::Item) -> R,
 	{
@@ -691,7 +703,11 @@ pub trait ParallelIterator: Sized {
 	}
 
 	#[inline]
-	fn map_init<F, INIT, T, R>(self, init: INIT, map_op: F) -> impl ParallelIterator<Item = R>
+	fn map_init<F, INIT, T, R>(
+		self,
+		init: INIT,
+		map_op: F,
+	) -> ParallelWrapper<std::iter::Map<Self::Inner, impl FnMut(Self::Item) -> R>>
 	where
 		F: Fn(&mut T, Self::Item) -> R,
 		INIT: Fn() -> T,
