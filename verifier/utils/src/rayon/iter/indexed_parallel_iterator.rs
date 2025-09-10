@@ -125,7 +125,7 @@ impl<L: IndexedParallelIteratorInner, R: IndexedParallelIteratorInner> IndexedPa
 }
 impl<I: IndexedParallelIteratorInner> IndexedParallelIteratorInner for std::iter::Enumerate<I> {}
 impl<I: IndexedParallelIteratorInner> IndexedParallelIteratorInner for std::iter::StepBy<I> {}
-impl<I: IndexedParallelIteratorInner, R, F: Fn(I::Item) -> R> IndexedParallelIteratorInner
+impl<I: IndexedParallelIteratorInner, R, F: FnMut(I::Item) -> R> IndexedParallelIteratorInner
 	for std::iter::Map<I, F>
 {
 }
@@ -140,16 +140,15 @@ impl<I1: IndexedParallelIteratorInner, I2: IndexedParallelIteratorInner<Item = I
 impl<I: IndexedParallelIteratorInner> IndexedParallelIteratorInner for std::iter::Skip<I> {}
 
 #[allow(private_bounds)]
-pub trait IndexedParallelIterator: ParallelIterator {
-	type Inner: IndexedParallelIteratorInner<Item = Self::Item>;
-	fn into_inner(self) -> <Self as IndexedParallelIterator>::Inner;
-
+pub trait IndexedParallelIterator:
+	ParallelIterator<Inner: IndexedParallelIteratorInner<Item = Self::Item>>
+{
 	#[inline(always)]
 	fn with_min_len(self, min: usize) -> impl IndexedParallelIterator<Item = Self::Item>
 	where
 		Self: Sized,
 	{
-		ParallelWrapper::new(IndexedParallelIterator::into_inner(self).with_min_len(min))
+		ParallelWrapper::new(ParallelIterator::into_inner(self).with_min_len(min))
 	}
 
 	#[inline(always)]
@@ -157,7 +156,7 @@ pub trait IndexedParallelIterator: ParallelIterator {
 	where
 		Self: Sized,
 	{
-		ParallelWrapper::new(IndexedParallelIterator::into_inner(self).with_max_len(max))
+		ParallelWrapper::new(ParallelIterator::into_inner(self).with_max_len(max))
 	}
 
 	#[inline]
@@ -165,14 +164,14 @@ pub trait IndexedParallelIterator: ParallelIterator {
 	where
 		Self: Sized,
 	{
-		ParallelWrapper::new(IndexedParallelIteratorInner::enumerate(
-			IndexedParallelIterator::into_inner(self),
-		))
+		ParallelWrapper::new(IndexedParallelIteratorInner::enumerate(ParallelIterator::into_inner(
+			self,
+		)))
 	}
 
 	#[inline]
 	fn collect_into_vec(self, target: &mut Vec<Self::Item>) {
-		IndexedParallelIterator::into_inner(self).collect_into_vec(target)
+		ParallelIterator::into_inner(self).collect_into_vec(target)
 	}
 
 	#[inline]
@@ -181,16 +180,16 @@ pub trait IndexedParallelIterator: ParallelIterator {
 		zip_op: Z,
 	) -> ParallelWrapper<
 		std::iter::Zip<
-			<Self as IndexedParallelIterator>::Inner,
-			<<Z as IntoParallelIterator>::Iter as IndexedParallelIterator>::Inner,
+			<Self as ParallelIterator>::Inner,
+			<<Z as IntoParallelIterator>::Iter as ParallelIterator>::Inner,
 		>,
 	>
 	where
 		Z: IntoParallelIterator<Iter: IndexedParallelIterator>,
 	{
 		ParallelWrapper::new(IndexedParallelIteratorInner::zip(
-			IndexedParallelIterator::into_inner(self),
-			IndexedParallelIterator::into_inner(zip_op.into_par_iter()),
+			ParallelIterator::into_inner(self),
+			ParallelIterator::into_inner(zip_op.into_par_iter()),
 		))
 	}
 
@@ -200,16 +199,16 @@ pub trait IndexedParallelIterator: ParallelIterator {
 		zip_op: Z,
 	) -> ParallelWrapper<
 		itertools::ZipEq<
-			<Self as IndexedParallelIterator>::Inner,
-			<<Z as IntoParallelIterator>::Iter as IndexedParallelIterator>::Inner,
+			<Self as ParallelIterator>::Inner,
+			<<Z as IntoParallelIterator>::Iter as ParallelIterator>::Inner,
 		>,
 	>
 	where
 		Z: IntoParallelIterator<Iter: IndexedParallelIterator>,
 	{
 		ParallelWrapper::new(IndexedParallelIteratorInner::zip_eq(
-			IndexedParallelIterator::into_inner(self),
-			IndexedParallelIterator::into_inner(zip_op.into_par_iter()),
+			ParallelIterator::into_inner(self),
+			ParallelIterator::into_inner(zip_op.into_par_iter()),
 		))
 	}
 
@@ -217,12 +216,12 @@ pub trait IndexedParallelIterator: ParallelIterator {
 	fn step_by(
 		self,
 		step: usize,
-	) -> ParallelWrapper<std::iter::StepBy<<Self as IndexedParallelIterator>::Inner>>
+	) -> ParallelWrapper<std::iter::StepBy<<Self as ParallelIterator>::Inner>>
 	where
 		Self: Sized,
 	{
 		ParallelWrapper::new(IndexedParallelIteratorInner::step_by(
-			IndexedParallelIterator::into_inner(self),
+			ParallelIterator::into_inner(self),
 			step,
 		))
 	}
@@ -231,7 +230,7 @@ pub trait IndexedParallelIterator: ParallelIterator {
 	fn chunks(self, chunk_size: usize) -> impl IndexedParallelIterator<Item = Vec<Self::Item>> {
 		assert!(chunk_size != 0, "chunk_size must not be zero");
 
-		ParallelWrapper::new(IndexedParallelIterator::into_inner(self).chunks(chunk_size))
+		ParallelWrapper::new(ParallelIterator::into_inner(self).chunks(chunk_size))
 	}
 
 	#[inline]
@@ -240,20 +239,13 @@ pub trait IndexedParallelIterator: ParallelIterator {
 		Self: Sized,
 	{
 		ParallelWrapper::new(IndexedParallelIteratorInner::take(
-			IndexedParallelIterator::into_inner(self),
+			ParallelIterator::into_inner(self),
 			n,
 		))
 	}
 }
 
-impl<I: IndexedParallelIteratorInner> IndexedParallelIterator for ParallelWrapper<I> {
-	type Inner = I;
-
-	#[inline(always)]
-	fn into_inner(self) -> I {
-		self.0
-	}
-}
+impl<I: IndexedParallelIteratorInner> IndexedParallelIterator for ParallelWrapper<I> {}
 
 #[cfg(test)]
 mod tests {

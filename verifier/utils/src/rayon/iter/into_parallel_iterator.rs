@@ -153,11 +153,11 @@ macro_rules! multizip_impls {
                 )+
             {
                 type Item = ($( $T::Item, )+);
-                type Iter = ParallelWrapper<itertools::Zip<($( <$T::Iter as crate::rayon::prelude::IndexedParallelIterator>::Inner, )+)>>;
+                type Iter = ParallelWrapper<itertools::Zip<($( <$T::Iter as crate::rayon::prelude::ParallelIterator>::Inner, )+)>>;
 
                 #[inline(always)]
                 fn into_par_iter(self) -> Self::Iter {
-                    ParallelWrapper::new(itertools::multizip(( $( crate::rayon::prelude::IndexedParallelIterator::into_inner(self.$idx.into_par_iter()), )+ )))
+                    ParallelWrapper::new(itertools::multizip(( $( crate::rayon::prelude::ParallelIterator::into_inner(self.$idx.into_par_iter()), )+ )))
                 }
             }
 
@@ -169,11 +169,11 @@ macro_rules! multizip_impls {
                 )+
             {
                 type Item = ($( $T::Item, )+);
-                type Iter = ParallelWrapper<itertools::Zip<($( <$T::Iter as crate::rayon::prelude::IndexedParallelIterator>::Inner, )+)>>;
+                type Iter = ParallelWrapper<itertools::Zip<($( <$T::Iter as crate::rayon::prelude::ParallelIterator>::Inner, )+)>>;
 
                 #[inline(always)]
                 fn into_par_iter(self) -> Self::Iter {
-                    ParallelWrapper::new(itertools::multizip(( $( crate::rayon::prelude::IndexedParallelIterator::into_inner(self.$idx.par_iter()), )+ )))
+                    ParallelWrapper::new(itertools::multizip(( $( crate::rayon::prelude::ParallelIterator::into_inner(self.$idx.par_iter()), )+ )))
                 }
             }
 
@@ -185,11 +185,11 @@ macro_rules! multizip_impls {
                 )+
             {
                 type Item = ($( $T::Item, )+);
-                type Iter = ParallelWrapper<itertools::Zip<($( <$T::Iter as crate::rayon::prelude::IndexedParallelIterator>::Inner, )+)>>;
+                type Iter = ParallelWrapper<itertools::Zip<($( <$T::Iter as crate::rayon::prelude::ParallelIterator>::Inner, )+)>>;
 
                 #[inline(always)]
                 fn into_par_iter(self) -> Self::Iter {
-                    ParallelWrapper::new(itertools::multizip(( $( crate::rayon::prelude::IndexedParallelIterator::into_inner(self.$idx.par_iter_mut()), )+ )))
+                    ParallelWrapper::new(itertools::multizip(( $( crate::rayon::prelude::ParallelIterator::into_inner(self.$idx.par_iter_mut()), )+ )))
                 }
             }
 
