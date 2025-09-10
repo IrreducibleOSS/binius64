@@ -20,16 +20,17 @@
 //! [BCS16]: <https://eprint.iacr.org/2016/116>
 
 use binius_field::{BinaryField, Field};
-use binius_math::multilinear::eq::eq_ind;
+use binius_math::{multilinear::eq::eq_ind, ntt::DomainContext};
 use binius_transcript::{
 	VerifierTranscript,
 	fiat_shamir::{CanSample, Challenger},
 };
-use binius_utils::DeserializeBytes;
+use digest::{Output, core_api::BlockSizeUser};
+use sha2::Digest;
 
 use crate::{
-	fri::{self, FRIParams, verify::FRIVerifier},
-	merkle_tree::MerkleTreeScheme,
+	fri::{self, FRIVerifier},
+	hash::PseudoCompressionFunction,
 	protocols::sumcheck::{RoundCoeffs, RoundProof},
 	transcript,
 };
@@ -78,28 +79,25 @@ fn is_fri_commit_round(fri_fold_arities: &[usize], num_basefold_rounds: usize) -
 ///
 /// The [`ReducedOutput`] holding the final FRI value, the final sumcheck value, and the challenges
 /// used in the sumcheck rounds.
-pub fn verify<F, MTScheme, Challenger_>(
-	fri_params: &FRIParams<F, F>,
-	merkle_scheme: &MTScheme,
+pub fn verify<F, H, C, DC>(
+	mut fri_verifier: FRIVerifier<F, H, C, DC>,
 	n_vars: usize,
-	codeword_commitment: MTScheme::Digest,
 	evaluation_claim: F,
-	transcript: &mut VerifierTranscript<Challenger_>,
+	transcript: &mut VerifierTranscript<impl Challenger>,
 ) -> Result<ReducedOutput<F>, Error>
 where
 	F: BinaryField,
-	Challenger_: Challenger,
-	MTScheme: MerkleTreeScheme<F, Digest: DeserializeBytes>,
+	H: Digest + BlockSizeUser,
+	C: PseudoCompressionFunction<Output<H>, 2>,
+	DC: DomainContext<Field = F>,
 {
 	// The multivariate polynomial evaluated is a degree-2 multilinear composite.
 	const DEGREE: usize = 2;
 
 	let mut challenges = Vec::with_capacity(n_vars);
-	let fri_commit_rounds = is_fri_commit_round(fri_params.fold_arities(), n_vars);
-	let mut round_commitments = Vec::with_capacity(fri_params.n_oracles());
 	let mut sum = evaluation_claim;
 
-	for is_commit_round in fri_commit_rounds {
+	for _ in 0..n_vars {
 		let round_proof = RoundProof(RoundCoeffs(transcript.message().read_vec(DEGREE)?));
 		let round_coeffs = round_proof.recover(sum);
 
@@ -107,20 +105,10 @@ where
 		sum = round_coeffs.evaluate(challenge);
 		challenges.push(challenge);
 
-		if is_commit_round {
-			round_commitments.push(transcript.message().read()?);
-		}
+		fri_verifier.verify_fold_round(challenge, &mut transcript.message())?;
 	}
 
-	let fri_verifier = FRIVerifier::new(
-		fri_params,
-		merkle_scheme,
-		&codeword_commitment,
-		&round_commitments,
-		&challenges,
-	)?;
-
-	let final_fri_value = fri_verifier.verify(transcript)?;
+	let final_fri_value = fri_verifier.verify_queries(transcript)?;
 
 	Ok(ReducedOutput {
 		final_fri_value,
@@ -162,8 +150,6 @@ pub fn sumcheck_fri_consistency<F: Field>(
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-	#[error("FRI: {0}")]
-	FRI(#[source] fri::Error),
 	#[error("transcript: {0}")]
 	Transcript(#[from] transcript::Error),
 	#[error("verification error: {0}")]
@@ -176,11 +162,10 @@ pub enum VerificationError {
 	FRI(#[from] fri::VerificationError),
 }
 
-impl From<fri::Error> for Error {
-	fn from(err: fri::Error) -> Self {
+impl From<fri::VerificationError> for Error {
+	fn from(err: fri::VerificationError) -> Self {
 		match err {
-			fri::Error::Verification(err) => Error::Verification(err.into()),
-			_ => Error::FRI(err),
+			fri::VerificationError::InvalidProof => Error::Verification(err.into()),
 		}
 	}
 }

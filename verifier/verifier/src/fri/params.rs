@@ -116,13 +116,14 @@ where
 	pub fn new_with_good_choices(
 		compression: C,
 		poly_log_len: usize,
+		log_inv_rate: usize,
+		security_bits: usize,
 		domain_context: &impl DomainContext<Field = F>,
 	) -> Self {
 		// FIXME TODO make calculation for good choices
 		let commit_layer = 0;
 		let num_queries = 100;
 		let fold_arities = vec![1; poly_log_len];
-		let log_inv_rate = 1;
 		assert!(fold_arities[0] < poly_log_len);
 		let rs_code = ReedSolomonCode::with_domain_context_subspace(
 			domain_context,

@@ -13,10 +13,7 @@ use binius_transcript::{
 	VerifierTranscript,
 	fiat_shamir::{CanSample, Challenger},
 };
-use binius_utils::{
-	DeserializeBytes,
-	checked_arithmetics::{checked_log_2, log2_ceil_usize},
-};
+use binius_utils::checked_arithmetics::{checked_log_2, log2_ceil_usize};
 use digest::{Digest, Output, core_api::BlockSizeUser};
 use itertools::{Itertools, izip};
 
@@ -27,9 +24,8 @@ use crate::{
 		B1, B128, LOG_WORD_SIZE_BITS, LOG_WORDS_PER_ELEM, PROVER_SMALL_FIELD_ZEROCHECK_CHALLENGES,
 		WORD_SIZE_BITS,
 	},
-	fri::{FRIParams, estimate_optimal_arity},
+	fri::{FRIParams, FRIVerifier},
 	hash::PseudoCompressionFunction,
-	merkle_tree::BinaryMerkleTreeScheme,
 	protocols::{
 		intmul::{IntMulOutput, verify as verify_intmul_reduction},
 		pubcheck::VerifyOutput,
@@ -44,18 +40,16 @@ pub const SECURITY_BITS: usize = 96;
 /// The [`Self::setup`] constructor determines public parameters for proving instances of the given
 /// constraint system. Then [`Self::verify`] is called one or more times with individual instances.
 #[derive(Debug, Clone)]
-pub struct Verifier<MerkleHash, MerkleCompress> {
+pub struct Verifier<H, C> {
 	constraint_system: ConstraintSystem,
-	fri_params: FRIParams<B128, B128>,
-	merkle_scheme: BinaryMerkleTreeScheme<B128, MerkleHash, MerkleCompress>,
+	fri_params: FRIParams<B128, H, C>,
 	log_public_words: usize,
 }
 
-impl<MerkleHash, MerkleCompress> Verifier<MerkleHash, MerkleCompress>
+impl<H, C> Verifier<H, C>
 where
-	MerkleHash: Digest + BlockSizeUser,
-	MerkleCompress: PseudoCompressionFunction<Output<MerkleHash>, 2>,
-	Output<MerkleHash>: DeserializeBytes,
+	H: Digest + BlockSizeUser,
+	C: PseudoCompressionFunction<Output<H>, 2>,
 {
 	/// Constructs a verifier for a constraint system.
 	///
@@ -63,7 +57,7 @@ where
 	pub fn setup(
 		mut constraint_system: ConstraintSystem,
 		log_inv_rate: usize,
-		compression: MerkleCompress,
+		compression: C,
 	) -> Result<Self, Error> {
 		constraint_system.validate_and_prepare()?;
 
@@ -80,29 +74,21 @@ where
 		let log_witness_elems = log_witness_words - LOG_WORDS_PER_ELEM;
 
 		let log_code_len = log_witness_elems + log_inv_rate;
-		let fri_arity = estimate_optimal_arity(
-			log_code_len,
-			size_of::<Output<MerkleHash>>(),
-			size_of::<B128>(),
-		);
 
 		let subspace = BinarySubspace::with_dim(log_code_len)?;
 		let domain_context = GenericOnTheFly::generate_from_subspace(&subspace);
 		let ntt = NeighborsLastSingleThread::new(domain_context);
-		let fri_params = FRIParams::choose_with_constant_fold_arity(
-			&ntt,
+		let fri_params = FRIParams::new_with_good_choices(
+			compression,
 			log_witness_elems,
-			SECURITY_BITS,
 			log_inv_rate,
-			fri_arity,
-		)?;
-
-		let merkle_scheme = BinaryMerkleTreeScheme::new(compression);
+			SECURITY_BITS,
+			&ntt.domain_context,
+		);
 
 		Ok(Self {
 			constraint_system,
 			fri_params,
-			merkle_scheme,
 			log_public_words,
 		})
 	}
@@ -114,8 +100,7 @@ where
 
 	/// Returns log2 of the number of field elements in the packed trace.
 	pub fn log_witness_elems(&self) -> usize {
-		let rs_code = self.fri_params.rs_code();
-		rs_code.log_dim() + self.fri_params.log_batch_size()
+		self.fri_params.log_msg_len()
 	}
 
 	/// Returns the constraint system.
@@ -124,13 +109,8 @@ where
 	}
 
 	/// Returns the chosen FRI parameters.
-	pub fn fri_params(&self) -> &FRIParams<B128, B128> {
+	pub fn fri_params(&self) -> &FRIParams<B128, H, C> {
 		&self.fri_params
-	}
-
-	/// Returns the [`crate::merkle_tree::MerkleTreeScheme`] instance used.
-	pub fn merkle_scheme(&self) -> &BinaryMerkleTreeScheme<B128, MerkleHash, MerkleCompress> {
-		&self.merkle_scheme
 	}
 
 	/// Returns log2 of the number of public constants and input/output words.
@@ -156,7 +136,13 @@ where
 		}
 
 		// Receive the trace commitment.
-		let trace_commitment = transcript.message().read::<Output<MerkleHash>>()?;
+		let subspace = self.fri_params.rs_code().subspace();
+		let domain_context = GenericOnTheFly::generate_from_subspace(subspace);
+		let fri_verifier = FRIVerifier::read_initial_commitment(
+			&self.fri_params,
+			domain_context,
+			&mut transcript.message(),
+		);
 
 		// [phase] Verify IntMul Reduction - multiplication constraint verification
 		let intmul_guard = tracing::info_span!(
@@ -256,14 +242,7 @@ where
 			perfetto_category = "phase"
 		)
 		.entered();
-		pcs::verify(
-			transcript,
-			witness_eval,
-			&eval_point,
-			trace_commitment,
-			&self.fri_params,
-			&self.merkle_scheme,
-		)?;
+		pcs::verify(transcript, witness_eval, &eval_point, fri_verifier)?;
 		drop(pcs_guard);
 
 		Ok(())

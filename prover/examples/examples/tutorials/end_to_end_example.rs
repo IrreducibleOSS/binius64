@@ -10,9 +10,7 @@
 use binius_circuits::sha256::Sha256;
 use binius_core::{verify::verify_constraints, word::Word};
 use binius_frontend::CircuitBuilder;
-use binius_prover::{
-	OptimalPackedB128, Prover, hash::parallel_compression::ParallelCompressionAdaptor,
-};
+use binius_prover::{OptimalPackedB128, Prover};
 use binius_transcript::{ProverTranscript, VerifierTranscript};
 use binius_verifier::{
 	Verifier,
@@ -57,9 +55,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	println!("✓ the wire values you populated satisfy the circuit's constraints");
 
-	let compression = ParallelCompressionAdaptor::new(StdCompression::default());
 	let verifier = Verifier::<StdDigest, _>::setup(cs.clone(), 1, StdCompression::default())?;
-	let prover = Prover::<OptimalPackedB128, _, StdDigest>::setup(verifier.clone(), compression)?;
+	let prover = Prover::<OptimalPackedB128, StdDigest, _>::setup(verifier.clone())?;
 
 	let challenger = StdChallenger::default();
 	let mut prover_transcript = ProverTranscript::new(challenger.clone());

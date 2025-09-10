@@ -2,29 +2,24 @@
 
 use std::ops::Deref;
 
-use binius_field::{ExtensionField, PackedExtension, PackedField};
+use binius_field::{ExtensionField, PackedField};
 use binius_math::{
 	FieldBuffer, inner_product::inner_product, multilinear::eq::eq_ind_partial_eval,
 	ntt::AdditiveNTT, tensor_algebra::TensorAlgebra,
 };
 use binius_transcript::{
-	ProverTranscript,
+	ProverTranscript, TranscriptWriter,
 	fiat_shamir::{CanSample, Challenger},
 };
-use binius_utils::SerializeBytes;
 use binius_verifier::{
 	config::{B1, B128},
 	fri::FRIParams,
-	merkle_tree::MerkleTreeScheme,
+	hash::PseudoCompressionFunction,
 };
+use bytes::BufMut;
+use digest::{Digest, Output, core_api::BlockSizeUser};
 
-use crate::{
-	Error,
-	fri::{self, CommitOutput},
-	merkle_tree::MerkleTreeProver,
-	protocols::basefold::prover::BaseFoldProver,
-	ring_switch,
-};
+use crate::{Error, fri::FRIProver, protocols::basefold::prover::BaseFoldProver, ring_switch};
 
 /// Prover for the FRI-Binius 1-bit multilinear polynomial commitment scheme.
 ///
@@ -32,22 +27,19 @@ use crate::{
 /// interactive argument.
 ///
 /// See [`binius_verifier::pcs`] module documentation for more details.
-pub struct OneBitPCSProver<'a, NTT, MerkleProver, VCS>
+pub struct OneBitPCSProver<'a, H, C, NTT>
 where
 	NTT: AdditiveNTT<Field = B128> + Sync,
-	MerkleProver: MerkleTreeProver<B128, Scheme = VCS>,
-	VCS: MerkleTreeScheme<B128, Digest: SerializeBytes>,
 {
 	ntt: &'a NTT,
-	merkle_prover: &'a MerkleProver,
-	fri_params: &'a FRIParams<B128, B128>,
+	fri_params: &'a FRIParams<B128, H, C>,
 }
 
-impl<'a, NTT, MerkleProver, VCS> OneBitPCSProver<'a, NTT, MerkleProver, VCS>
+impl<'a, H, C, NTT> OneBitPCSProver<'a, H, C, NTT>
 where
+	H: Digest + BlockSizeUser + Sync,
+	C: PseudoCompressionFunction<Output<H>, 2> + Sync,
 	NTT: AdditiveNTT<Field = B128> + Sync,
-	MerkleProver: MerkleTreeProver<B128, Scheme = VCS>,
-	VCS: MerkleTreeScheme<B128, Digest: SerializeBytes>,
 {
 	/// Creates a new PCS prover.
 	///
@@ -56,18 +48,10 @@ where
 	/// * `ntt` - the NTT for the FRI parameters
 	/// * `merkle_prover` - the merkle tree prover
 	/// * `fri_params` - the FRI parameters
-	pub fn new(
-		ntt: &'a NTT,
-		merkle_prover: &'a MerkleProver,
-		fri_params: &'a FRIParams<B128, B128>,
-	) -> Self {
+	pub fn new(ntt: &'a NTT, fri_params: &'a FRIParams<B128, H, C>) -> Self {
 		let rs_code = fri_params.rs_code();
 		assert_eq!(&ntt.subspace(rs_code.log_len()), rs_code.subspace()); // precondition
-		Self {
-			ntt,
-			merkle_prover,
-			fri_params,
-		}
+		Self { ntt, fri_params }
 	}
 
 	/// Commit to a multilinear polynomial using FRI.
@@ -80,18 +64,18 @@ where
 	pub fn commit<P, Data>(
 		&self,
 		packed_multilin: FieldBuffer<P, Data>,
-	) -> Result<CommitOutput<P, VCS::Digest, MerkleProver::Committed>, Error>
+		transcript: &mut TranscriptWriter<impl BufMut>,
+	) -> FRIProver<B128, H, C, NTT>
 	where
-		P: PackedField<Scalar = B128> + PackedExtension<B128>,
+		P: PackedField<Scalar = B128>,
 		Data: Deref<Target = [P]>,
 	{
-		fri::commit_interleaved(
-			self.fri_params,
-			self.ntt,
-			self.merkle_prover,
-			packed_multilin.to_ref(),
+		FRIProver::write_initial_commitment(
+			&self.fri_params,
+			packed_multilin.as_ref(),
+			&self.ntt,
+			transcript,
 		)
-		.map_err(Into::into)
 	}
 
 	/// Prove the committed polynomial's evaluation at a given point.
@@ -105,17 +89,15 @@ where
 	///   elements is `packed_multilin.len() * B128::N_BITS`.
 	/// * `evaluation_point` - the evaluation point of the B1 multilinear
 	/// * `transcript` - the transcript of the prover's proof
-	pub fn prove<P, Challenger_>(
+	pub fn prove<P>(
 		&self,
-		committed_codeword: &'a [P],
-		committed: &'a MerkleProver::Committed,
+		fri_prover: FRIProver<P::Scalar, H, C, NTT>,
 		packed_multilin: FieldBuffer<P>,
 		evaluation_point: Vec<B128>,
-		transcript: &mut ProverTranscript<Challenger_>,
+		transcript: &mut ProverTranscript<impl Challenger>,
 	) -> Result<(), Error>
 	where
 		P: PackedField<Scalar = B128>,
-		Challenger_: Challenger,
 	{
 		assert_eq!(
 			packed_multilin.log_len() + <B128 as ExtensionField<B1>>::LOG_DEGREE,
@@ -153,16 +135,8 @@ where
 		let rs_eq_ind = tracing::debug_span!("Compute ring-switching equality indicator")
 			.in_scope(|| ring_switch::fold_b128_elems_inplace(suffix_tensor, &eq_r_double_prime));
 
-		let basefold_prover = BaseFoldProver::new(
-			packed_multilin,
-			rs_eq_ind,
-			computed_sumcheck_claim,
-			committed_codeword,
-			committed,
-			self.merkle_prover,
-			self.ntt,
-			self.fri_params,
-		)?;
+		let basefold_prover =
+			BaseFoldProver::new(packed_multilin, rs_eq_ind, computed_sumcheck_claim, fri_prover)?;
 
 		basefold_prover.prove(transcript)?;
 
@@ -186,7 +160,7 @@ mod test {
 	use binius_transcript::ProverTranscript;
 	use binius_verifier::{
 		config::{B1, B128, StdChallenger},
-		fri::FRIParams,
+		fri::{FRIParams, FRIVerifier},
 		hash::{StdCompression, StdDigest},
 		pcs::verify,
 	};
@@ -194,10 +168,6 @@ mod test {
 	use rand::{SeedableRng, rngs::StdRng};
 
 	use super::OneBitPCSProver;
-	use crate::{
-		fri::CommitOutput, hash::parallel_compression::ParallelCompressionAdaptor,
-		merkle_tree::prover::BinaryMerkleTreeProver,
-	};
 
 	pub fn large_field_mle_to_small_field_mle<F, FE>(large_field_mle: &[FE]) -> Vec<F>
 	where
@@ -228,14 +198,7 @@ mod test {
 	{
 		const LOG_INV_RATE: usize = 1;
 		const NUM_TEST_QUERIES: usize = 3;
-
-		let merkle_prover = BinaryMerkleTreeProver::<B128, StdDigest, _>::new(
-			ParallelCompressionAdaptor::new(StdCompression::default()),
-		);
-
-		let committed_rs_code = ReedSolomonCode::<B128>::new(packed_mle.log_len(), LOG_INV_RATE)?;
-
-		let fri_log_batch_size = 0;
+		const COMMIT_LAYER: usize = 0;
 
 		// fri arities must support the packing width of the mle
 		let fri_arities = if P::LOG_WIDTH == 2 {
@@ -244,27 +207,34 @@ mod test {
 			vec![1; packed_mle.log_len() - 1]
 		};
 
-		let fri_params =
-			FRIParams::new(committed_rs_code, fri_log_batch_size, fri_arities, NUM_TEST_QUERIES)?;
+		let committed_rs_code =
+			ReedSolomonCode::<B128>::new(packed_mle.log_len() - fri_arities[0], LOG_INV_RATE)?;
+
+		let compression = StdCompression::default();
+		type H = StdDigest;
+		let fri_params = FRIParams::<_, H, _>::new(
+			compression,
+			COMMIT_LAYER,
+			packed_mle.log_len(),
+			committed_rs_code,
+			fri_arities,
+			NUM_TEST_QUERIES,
+		);
 
 		// Commit packed mle codeword
 		let subspace = BinarySubspace::with_dim(fri_params.rs_code().log_len())?;
 		let domain_context = GenericOnTheFly::generate_from_subspace(&subspace);
-		let ntt = NeighborsLastSingleThread::new(domain_context);
-
-		let ring_switch_pcs_prover = OneBitPCSProver::new(&ntt, &merkle_prover, &fri_params);
-
-		let CommitOutput {
-			commitment: codeword_commitment,
-			committed: codeword_committed,
-			codeword,
-		} = ring_switch_pcs_prover.commit(packed_mle.to_ref())?;
+		let ntt = NeighborsLastSingleThread::new(&domain_context);
 
 		let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
-		prover_transcript.message().write(&codeword_commitment);
+
+		let ring_switch_pcs_prover = OneBitPCSProver::new(&ntt, &fri_params);
+
+		let fri_prover =
+			ring_switch_pcs_prover.commit(packed_mle.to_ref(), &mut prover_transcript.message());
+
 		ring_switch_pcs_prover.prove(
-			&codeword,
-			&codeword_committed,
+			fri_prover,
 			packed_mle,
 			evaluation_point.clone(),
 			&mut prover_transcript,
@@ -272,16 +242,13 @@ mod test {
 
 		let mut verifier_transcript = prover_transcript.into_verifier();
 
-		let retrieved_codeword_commitment = verifier_transcript.message().read()?;
-
-		verify(
-			&mut verifier_transcript,
-			evaluation_claim,
-			&evaluation_point,
-			retrieved_codeword_commitment,
+		let fri_verifier = FRIVerifier::read_initial_commitment(
 			&fri_params,
-			merkle_prover.scheme(),
-		)?;
+			&domain_context,
+			&mut verifier_transcript.message(),
+		);
+
+		verify(&mut verifier_transcript, evaluation_claim, &evaluation_point, fri_verifier)?;
 
 		Ok(())
 	}
@@ -469,41 +436,6 @@ mod test {
 			Ok(()) => {}
 			Err(_) => panic!("expected valid proof"),
 		}
-	}
-
-	#[test]
-	fn test_fri_commit_packing_width_4() {
-		let mut rng = StdRng::from_seed([0; 32]);
-
-		type P = PackedBinaryGhash4x128b;
-
-		const LOG_INV_RATE: usize = 1;
-		const NUM_TEST_QUERIES: usize = 3;
-
-		let log_dimension = 5;
-		let n_scalars = 1 << log_dimension;
-		let scalars = random_scalars::<B128>(&mut rng, n_scalars);
-		let packed_buffer: FieldBuffer<P> = FieldBuffer::from_values(&scalars).unwrap();
-
-		let merkle_prover = BinaryMerkleTreeProver::<B128, StdDigest, _>::new(
-			ParallelCompressionAdaptor::new(StdCompression::default()),
-		);
-		let committed_rs_code = ReedSolomonCode::<B128>::new(log_dimension, LOG_INV_RATE).unwrap();
-
-		let fri_log_batch_size = 0;
-		let fri_arities = vec![1; log_dimension - 1];
-		let fri_params =
-			FRIParams::new(committed_rs_code, fri_log_batch_size, fri_arities, NUM_TEST_QUERIES)
-				.unwrap();
-
-		let subspace = BinarySubspace::with_dim(fri_params.rs_code().log_len()).unwrap();
-		let domain_context = GenericOnTheFly::generate_from_subspace(&subspace);
-		let ntt = NeighborsLastSingleThread::new(domain_context);
-
-		let pcs_prover = OneBitPCSProver::new(&ntt, &merkle_prover, &fri_params);
-		let commit_result = pcs_prover.commit(packed_buffer);
-
-		commit_result.expect("FRI commit should work with packing width 4");
 	}
 
 	#[test]

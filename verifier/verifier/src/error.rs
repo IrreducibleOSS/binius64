@@ -12,7 +12,7 @@ pub enum Error {
 	#[error("transcript error: {0}")]
 	Transcript(#[from] binius_transcript::Error),
 	#[error("FRI error: {0}")]
-	FRI(#[from] fri::Error),
+	FRI(#[from] fri::VerificationError),
 	#[error("NTT error: {0}")]
 	PCS(#[from] pcs::Error),
 	#[error("IntMul error: {0}")]

@@ -7,7 +7,7 @@ use binius_core::{
 };
 use binius_field::arch::OptimalPackedB128;
 use binius_frontend::{CircuitBuilder, Wire};
-use binius_prover::{Prover, hash::parallel_compression::ParallelCompressionAdaptor};
+use binius_prover::Prover;
 use binius_transcript::ProverTranscript;
 use binius_verifier::{
 	Verifier,
@@ -21,11 +21,7 @@ fn prove_verify(cs: ConstraintSystem, witness: ValueVec) {
 	let verifier =
 		Verifier::<StdDigest, _>::setup(cs, LOG_INV_RATE, StdCompression::default()).unwrap();
 
-	let prover = Prover::<OptimalPackedB128, _, StdDigest>::setup(
-		verifier.clone(),
-		ParallelCompressionAdaptor::new(StdCompression::default()),
-	)
-	.unwrap();
+	let prover = Prover::<OptimalPackedB128, StdDigest, _>::setup(verifier.clone()).unwrap();
 
 	let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
 	prover

@@ -20,24 +20,22 @@ use binius_transcript::{
 	ProverTranscript,
 	fiat_shamir::{CanSample, Challenger},
 };
-use binius_utils::{SerializeBytes, checked_arithmetics::checked_log_2, rayon::prelude::*};
+use binius_utils::{checked_arithmetics::checked_log_2, rayon::prelude::*};
 use binius_verifier::{
 	Verifier,
 	and_reduction::verifier::AndCheckOutput,
 	config::{
 		B1, B128, LOG_WORD_SIZE_BITS, LOG_WORDS_PER_ELEM, PROVER_SMALL_FIELD_ZEROCHECK_CHALLENGES,
 	},
+	hash::PseudoCompressionFunction,
 	protocols::{intmul::IntMulOutput, sumcheck::SumcheckOutput},
 };
-use digest::{Digest, FixedOutputReset, Output, core_api::BlockSizeUser};
+use digest::{Digest, Output, OutputSizeUser, core_api::BlockSizeUser};
 use itertools::izip;
 
 use super::error::Error;
 use crate::{
 	and_reduction::{prover::OblongZerocheckProver, utils::multivariate::OneBitOblongMultilinear},
-	fri::CommitOutput,
-	hash::{ParallelDigest, parallel_compression::ParallelPseudoCompression},
-	merkle_tree::prover::BinaryMerkleTreeProver,
 	pcs::OneBitPCSProver,
 	protocols::{
 		intmul::{prove::IntMulProver, witness::Witness as IntMulWitness},
@@ -53,36 +51,25 @@ use crate::{
 /// given constraint system. Then [`Self::prove`] is called one or more times with individual
 /// instances.
 #[derive(Debug)]
-pub struct Prover<P, ParallelMerkleCompress, ParallelMerkleHasher: ParallelDigest>
-where
-	ParallelMerkleCompress: ParallelPseudoCompression<Output<ParallelMerkleHasher::Digest>, 2>,
-{
+pub struct Prover<P, H: OutputSizeUser, C> {
 	key_collection: KeyCollection,
-	verifier: Verifier<ParallelMerkleHasher::Digest, ParallelMerkleCompress::Compression>,
+	verifier: Verifier<H, C>,
 	ntt: NeighborsLastMultiThread<GenericPreExpanded<B128>>,
-	merkle_prover: BinaryMerkleTreeProver<B128, ParallelMerkleHasher, ParallelMerkleCompress>,
 	_p_marker: PhantomData<P>,
 }
 
-impl<P, MerkleHash, ParallelMerkleCompress, ParallelMerkleHasher>
-	Prover<P, ParallelMerkleCompress, ParallelMerkleHasher>
+impl<P, H, C> Prover<P, H, C>
 where
 	P: PackedField<Scalar = B128>
-		+ PackedExtension<B128>
 		+ PackedExtension<B1>
 		+ WithUnderlier<Underlier: UnderlierWithBitOps>,
-	MerkleHash: Digest + BlockSizeUser + FixedOutputReset,
-	ParallelMerkleHasher: ParallelDigest<Digest = MerkleHash>,
-	ParallelMerkleCompress: ParallelPseudoCompression<Output<MerkleHash>, 2>,
-	Output<MerkleHash>: SerializeBytes,
+	H: Digest + BlockSizeUser + Sync,
+	C: PseudoCompressionFunction<Output<H>, 2> + Sync,
 {
 	/// Constructs a prover corresponding to a constraint system verifier.
 	///
 	/// See [`Prover`] struct documentation for details.
-	pub fn setup(
-		verifier: Verifier<MerkleHash, ParallelMerkleCompress::Compression>,
-		compression: ParallelMerkleCompress,
-	) -> Result<Self, Error> {
+	pub fn setup(verifier: Verifier<H, C>) -> Result<Self, Error> {
 		let key_collection = build_key_collection(verifier.constraint_system());
 
 		let subspace = verifier.fri_params().rs_code().subspace();
@@ -93,13 +80,10 @@ where
 		let log_num_shares = binius_utils::rayon::current_num_threads().ilog2() as usize;
 		let ntt = NeighborsLastMultiThread::new(domain_context, log_num_shares);
 
-		let merkle_prover = BinaryMerkleTreeProver::<_, ParallelMerkleHasher, _>::new(compression);
-
 		Ok(Prover {
 			key_collection,
 			verifier,
 			ntt,
-			merkle_prover,
 			_p_marker: PhantomData,
 		})
 	}
@@ -150,15 +134,8 @@ where
 		)
 		.entered();
 
-		let pcs_prover =
-			OneBitPCSProver::new(&self.ntt, &self.merkle_prover, verifier.fri_params());
-		let CommitOutput {
-			commitment: trace_commitment,
-			committed: trace_committed,
-			codeword: trace_codeword,
-		} = pcs_prover.commit(witness_packed.to_ref())?;
-		transcript.message().write(&trace_commitment);
-
+		let pcs_prover = OneBitPCSProver::new(&self.ntt, verifier.fri_params());
+		let fri_prover = pcs_prover.commit(witness_packed.to_ref(), &mut transcript.message());
 		drop(witness_commit_guard);
 
 		// [phase] IntMul Reduction - multiplication constraint reduction
@@ -254,13 +231,7 @@ where
 			perfetto_category = "phase"
 		)
 		.entered();
-		pcs_prover.prove(
-			&trace_codeword,
-			&trace_committed,
-			witness_packed,
-			eval_point,
-			transcript,
-		)?;
+		pcs_prover.prove(fri_prover, witness_packed, eval_point, transcript)?;
 		drop(pcs_guard);
 
 		Ok(())

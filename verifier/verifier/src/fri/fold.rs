@@ -1,163 +1,155 @@
-// Copyright 2024-2025 Irreducible Inc.
+use binius_field::BinaryField;
+use binius_math::{line::extrapolate_line_packed, ntt::DomainContext};
 
-use std::iter;
-
-use binius_field::{BinaryField, ExtensionField, PackedField};
-use binius_math::{line::extrapolate_line_packed, ntt::AdditiveNTT};
-
-/// Calculate fold of `values` at `index` with `r` random coefficient.
-///
-/// See [DP24], Def. 3.6.
-///
-/// [DP24]: <https://eprint.iacr.org/2024/504>
 #[inline]
-fn fold_pair<F, FS, NTT>(ntt: &NTT, round: usize, index: usize, values: (F, F), r: F) -> F
-where
-	F: BinaryField + ExtensionField<FS>,
-	FS: BinaryField,
-	NTT: AdditiveNTT<Field = FS>,
-{
-	// Perform inverse additive NTT butterfly
-	let t = ntt.twiddle(round - 1, index);
+fn fold_pair<F: BinaryField>(
+	values: (F, F),
+	fold_challenge: F,
+	domain_context: &impl DomainContext<Field = F>,
+	log_len: usize,
+	index: usize,
+) -> F {
+	// inverse additive NTT butterfly
+	let twiddle = domain_context.twiddle(log_len - 1, index);
 	let (mut u, mut v) = values;
 	v += u;
-	u += v * t;
-	extrapolate_line_packed(u, v, r)
+	u += v * twiddle;
+	// println!(
+	// 	"fold_pair finished with u={u} v={v} fold_challenge={fold_challenge} and folded val {}",
+	// 	extrapolate_line_packed(u, v, fold_challenge)
+	// );
+	// fold
+	extrapolate_line_packed(u, v, fold_challenge)
 }
 
-/// Calculate FRI fold of `values` at a `chunk_index` with random folding challenges.
-///
-/// Folds a coset of a Reed–Solomon codeword into a single value using the FRI folding algorithm.
-/// The coset has size $2^n$, where $n$ is the number of challenges.
-///
-/// See [DP24], Def. 3.6 and Lemma 3.9 for more details.
-///
-/// NB: This method is on a hot path and does not perform any allocations or
-/// precondition checks.
-///
-/// ## Arguments
-///
-/// * `math` - the NTT instance, used to look up the twiddle values.
-/// * `log_len` - the binary logarithm of the code length.
-/// * `chunk_index` - the index of the chunk, of size $2^n$, in the full codeword.
-/// * `values` - mutable slice of values to fold, modified in place.
-/// * `challenges` - the sequence of folding challenges, with length $n$.
-///
-/// ## Pre-conditions
-///
-/// - `challenges.len() <= log_len`.
-/// - `log_len <= math.log_domain_size()`, so that the NTT domain is large enough.
-/// - `values.len() == 1 << challenges.len()`.
-///
-/// [DP24]: <https://eprint.iacr.org/2024/504>
 #[inline]
-pub fn fold_chunk<F, FS, NTT>(
-	ntt: &NTT,
+pub fn fold_chunk<F: BinaryField>(
+	chunk: &[F],
+	fold_challenges: &[F],
+	domain_context: &impl DomainContext<Field = F>,
 	mut log_len: usize,
 	chunk_index: usize,
-	values: &mut [F],
-	challenges: &[F],
-) -> F
-where
-	F: BinaryField + ExtensionField<FS>,
-	FS: BinaryField,
-	NTT: AdditiveNTT<Field = FS>,
-{
-	let mut log_size = challenges.len();
+	scratch_buffer: &mut [F],
+) -> F {
+	let log_chunk_len = fold_challenges.len();
+	debug_assert_eq!(chunk.len(), 1 << log_chunk_len);
+	let mut log_chunk_len_half = log_chunk_len - 1;
 
-	// Preconditions
-	debug_assert!(log_size <= log_len);
-	debug_assert!(log_len <= ntt.log_domain_size());
-	debug_assert_eq!(values.len(), 1 << log_size);
+	let (&first, remainder) = fold_challenges.split_first().unwrap();
 
-	// FRI-fold the values in place.
-	for &challenge in challenges {
-		// Fold the (2i) and (2i+1)th cells of the scratch buffer in-place into the i-th cell
-		for index_offset in 0..1 << (log_size - 1) {
-			let pair = (values[index_offset << 1], values[(index_offset << 1) | 1]);
-			values[index_offset] = fold_pair(
-				ntt,
-				log_len,
-				(chunk_index << (log_size - 1)) | index_offset,
-				pair,
-				challenge,
-			)
-		}
-
-		log_len -= 1;
-		log_size -= 1;
+	// fold first challenge
+	for index_pair in 0..1 << log_chunk_len_half {
+		let index_left = index_pair << 1;
+		let index_right = index_left | 1;
+		let pair = (chunk[index_left], chunk[index_right]);
+		let global_index = (chunk_index << log_chunk_len_half) | index_pair;
+		scratch_buffer[index_pair] = fold_pair(pair, first, domain_context, log_len, global_index);
 	}
 
-	values[0]
+	// fold the remaining challenges
+	for &fold_challenge in remainder {
+		log_chunk_len_half -= 1;
+		log_len -= 1;
+		for index_pair in 0..1 << log_chunk_len_half {
+			let index_left = index_pair << 1;
+			let index_right = index_left | 1;
+			let pair = (scratch_buffer[index_left], scratch_buffer[index_right]);
+			let global_index = (chunk_index << log_chunk_len_half) | index_pair;
+			scratch_buffer[index_pair] =
+				fold_pair(pair, fold_challenge, domain_context, log_len, global_index);
+		}
+	}
+
+	scratch_buffer[0]
 }
 
-/// Calculate the fold of an interleaved chunk of values with random folding challenges.
-///
-/// The elements in the `values` vector are the interleaved cosets of a batch of codewords at the
-/// index `coset_index`. That is, the layout of elements in the values slice is
-///
-/// ```text
-/// [a0, b0, c0, d0, a1, b1, c1, d1, ...]
-/// ```
-///
-/// where `a0, a1, ...` form a coset of a codeword `a`, `b0, b1, ...` form a coset of a codeword
-/// `b`, and similarly for `c` and `d`.
-///
-/// The fold operation first folds the adjacent symbols in the slice using regular multilinear
-/// tensor folding for the symbols from different cosets and FRI folding for the cosets themselves
-/// using the remaining challenges.
-//
-/// NB: This method is on a hot path and does not perform any allocations or
-/// precondition checks.
-///
-/// See [DP24], Def. 3.6 and Lemma 3.9 for more details.
-///
-/// [DP24]: <https://eprint.iacr.org/2024/504>
 #[inline]
-#[allow(clippy::too_many_arguments)]
-pub fn fold_interleaved_chunk<F, FS, P, NTT>(
-	ntt: &NTT,
-	log_len: usize,
-	log_batch_size: usize,
+pub fn fold_chunk_in_place<F: BinaryField>(
+	chunk: &mut [F],
+	fold_challenges: &[F],
+	domain_context: &impl DomainContext<Field = F>,
+	mut log_len: usize,
 	chunk_index: usize,
-	values: &[P],
-	tensor: &[P],
+) -> F {
+	let log_chunk_len = fold_challenges.len();
+	debug_assert_eq!(chunk.len(), 1 << log_chunk_len);
+	// note that we subtract 1 at the start of the loop below
+	// (we can't put the subtraction at the end of the loop because of underflow in the last iteration)
+	let mut log_chunk_len_half = log_chunk_len;
+	log_len += 1;
+
+	// fold first challenge
+	for &fold_challenge in fold_challenges {
+		log_chunk_len_half -= 1;
+		log_len -= 1;
+		for index_pair in 0..1 << log_chunk_len_half {
+			let index_left = index_pair << 1;
+			let index_right = index_left | 1;
+			let pair = (chunk[index_left], chunk[index_right]);
+			let global_index = (chunk_index << log_chunk_len_half) | index_pair;
+			chunk[index_pair] =
+				fold_pair(pair, fold_challenge, domain_context, log_len, global_index);
+		}
+	}
+
+	chunk[0]
+}
+
+#[inline]
+pub fn fold_chunk_without_ntt<F: BinaryField>(
+	chunk: &[F],
 	fold_challenges: &[F],
 	scratch_buffer: &mut [F],
-) -> F
-where
-	F: BinaryField + ExtensionField<FS>,
-	FS: BinaryField,
-	NTT: AdditiveNTT<Field = FS>,
-	P: PackedField<Scalar = F>,
-{
-	// Preconditions
-	debug_assert!(fold_challenges.len() <= log_len);
-	debug_assert!(log_len <= ntt.log_domain_size());
-	debug_assert_eq!(
-		values.len(),
-		1 << (fold_challenges.len() + log_batch_size).saturating_sub(P::LOG_WIDTH)
-	);
-	debug_assert_eq!(tensor.len(), 1 << log_batch_size.saturating_sub(P::LOG_WIDTH));
-	debug_assert!(scratch_buffer.len() >= 1 << fold_challenges.len());
+) -> F {
+	let log_chunk_len = fold_challenges.len();
+	debug_assert_eq!(chunk.len(), 1 << log_chunk_len);
+	let mut log_chunk_len_half = log_chunk_len - 1;
 
-	let scratch_buffer = &mut scratch_buffer[..1 << fold_challenges.len()];
+	let (&first, remainder) = fold_challenges.split_first().unwrap();
 
-	if log_batch_size == 0 {
-		iter::zip(&mut *scratch_buffer, P::iter_slice(values)).for_each(|(dst, val)| *dst = val);
-	} else {
-		let folded_values = values
-			.chunks(1 << (log_batch_size - P::LOG_WIDTH))
-			.map(|chunk| {
-				iter::zip(chunk, tensor)
-					.map(|(&a_i, &b_i)| a_i * b_i)
-					.sum::<P>()
-					.into_iter()
-					.take(1 << log_batch_size)
-					.sum()
-			});
-		iter::zip(&mut *scratch_buffer, folded_values).for_each(|(dst, val)| *dst = val);
-	};
+	// fold first challenge
+	for index_pair in 0..1 << log_chunk_len_half {
+		let index_left = index_pair << 1;
+		let index_right = index_left | 1;
+		let (u, v) = (chunk[index_left], chunk[index_right]);
+		scratch_buffer[index_pair] = extrapolate_line_packed(u, v, first)
+	}
 
-	fold_chunk(ntt, log_len, chunk_index, scratch_buffer, fold_challenges)
+	// fold the remaining challenges
+	for &fold_challenge in remainder {
+		log_chunk_len_half -= 1;
+		for index_pair in 0..1 << log_chunk_len_half {
+			let index_left = index_pair << 1;
+			let index_right = index_left | 1;
+			let (u, v) = (scratch_buffer[index_left], scratch_buffer[index_right]);
+			scratch_buffer[index_pair] = extrapolate_line_packed(u, v, fold_challenge)
+		}
+	}
+
+	scratch_buffer[0]
+}
+
+#[inline]
+pub fn fold_chunk_without_ntt_in_place<F: BinaryField>(
+	chunk: &mut [F],
+	fold_challenges: &[F],
+) -> F {
+	let log_chunk_len = fold_challenges.len();
+	debug_assert_eq!(chunk.len(), 1 << log_chunk_len);
+	// note that we subtract 1 at the start of the loop below
+	// (we can't put the subtraction at the end of the loop because of underflow in the last iteration)
+	let mut log_chunk_len_half = log_chunk_len;
+
+	// fold the remaining challenges
+	for &fold_challenge in fold_challenges {
+		log_chunk_len_half -= 1;
+		for index_pair in 0..1 << log_chunk_len_half {
+			let index_left = index_pair << 1;
+			let index_right = index_left | 1;
+			let (u, v) = (chunk[index_left], chunk[index_right]);
+			chunk[index_pair] = extrapolate_line_packed(u, v, fold_challenge)
+		}
+	}
+
+	chunk[0]
 }

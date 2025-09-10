@@ -13,16 +13,18 @@ use binius_field::{BinaryField, ExtensionField, Field, PackedField};
 use binius_math::{
 	field_buffer::FieldBuffer,
 	multilinear::{eq::eq_ind_partial_eval, evaluate::evaluate},
+	ntt::DomainContext,
 	tensor_algebra::TensorAlgebra,
 };
 use binius_transcript::{
 	Error as TranscriptError, VerifierTranscript,
 	fiat_shamir::{CanSample, Challenger},
 };
-use binius_utils::DeserializeBytes;
+use digest::{Output, core_api::BlockSizeUser};
+use sha2::Digest;
 
 use crate::{
-	config::B1, fri::FRIParams, merkle_tree::MerkleTreeScheme, protocols::basefold,
+	config::B1, fri::FRIVerifier, hash::PseudoCompressionFunction, protocols::basefold,
 	ring_switch::verifier::eval_rs_eq,
 };
 
@@ -38,18 +40,17 @@ use crate::{
 /// * `codeword_commitment` - VCS commitment to the codeword
 /// * `fri_params` - the FRI parameters
 /// * `vcs` - the vector commitment scheme
-pub fn verify<F, MTScheme, Challenger_>(
-	transcript: &mut VerifierTranscript<Challenger_>,
+pub fn verify<F, H, C, DC>(
+	transcript: &mut VerifierTranscript<impl Challenger>,
 	evaluation_claim: F,
 	eval_point: &[F],
-	codeword_commitment: MTScheme::Digest,
-	fri_params: &FRIParams<F, F>,
-	merkle_scheme: &MTScheme,
+	fri_verifier: FRIVerifier<F, H, C, DC>,
 ) -> Result<(), Error>
 where
 	F: Field + BinaryField + PackedField<Scalar = F>,
-	Challenger_: Challenger,
-	MTScheme: MerkleTreeScheme<F, Digest: DeserializeBytes>,
+	H: Digest + BlockSizeUser,
+	C: PseudoCompressionFunction<Output<H>, 2>,
+	DC: DomainContext<Field = F>,
 {
 	let packing_degree = <F as ExtensionField<B1>>::LOG_DEGREE;
 
@@ -86,10 +87,8 @@ where
 		final_sumcheck_value,
 		challenges,
 	} = basefold::verify(
-		fri_params,
-		merkle_scheme,
+		fri_verifier,
 		eval_point.len() - packing_degree,
-		codeword_commitment,
 		verifier_computed_sumcheck_claim,
 		transcript,
 	)?;
