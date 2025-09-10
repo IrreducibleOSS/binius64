@@ -45,7 +45,7 @@ pub enum VerificationError {
 ///
 /// Usage:
 /// - To read the commitment to the initial codeword, use [`Self::read_initial_commitment`].
-/// - To run the COMMMIT phase, call [`Self::verify_fold_round`] exactly [`Self::num_fold_rounds`]
+/// - To run the COMMIT phase, call [`Self::verify_fold_round`] exactly [`Self::num_fold_rounds`]
 ///   many times.
 /// - To run the QUERY phase, call [`Self::verify_queries`].
 pub struct FRIVerifier<'a, F, H: OutputSizeUser, C, DC> {

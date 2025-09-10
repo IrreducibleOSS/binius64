@@ -82,7 +82,7 @@ where
 		// if commit_layer is bigger than tree depth, cut it down
 		commit_layer = min(commit_layer, log_leaf_batches);
 
-		// read commited layer with index `commit_layer` from `transcript`
+		// read committed layer with index `commit_layer` from `transcript`
 		let commitment = transcript.read_vec(1 << commit_layer).unwrap();
 
 		// return instance which can be used later for verifying openings

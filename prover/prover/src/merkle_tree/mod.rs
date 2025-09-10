@@ -191,7 +191,7 @@ mod tests {
 		let compression = StdCompression::default();
 		type H = StdDigest;
 
-		// create prover transcipt
+		// create prover transcript
 		let challenger = StdChallenger::default();
 		let mut prover_transcript = ProverTranscript::new(challenger);
 

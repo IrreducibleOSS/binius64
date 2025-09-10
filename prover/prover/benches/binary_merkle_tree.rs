@@ -35,7 +35,7 @@ where
 	group.bench_function(
 		format!("{} log elems size {}xB128 leaf", LOG_ELEMS, 1 << LOG_ELEMS_IN_LEAF),
 		|b| {
-			// create prover transcipt
+			// create prover transcript
 			let challenger = StdChallenger::default();
 			let mut prover_transcript = ProverTranscript::new(challenger);
 

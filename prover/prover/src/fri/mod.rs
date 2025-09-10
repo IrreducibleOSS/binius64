@@ -33,7 +33,7 @@ use crate::merkle_tree::MerkleTreeProver;
 /// - To encode the message (multilinear polynomial) and commit to it, use
 ///   [`Self::write_initial_commitment`]. \ This can be read by the verifier using
 ///   [`FRIVerifier::read_initial_commitment`].
-/// - To run the COMMMIT phase, call [`Self::prove_fold_round`] exactly [`Self::num_fold_rounds`]
+/// - To run the COMMIT phase, call [`Self::prove_fold_round`] exactly [`Self::num_fold_rounds`]
 ///   many times. \ This can be observed by the verifier using [`FRIVerifier::verify_fold_round`].
 /// - To run the QUERY phase, call [`Self::prove_queries`]. \ This can be checked by the verifier
 ///   using [`FRIVerifier::verify_queries`].
@@ -300,7 +300,7 @@ mod tests {
 	where
 		P::Scalar: BinaryField,
 	{
-		// create prover transcipt
+		// create prover transcript
 		let challenger = StdChallenger::default();
 		let mut prover_transcript = ProverTranscript::new(challenger);
 
