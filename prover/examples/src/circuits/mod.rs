@@ -10,3 +10,4 @@ pub mod keccak;
 pub mod sha256;
 pub mod sha512;
 pub mod subset_sum;
+pub mod zklogin;

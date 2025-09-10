@@ -22,3 +22,4 @@ pub mod sha256;
 pub mod sha512;
 pub mod skein512;
 pub mod slice;
+pub mod zklogin;

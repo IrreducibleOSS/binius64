@@ -366,7 +366,7 @@ impl Sha512 {
 	///
 	/// This method converts from big-endian to little-endian format using the
 	/// efficient Hacker's Delight byte swapping algorithm, which is useful for
-	/// interfacing with other circuits that expect LE format.
+	/// interfacing with other circuits that expect LE format (e.g., zklogin).
 	///
 	/// # Returns
 	/// A vector of wires containing the message repacked in little-endian format (8 bytes per wire)
