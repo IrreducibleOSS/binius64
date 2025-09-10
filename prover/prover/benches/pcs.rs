@@ -62,7 +62,8 @@ fn bench_pcs(c: &mut Criterion) {
 				pcs_prover
 					.prove(
 						fri_prover,
-						packed_multilin.clone(), // FIXME the benchmark also measures the cloning...
+						packed_multilin.clone(), /* FIXME the benchmark also measures the
+						                          * cloning... */
 						evaluation_point.clone(),
 						&mut prover_transcript,
 					)

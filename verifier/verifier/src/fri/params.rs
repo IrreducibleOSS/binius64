@@ -55,10 +55,12 @@ where
 	/// Arguments:
 	/// - `compression`: The compression function used in the merkle trees.
 	/// - `commit_layer`: The layer of commitment in the merkle trees.
-	/// - `poly_log_len`: Base-2 logarithm of the length of the multilinear polynomial that will be committed.
-	/// - `rs_code`: The code for used for encoding the message at the beginning of FRI. \
-	///   Must satisfy `rs_code.log_dim() + fold_arities[0] >= poly_log_len`.
-	/// - `fold_arities`: The arities for folding. Each arity must be at least 1, and there must be at least one folding arity.
+	/// - `poly_log_len`: Base-2 logarithm of the length of the multilinear polynomial that will be
+	///   committed.
+	/// - `rs_code`: The code for used for encoding the message at the beginning of FRI. \ Must
+	///   satisfy `rs_code.log_dim() + fold_arities[0] >= poly_log_len`.
+	/// - `fold_arities`: The arities for folding. Each arity must be at least 1, and there must be
+	///   at least one folding arity.
 	/// - `num_queries`: The number of queries in the QUERY phase.
 	pub fn new(
 		compression: C,

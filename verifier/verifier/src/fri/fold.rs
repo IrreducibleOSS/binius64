@@ -70,7 +70,8 @@ pub fn fold_chunk_in_place<F: BinaryField>(
 	let log_chunk_len = fold_challenges.len();
 	debug_assert_eq!(chunk.len(), 1 << log_chunk_len);
 	// note that we subtract 1 at the start of the loop below
-	// (we can't put the subtraction at the end of the loop because of underflow in the last iteration)
+	// (we can't put the subtraction at the end of the loop because of underflow in the last
+	// iteration)
 	let mut log_chunk_len_half = log_chunk_len;
 	log_len += 1;
 
@@ -133,7 +134,8 @@ pub fn fold_chunk_without_ntt_in_place<F: BinaryField>(
 	let log_chunk_len = fold_challenges.len();
 	debug_assert_eq!(chunk.len(), 1 << log_chunk_len);
 	// note that we subtract 1 at the start of the loop below
-	// (we can't put the subtraction at the end of the loop because of underflow in the last iteration)
+	// (we can't put the subtraction at the end of the loop because of underflow in the last
+	// iteration)
 	let mut log_chunk_len_half = log_chunk_len;
 
 	// fold the remaining challenges

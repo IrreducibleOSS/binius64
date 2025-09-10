@@ -1,8 +1,9 @@
 mod params;
 use binius_math::ntt::DomainContext;
-use binius_transcript::VerifierTranscript;
-use binius_transcript::fiat_shamir::CanSampleBits;
-use binius_transcript::fiat_shamir::Challenger;
+use binius_transcript::{
+	VerifierTranscript,
+	fiat_shamir::{CanSampleBits, Challenger},
+};
 use binius_utils::checked_arithmetics::log2_strict_usize;
 pub use params::*;
 pub mod fold;
@@ -10,15 +11,13 @@ pub mod fold;
 use binius_field::BinaryField;
 use binius_transcript::TranscriptReader;
 use bytes::Buf;
-use digest::Digest;
-use digest::Output;
-use digest::OutputSizeUser;
-use digest::core_api::BlockSizeUser;
+use digest::{Digest, Output, OutputSizeUser, core_api::BlockSizeUser};
 
-use crate::fri::fold::fold_chunk_in_place;
-use crate::fri::fold::fold_chunk_without_ntt_in_place;
-use crate::hash::PseudoCompressionFunction;
-use crate::merkle_tree::MerkleTreeVerifier;
+use crate::{
+	fri::fold::{fold_chunk_in_place, fold_chunk_without_ntt_in_place},
+	hash::PseudoCompressionFunction,
+	merkle_tree::MerkleTreeVerifier,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum VerificationError {
@@ -29,9 +28,14 @@ pub enum VerificationError {
 /// Provides the ability to run the FRI protocol from the verifier side.
 ///
 /// This FRI implementation is special in the following ways:
-/// - The folding arity can be bigger than 1, and can be non-constant (i.e. vary from round to round).
-/// - The folding is compatible with evaluation of a multilinear stored in Lagrange basis. Concretely, the final value returned by [`Self::verify_queries`] is the evaluation of the original message interpreted as a multilinear in Lagrange basis, at the point which is given by the folding challenges.
-/// - It's an _internal_ choice of this implementation how things are encoded, in particular whether it uses "interleaved codewords" or not.
+/// - The folding arity can be bigger than 1, and can be non-constant (i.e. vary from round to
+///   round).
+/// - The folding is compatible with evaluation of a multilinear stored in Lagrange basis.
+///   Concretely, the final value returned by [`Self::verify_queries`] is the evaluation of the
+///   original message interpreted as a multilinear in Lagrange basis, at the point which is given
+///   by the folding challenges.
+/// - It's an _internal_ choice of this implementation how things are encoded, in particular whether
+///   it uses "interleaved codewords" or not.
 ///
 /// Generics:
 /// - `F`: The field over which the protocol is executed.
@@ -40,7 +44,8 @@ pub enum VerificationError {
 ///
 /// Usage:
 /// - To read the commitment to the initial codeword, use [`Self::read_initial_commitment`].
-/// - To run the COMMMIT phase, call [`Self::verify_fold_round`] exactly [`Self::num_fold_rounds`] many times.
+/// - To run the COMMMIT phase, call [`Self::verify_fold_round`] exactly [`Self::num_fold_rounds`]
+///   many times.
 /// - To run the QUERY phase, call [`Self::verify_queries`].
 pub struct FRIVerifier<'a, F, H: OutputSizeUser, C, DC> {
 	params: &'a FRIParams<F, H, C>,
@@ -58,7 +63,8 @@ where
 	C: PseudoCompressionFunction<Output<H>, 2>,
 	DC: DomainContext<Field = F>,
 {
-	/// Reads the FRI initial codeword commitment. Returns a verifier instance which allows to run the FRI protocol on the codeword.
+	/// Reads the FRI initial codeword commitment. Returns a verifier instance which allows to run
+	/// the FRI protocol on the codeword.
 	///
 	/// Arguments:
 	/// - `params`: Parameters used for the FRI protocol.
@@ -99,7 +105,8 @@ where
 		self.params.num_rounds() - 1
 	}
 
-	/// Verifies a fold round of FRI in the COMMIT phase. Must be called `Self::num_fold_rounds` many times.
+	/// Verifies a fold round of FRI in the COMMIT phase. Must be called `Self::num_fold_rounds`
+	/// many times.
 	///
 	/// Concretely, it does:
 	/// - either nothing, if we skip this round because of a higher fold arity
@@ -108,7 +115,8 @@ where
 	///
 	/// Arguments:
 	/// - `fold_challenge`: The scalar used to fold the codeword (which should be sampled randomly).
-	/// - `transcript`: The [`TranscriptReader`] which is used for reading the commitment (if there is one to observe).
+	/// - `transcript`: The [`TranscriptReader`] which is used for reading the commitment (if there
+	///   is one to observe).
 	pub fn verify_fold_round(
 		&mut self,
 		challenge: F,
@@ -153,10 +161,12 @@ where
 	/// - checks that the folding was done correctly
 	///
 	/// It also folds the terminal codeword and checks that it yields a constant codeword.
-	/// It returns the value of this constant codeword, which equals the evaluation of the multilinear at the point given by the folding challenges.
+	/// It returns the value of this constant codeword, which equals the evaluation of the
+	/// multilinear at the point given by the folding challenges.
 	///
 	/// Arguments:
-	/// - `transcript`: The [`VerifierTranscript`] used for sampling the query challenges and reading openings on the decommitment tape.
+	/// - `transcript`: The [`VerifierTranscript`] used for sampling the query challenges and
+	///   reading openings on the decommitment tape.
 	pub fn verify_queries(
 		&mut self,
 		transcript: &mut VerifierTranscript<impl Challenger>,

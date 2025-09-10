@@ -29,12 +29,13 @@ use crate::merkle_tree::MerkleTreeProver;
 /// - `NTT`: The NTT type used for encoding and folding.
 ///
 /// Usage:
-/// - To encode the message (multilinear polynomial) and commit to it, use [`Self::write_initial_commitment`]. \
-///   This can be read by the verifier using [`FRIVerifier::read_initial_commitment`].
-/// - To run the COMMMIT phase, call [`Self::prove_fold_round`] exactly [`Self::num_fold_rounds`] many times. \
-///   This can be observed by the verifier using [`FRIVerifier::verify_fold_round`].
-/// - To run the QUERY phase, call [`Self::prove_queries`]. \
-///   This can be checked by the verifier using [`FRIVerifier::verify_queries`].
+/// - To encode the message (multilinear polynomial) and commit to it, use
+///   [`Self::write_initial_commitment`]. \ This can be read by the verifier using
+///   [`FRIVerifier::read_initial_commitment`].
+/// - To run the COMMMIT phase, call [`Self::prove_fold_round`] exactly [`Self::num_fold_rounds`]
+///   many times. \ This can be observed by the verifier using [`FRIVerifier::verify_fold_round`].
+/// - To run the QUERY phase, call [`Self::prove_queries`]. \ This can be checked by the verifier
+///   using [`FRIVerifier::verify_queries`].
 pub struct FRIProver<'a, F, H: OutputSizeUser, C, NTT> {
 	params: &'a FRIParams<F, H, C>,
 	ntt: &'a NTT,
@@ -51,7 +52,8 @@ where
 	C: PseudoCompressionFunction<Output<H>, 2> + Sync,
 	NTT: AdditiveNTT<Field = F> + Sync,
 {
-	/// Encodes the message (multilinear polynomial) and commits to it. Returns a prover instance which allows to run the FRI protocol on the codeword.
+	/// Encodes the message (multilinear polynomial) and commits to it. Returns a prover instance
+	/// which allows to run the FRI protocol on the codeword.
 	///
 	/// The counterpart on the verifier side is [`FRIVerifier::read_initial_commitment`].
 	///
@@ -87,9 +89,11 @@ where
 		}
 
 		// convert `Vec<P>` to `Vec<F>`
-		// Reason: Otherwise the merkle tree would need to be generic over P (or only own a slice of the leaves and have a lifetime).
-		// How to do: Right now we just clone because we can't use `Vec::from_raw_parts` due to alignment issues. Possible future solutions:
-		// - make MerkleTreeProver just take a slice of the codeword (so FRIProver would need to store the leaves :/)
+		// Reason: Otherwise the merkle tree would need to be generic over P (or only own a slice of
+		// the leaves and have a lifetime). How to do: Right now we just clone because we can't
+		// use `Vec::from_raw_parts` due to alignment issues. Possible future solutions:
+		// - make MerkleTreeProver just take a slice of the codeword (so FRIProver would need to
+		//   store the leaves :/)
 		// - use Box<[T]> in MerkleTreeProver which I think doesn't have the alignment problems
 		// - implement something on FieldBuffer which supports this transformation
 		let codeword: Vec<F> = match is_packed_field_indexable::<P>() {
@@ -131,7 +135,8 @@ where
 		self.params.num_rounds() - 1
 	}
 
-	/// Proves a fold round of FRI in the COMMIT phase. Must be called `Self::num_fold_rounds` many times.
+	/// Proves a fold round of FRI in the COMMIT phase. Must be called `Self::num_fold_rounds` many
+	/// times.
 	///
 	/// Concretely, it does:
 	/// - either nothing, if we skip this round because of a higher fold arity
@@ -142,7 +147,8 @@ where
 	///
 	/// Arguments:
 	/// - `fold_challenge`: The scalar used to fold the codeword (which should be sampled randomly).
-	/// - `transcript`: The [`TranscriptWriter`] which is used for writing the commitment (if there is one to make).
+	/// - `transcript`: The [`TranscriptWriter`] which is used for writing the commitment (if there
+	///   is one to make).
 	pub fn prove_fold_round(
 		&mut self,
 		fold_challenge: F,
@@ -228,7 +234,8 @@ where
 	/// The counterpart on the verifier side is [`FRIVerifier::verify_queries`].
 	///
 	/// Arguments:
-	/// - `transcript`: The [`ProverTranscript`] used for sampling the query challenges and opening the commitments on the decommitment tape.
+	/// - `transcript`: The [`ProverTranscript`] used for sampling the query challenges and opening
+	///   the commitments on the decommitment tape.
 	pub fn prove_queries(&self, transcript: &mut ProverTranscript<impl Challenger>) {
 		assert_eq!(self.rounds_done, self.params.num_rounds());
 
