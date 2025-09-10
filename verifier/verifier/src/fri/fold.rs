@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use binius_field::BinaryField;
 use binius_math::{line::extrapolate_line_packed, ntt::DomainContext};
 

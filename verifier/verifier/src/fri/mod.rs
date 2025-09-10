@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 mod params;
 use binius_math::ntt::DomainContext;
 use binius_transcript::{

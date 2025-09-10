@@ -1,3 +1,4 @@
+// Copyright 2025 Irreducible Inc.
 use std::{cmp::min, marker::PhantomData};
 
 use binius_transcript::TranscriptWriter;
