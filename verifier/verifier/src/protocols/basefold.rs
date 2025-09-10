@@ -35,32 +35,6 @@ use crate::{
 	transcript,
 };
 
-/// Determines for each round if a FRI commitment was made depending on folding arities.
-///
-/// FRI can be optimized by folding multiple rounds at once. The FriFolder struct
-/// expects the arities for each round to be provided. During the basefold verification,
-/// we must check only those rounds where a commitment was made.
-///
-/// ## Arguments
-///
-/// * `fri_fold_arities` - The arities for each FRI round
-/// * `num_basefold_rounds` - The number of basefold rounds
-///
-/// # Returns
-///
-/// A vector of booleans, where true indicates a FRI commitment was made in that round.
-fn is_fri_commit_round(fri_fold_arities: &[usize], num_basefold_rounds: usize) -> Vec<bool> {
-	let mut result = vec![false; num_basefold_rounds];
-	let mut result_idx = 0;
-	for arity in fri_fold_arities {
-		result_idx += arity;
-		if result_idx > 0 && result_idx <= num_basefold_rounds {
-			result[result_idx - 1] = true;
-		}
-	}
-	result
-}
-
 /// Verifies a BaseFold protocol interaction.
 ///
 /// See module documentation for protocol description.
