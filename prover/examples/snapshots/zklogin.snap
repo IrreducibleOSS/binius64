@@ -1,0 +1,28 @@
+zklogin circuit
+--
+Gates & Instructions
+├─ Number of gates: 484,343
+└─ Number of evaluation instructions: 548,293
+
+Constraints
+├─ AND constraints: 429,272 used (81.9% of 2^19)
+│  [▓▓▓▓▓▓▓▓░░] spare: 95,016
+├─ MUL constraints: 26,880 used (82.0% of 2^15)
+│  [▓▓▓▓▓▓▓▓░░] spare: 5,888
+└─ Distinct value indices: 828,771
+   ├─ Distinct shifted value indices: 349,834
+   └─ Distinct unshifted value indices: 478,937
+
+Value Vector
+├─ Public Section: 1,018 used (99.4% of 2^10)
+│  [▓▓▓▓▓▓▓▓▓░] spare: 6
+│  ├─ Constants: 716
+│  └─ Inout: 302
+├─ Private Section: 477,920 used (91.3%)
+│  [▓▓▓▓▓▓▓▓▓░] spare: 45,344
+│  ├─ Witness: 1,788
+│  └─ Internal: 476,132
+├─ Total Committed: 478,938 used (91.4% of 2^19)
+│  [▓▓▓▓▓▓▓▓▓░] spare: 45,350
+└─ Scratch (uncommitted): 348,039
+
