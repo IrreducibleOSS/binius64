@@ -10,8 +10,10 @@ use peakmem_alloc::PeakAlloc;
 use utils::{ExampleBenchmark, HashBenchConfig, print_benchmark_header, run_cs_benchmark};
 
 // Global allocator that tracks peak memory usage
+
 #[global_allocator]
-static PEAK_ALLOC: PeakAlloc<System> = PeakAlloc::new(System);
+static BLAKE2B_PEAK_ALLOC: PeakAlloc<System> = PeakAlloc::new(System);
+
 
 struct Blake2bBenchmark {
 	config: HashBenchConfig,
