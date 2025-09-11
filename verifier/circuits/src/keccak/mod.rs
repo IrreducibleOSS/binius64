@@ -52,7 +52,7 @@ impl Keccak {
 		let n_blocks = (max_len_bytes + 1).div_ceil(RATE_BYTES);
 
 		// constrain the message length claim to be explicitly within bounds
-		let len_check = b.icmp_ult(b.add_constant_64(max_len_bytes as u64), len_bytes); // max_len_bytes < len_bytes
+		let len_check = b.icmp_ugt(len_bytes, b.add_constant_64(max_len_bytes as u64)); // len_bytes > max_len_bytes
 		b.assert_false("len_check", len_check);
 
 		let padded_message: Vec<Wire> = (0..n_blocks * N_WORDS_PER_BLOCK)
@@ -151,7 +151,7 @@ impl Keccak {
 					b.assert_eq_cond("full", padded_word, message_word, is_before_end);
 				}
 
-				let is_past_message = b.icmp_ult(word_boundary, word_idx_wire);
+				let is_past_message = b.icmp_ugt(word_idx_wire, word_boundary);
 
 				if column_index == 16 {
 					// last word in the block

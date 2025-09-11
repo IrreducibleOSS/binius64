@@ -122,8 +122,8 @@ impl Sha256 {
 		let n_blocks = (message.len() + 2).div_ceil(8);
 		let n_words = n_blocks << 3; // 8 message words per compression gadget block
 
-		// Assert that len_bytes <= max_len_bytes by checking that !(max_len_bytes < len_bytes)
-		let too_long = builder.icmp_ult(builder.add_constant_64(max_len_bytes as u64), len_bytes);
+		// Check that len_bytes > max_len_bytes is false.
+		let too_long = builder.icmp_ugt(len_bytes, builder.add_constant_64(max_len_bytes as u64));
 		builder.assert_false("1.len_check", too_long);
 
 		// ---- 2. Message padding and compression setup
@@ -288,8 +288,8 @@ impl Sha256 {
 
 				let is_message_word =
 					builder.icmp_ult(builder.add_constant_64(word_index as u64 + 1), w_bd);
-				let is_past_message: Wire =
-					builder.icmp_ult(w_bd, builder.add_constant_64(word_index as u64));
+				let is_past_message =
+					builder.icmp_ugt(builder.add_constant_64(word_index as u64), w_bd);
 
 				// ---- 3a. Full message words
 				if word_index < message.len() {

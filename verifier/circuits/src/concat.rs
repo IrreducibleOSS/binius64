@@ -154,7 +154,7 @@ impl Concat {
 			let b = b.subcircuit(format!("term[{i}]"));
 
 			let too_long =
-				b.icmp_ult(b.add_constant(Word((term.data.len() << 3) as u64)), term.len_bytes);
+				b.icmp_ugt(term.len_bytes, b.add_constant(Word((term.data.len() << 3) as u64)));
 			b.assert_false("term_length_check", too_long);
 
 			// 2. Word-level verification for current term
@@ -215,7 +215,7 @@ impl Concat {
 		// The sum of all term lengths must equal the total joined length.
 		b.assert_eq("concat_length", offset, len_joined_bytes);
 		let too_long =
-			b.icmp_ult(b.add_constant(Word((joined.len() << 3) as u64)), len_joined_bytes);
+			b.icmp_ugt(len_joined_bytes, b.add_constant(Word((joined.len() << 3) as u64)));
 		b.assert_false("concat_length_lt_joined_len", too_long);
 
 		Concat {
