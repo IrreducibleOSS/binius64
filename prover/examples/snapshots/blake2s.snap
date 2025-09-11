@@ -1,13 +1,26 @@
 blake2s circuit
 --
-Number of gates: 2318
-Number of evaluation instructions: 2318
-Number of AND constraints: 2584
-Number of MUL constraints: 0
-Number of distinct shifted value indices: 6155
-Length of value vec: 4096
-  Constants: 14
-  Inout: 0
-  Witness: 24
-  Internal: 2576
-  Scratch: 694
+Gates & Instructions
+├─ Number of gates: 2,318
+├─ Number of evaluation instructions: 2,318
+└─ Distinct shifted value indices: 6,155
+
+Constraints
+├─ AND constraints: 2,584 used (63.1% of 2^12)
+│  [▓▓▓▓▓▓░░░░] spare: 1,512
+└─ MUL constraints: 0 used (0.0% of 2^0)
+   [░░░░░░░░░░] spare: 1
+
+Value Vector
+├─ Public Section: 14 used (87.5% of 2^4)
+│  [▓▓▓▓▓▓▓▓░░] spare: 2
+│  ├─ Constants: 14
+│  └─ Inout: 0
+├─ Private Section: 2,600 used (63.7%)
+│  [▓▓▓▓▓▓░░░░] spare: 1,480
+│  ├─ Witness: 24
+│  └─ Internal: 2,576
+├─ Total Committed: 2,614 used (63.8% of 2^12)
+│  [▓▓▓▓▓▓░░░░] spare: 1,482
+└─ Scratch (uncommitted): 694
+

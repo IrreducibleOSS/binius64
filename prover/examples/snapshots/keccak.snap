@@ -1,13 +1,26 @@
 keccak circuit
 --
-Number of gates: 27625
-Number of evaluation instructions: 27625
-Number of AND constraints: 7225
-Number of MUL constraints: 0
-Number of distinct shifted value indices: 41877
-Length of value vec: 8192
-  Constants: 23
-  Inout: 50
-  Witness: 0
-  Internal: 7200
-  Scratch: 20400
+Gates & Instructions
+├─ Number of gates: 27,625
+├─ Number of evaluation instructions: 27,625
+└─ Distinct shifted value indices: 41,877
+
+Constraints
+├─ AND constraints: 7,225 used (88.2% of 2^13)
+│  [▓▓▓▓▓▓▓▓░░] spare: 967
+└─ MUL constraints: 0 used (0.0% of 2^0)
+   [░░░░░░░░░░] spare: 1
+
+Value Vector
+├─ Public Section: 73 used (57.0% of 2^7)
+│  [▓▓▓▓▓░░░░░] spare: 55
+│  ├─ Constants: 23
+│  └─ Inout: 50
+├─ Private Section: 7,200 used (89.3%)
+│  [▓▓▓▓▓▓▓▓░░] spare: 864
+│  ├─ Witness: 0
+│  └─ Internal: 7,200
+├─ Total Committed: 7,273 used (88.8% of 2^13)
+│  [▓▓▓▓▓▓▓▓░░] spare: 919
+└─ Scratch (uncommitted): 20,400
+

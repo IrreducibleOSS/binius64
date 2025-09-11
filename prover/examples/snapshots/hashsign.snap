@@ -1,13 +1,26 @@
 hashsign circuit
 --
-Number of gates: 2385261
-Number of evaluation instructions: 2886906
-Number of AND constraints: 1600305
-Number of MUL constraints: 0
-Number of distinct shifted value indices: 3322922
-Length of value vec: 2097152
-  Constants: 376
-  Inout: 20
-  Witness: 14733
-  Internal: 1580865
-  Scratch: 1597599
+Gates & Instructions
+├─ Number of gates: 2,385,261
+├─ Number of evaluation instructions: 2,886,906
+└─ Distinct shifted value indices: 3,322,922
+
+Constraints
+├─ AND constraints: 1,600,305 used (76.3% of 2^21)
+│  [▓▓▓▓▓▓▓░░░] spare: 496,847
+└─ MUL constraints: 0 used (0.0% of 2^0)
+   [░░░░░░░░░░] spare: 1
+
+Value Vector
+├─ Public Section: 396 used (77.3% of 2^9)
+│  [▓▓▓▓▓▓▓░░░] spare: 116
+│  ├─ Constants: 376
+│  └─ Inout: 20
+├─ Private Section: 1,595,598 used (76.1%)
+│  [▓▓▓▓▓▓▓░░░] spare: 501,042
+│  ├─ Witness: 14,733
+│  └─ Internal: 1,580,865
+├─ Total Committed: 1,595,994 used (76.1% of 2^21)
+│  [▓▓▓▓▓▓▓░░░] spare: 501,158
+└─ Scratch (uncommitted): 1,597,599
+
