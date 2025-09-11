@@ -55,6 +55,14 @@ harness = false
 name = "hashsign"
 harness = false
 
+[[bench]]
+name = "sha256"
+harness = false
+
+[[bench]]
+name = "sha512"
+harness = false
+
 [features]
 default = ["rayon"]
 perfetto = ["tracing-profile/perfetto"]
