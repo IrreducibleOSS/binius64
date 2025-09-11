@@ -25,24 +25,8 @@ pub fn print_proof_size(bench_name: &str, description: &str, size_bytes: usize) 
 	);
 }
 
-/// Print memory statistics in consistent format
-pub fn print_memory_stats(
-	bench_name: &str,
-	witness_bytes: usize,
-	proof_bytes: usize,
-	verify_bytes: usize,
-) {
-	println!("\n{} Peak Memory Consumption:", bench_name);
-	println!("  Witness generation: {}", format_memory(witness_bytes));
-	println!("  Proof generation: {}", format_memory(proof_bytes));
-	println!("  Verification: {}", format_memory(verify_bytes));
-
-	let peak_overall = witness_bytes.max(proof_bytes).max(verify_bytes);
-	println!("  Peak overall: {}", format_memory(peak_overall));
-}
-
 /// Format bytes as human-readable string
-fn format_memory(bytes: usize) -> String {
+pub fn format_memory(bytes: usize) -> String {
 	const GB: usize = 1024 * 1024 * 1024;
 	const MB: usize = 1024 * 1024;
 	const KB: usize = 1024;
