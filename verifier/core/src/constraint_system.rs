@@ -685,21 +685,24 @@ impl ValueVec {
 	/// The data is checked to have the correct length.
 	pub fn new_from_data(
 		layout: ValueVecLayout,
-		mut public: Vec<Word>,
+		public: Vec<Word>,
 		private: Vec<Word>,
 	) -> Result<ValueVec, ConstraintSystemError> {
-		public.extend_from_slice(&private);
-		if public.len() != layout.committed_total_len {
+		let committed_len = public.len() + private.len();
+		if committed_len != layout.committed_total_len {
 			return Err(ConstraintSystemError::ValueVecLenMismatch {
 				expected: layout.committed_total_len,
-				actual: public.len(),
+				actual: committed_len,
 			});
 		}
 
-		Ok(ValueVec {
-			layout,
-			data: public,
-		})
+		let full_len = layout.committed_total_len + layout.n_scratch;
+		let mut data = public;
+		data.reserve(full_len);
+		data.extend_from_slice(&private);
+		data.resize(full_len, Word::ZERO);
+
+		Ok(ValueVec { layout, data })
 	}
 
 	/// The total size of the committed portion of the vector (excluding scratch).
@@ -726,9 +729,9 @@ impl ValueVec {
 		&self.data[..self.layout.offset_witness]
 	}
 
-	/// Return all non-public values (witness + internal).
+	/// Return all non-public values (witness + internal) without scratch space.
 	pub fn non_public(&self) -> &[Word] {
-		&self.data[self.layout.offset_witness..]
+		&self.data[self.layout.offset_witness..self.layout.committed_total_len]
 	}
 
 	/// Returns the witness portion of the values vector.
@@ -1690,6 +1693,69 @@ mod serialization_tests {
 			ValueVec::new_from_data(values.layout.clone(), public.to_vec(), non_public.to_vec())
 				.unwrap();
 		assert_eq!(combined.combined_witness(), values.combined_witness());
+	}
+
+	#[test]
+	fn test_roundtrip_cs_and_witnesses_reconstruct_valuevec_with_scratch() {
+		// Layout with non-zero scratch. Public = 8, total committed = 16, scratch = 5
+		let layout = ValueVecLayout {
+			n_const: 2,
+			n_inout: 3,
+			n_witness: 4,
+			n_internal: 3,
+			offset_inout: 4,   // >= n_const and power of two
+			offset_witness: 8, // >= offset_inout + n_inout and power of two
+			committed_total_len: 16,
+			n_scratch: 5, // non-zero scratch
+		};
+
+		let constants = vec![Word::from_u64(11), Word::from_u64(22)];
+		let cs = ConstraintSystem::new(constants, layout.clone(), vec![], vec![]);
+
+		// Build a ValueVec and fill both committed and scratch with non-zero data
+		let mut values = cs.new_value_vec();
+		let full_len = layout.committed_total_len + layout.n_scratch;
+		for i in 0..full_len {
+			// Deterministic pattern
+			let val = Word::from_u64(0xA5A5_5A5A ^ (i as u64 * 0x9E37_79B9));
+			values.set(i, val);
+		}
+
+		// Split into public and non-public witnesses and serialize all artifacts
+		let public_data = ValuesData::from(values.public());
+		let non_public_data = ValuesData::from(values.non_public());
+
+		let mut buf_cs = Vec::new();
+		cs.serialize(&mut buf_cs).unwrap();
+
+		let mut buf_pub = Vec::new();
+		public_data.serialize(&mut buf_pub).unwrap();
+
+		let mut buf_non_pub = Vec::new();
+		non_public_data.serialize(&mut buf_non_pub).unwrap();
+
+		// Deserialize everything back
+		let cs2 = ConstraintSystem::deserialize(&mut buf_cs.as_slice()).unwrap();
+		let pub2 = ValuesData::deserialize(&mut buf_pub.as_slice()).unwrap();
+		let non_pub2 = ValuesData::deserialize(&mut buf_non_pub.as_slice()).unwrap();
+
+		// Reconstruct ValueVec from deserialized pieces
+		let reconstructed = ValueVec::new_from_data(
+			cs2.value_vec_layout.clone(),
+			pub2.into_owned(),
+			non_pub2.into_owned(),
+		)
+		.unwrap();
+
+		// Ensure committed part matches exactly
+		assert_eq!(reconstructed.combined_witness(), values.combined_witness());
+
+		// Scratch is not serialized; reconstructed scratch should be zero-filled
+		let scratch_start = layout.committed_total_len;
+		let scratch_end = scratch_start + layout.n_scratch;
+		for i in scratch_start..scratch_end {
+			assert_eq!(reconstructed.get(i), Word::ZERO, "scratch index {i} should be zero");
+		}
 	}
 
 	#[test]
