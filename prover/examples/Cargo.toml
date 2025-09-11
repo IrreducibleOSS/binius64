@@ -55,6 +55,10 @@ harness = false
 name = "hashsign"
 harness = false
 
+[[bench]]
+name = "cost_model"
+harness = false
+
 [features]
 default = ["rayon"]
 perfetto = ["tracing-profile/perfetto"]
