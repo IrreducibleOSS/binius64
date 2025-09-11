@@ -7,7 +7,7 @@ use binius_frontend::{CircuitBuilder, CircuitStat};
 use binius_utils::serialization::{DeserializeBytes, SerializeBytes};
 use clap::{Arg, Args, Command, FromArgMatches, Subcommand};
 
-use crate::{ExampleCircuit, prove_verify, setup};
+use crate::{ExampleCircuit, prove_verify, setup, setup_with_key_collection};
 
 /// Serialize a value implementing `SerializeBytes` and write it to the given path.
 fn write_serialized<T: SerializeBytes>(value: &T, path: &str) -> Result<()> {
@@ -104,7 +104,8 @@ enum Commands {
 		params: CommandArgs,
 	},
 
-	/// Save constraint system, public witness, and non-public data to files if paths are provided
+	/// Save constraint system, public witness, non-public data, and key collection to files if
+	/// paths are provided
 	Save {
 		/// Output path for the constraint system binary
 		#[arg(long = "cs-path")]
@@ -118,6 +119,10 @@ enum Commands {
 		#[arg(long = "non-pub-data-path")]
 		non_pub_data_path: Option<String>,
 
+		/// Output path for the key collection binary (for fast prover setup)
+		#[arg(long = "key-collection-path")]
+		key_collection_path: Option<String>,
+
 		#[command(flatten)]
 		params: CommandArgs,
 
@@ -125,7 +130,10 @@ enum Commands {
 		instance: CommandArgs,
 	},
 
-	/// Load constraint system and witness data from files and prove
+	/// Load constraint system, witness data, and optionally key collection from files and prove
+	///
+	/// If key-collection-path is provided, it will be loaded to skip the expensive
+	/// key building phase during setup.
 	LoadProve {
 		/// Input path for the constraint system binary
 		#[arg(long = "cs-path", required = true)]
@@ -138,6 +146,10 @@ enum Commands {
 		/// Input path for the non-public data (witness + internal) binary
 		#[arg(long = "non-pub-data-path", required = true)]
 		non_pub_data_path: String,
+
+		/// Input path for the key collection binary (optional, for fast prover setup)
+		#[arg(long = "key-collection-path")]
+		key_collection_path: Option<String>,
 
 		/// Log of the inverse rate for the proof system
 		#[arg(
@@ -249,7 +261,7 @@ where
 
 	fn build_save_subcommand() -> Command {
 		let mut cmd = Command::new("save").about(
-			"Save constraint system, public witness, and non-public data to files if paths are provided",
+			"Save constraint system, public witness, non-public data, and key collection to files if paths are provided",
 		);
 		cmd = cmd
 			.arg(
@@ -269,6 +281,12 @@ where
 					.long("non-pub-data-path")
 					.value_name("PATH")
 					.help("Output path for the non-public data (witness + internal) binary"),
+			)
+			.arg(
+				Arg::new("key_collection_path")
+					.long("key-collection-path")
+					.value_name("PATH")
+					.help("Output path for the key collection binary (for fast prover setup)"),
 			);
 		cmd = E::Params::augment_args(cmd);
 		cmd = E::Instance::augment_args(cmd);
@@ -277,7 +295,7 @@ where
 
 	fn build_load_prove_subcommand() -> Command {
 		Command::new("load-prove")
-			.about("Load constraint system and witness data from files and generate/verify proof")
+			.about("Load constraint system, witness data, and optionally key collection from files and generate/verify proof")
 			.arg(
 				Arg::new("cs_path")
 					.long("cs-path")
@@ -298,6 +316,12 @@ where
 					.value_name("PATH")
 					.help("Input path for the non-public data (witness + internal) binary")
 					.required(true),
+			)
+			.arg(
+				Arg::new("key_collection_path")
+					.long("key-collection-path")
+					.value_name("PATH")
+					.help("Input path for the key collection binary (optional, for fast prover setup)"),
 			)
 			.arg(
 				Arg::new("log_inv_rate")
@@ -465,9 +489,14 @@ where
 		let cs_path = matches.get_one::<String>("cs_path").cloned();
 		let pub_witness_path = matches.get_one::<String>("pub_witness_path").cloned();
 		let non_pub_data_path = matches.get_one::<String>("non_pub_data_path").cloned();
+		let key_collection_path = matches.get_one::<String>("key_collection_path").cloned();
 
 		// If nothing to save, exit early
-		if cs_path.is_none() && pub_witness_path.is_none() && non_pub_data_path.is_none() {
+		if cs_path.is_none()
+			&& pub_witness_path.is_none()
+			&& non_pub_data_path.is_none()
+			&& key_collection_path.is_none()
+		{
 			tracing::info!("No output paths provided; nothing to save");
 			return Ok(());
 		}
@@ -488,8 +517,9 @@ where
 		let witness: ValueVec = filler.into_value_vec();
 
 		// Conditionally write artifacts
+		let cs = circuit.constraint_system();
 		if let Some(path) = cs_path.as_deref() {
-			write_serialized(circuit.constraint_system(), path)?;
+			write_serialized(cs, path)?;
 			tracing::info!("Constraint system saved to '{}'", path);
 		}
 
@@ -503,6 +533,15 @@ where
 			let data = ValuesData::from(witness.non_public());
 			write_serialized(&data, path)?;
 			tracing::info!("Non-public witness saved to '{}'", path);
+		}
+
+		// Save KeyCollection if requested
+		if let Some(path) = key_collection_path.as_deref() {
+			let key_collection_scope = tracing::info_span!("Building key collection").entered();
+			let key_collection = binius_prover::protocols::shift::build_key_collection(cs);
+			drop(key_collection_scope);
+			write_serialized(&key_collection, path)?;
+			tracing::info!("Key collection saved to '{}'", path);
 		}
 
 		Ok(())
@@ -519,6 +558,7 @@ where
 		let non_pub_data_path = matches
 			.get_one::<String>("non_pub_data_path")
 			.expect("non_pub_data_path is required");
+		let key_collection_path = matches.get_one::<String>("key_collection_path").cloned();
 		let log_inv_rate = *matches
 			.get_one::<u32>("log_inv_rate")
 			.expect("has default value");
@@ -532,8 +572,22 @@ where
 		// Get the layout from the constraint system
 		let layout = cs.value_vec_layout.clone();
 
-		// Set up prover and verifier
-		let (verifier, prover) = setup(cs, log_inv_rate as usize)?;
+		// Set up verifier and prover.
+		//
+		// In case the `key_collection_path` was provided, we load the prebuilt KeyCollection.
+		// In case the path to prebuilt key collection was not provided, we are going to run
+		// the regular setup.
+		let (verifier, prover) = if let Some(kc_path) = key_collection_path {
+			// Load pre-built KeyCollection.
+			let kc_load_scope = tracing::info_span!("Loading key collection").entered();
+			let key_collection: binius_prover::KeyCollection = read_deserialized(&kc_path)?;
+			tracing::info!("Key collection loaded from '{}'", kc_path);
+			drop(kc_load_scope);
+
+			setup_with_key_collection(cs, key_collection, log_inv_rate as usize)?
+		} else {
+			setup(cs, log_inv_rate as usize)?
+		};
 
 		// Load witness data
 		let witness_load_scope = tracing::info_span!("Loading witness data").entered();
