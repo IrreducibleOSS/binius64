@@ -7,9 +7,8 @@ CLAUDE.local.md
 /.idea/
 **/.DS_Store
 /.vscode
-# Mobile directory - ignore everything except run-config.yaml
-/mobile/*
-!/mobile/run-config.yaml
+# Mobile directory
+mobile/
 # Perfetto traces from benchmarks
 perfetto_traces/
 *.perfetto-trace
