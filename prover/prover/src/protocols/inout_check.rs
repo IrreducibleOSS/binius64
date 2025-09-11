@@ -65,7 +65,9 @@ impl<F: Field, P: PackedField<Scalar = F>> InOutCheckProver<P> {
 			witness,
 			inout,
 			last_coeffs_or_eval: RoundCoeffsOrEval::Eval(F::ZERO),
-			gruen32: Gruen32::new(eval_point),
+			// This is typically a small sumcheck, no need to leverage the outer product
+			// optimization.
+			gruen32: Gruen32::new(eval_point.len(), eval_point),
 			zero_padded_eval_point,
 		})
 	}
@@ -112,7 +114,7 @@ impl<F: Field, P: PackedField<Scalar = F>> InOutCheckProver<P> {
 		// the full evaluation point. We work around this by computing the evaluation on the lower
 		// and upper halves of the witness and inout vector separately, then extrapolating with the
 		// last coordinate of the evaluation point.
-		let eq_expansion = self.gruen32.eq_expansion();
+		let eq_expansion = self.gruen32.chunk_eq_expansion();
 		let (witness_0, witness_1) = truncated_witness.split_half().expect(
 			"pre-condition: witness.log_len() > inout.log_len(); thus, witness.log_len() > 0",
 		);
@@ -151,7 +153,7 @@ impl<F: Field, P: PackedField<Scalar = F>> InOutCheckProver<P> {
 	fn compute_round_eval_later_rounds(&self) -> F {
 		let n_vars = self.inout.log_len();
 
-		let eq_expansion = self.gruen32.eq_expansion();
+		let eq_expansion = self.gruen32.chunk_eq_expansion();
 		let (_, witness_1) = self
 			.witness
 			.split_half()

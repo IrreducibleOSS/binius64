@@ -1,6 +1,6 @@
 // Copyright 2023-2025 Irreducible Inc.
 
-use std::ops::Add;
+use std::ops::{Add, AddAssign, Mul};
 
 use binius_field::{Field, PackedField};
 use binius_verifier::protocols::sumcheck::RoundCoeffs;
@@ -31,7 +31,22 @@ impl<P: PackedField> Add<&Self> for RoundEvals1<P> {
 	type Output = Self;
 
 	fn add(mut self, rhs: &Self) -> Self::Output {
+		self += rhs;
+		self
+	}
+}
+
+impl<P: PackedField> AddAssign<&Self> for RoundEvals1<P> {
+	fn add_assign(&mut self, rhs: &Self) {
 		self.y_1 += rhs.y_1;
+	}
+}
+
+impl<P: PackedField> Mul<P::Scalar> for RoundEvals1<P> {
+	type Output = Self;
+
+	fn mul(mut self, rhs: P::Scalar) -> Self::Output {
+		self.y_1 *= rhs;
 		self
 	}
 }
@@ -76,8 +91,24 @@ impl<P: PackedField> Add<&Self> for RoundEvals2<P> {
 	type Output = Self;
 
 	fn add(mut self, rhs: &Self) -> Self::Output {
+		self += rhs;
+		self
+	}
+}
+
+impl<P: PackedField> AddAssign<&Self> for RoundEvals2<P> {
+	fn add_assign(&mut self, rhs: &Self) {
 		self.y_1 += rhs.y_1;
 		self.y_inf += rhs.y_inf;
+	}
+}
+
+impl<P: PackedField> Mul<P::Scalar> for RoundEvals2<P> {
+	type Output = Self;
+
+	fn mul(mut self, rhs: P::Scalar) -> Self::Output {
+		self.y_1 *= rhs;
+		self.y_inf *= rhs;
 		self
 	}
 }
