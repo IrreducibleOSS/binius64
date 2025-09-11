@@ -84,7 +84,18 @@ where
 		compression: ParallelMerkleCompress,
 	) -> Result<Self, Error> {
 		let key_collection = build_key_collection(verifier.constraint_system());
+		Self::setup_with_key_collection(verifier, compression, key_collection)
+	}
 
+	/// Constructs a prover with a pre-built KeyCollection.
+	///
+	/// This allows loading a previously serialized KeyCollection to avoid
+	/// the expensive key building phase during setup.
+	pub fn setup_with_key_collection(
+		verifier: Verifier<MerkleHash, ParallelMerkleCompress::Compression>,
+		compression: ParallelMerkleCompress,
+		key_collection: KeyCollection,
+	) -> Result<Self, Error> {
 		let subspace = verifier.fri_params().rs_code().subspace();
 		let domain_context = GenericPreExpanded::generate_from_subspace(subspace);
 		// FIXME TODO For mobile phones, the number of shares should potentially be more than the
@@ -102,6 +113,13 @@ where
 			merkle_prover,
 			_p_marker: PhantomData,
 		})
+	}
+
+	/// Returns a reference to the KeyCollection.
+	///
+	/// This can be used to serialize the KeyCollection for later use.
+	pub fn key_collection(&self) -> &KeyCollection {
+		&self.key_collection
 	}
 
 	pub fn prove<Challenger_: Challenger>(

@@ -10,6 +10,8 @@ use binius_core::{
 	consts::LOG_WORD_SIZE_BITS,
 };
 use binius_field::Field;
+use binius_utils::serialization::{DeserializeBytes, SerializationError, SerializeBytes};
+use bytes::{Buf, BufMut};
 
 use super::{BITAND_ARITY, INTMUL_ARITY, PreparedOperatorData};
 
@@ -301,5 +303,122 @@ pub fn build_key_collection(cs: &ConstraintSystem) -> KeyCollection {
 		keys,
 		key_ranges,
 		constraint_indices,
+	}
+}
+
+// Serialization implementations
+
+impl SerializeBytes for Operation {
+	fn serialize(&self, write_buf: impl BufMut) -> Result<(), SerializationError> {
+		let val = match self {
+			Operation::BitwiseAnd => 0u8,
+			Operation::IntegerMul => 1u8,
+		};
+		val.serialize(write_buf)
+	}
+}
+
+impl DeserializeBytes for Operation {
+	fn deserialize(mut read_buf: impl Buf) -> Result<Self, SerializationError> {
+		let val = u8::deserialize(&mut read_buf)?;
+		match val {
+			0 => Ok(Operation::BitwiseAnd),
+			1 => Ok(Operation::IntegerMul),
+			_ => Err(SerializationError::UnknownEnumVariant {
+				name: "Operation",
+				index: val,
+			}),
+		}
+	}
+}
+
+impl SerializeBytes for Key {
+	fn serialize(&self, mut write_buf: impl BufMut) -> Result<(), SerializationError> {
+		self.operation.serialize(&mut write_buf)?;
+		self.id.serialize(&mut write_buf)?;
+		self.range.start.serialize(&mut write_buf)?;
+		self.range.end.serialize(write_buf)
+	}
+}
+
+impl DeserializeBytes for Key {
+	fn deserialize(mut read_buf: impl Buf) -> Result<Self, SerializationError> {
+		let operation = Operation::deserialize(&mut read_buf)?;
+		let id = u16::deserialize(&mut read_buf)?;
+		let start = u32::deserialize(&mut read_buf)?;
+		let end = u32::deserialize(&mut read_buf)?;
+		Ok(Key {
+			operation,
+			id,
+			range: start..end,
+		})
+	}
+}
+
+impl SerializeBytes for ConstraintIndex {
+	fn serialize(&self, mut write_buf: impl BufMut) -> Result<(), SerializationError> {
+		self.operand_index.serialize(&mut write_buf)?;
+		self.constraint_index.serialize(write_buf)
+	}
+}
+
+impl DeserializeBytes for ConstraintIndex {
+	fn deserialize(mut read_buf: impl Buf) -> Result<Self, SerializationError> {
+		let operand_index = u8::deserialize(&mut read_buf)?;
+		let constraint_index = u32::deserialize(&mut read_buf)?;
+		Ok(ConstraintIndex {
+			operand_index,
+			constraint_index,
+		})
+	}
+}
+
+impl SerializeBytes for KeyCollection {
+	fn serialize(&self, mut write_buf: impl BufMut) -> Result<(), SerializationError> {
+		// Version for forward compatibility
+		const VERSION: u32 = 1;
+		VERSION.serialize(&mut write_buf)?;
+
+		self.keys.serialize(&mut write_buf)?;
+
+		// Serialize key_ranges as pairs of start/end
+		(self.key_ranges.len() as u32).serialize(&mut write_buf)?;
+		for range in &self.key_ranges {
+			range.start.serialize(&mut write_buf)?;
+			range.end.serialize(&mut write_buf)?;
+		}
+
+		self.constraint_indices.serialize(write_buf)
+	}
+}
+
+impl DeserializeBytes for KeyCollection {
+	fn deserialize(mut read_buf: impl Buf) -> Result<Self, SerializationError> {
+		const VERSION: u32 = 1;
+		let version = u32::deserialize(&mut read_buf)?;
+		if version != VERSION {
+			return Err(SerializationError::InvalidConstruction {
+				name: "KeyCollection::version",
+			});
+		}
+
+		let keys = Vec::<Key>::deserialize(&mut read_buf)?;
+
+		// Deserialize key_ranges
+		let len = u32::deserialize(&mut read_buf)? as usize;
+		let mut key_ranges = Vec::with_capacity(len);
+		for _ in 0..len {
+			let start = u32::deserialize(&mut read_buf)?;
+			let end = u32::deserialize(&mut read_buf)?;
+			key_ranges.push(start..end);
+		}
+
+		let constraint_indices = Vec::<ConstraintIndex>::deserialize(&mut read_buf)?;
+
+		Ok(KeyCollection {
+			keys,
+			key_ranges,
+			constraint_indices,
+		})
 	}
 }
