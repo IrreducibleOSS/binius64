@@ -3,6 +3,7 @@ use std::env;
 
 use binius_examples::{
 	ExampleCircuit,
+	bench_utils::{self, BenchTimingConfig, SignBenchConfig},
 	circuits::ethsign::{EthSignExample, Instance, Params},
 	setup,
 };
@@ -15,13 +16,14 @@ use binius_verifier::{
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 
 fn bench_ethsign_signatures(c: &mut Criterion) {
-	// Parse parameters from environment variables or use defaults
-	let n_signatures = env::var("ETHSIGN_SIGNATURES")
-		.ok()
-		.and_then(|s| s.parse::<usize>().ok())
-		.unwrap_or(1);
+	// Check for help
+	bench_utils::print_env_help();
 
-	let max_msg_len_bytes = env::var("ETHSIGN_MSG_BYTES")
+	// Parse configuration from environment variables
+	let config = SignBenchConfig::from_env(1); // default: 1 signature
+
+	// Parse message size from environment variable
+	let max_msg_len_bytes = env::var("MESSAGE_MAX_BYTES")
 		.ok()
 		.and_then(|s| s.parse::<u16>().ok())
 		.unwrap_or(67);
@@ -31,13 +33,15 @@ fn bench_ethsign_signatures(c: &mut Criterion) {
 	diagnostics.print();
 
 	// Print benchmark-specific parameters
-	println!("\nEthSign Benchmark Parameters:");
-	println!("  Signatures: {}", n_signatures);
-	println!("  Max message length: {} bytes", max_msg_len_bytes);
-	println!("=========================================\n");
+	let params_list = vec![
+		("Signatures".to_string(), config.n_signatures.to_string()),
+		("Max message length".to_string(), format!("{} bytes", max_msg_len_bytes)),
+		("Log inverse rate".to_string(), config.log_inv_rate.to_string()),
+	];
+	bench_utils::print_benchmark_header("EthSign", &params_list);
 
 	let params = Params {
-		n_signatures,
+		n_signatures: config.n_signatures,
 		max_msg_len_bytes,
 	};
 	let instance = Instance {};
@@ -47,7 +51,7 @@ fn bench_ethsign_signatures(c: &mut Criterion) {
 	let example = EthSignExample::build(params.clone(), &mut builder).unwrap();
 	let circuit = builder.build();
 	let cs = circuit.constraint_system().clone();
-	let (verifier, prover) = setup(cs, 1).unwrap();
+	let (verifier, prover) = setup(cs, config.log_inv_rate).unwrap();
 
 	// Create a witness once for proof size measurement
 	let mut filler = circuit.new_witness_filler();
@@ -58,15 +62,19 @@ fn bench_ethsign_signatures(c: &mut Criterion) {
 	let witness = filler.into_value_vec();
 
 	let feature_suffix = diagnostics.get_feature_suffix();
-	let bench_name = format!("sig_{}_msg_{}_{}", n_signatures, max_msg_len_bytes, feature_suffix);
+	let bench_name =
+		format!("sig_{}_msg_{}_{}", config.n_signatures, max_msg_len_bytes, feature_suffix);
+
+	// Get timing configuration
+	let timing = BenchTimingConfig::from_env_with_defaults(BenchTimingConfig::sign_default());
 
 	// Measure witness generation time
 	{
 		let mut group = c.benchmark_group("ethsign_witness_generation");
-		group.throughput(Throughput::Elements(n_signatures as u64));
-		group.warm_up_time(std::time::Duration::from_secs(2));
-		group.measurement_time(std::time::Duration::from_secs(120));
-		group.sample_size(50);
+		group.throughput(Throughput::Elements(config.n_signatures as u64));
+		group.warm_up_time(timing.warm_up_time);
+		group.measurement_time(timing.measurement_time);
+		group.sample_size(timing.sample_size);
 
 		group.bench_function(BenchmarkId::from_parameter(&bench_name), |b| {
 			b.iter(|| {
@@ -85,10 +93,10 @@ fn bench_ethsign_signatures(c: &mut Criterion) {
 	// Measure proof generation time
 	{
 		let mut group = c.benchmark_group("ethsign_proof_generation");
-		group.throughput(Throughput::Elements(n_signatures as u64));
-		group.warm_up_time(std::time::Duration::from_secs(2));
-		group.measurement_time(std::time::Duration::from_secs(120));
-		group.sample_size(50);
+		group.throughput(Throughput::Elements(config.n_signatures as u64));
+		group.warm_up_time(timing.warm_up_time);
+		group.measurement_time(timing.measurement_time);
+		group.sample_size(timing.sample_size);
 
 		group.bench_function(BenchmarkId::from_parameter(&bench_name), |b| {
 			b.iter(|| {
@@ -114,10 +122,10 @@ fn bench_ethsign_signatures(c: &mut Criterion) {
 	// Measure proof verification time
 	{
 		let mut group = c.benchmark_group("ethsign_proof_verification");
-		group.throughput(Throughput::Elements(n_signatures as u64));
-		group.warm_up_time(std::time::Duration::from_secs(2));
-		group.measurement_time(std::time::Duration::from_secs(120));
-		group.sample_size(50);
+		group.throughput(Throughput::Elements(config.n_signatures as u64));
+		group.warm_up_time(timing.warm_up_time);
+		group.measurement_time(timing.measurement_time);
+		group.sample_size(timing.sample_size);
 
 		group.bench_function(BenchmarkId::from_parameter(&bench_name), |b| {
 			b.iter(|| {
@@ -134,9 +142,10 @@ fn bench_ethsign_signatures(c: &mut Criterion) {
 	}
 
 	// Report proof size
-	println!(
-		"\nEthSign proof size for {} signatures, {} max bytes: {} bytes",
-		n_signatures, max_msg_len_bytes, proof_size
+	bench_utils::print_proof_size(
+		"EthSign",
+		&format!("{} signatures, {} max bytes", config.n_signatures, max_msg_len_bytes),
+		proof_size,
 	);
 }
 

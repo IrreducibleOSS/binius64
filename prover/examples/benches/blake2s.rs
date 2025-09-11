@@ -1,10 +1,9 @@
 // Copyright 2025 Irreducible Inc.
 //! Blake2s hash benchmark
 
-use std::env;
-
 use binius_examples::{
 	ExampleCircuit,
+	bench_utils::{self, BenchTimingConfig, HashBenchConfig},
 	circuits::blake2s::{Blake2sExample, Instance, Params},
 	setup,
 };
@@ -16,29 +15,37 @@ use binius_verifier::{
 };
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 
-const DEFAULT_MAX_BYTES: usize = 2048 * 64; // 2048 blocks × 64 bytes/block = 131,072 bytes
-
 /// Benchmark Blake2s hash circuit
 fn bench_blake2s_hash(c: &mut Criterion) {
-	// Get maximum message size from environment or use default
-	let max_bytes = env::var("BLAKE2S_MAX_BYTES")
-		.ok()
-		.and_then(|s| s.parse::<usize>().ok())
-		.unwrap_or(DEFAULT_MAX_BYTES);
+	// Check for help
+	bench_utils::print_env_help();
+
+	// Parse configuration from environment variables
+	let config = HashBenchConfig::from_env();
 
 	// Gather and print comprehensive platform diagnostics
 	let diagnostics = PlatformDiagnostics::gather();
 	diagnostics.print();
 
 	// Print benchmark-specific parameters
-	let blocks = max_bytes.div_ceil(64);
-	println!("\nBlake2s Benchmark Parameters:");
-	println!("  Circuit capacity: {} bytes ({} blocks × 64 bytes/block)", max_bytes, blocks);
-	println!("  Message length: {} bytes (using full capacity)", max_bytes);
-	println!("  Note: Circuit size is dynamic based on max_bytes parameter");
-	println!("=======================================\n");
+	let blocks = config.max_bytes.div_ceil(64);
+	let params_list = vec![
+		(
+			"Circuit capacity".to_string(),
+			format!("{} bytes ({} blocks × 64 bytes/block)", config.max_bytes, blocks),
+		),
+		(
+			"Message length".to_string(),
+			format!("{} bytes (using full capacity)", config.max_bytes),
+		),
+		("Log inverse rate".to_string(), config.log_inv_rate.to_string()),
+		("Note".to_string(), "Circuit size is dynamic based on max_bytes parameter".to_string()),
+	];
+	bench_utils::print_benchmark_header("Blake2s", &params_list);
 
-	let params = Params { max_bytes };
+	let params = Params {
+		max_bytes: config.max_bytes,
+	};
 	let instance = Instance {};
 
 	// Setup phase - do this once outside the benchmark loop
@@ -46,7 +53,7 @@ fn bench_blake2s_hash(c: &mut Criterion) {
 	let example = Blake2sExample::build(params.clone(), &mut builder).unwrap();
 	let circuit = builder.build();
 	let cs = circuit.constraint_system().clone();
-	let (verifier, prover) = setup(cs, 1).unwrap();
+	let (verifier, prover) = setup(cs, config.log_inv_rate).unwrap();
 
 	// Create a witness once for proof size measurement
 	let mut filler = circuit.new_witness_filler();
@@ -58,15 +65,18 @@ fn bench_blake2s_hash(c: &mut Criterion) {
 
 	let feature_suffix = diagnostics.get_feature_suffix();
 
+	// Get timing configuration
+	let timing = BenchTimingConfig::from_env_with_defaults(BenchTimingConfig::hash_default());
+
 	// Benchmark 1: Witness generation
 	{
 		let mut group = c.benchmark_group("blake2s_witness_generation");
-		group.throughput(Throughput::Bytes(max_bytes as u64));
-		group.warm_up_time(std::time::Duration::from_secs(2));
-		group.measurement_time(std::time::Duration::from_secs(120));
-		group.sample_size(50);
+		group.throughput(Throughput::Bytes(config.max_bytes as u64));
+		group.warm_up_time(timing.warm_up_time);
+		group.measurement_time(timing.measurement_time);
+		group.sample_size(timing.sample_size);
 
-		let bench_name = format!("bytes_{}_{}", max_bytes, feature_suffix);
+		let bench_name = format!("bytes_{}_{}", config.max_bytes, feature_suffix);
 		group.bench_function(BenchmarkId::from_parameter(&bench_name), |b| {
 			b.iter(|| {
 				let mut filler = circuit.new_witness_filler();
@@ -84,12 +94,12 @@ fn bench_blake2s_hash(c: &mut Criterion) {
 	// Benchmark 2: Proof generation
 	{
 		let mut group = c.benchmark_group("blake2s_proof_generation");
-		group.throughput(Throughput::Bytes(max_bytes as u64));
-		group.warm_up_time(std::time::Duration::from_secs(2));
-		group.measurement_time(std::time::Duration::from_secs(120));
-		group.sample_size(50);
+		group.throughput(Throughput::Bytes(config.max_bytes as u64));
+		group.warm_up_time(timing.warm_up_time);
+		group.measurement_time(timing.measurement_time);
+		group.sample_size(timing.sample_size);
 
-		let bench_name = format!("bytes_{}_{}", max_bytes, feature_suffix);
+		let bench_name = format!("bytes_{}_{}", config.max_bytes, feature_suffix);
 		group.bench_function(BenchmarkId::from_parameter(&bench_name), |b| {
 			b.iter(|| {
 				let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
@@ -112,12 +122,12 @@ fn bench_blake2s_hash(c: &mut Criterion) {
 	// Benchmark 3: Proof verification
 	{
 		let mut group = c.benchmark_group("blake2s_proof_verification");
-		group.throughput(Throughput::Bytes(max_bytes as u64));
-		group.warm_up_time(std::time::Duration::from_secs(2));
-		group.measurement_time(std::time::Duration::from_secs(120));
-		group.sample_size(50);
+		group.throughput(Throughput::Bytes(config.max_bytes as u64));
+		group.warm_up_time(timing.warm_up_time);
+		group.measurement_time(timing.measurement_time);
+		group.sample_size(timing.sample_size);
 
-		let bench_name = format!("bytes_{}_{}", max_bytes, feature_suffix);
+		let bench_name = format!("bytes_{}_{}", config.max_bytes, feature_suffix);
 		group.bench_function(BenchmarkId::from_parameter(&bench_name), |b| {
 			b.iter(|| {
 				let mut verifier_transcript =
@@ -132,7 +142,11 @@ fn bench_blake2s_hash(c: &mut Criterion) {
 	}
 
 	// Print proof size
-	println!("\n\nBlake2s proof size for {} bytes message: {} bytes", max_bytes, proof_bytes.len());
+	bench_utils::print_proof_size(
+		"Blake2s",
+		&format!("{} bytes message", config.max_bytes),
+		proof_bytes.len(),
+	);
 }
 
 criterion_group!(benches, bench_blake2s_hash);

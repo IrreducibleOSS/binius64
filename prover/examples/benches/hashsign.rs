@@ -3,6 +3,7 @@ use std::env;
 
 use binius_examples::{
 	ExampleCircuit,
+	bench_utils::{self, BenchTimingConfig, SignBenchConfig},
 	circuits::hashsign::{HashBasedSigExample, Instance, Params},
 	setup,
 };
@@ -15,18 +16,19 @@ use binius_verifier::{
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 
 fn bench_hashsign(c: &mut Criterion) {
-	// Parse parameters from environment variables or use defaults
-	let num_validators = env::var("HASHSIGN_VALIDATORS")
-		.ok()
-		.and_then(|s| s.parse::<usize>().ok())
-		.unwrap_or(4);
+	// Check for help
+	bench_utils::print_env_help();
 
-	let tree_height = env::var("HASHSIGN_TREE_HEIGHT")
+	// Parse configuration from environment variables
+	let config = SignBenchConfig::from_env(4); // default: 4 signatures
+
+	// Parse XMSS/WOTS parameters from environment variables
+	let tree_height = env::var("XMSS_TREE_HEIGHT")
 		.ok()
 		.and_then(|s| s.parse::<usize>().ok())
 		.unwrap_or(13);
 
-	let spec = env::var("HASHSIGN_SPEC")
+	let spec = env::var("WOTS_SPEC")
 		.ok()
 		.and_then(|s| s.parse::<u8>().ok())
 		.unwrap_or(2);
@@ -36,15 +38,20 @@ fn bench_hashsign(c: &mut Criterion) {
 	diagnostics.print();
 
 	// Print benchmark-specific parameters
-	println!("\nHashsign Benchmark Parameters:");
-	println!("  Validators: {}", num_validators);
-	println!("  Tree height: {} (2^{} = {} slots)", tree_height, tree_height, 1 << tree_height);
-	println!("  Winternitz spec: {}", spec);
-	println!("  Message size: 32 bytes (fixed)");
-	println!("=========================================\n");
+	let params_list = vec![
+		("Signatures".to_string(), config.n_signatures.to_string()),
+		(
+			"XMSS tree height".to_string(),
+			format!("{} (2^{} = {} slots)", tree_height, tree_height, 1 << tree_height),
+		),
+		("WOTS spec".to_string(), spec.to_string()),
+		("Message size".to_string(), "32 bytes (fixed)".to_string()),
+		("Log inverse rate".to_string(), config.log_inv_rate.to_string()),
+	];
+	bench_utils::print_benchmark_header("Hashsign", &params_list);
 
 	let params = Params {
-		num_validators,
+		num_validators: config.n_signatures,
 		tree_height,
 		spec,
 	};
@@ -55,7 +62,7 @@ fn bench_hashsign(c: &mut Criterion) {
 	let example = HashBasedSigExample::build(params.clone(), &mut builder).unwrap();
 	let circuit = builder.build();
 	let cs = circuit.constraint_system().clone();
-	let (verifier, prover) = setup(cs, 1).unwrap();
+	let (verifier, prover) = setup(cs, config.log_inv_rate).unwrap();
 
 	// Create a witness once for proof size measurement
 	let mut filler = circuit.new_witness_filler();
@@ -66,16 +73,18 @@ fn bench_hashsign(c: &mut Criterion) {
 	let witness = filler.into_value_vec();
 
 	let feature_suffix = diagnostics.get_feature_suffix();
-	let bench_name =
-		format!("validators_{}_tree_{}_{}", num_validators, tree_height, feature_suffix);
+	let bench_name = format!("sig_{}_tree_{}_{}", config.n_signatures, tree_height, feature_suffix);
+
+	// Get timing configuration
+	let timing = BenchTimingConfig::from_env_with_defaults(BenchTimingConfig::sign_default());
 
 	// Measure witness generation time
 	{
 		let mut group = c.benchmark_group("hashsign_witness_generation");
-		group.throughput(Throughput::Elements(num_validators as u64));
-		group.warm_up_time(std::time::Duration::from_millis(100));
-		group.measurement_time(std::time::Duration::from_secs(10));
-		group.sample_size(10);
+		group.throughput(Throughput::Elements(config.n_signatures as u64));
+		group.warm_up_time(timing.warm_up_time);
+		group.measurement_time(timing.measurement_time);
+		group.sample_size(timing.sample_size);
 
 		group.bench_function(BenchmarkId::from_parameter(&bench_name), |b| {
 			b.iter(|| {
@@ -94,10 +103,10 @@ fn bench_hashsign(c: &mut Criterion) {
 	// Measure proof generation time
 	{
 		let mut group = c.benchmark_group("hashsign_proof_generation");
-		group.throughput(Throughput::Elements(num_validators as u64));
-		group.warm_up_time(std::time::Duration::from_millis(100));
-		group.measurement_time(std::time::Duration::from_secs(10));
-		group.sample_size(10);
+		group.throughput(Throughput::Elements(config.n_signatures as u64));
+		group.warm_up_time(timing.warm_up_time);
+		group.measurement_time(timing.measurement_time);
+		group.sample_size(timing.sample_size);
 
 		group.bench_function(BenchmarkId::from_parameter(&bench_name), |b| {
 			b.iter(|| {
@@ -123,10 +132,10 @@ fn bench_hashsign(c: &mut Criterion) {
 	// Measure proof verification time
 	{
 		let mut group = c.benchmark_group("hashsign_proof_verification");
-		group.throughput(Throughput::Elements(num_validators as u64));
-		group.warm_up_time(std::time::Duration::from_millis(100));
-		group.measurement_time(std::time::Duration::from_secs(10));
-		group.sample_size(10);
+		group.throughput(Throughput::Elements(config.n_signatures as u64));
+		group.warm_up_time(timing.warm_up_time);
+		group.measurement_time(timing.measurement_time);
+		group.sample_size(timing.sample_size);
 
 		group.bench_function(BenchmarkId::from_parameter(&bench_name), |b| {
 			b.iter(|| {
@@ -143,9 +152,10 @@ fn bench_hashsign(c: &mut Criterion) {
 	}
 
 	// Report proof size
-	println!(
-		"\nHashsign proof size for {} validators (tree height {}): {} bytes",
-		num_validators, tree_height, proof_size
+	bench_utils::print_proof_size(
+		"Hashsign",
+		&format!("{} signatures (tree height {})", config.n_signatures, tree_height),
+		proof_size,
 	);
 }
 
