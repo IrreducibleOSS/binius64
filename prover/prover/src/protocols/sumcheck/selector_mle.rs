@@ -2,8 +2,6 @@
 
 #![allow(dead_code)]
 
-use std::cmp::max;
-
 use binius_field::{Field, PackedField};
 use binius_math::{FieldBuffer, multilinear::fold::fold_highest_var_inplace};
 use binius_utils::{bitwise::Bitwise, rayon::prelude::*};
@@ -60,9 +58,10 @@ impl<'b, F: Field, P: PackedField<Scalar = F>, B: Bitwise> SelectorMlecheckProve
 			return Err(Error::BitmasksSizeMismatch);
 		}
 
+		const MAX_CHUNK_VARS: usize = 8;
 		let (gruen32s, sums) = claims
 			.into_par_iter()
-			.map(|Claim { point, value }| (Gruen32::new(&point), value))
+			.map(|Claim { point, value }| (Gruen32::new_with_suffix(MAX_CHUNK_VARS, &point), value))
 			.collect::<(Vec<_>, Vec<_>)>();
 
 		let switchover = BinarySwitchover::new(sums.len(), switchover.min(n_vars), bitmasks);
@@ -98,12 +97,16 @@ where
 		// results to an array of round evals accumulators. Alternative would be to sum each
 		// composition on its own pass, but that would require reading the entirety of eq field
 		// buffer on each pass, which will evict the latter from the cache. By doing chunked
-		// compute, we reasonably hope that eq chunk always stays in L1 cache.
+		// compute, we reasonably hope that eq chunk always stays in L1 cache. We can also
+		// leverage the outer product representation of the eq indicator in the Gruen32 struct.
 		//
 		// We also do switchover there, which by definition requires small scratchpads to hold
 		// large field partial evaluations of the transparent multilinears.
-		const MAX_CHUNK_VARS: usize = 8;
-		let chunk_vars = max(MAX_CHUNK_VARS, P::LOG_WIDTH).min(self.n_vars() - 1);
+		let chunk_vars = self
+			.gruen32s
+			.first()
+			.map(|gruen32| gruen32.chunk_eq_expansion().log_len())
+			.unwrap_or_default();
 		let chunk_count = 1 << (self.n_vars() - 1 - chunk_vars);
 
 		let packed_prime_evals = (0..chunk_count)
@@ -127,7 +130,8 @@ where
 					for (bit_offset, (round_evals, gruen32)) in
 						izip!(&mut packed_prime_evals, &self.gruen32s).enumerate()
 					{
-						let eq_chunk = gruen32.eq_expansion().chunk(chunk_vars, chunk_index)?;
+						let eq_chunk = gruen32.chunk_eq_expansion();
+						let eq_suffix_eval = gruen32.suffix_eq_expansion().get(chunk_index)?;
 
 						let selector_0_chunk = self.switchover.get_chunk(
 							&mut binary_chunk_0,
@@ -143,6 +147,7 @@ where
 							chunk_index | chunk_count,
 						)?;
 
+						let mut chunk_round_evals = RoundEvals2::default();
 						for (&eq_i, &selected_0_i, &selected_1_i, &selector_0_i, &selector_1_i) in izip!(
 							eq_chunk.as_ref(),
 							selected_0_chunk.as_ref(),
@@ -156,10 +161,14 @@ where
 							// selected * selector + (1 - selector)
 							// @one: selector * (selected - 1) + 1
 							// @inf: selector * selected (note that lower degree terms are dropped)
-							round_evals.y_1 +=
+							chunk_round_evals.y_1 +=
 								eq_i * (selector_1_i * (selected_1_i - P::one()) + P::one());
-							round_evals.y_inf += eq_i * selector_inf_i * selected_inf_i;
+							chunk_round_evals.y_inf += eq_i * selector_inf_i * selected_inf_i;
 						}
+
+						// Apply the common factor from the outer product representation of the eq
+						// ind
+						*round_evals += &(chunk_round_evals * eq_suffix_eval);
 					}
 
 					Ok((packed_prime_evals, binary_chunk_0, binary_chunk_1))
@@ -174,7 +183,7 @@ where
 		// This prover has multiple evaluation points and cannot implement MleCheckProver.
 		let (prime_coeffs, round_coeffs) = izip!(&self.gruen32s, sums, packed_prime_evals)
 			.map(|(gruen32, &sum, packed_prime_evals)| {
-				gruen32.interpolate2(sum, packed_prime_evals.sum_scalars(self.n_vars()))
+				gruen32.interpolate2(sum, packed_prime_evals.sum_scalars(self.n_vars() - 1))
 			})
 			.unzip::<_, _, Vec<_>, Vec<_>>();
 
