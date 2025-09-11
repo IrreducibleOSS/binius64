@@ -32,6 +32,22 @@ pub fn setup(cs: ConstraintSystem, log_inv_rate: usize) -> Result<(StdVerifier, 
 	Ok((verifier, prover))
 }
 
+/// Like [`setup`] but skips expensive key collection building.
+pub fn setup_with_key_collection(
+	cs: ConstraintSystem,
+	key_collection: binius_prover::KeyCollection,
+	log_inv_rate: usize,
+) -> Result<(StdVerifier, StdProver)> {
+	let _setup_guard = tracing::info_span!("Setup", log_inv_rate).entered();
+	let verifier = Verifier::<StdDigest, _>::setup(cs, log_inv_rate, StdCompression::default())?;
+	let prover = Prover::<OptimalPackedB128, _, StdDigest>::setup_with_key_collection(
+		verifier.clone(),
+		ParallelCompressionAdaptor::new(StdCompression::default()),
+		key_collection,
+	)?;
+	Ok((verifier, prover))
+}
+
 pub fn prove_verify(verifier: &StdVerifier, prover: &StdProver, witness: ValueVec) -> Result<()> {
 	let challenger = StdChallenger::default();
 
