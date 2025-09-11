@@ -11,7 +11,7 @@ use utils::{ExampleBenchmark, HashBenchConfig, print_benchmark_header, run_cs_be
 
 // Global allocator that tracks peak memory usage
 #[global_allocator]
-static PEAK_ALLOC: PeakAlloc<System> = PeakAlloc::new(System);
+static KECCAK_PEAK_ALLOC: PeakAlloc<System> = PeakAlloc::new(System);
 
 struct KeccakBenchmark {
 	config: HashBenchConfig,
@@ -83,7 +83,7 @@ impl ExampleBenchmark for KeccakBenchmark {
 
 fn bench_keccak_permutations(c: &mut Criterion) {
 	let benchmark = KeccakBenchmark::new();
-	run_cs_benchmark(c, benchmark, "keccak", &PEAK_ALLOC);
+	run_cs_benchmark(c, benchmark, "keccak", &KECCAK_PEAK_ALLOC);
 }
 
 criterion_group!(keccak, bench_keccak_permutations);

@@ -12,7 +12,7 @@ use utils::{ExampleBenchmark, HashBenchConfig, print_benchmark_header, run_cs_be
 
 // Global allocator that tracks peak memory usage
 #[global_allocator]
-static PEAK_ALLOC: PeakAlloc<System> = PeakAlloc::new(System);
+static SHA256_PEAK_ALLOC: PeakAlloc<System> = PeakAlloc::new(System);
 
 struct Sha256Benchmark {
 	config: HashBenchConfig,
@@ -79,7 +79,7 @@ impl ExampleBenchmark for Sha256Benchmark {
 
 fn bench_sha256_hash(c: &mut Criterion) {
 	let benchmark = Sha256Benchmark::new();
-	run_cs_benchmark(c, benchmark, "sha256", &PEAK_ALLOC);
+	run_cs_benchmark(c, benchmark, "sha256", &SHA256_PEAK_ALLOC);
 }
 
 criterion_group!(benches, bench_sha256_hash);

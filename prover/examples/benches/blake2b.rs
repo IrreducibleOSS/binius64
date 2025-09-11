@@ -14,7 +14,6 @@ use utils::{ExampleBenchmark, HashBenchConfig, print_benchmark_header, run_cs_be
 #[global_allocator]
 static BLAKE2B_PEAK_ALLOC: PeakAlloc<System> = PeakAlloc::new(System);
 
-
 struct Blake2bBenchmark {
 	config: HashBenchConfig,
 }
@@ -76,7 +75,7 @@ impl ExampleBenchmark for Blake2bBenchmark {
 
 fn bench_blake2b_hash(c: &mut Criterion) {
 	let benchmark = Blake2bBenchmark::new();
-	run_cs_benchmark(c, benchmark, "blake2b", &PEAK_ALLOC);
+	run_cs_benchmark(c, benchmark, "blake2b", &BLAKE2B_PEAK_ALLOC);
 }
 
 criterion_group!(benches, bench_blake2b_hash);

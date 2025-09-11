@@ -12,7 +12,7 @@ use utils::{ExampleBenchmark, HashBenchConfig, print_benchmark_header, run_cs_be
 
 // Global allocator that tracks peak memory usage
 #[global_allocator]
-static PEAK_ALLOC: PeakAlloc<System> = PeakAlloc::new(System);
+static SHA512_PEAK_ALLOC: PeakAlloc<System> = PeakAlloc::new(System);
 
 struct Sha512Benchmark {
 	config: HashBenchConfig,
@@ -79,7 +79,7 @@ impl ExampleBenchmark for Sha512Benchmark {
 
 fn bench_sha512_hash(c: &mut Criterion) {
 	let benchmark = Sha512Benchmark::new();
-	run_cs_benchmark(c, benchmark, "sha512", &PEAK_ALLOC);
+	run_cs_benchmark(c, benchmark, "sha512", &SHA512_PEAK_ALLOC);
 }
 
 criterion_group!(benches, bench_sha512_hash);

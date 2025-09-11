@@ -11,7 +11,7 @@ use utils::{ExampleBenchmark, SignBenchConfig, print_benchmark_header, run_cs_be
 
 // Global allocator that tracks peak memory usage
 #[global_allocator]
-static PEAK_ALLOC: PeakAlloc<System> = PeakAlloc::new(System);
+static HASHSIGN_PEAK_ALLOC: PeakAlloc<System> = PeakAlloc::new(System);
 
 struct HashSignBenchmark {
 	config: SignBenchConfig,
@@ -97,7 +97,7 @@ impl ExampleBenchmark for HashSignBenchmark {
 
 fn bench_hashsign(c: &mut Criterion) {
 	let benchmark = HashSignBenchmark::new();
-	run_cs_benchmark(c, benchmark, "hashsign", &PEAK_ALLOC);
+	run_cs_benchmark(c, benchmark, "hashsign", &HASHSIGN_PEAK_ALLOC);
 }
 
 criterion_group!(hashsign, bench_hashsign);

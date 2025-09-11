@@ -11,7 +11,7 @@ use utils::{ExampleBenchmark, SignBenchConfig, print_benchmark_header, run_cs_be
 
 // Global allocator that tracks peak memory usage
 #[global_allocator]
-static PEAK_ALLOC: PeakAlloc<System> = PeakAlloc::new(System);
+static ETHSIGN_PEAK_ALLOC: PeakAlloc<System> = PeakAlloc::new(System);
 
 struct EthSignBenchmark {
 	config: SignBenchConfig,
@@ -79,7 +79,7 @@ impl ExampleBenchmark for EthSignBenchmark {
 
 fn bench_ethsign_signatures(c: &mut Criterion) {
 	let benchmark = EthSignBenchmark::new();
-	run_cs_benchmark(c, benchmark, "ethsign", &PEAK_ALLOC);
+	run_cs_benchmark(c, benchmark, "ethsign", &ETHSIGN_PEAK_ALLOC);
 }
 
 criterion_group!(ethsign, bench_ethsign_signatures);
