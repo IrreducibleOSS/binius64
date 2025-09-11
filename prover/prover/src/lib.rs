@@ -12,4 +12,5 @@ pub mod ring_switch;
 
 pub use binius_field::arch::OptimalPackedB128;
 pub use error::*;
+pub use protocols::shift::KeyCollection;
 pub use prove::*;
