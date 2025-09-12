@@ -6,9 +6,7 @@ pub mod snapshot;
 use anyhow::Result;
 use binius_core::constraint_system::{ConstraintSystem, ValueVec};
 use binius_frontend::{CircuitBuilder, WitnessFiller};
-use binius_prover::{
-	OptimalPackedB128, Prover, hash::parallel_compression::ParallelCompressionAdaptor,
-};
+use binius_prover::{OptimalPackedB128, Prover};
 use binius_verifier::{
 	Verifier,
 	config::StdChallenger,
@@ -18,16 +16,12 @@ use binius_verifier::{
 pub use cli::Cli;
 
 pub type StdVerifier = Verifier<StdDigest, StdCompression>;
-pub type StdProver =
-	Prover<OptimalPackedB128, ParallelCompressionAdaptor<StdCompression>, StdDigest>;
+pub type StdProver = Prover<OptimalPackedB128, StdDigest, StdCompression>;
 
 pub fn setup(cs: ConstraintSystem, log_inv_rate: usize) -> Result<(StdVerifier, StdProver)> {
 	let _setup_guard = tracing::info_span!("Setup", log_inv_rate).entered();
 	let verifier = Verifier::<StdDigest, _>::setup(cs, log_inv_rate, StdCompression::default())?;
-	let prover = Prover::<OptimalPackedB128, _, StdDigest>::setup(
-		verifier.clone(),
-		ParallelCompressionAdaptor::new(StdCompression::default()),
-	)?;
+	let prover = Prover::<OptimalPackedB128, StdDigest, _>::setup(verifier.clone())?;
 	Ok((verifier, prover))
 }
 

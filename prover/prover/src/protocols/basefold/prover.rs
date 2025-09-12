@@ -6,15 +6,12 @@ use binius_transcript::{
 	ProverTranscript,
 	fiat_shamir::{CanSample, Challenger},
 };
-use binius_utils::SerializeBytes;
-use binius_verifier::{
-	fri::FRIParams, merkle_tree::MerkleTreeScheme, protocols::sumcheck::RoundCoeffs,
-};
+use binius_verifier::{hash::PseudoCompressionFunction, protocols::sumcheck::RoundCoeffs};
+use digest::{Digest, Output, OutputSizeUser, core_api::BlockSizeUser};
 
 use crate::{
 	Error,
-	fri::{FRIFolder, FoldRoundOutput},
-	merkle_tree::MerkleTreeProver,
+	fri::FRIProver,
 	protocols::{basefold::sumcheck::MultilinearSumcheckProver, sumcheck::common::SumcheckProver},
 };
 
@@ -28,27 +25,23 @@ use crate::{
 ///
 /// [BaseFold]: <https://link.springer.com/chapter/10.1007/978-3-031-68403-6_5>
 /// [DP24]: <https://eprint.iacr.org/2024/504>
-pub struct BaseFoldProver<'a, F, P, NTT, MerkleProver, VCS>
+pub struct BaseFoldProver<'a, F, P: PackedField<Scalar = F>, H: OutputSizeUser, C, NTT>
 where
 	F: BinaryField,
-	P: PackedField<Scalar = F>,
 	NTT: AdditiveNTT<Field = F> + Sync,
-	MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
-	VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 {
 	sumcheck_prover: MultilinearSumcheckProver<F, P>,
-	fri_params: &'a FRIParams<F, F>,
-	fri_folder: FRIFolder<'a, F, F, P, NTT, MerkleProver, VCS>,
+	fri_prover: FRIProver<'a, F, H, C, NTT>,
 	log_n: usize,
 }
 
-impl<'a, F, P, NTT, MerkleProver, VCS> BaseFoldProver<'a, F, P, NTT, MerkleProver, VCS>
+impl<'a, F, P, H, C, NTT> BaseFoldProver<'a, F, P, H, C, NTT>
 where
 	F: BinaryField,
 	P: PackedField<Scalar = F>,
+	H: Digest + BlockSizeUser + Sync,
+	C: PseudoCompressionFunction<Output<H>, 2> + Sync,
 	NTT: AdditiveNTT<Field = F> + Sync,
-	MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
-	VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 {
 	/// Constructs a new prover.
 	///
@@ -71,18 +64,11 @@ where
 		multilinear: FieldBuffer<P>,
 		transparent_multilinear: FieldBuffer<P>,
 		claim: F,
-		committed_codeword: &'a [P],
-		committed: &'a MerkleProver::Committed,
-		merkle_prover: &'a MerkleProver,
-		ntt: &'a NTT,
-		fri_params: &'a FRIParams<F, F>,
+		fri_prover: FRIProver<'a, F, H, C, NTT>,
 	) -> Result<Self, Error> {
 		assert_eq!(multilinear.log_len(), transparent_multilinear.log_len());
 
 		let log_n = multilinear.log_len();
-
-		let fri_folder =
-			FRIFolder::new(fri_params, ntt, merkle_prover, committed_codeword, committed)?;
 
 		let sumcheck_composition = [multilinear, transparent_multilinear];
 
@@ -91,8 +77,7 @@ where
 
 		Ok(Self {
 			sumcheck_prover,
-			fri_params,
-			fri_folder,
+			fri_prover,
 			log_n,
 		})
 	}
@@ -115,22 +100,6 @@ where
 			.clone())
 	}
 
-	/// Folds both the sumcheck multilinear and its codeword.
-	///
-	/// ## Arguments
-	/// * `challenge` - a challenge sampled from the transcript
-	///
-	/// ## Returns
-	///  * the FRI fold round output
-	pub fn fold(
-		&mut self,
-		challenge: F,
-	) -> Result<FoldRoundOutput<<VCS as MerkleTreeScheme<F>>::Digest>, Error> {
-		self.sumcheck_prover.fold(challenge)?;
-		let result = self.fri_folder.execute_fold_round(challenge)?;
-		Ok(result)
-	}
-
 	/// Runs the protocol to completion.
 	///
 	/// ## Arguments
@@ -144,7 +113,6 @@ where
 	) -> Result<(), Error> {
 		let _scope = tracing::debug_span!("Basefold").entered();
 
-		let mut round_commitments = Vec::with_capacity(self.fri_params.n_oracles());
 		for _ in 0..self.log_n {
 			let round_coeffs = self.execute()?;
 			transcript
@@ -153,30 +121,14 @@ where
 
 			let challenge = transcript.sample();
 
-			let next_round_commitment = self.fold(challenge)?;
-
-			match next_round_commitment {
-				FoldRoundOutput::NoCommitment => {}
-				FoldRoundOutput::Commitment(round_commitment) => {
-					transcript.message().write(&round_commitment);
-					round_commitments.push(round_commitment);
-				}
-			}
+			// fold
+			self.sumcheck_prover.fold(challenge)?;
+			self.fri_prover
+				.prove_fold_round(challenge, &mut transcript.message());
 		}
-		self.finish(transcript)?;
 
-		Ok(())
-	}
+		self.fri_prover.prove_queries(transcript);
 
-	/// Finalizes the transcript by proving FRI queries.
-	///
-	/// ## Arguments
-	/// * `prover_challenger` - the prover's mutable transcript
-	pub fn finish<T: Challenger>(
-		self,
-		prover_challenger: &mut ProverTranscript<T>,
-	) -> Result<(), Error> {
-		self.fri_folder.finish_proof(prover_challenger)?;
 		Ok(())
 	}
 }
@@ -197,21 +149,18 @@ mod test {
 	use binius_transcript::ProverTranscript;
 	use binius_verifier::{
 		config::StdChallenger,
-		fri::FRIParams,
+		fri::{FRIParams, FRIVerifier},
 		hash::{StdCompression, StdDigest},
 		protocols::basefold,
 	};
 	use rand::{SeedableRng, rngs::StdRng};
 
 	use super::BaseFoldProver;
-	use crate::{
-		fri::{self, CommitOutput},
-		hash::parallel_compression::ParallelCompressionAdaptor,
-		merkle_tree::prover::BinaryMerkleTreeProver,
-	};
+	use crate::fri::FRIProver;
 
 	pub const LOG_INV_RATE: usize = 1;
 	pub const NUM_TEST_QUERIES: usize = 3;
+	pub const COMMIT_LAYER: usize = 2;
 
 	fn run_basefold_prove_and_verify<F, P>(
 		multilinear: FieldBuffer<P>,
@@ -226,59 +175,50 @@ mod test {
 
 		let eval_point_eq = eq_ind_partial_eval::<P>(&evaluation_point);
 
-		let merkle_prover = BinaryMerkleTreeProver::<F, StdDigest, _>::new(
-			ParallelCompressionAdaptor::new(StdCompression::default()),
-		);
-
-		let rs_code = ReedSolomonCode::<F>::new(multilinear.log_len(), LOG_INV_RATE)?;
-
-		let fri_log_batch_size = 0;
 		let fri_arities = vec![2, 1];
-		let fri_params: FRIParams<F, F> =
-			FRIParams::new(rs_code, fri_log_batch_size, fri_arities, NUM_TEST_QUERIES)?;
+		let rs_code =
+			ReedSolomonCode::<F>::new(multilinear.log_len() - fri_arities[0], LOG_INV_RATE)?;
+		let compression = StdCompression::default();
+		type H = StdDigest;
+		let fri_params = FRIParams::<F, H, _>::new(
+			compression,
+			COMMIT_LAYER,
+			multilinear.log_len(),
+			rs_code,
+			fri_arities,
+			NUM_TEST_QUERIES,
+		);
 
 		let subspace = fri_params.rs_code().subspace();
 		let domain_context = GenericOnTheFly::generate_from_subspace(subspace);
-		let ntt = NeighborsLastSingleThread::new(domain_context);
-
-		let CommitOutput {
-			commitment: codeword_commitment,
-			committed: codeword_committed,
-			codeword,
-		} = fri::commit_interleaved(&fri_params, &ntt, &merkle_prover, multilinear.to_ref())?;
+		let ntt = NeighborsLastSingleThread::new(&domain_context);
 
 		let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
-		prover_transcript.message().write(&codeword_commitment);
 
-		let prover = BaseFoldProver::new(
-			multilinear,
-			eval_point_eq,
-			evaluation_claim,
-			&codeword,
-			&codeword_committed,
-			&merkle_prover,
-			&ntt,
+		let fri_prover = FRIProver::write_initial_commitment(
 			&fri_params,
-		)?;
+			multilinear.to_ref().as_ref(),
+			&ntt,
+			&mut prover_transcript.message(),
+		);
+
+		let prover = BaseFoldProver::new(multilinear, eval_point_eq, evaluation_claim, fri_prover)?;
 
 		prover.prove(&mut prover_transcript)?;
 
 		let mut verifier_transcript = prover_transcript.into_verifier();
 
-		let retrieved_codeword_commitment = verifier_transcript.message().read()?;
+		let fri_verifier = FRIVerifier::read_initial_commitment(
+			&fri_params,
+			&domain_context,
+			&mut verifier_transcript.message(),
+		);
 
 		let basefold::ReducedOutput {
 			final_fri_value,
 			final_sumcheck_value,
 			challenges,
-		} = basefold::verify(
-			&fri_params,
-			merkle_prover.scheme(),
-			n_vars,
-			retrieved_codeword_commitment,
-			evaluation_claim,
-			&mut verifier_transcript,
-		)?;
+		} = basefold::verify(fri_verifier, n_vars, evaluation_claim, &mut verifier_transcript)?;
 
 		if !basefold::sumcheck_fri_consistency(
 			final_fri_value,
