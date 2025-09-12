@@ -11,7 +11,7 @@ use binius_verifier::protocols::sumcheck::RoundCoeffs;
 use itertools::izip;
 
 use super::{
-	common::SumcheckProver, error::Error, gruen34::Gruen34, round_evals::RoundEvals2,
+	common::SumcheckProver, error::Error, gruen32::Gruen32, round_evals::RoundEvals2,
 	switchover::BinarySwitchover,
 };
 
@@ -36,7 +36,7 @@ pub struct Claim<F: Field> {
 pub struct SelectorMlecheckProver<'b, P: PackedField, B: Bitwise> {
 	last_coeffs_or_sums: RoundCoeffsOrSums<P::Scalar>,
 	selected: FieldBuffer<P>,
-	gruen34s: Vec<Gruen34<P>>,
+	gruen32s: Vec<Gruen32<P>>,
 	switchover: BinarySwitchover<'b, P, B>,
 }
 
@@ -60,9 +60,9 @@ impl<'b, F: Field, P: PackedField<Scalar = F>, B: Bitwise> SelectorMlecheckProve
 			return Err(Error::BitmasksSizeMismatch);
 		}
 
-		let (gruen34s, sums) = claims
+		let (gruen32s, sums) = claims
 			.into_par_iter()
-			.map(|Claim { point, value }| (Gruen34::new(&point), value))
+			.map(|Claim { point, value }| (Gruen32::new(&point), value))
 			.collect::<(Vec<_>, Vec<_>)>();
 
 		let switchover = BinarySwitchover::new(sums.len(), switchover.min(n_vars), bitmasks);
@@ -71,7 +71,7 @@ impl<'b, F: Field, P: PackedField<Scalar = F>, B: Bitwise> SelectorMlecheckProve
 		Ok(Self {
 			last_coeffs_or_sums,
 			selected,
-			gruen34s,
+			gruen32s,
 			switchover,
 		})
 	}
@@ -124,10 +124,10 @@ where
 					let selected_0_chunk = selected_0.chunk(chunk_vars, chunk_index)?;
 					let selected_1_chunk = selected_1.chunk(chunk_vars, chunk_index)?;
 
-					for (bit_offset, (round_evals, gruen34)) in
-						izip!(&mut packed_prime_evals, &self.gruen34s).enumerate()
+					for (bit_offset, (round_evals, gruen32)) in
+						izip!(&mut packed_prime_evals, &self.gruen32s).enumerate()
 					{
-						let eq_chunk = gruen34.eq_expansion().chunk(chunk_vars, chunk_index)?;
+						let eq_chunk = gruen32.eq_expansion().chunk(chunk_vars, chunk_index)?;
 
 						let selector_0_chunk = self.switchover.get_chunk(
 							&mut binary_chunk_0,
@@ -172,9 +172,9 @@ where
 			)?;
 
 		// This prover has multiple evaluation points and cannot implement MleCheckProver.
-		let (prime_coeffs, round_coeffs) = izip!(&self.gruen34s, sums, packed_prime_evals)
-			.map(|(gruen34, &sum, packed_prime_evals)| {
-				gruen34.interpolate2(sum, packed_prime_evals.sum_scalars(self.n_vars()))
+		let (prime_coeffs, round_coeffs) = izip!(&self.gruen32s, sums, packed_prime_evals)
+			.map(|(gruen32, &sum, packed_prime_evals)| {
+				gruen32.interpolate2(sum, packed_prime_evals.sum_scalars(self.n_vars()))
 			})
 			.unzip::<_, _, Vec<_>, Vec<_>>();
 
@@ -194,9 +194,9 @@ where
 			.map(|coeffs| coeffs.evaluate(challenge))
 			.collect();
 
-		self.gruen34s
+		self.gruen32s
 			.par_iter_mut()
-			.try_for_each(|gruen34| gruen34.fold(challenge))?;
+			.try_for_each(|gruen32| gruen32.fold(challenge))?;
 
 		self.switchover.fold(challenge)?;
 		fold_highest_var_inplace(&mut self.selected, challenge)?;
@@ -215,7 +215,7 @@ where
 			return Err(error);
 		}
 
-		let mut multilinear_evals = Vec::with_capacity(self.gruen34s.len() + 1);
+		let mut multilinear_evals = Vec::with_capacity(self.gruen32s.len() + 1);
 
 		for selector in self.switchover.finalize()? {
 			debug_assert_eq!(selector.log_len(), 0);

@@ -13,7 +13,7 @@ use super::{
 };
 
 // A helper struct that implements an Mlecheck degree lowering logic using tricks from [Gruen24]
-// section 3.4 (hence the name). See a docstring to `BivariateProductMlecheckProver` implementation
+// section 3.2 (hence the name). See a docstring to `BivariateProductMlecheckProver` implementation
 // for more in-depth explanation.
 //
 // It's initialized with a point from an evaluation claim, and takes care of folding the eq
@@ -22,14 +22,14 @@ use super::{
 //
 // [Gruen24]: <https://eprint.iacr.org/2024/108>
 #[derive(Debug, Clone)]
-pub struct Gruen34<P: PackedField> {
+pub struct Gruen32<P: PackedField> {
 	n_vars_remaining: usize,
 	eq_expansion: FieldBuffer<P>,
 	eval_point: Vec<P::Scalar>,
 	eq_prefix_eval: P::Scalar,
 }
 
-impl<F: Field, P: PackedField<Scalar = F>> Gruen34<P> {
+impl<F: Field, P: PackedField<Scalar = F>> Gruen32<P> {
 	pub fn new(eval_point: &[F]) -> Self {
 		let n_vars_remaining = eval_point.len();
 

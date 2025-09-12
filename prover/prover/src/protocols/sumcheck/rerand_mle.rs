@@ -11,7 +11,7 @@ use itertools::izip;
 use super::{
 	common::{MleCheckProver, SumcheckProver},
 	error::Error,
-	gruen34::Gruen34,
+	gruen32::Gruen32,
 	round_evals::RoundEvals1,
 	switchover::BinarySwitchover,
 };
@@ -28,7 +28,7 @@ use super::{
 /// switchover. See `BinarySwitchover` for more in-depth explanation of the mechanism.
 pub struct RerandMlecheckProver<'b, P: PackedField, B: Bitwise> {
 	last_coeffs_or_sums: RoundCoeffsOrSums<P::Scalar>,
-	gruen34: Gruen34<P>,
+	gruen32: Gruen32<P>,
 	switchover: BinarySwitchover<'b, P, B>,
 }
 
@@ -53,13 +53,13 @@ where
 			return Err(Error::BitmasksSizeMismatch);
 		}
 
-		let gruen34 = Gruen34::new(eval_point);
+		let gruen32 = Gruen32::new(eval_point);
 		let switchover = BinarySwitchover::new(eval_claims.len(), switchover.min(n_vars), bitmasks);
 		let last_coeffs_or_sums = RoundCoeffsOrSums::Sums(eval_claims.to_vec());
 
 		Ok(Self {
 			last_coeffs_or_sums,
-			gruen34,
+			gruen32,
 			switchover,
 		})
 	}
@@ -72,7 +72,7 @@ where
 	B: Bitwise,
 {
 	fn n_vars(&self) -> usize {
-		self.gruen34.n_vars_remaining()
+		self.gruen32.n_vars_remaining()
 	}
 
 	fn execute(&mut self) -> Result<Vec<RoundCoeffs<F>>, Error> {
@@ -105,7 +105,7 @@ where
 				),
 				 chunk_index|
 				 -> Result<_, Error> {
-					let eq_chunk = self.gruen34.eq_expansion().chunk(chunk_vars, chunk_index)?;
+					let eq_chunk = self.gruen32.eq_expansion().chunk(chunk_vars, chunk_index)?;
 
 					for (bit_offset, round_evals) in packed_prime_evals.iter_mut().enumerate() {
 						// Degree-1 composition - evaluate at 1 only
@@ -130,7 +130,7 @@ where
 				|lhs, rhs| Ok(izip!(lhs, rhs).map(|(l, r)| l + &r).collect()),
 			)?;
 
-		let alpha = self.gruen34.next_coordinate();
+		let alpha = self.gruen32.next_coordinate();
 		let round_coeffs = izip!(sums, packed_prime_evals)
 			.map(|(&sum, packed_evals)| {
 				let round_evals = packed_evals.sum_scalars(self.n_vars());
@@ -155,7 +155,7 @@ where
 			.collect::<Vec<F>>();
 
 		self.switchover.fold(challenge)?;
-		self.gruen34.fold(challenge)?;
+		self.gruen32.fold(challenge)?;
 
 		self.last_coeffs_or_sums = RoundCoeffsOrSums::Sums(sums);
 		Ok(())
@@ -192,7 +192,7 @@ where
 	B: Bitwise,
 {
 	fn eval_point(&self) -> &[F] {
-		self.gruen34.eval_point()
+		self.gruen32.eval_point()
 	}
 }
 
