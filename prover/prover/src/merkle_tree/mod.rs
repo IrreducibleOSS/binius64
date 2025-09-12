@@ -211,12 +211,15 @@ where
 	) {
 		assert!(self.batched_leaves.is_none());
 		let log_leaves = log2_strict_usize(leaves.len());
-		assert_eq!(log_leaves, self.log_leaves);
+		assert!(log_leaves <= self.log_leaves);
+
+		let log_leaves_diff = self.log_leaves - log_leaves;
+		let log_batch_size = self.log_batch_size.saturating_sub(log_leaves_diff);
 
 		let prover = MerkleTreeProver::write_commitment(
 			self.compression.clone(),
 			leaves,
-			self.log_batch_size,
+			log_batch_size,
 			self.commit_layer,
 			transcript,
 		);
@@ -231,15 +234,27 @@ where
 		// FIXME NOTE We could just drop this computation (and not have `batched_leaves` at all,
 		// instead one would save `batch_challenges`). That's because this is only needed in
 		// `par_leaf_batches()`, and there we could compute it ad-hoc.
-		let mut batched_leaves = self.provers[0].leaves.clone();
-		for (leaves, &batch_challenge) in self.provers[1..]
-			.iter()
-			.map(|prover| &prover.leaves)
-			.zip(batch_challenges.iter())
+		let mut batched_leaves: Vec<F> = vec![F::ZERO; 1 << self.log_leaves];
 		{
-			assert_eq!(leaves.len(), batched_leaves.len());
-			for i in 0..batched_leaves.len() {
-				batched_leaves[i] += batch_challenge * leaves[i];
+			let prover = &self.provers[0];
+
+			assert!(prover.log_batch_size() <= self.log_batch_size);
+			let log_batch_size_diff = self.log_batch_size - prover.log_batch_size();
+			assert!(prover.log_leaf_batches() <= self.log_leaf_batches());
+			let log_leaf_batch_diff = self.log_leaf_batches() - prover.log_leaf_batches();
+			for i in 0..(1 << (self.log_leaves - log_batch_size_diff)) {
+				batched_leaves[i << log_batch_size_diff] = prover.leaves[i >> log_leaf_batch_diff];
+			}
+		}
+		for (prover, &batch_challenge) in self.provers[1..].iter().zip(batch_challenges.iter()) {
+			assert!(prover.log_batch_size() <= self.log_batch_size);
+			let log_batch_size_diff = self.log_batch_size - prover.log_batch_size();
+			assert!(prover.log_leaf_batches() <= self.log_leaf_batches());
+			let log_leaf_batch_diff = self.log_leaf_batches() - prover.log_leaf_batches();
+
+			for i in 0..(1 << (self.log_leaves - log_batch_size_diff)) {
+				batched_leaves[i << log_batch_size_diff] +=
+					batch_challenge * prover.leaves[i >> log_leaf_batch_diff];
 			}
 		}
 
@@ -257,7 +272,10 @@ where
 		assert!(self.batched_leaves.is_some());
 
 		for prover in &self.provers {
-			prover.prove_opening(leaf_batch_index, transcript);
+			assert!(prover.log_leaf_batches() <= self.log_leaf_batches());
+			let log_leaf_batches_diff = self.log_leaf_batches() - prover.log_leaf_batches();
+
+			prover.prove_opening(leaf_batch_index >> log_leaf_batches_diff, transcript);
 		}
 	}
 

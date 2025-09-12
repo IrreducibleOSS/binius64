@@ -202,6 +202,7 @@ mod test {
 		);
 		fri_prover.add_batch_challenges(Vec::new());
 
+		let log_multilinear_len = multilinear.log_len();
 		let prover = BaseFoldProver::new(multilinear, eval_point_eq, evaluation_claim, fri_prover)?;
 
 		prover.prove(&mut prover_transcript)?;
@@ -209,7 +210,8 @@ mod test {
 		let mut verifier_transcript = prover_transcript.into_verifier();
 
 		let mut fri_verifier = FRIVerifier::new(&fri_params, &domain_context);
-		fri_verifier.read_initial_commitment(&mut verifier_transcript.message());
+		fri_verifier
+			.read_initial_commitment(log_multilinear_len, &mut verifier_transcript.message());
 		fri_verifier.add_batch_challenges(Vec::new());
 
 		let basefold::ReducedOutput {

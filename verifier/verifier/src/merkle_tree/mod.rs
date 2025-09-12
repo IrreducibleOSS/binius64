@@ -198,12 +198,15 @@ where
 		transcript: &mut TranscriptReader<impl Buf>,
 	) {
 		assert!(self.batch_challenges.is_none());
-		assert_eq!(log_leaves, self.log_leaves);
+		assert!(log_leaves <= self.log_leaves);
+
+		let log_leaves_diff = self.log_leaves - log_leaves;
+		let log_batch_size = self.log_batch_size.saturating_sub(log_leaves_diff);
 
 		let verifier = MerkleTreeVerifier::read_commitment(
 			self.compression.clone(),
 			log_leaves,
-			self.log_batch_size,
+			log_batch_size,
 			self.commit_layer,
 			transcript,
 		);
@@ -228,16 +231,33 @@ where
 	) -> Result<Vec<F>, VerificationError> {
 		let batch_challenges = self.batch_challenges.as_ref().unwrap();
 
-		let mut batched_leaf_batch =
-			self.verifiers[0].verify_opening(leaf_batch_index, transcript)?;
+		let mut batched_leaf_batch: Vec<F> = vec![F::ZERO; 1 << self.log_batch_size];
+		{
+			let verifier = &self.verifiers[0];
 
+			assert!(verifier.log_leaf_batches() <= self.log_leaf_batches());
+			let log_leaf_batches_diff = self.log_leaf_batches() - verifier.log_leaf_batches();
+			let leaf_batch =
+				verifier.verify_opening(leaf_batch_index >> log_leaf_batches_diff, transcript)?;
+
+			assert!(verifier.log_batch_size() <= self.log_batch_size);
+			let log_batch_size_diff = self.log_batch_size - verifier.log_batch_size();
+			for i in 0..(1 << verifier.log_batch_size()) {
+				batched_leaf_batch[i << log_batch_size_diff] = leaf_batch[i]
+			}
+		}
 		for (verifier, &batch_challenge) in self.verifiers[1..].iter().zip(batch_challenges.iter())
 		{
-			let leaf_batch = verifier.verify_opening(leaf_batch_index, transcript)?;
+			assert!(verifier.log_leaf_batches() <= self.log_leaf_batches());
+			let log_leaf_batches_diff = self.log_leaf_batches() - verifier.log_leaf_batches();
+			let leaf_batch =
+				verifier.verify_opening(leaf_batch_index >> log_leaf_batches_diff, transcript)?;
+
 			// fold leaf_batch into batched_leaf_batch using the batch_challenge
-			assert_eq!(leaf_batch.len(), batched_leaf_batch.len());
-			for i in 0..batched_leaf_batch.len() {
-				batched_leaf_batch[i] += batch_challenge * leaf_batch[i];
+			assert!(verifier.log_batch_size() <= self.log_batch_size);
+			let log_batch_size_diff = self.log_batch_size - verifier.log_batch_size;
+			for i in 0..(1 << verifier.log_batch_size()) {
+				batched_leaf_batch[i << log_batch_size_diff] += batch_challenge * leaf_batch[i]
 			}
 		}
 

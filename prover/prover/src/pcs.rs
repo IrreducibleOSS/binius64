@@ -232,6 +232,7 @@ mod test {
 		let fri_prover =
 			ring_switch_pcs_prover.commit(packed_mle.to_ref(), &mut prover_transcript.message());
 
+		let log_mle_len = packed_mle.log_len();
 		ring_switch_pcs_prover.prove(
 			fri_prover,
 			packed_mle,
@@ -242,7 +243,7 @@ mod test {
 		let mut verifier_transcript = prover_transcript.into_verifier();
 
 		let mut fri_verifier = FRIVerifier::new(&fri_params, &domain_context);
-		fri_verifier.read_initial_commitment(&mut verifier_transcript.message());
+		fri_verifier.read_initial_commitment(log_mle_len, &mut verifier_transcript.message());
 		fri_verifier.add_batch_challenges(Vec::new());
 
 		verify(&mut verifier_transcript, evaluation_claim, &evaluation_point, fri_verifier)?;

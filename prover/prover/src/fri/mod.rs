@@ -1,11 +1,14 @@
 // Copyright 2025 Irreducible Inc.
 use binius_field::{BinaryField, PackedField, is_packed_field_indexable};
-use binius_math::ntt::AdditiveNTT;
+use binius_math::{ReedSolomonCode, ntt::AdditiveNTT};
 use binius_transcript::{
 	ProverTranscript, TranscriptWriter,
 	fiat_shamir::{CanSampleBits, Challenger},
 };
-use binius_utils::rayon::iter::{IndexedParallelIterator, ParallelIterator};
+use binius_utils::{
+	checked_arithmetics::log2_strict_usize,
+	rayon::iter::{IndexedParallelIterator, ParallelIterator},
+};
 #[allow(unused_imports)]
 use binius_verifier::fri::FRIVerifier;
 use binius_verifier::{
@@ -20,7 +23,7 @@ use digest::{Digest, Output, OutputSizeUser, core_api::BlockSizeUser};
 
 use crate::merkle_tree::{BatchedMerkleTreeProver, MerkleTreeProver};
 
-/// Provides the ability to run the FRI protocol from the prover side.
+/// Provides the ability to run the batched FRI protocol from the prover side.
 ///
 /// See [`FRIVerifier`] for information about the FRI protocol.
 ///
@@ -88,7 +91,10 @@ where
 		}
 	}
 
-	/// Encodes the message (multilinear polynomial) and commits to it.
+	/// Encodes a message (multilinear polynomial) and commits to it.
+	///
+	/// If the length of `poly` is less than the length of the FRI instance, then FRI will behave as
+	/// if the polynomial was zero-padded (in an interleaved way) to the full length.
 	///
 	/// The counterpart on the verifier side is [`FRIVerifier::read_initial_commitment`].
 	///
@@ -102,13 +108,27 @@ where
 	) {
 		assert_eq!(self.fold_rounds_done, 0);
 
-		let (log_len, log_batch_size) = match *self.params.round_type(0) {
+		let (batched_log_len, batched_log_batch_size) = match *self.params.round_type(0) {
 			RoundType::InitialCommitment {
 				log_len,
 				log_batch_size,
 			} => (log_len, log_batch_size),
 			_ => panic!("first round type mismatch"),
 		};
+		let log_inv_rate = self.params.rs_code().log_inv_rate();
+		let log_len = log2_strict_usize(poly.len()) + log_inv_rate + P::LOG_WIDTH;
+		assert!(log_len <= batched_log_len);
+		let log_len_diff = batched_log_len - log_len;
+		let log_batch_size = batched_log_batch_size.saturating_sub(log_len_diff);
+
+		let subspace = self.ntt.subspace(log_len - log_batch_size);
+		let rs_code = ReedSolomonCode::with_subspace(
+			subspace,
+			log_len - log_batch_size - log_inv_rate,
+			log_inv_rate,
+		)
+		.unwrap();
+		assert_eq!(rs_code.log_len(), log_len - log_batch_size);
 
 		// encode poly to initial codeword
 		assert_eq!(
@@ -116,8 +136,7 @@ where
 			1 << (log_len - self.params.rs_code().log_inv_rate() - P::LOG_WIDTH)
 		);
 		let mut codeword: Vec<P> = Vec::with_capacity(1 << (log_len - P::LOG_WIDTH));
-		self.params
-			.rs_code()
+		rs_code
 			.encode_batch(self.ntt, poly, codeword.spare_capacity_mut(), log_batch_size)
 			.unwrap();
 		unsafe {
@@ -392,8 +411,10 @@ mod tests {
 			let mut fri_verifier = FRIVerifier::new(params, domain_context);
 
 			// read commitment
-			for _ in 0..polys.len() {
-				fri_verifier.read_initial_commitment(&mut verifier_transcript.message());
+			for i in 0..polys.len() {
+				let log_poly_len = log2_strict_usize(polys[i].len()) + P::LOG_WIDTH;
+				fri_verifier
+					.read_initial_commitment(log_poly_len, &mut verifier_transcript.message());
 			}
 
 			// batch
@@ -422,7 +443,22 @@ mod tests {
 				let poly_buffer =
 					FieldSlice::from_slice(log2_strict_usize(poly.len()) + P::LOG_WIDTH, poly)
 						.unwrap();
-				evaluate(&poly_buffer, &verifier_fold_challenges).unwrap()
+
+				// NOTE: The interpretation when using a small multilinear in batched FRI is that it
+				// behaves as if you had committed a big multilinear which is the zero-padded
+				// version of the small multilinear as below. (Except that the FRI
+				// implementation handles this in a cheaper way.)
+				let batched_log_len = params.log_msg_len();
+				let log_len_diff = batched_log_len - poly_buffer.log_len();
+				let mut poly_zero_padded: Vec<P::Scalar> =
+					vec![P::Scalar::zero(); 1 << batched_log_len];
+				for i in 0..poly_buffer.len() {
+					poly_zero_padded[i << log_len_diff] = poly_buffer.get(i).unwrap();
+				}
+
+				let poly_zero_padded_buffer =
+					FieldSlice::from_slice(batched_log_len, &poly_zero_padded).unwrap();
+				evaluate(&poly_zero_padded_buffer, &verifier_fold_challenges).unwrap()
 			})
 			.collect();
 		let mut batched_evaluation = evaluations[0];
@@ -438,19 +474,19 @@ mod tests {
 
 	fn test_with_config<P: PackedField>(
 		polys: &[FieldBuffer<P>],
+		commit_layer: usize,
+		log_len: usize,
 		fold_arities: Vec<usize>,
 		log_inv_rate: usize,
-		commit_layer: usize,
 	) where
 		P::Scalar: BinaryField,
 	{
 		let num_queries = 5;
-		let rs_code =
-			ReedSolomonCode::new(polys[0].log_len() - fold_arities[0], log_inv_rate).unwrap();
+		let rs_code = ReedSolomonCode::new(log_len - fold_arities[0], log_inv_rate).unwrap();
 		let params = FRIParams::new(
 			StdCompression::default(),
 			commit_layer,
-			polys[0].log_len(),
+			log_len,
 			rs_code,
 			fold_arities,
 			num_queries,
@@ -468,18 +504,18 @@ mod tests {
 
 		// generate multilinears
 		let mut rng = StdRng::seed_from_u64(0);
-		let poly1 = random_field_buffer::<P>(&mut rng, log_len);
+		let poly1 = random_field_buffer::<P>(&mut rng, log_len - 1);
 		let poly2 = random_field_buffer::<P>(&mut rng, log_len);
-		let poly3 = random_field_buffer::<P>(&mut rng, log_len);
+		let poly3 = random_field_buffer::<P>(&mut rng, log_len - 3);
 		let polys = vec![poly1, poly2, poly3];
 
 		// check with different configs
 		for log_inv_rate in [0, 1, 2] {
 			for commit_layer in [0, 2, 1000] {
-				test_with_config(&polys, vec![1; 6], log_inv_rate, commit_layer);
-				test_with_config(&polys, vec![2, 2, 2], log_inv_rate, commit_layer);
-				test_with_config(&polys, vec![3], log_inv_rate, commit_layer);
-				test_with_config(&polys, vec![1, 3], log_inv_rate, commit_layer);
+				test_with_config(&polys, commit_layer, log_len, vec![1; 6], log_inv_rate);
+				test_with_config(&polys, commit_layer, log_len, vec![2, 2, 2], log_inv_rate);
+				test_with_config(&polys, commit_layer, log_len, vec![3], log_inv_rate);
+				test_with_config(&polys, commit_layer, log_len, vec![1, 3], log_inv_rate);
 			}
 		}
 	}

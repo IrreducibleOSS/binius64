@@ -26,7 +26,7 @@ pub enum VerificationError {
 	InvalidProof,
 }
 
-/// Provides the ability to run the FRI protocol from the verifier side.
+/// Provides the ability to run the batched FRI protocol from the verifier side.
 ///
 /// This FRI implementation is special in the following ways:
 /// - The folding arity can be bigger than 1, and can be non-constant (i.e. vary from round to
@@ -99,23 +99,23 @@ where
 		}
 	}
 
-	/// Reads the FRI initial codeword commitment.
+	/// Reads a FRI initial codeword commitment.
+	///
+	/// If the length of `poly` is less than the length of the FRI instance, then FRI will behave as
+	/// if the polynomial was zero-padded (in an interleaved way) to the full length.
 	///
 	/// Arguments:
+	/// - `log_poly_len`: Base-2 logarithm of the length of the message that was committed.
 	/// - `transcript`: The [`TranscriptReader`] used for reading the commitment.
-	pub fn read_initial_commitment(&mut self, transcript: &mut TranscriptReader<impl Buf>) {
+	pub fn read_initial_commitment(
+		&mut self,
+		log_poly_len: usize,
+		transcript: &mut TranscriptReader<impl Buf>,
+	) {
 		assert_eq!(self.fold_rounds_done, 0);
 
-		let (log_len, _) = match *self.params.round_type(0) {
-			RoundType::InitialCommitment {
-				log_len,
-				log_batch_size,
-			} => (log_len, log_batch_size),
-			_ => panic!("first round type mismatch"),
-		};
-
 		self.batched_initial_verifier
-			.read_commitment(log_len, transcript);
+			.read_commitment(log_poly_len + self.params.rs_code().log_inv_rate(), transcript);
 	}
 
 	/// Provide the batch challenges which are used for batching the initial codewords.
