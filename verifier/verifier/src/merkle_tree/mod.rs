@@ -151,12 +151,12 @@ where
 	}
 }
 
+/// Provides the ability to batch [`MerkleTreeVerifier`]s together.
 pub struct BatchedMerkleTreeVerifier<F, H: OutputSizeUser, C> {
 	verifiers: Vec<MerkleTreeVerifier<F, H, C>>,
 	batch_challenges: Vec<F>,
 }
 
-/// Provides the ability to batch [`MerkleTreeVerifier`]s together.
 impl<F, H, C> BatchedMerkleTreeVerifier<F, H, C>
 where
 	F: BinaryField,
