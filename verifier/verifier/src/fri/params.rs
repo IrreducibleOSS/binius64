@@ -56,7 +56,7 @@ where
 	/// Arguments:
 	/// - `compression`: The compression function used in the merkle trees.
 	/// - `commit_layer`: The layer of commitment in the merkle trees.
-	/// - `poly_log_len`: Base-2 logarithm of the length of the multilinear polynomial that will be
+	/// - `poly_log_len`: Base-2 logarithm of the length of the multilinear polynomials that will be
 	///   committed.
 	/// - `rs_code`: The code for used for encoding the message at the beginning of FRI. \ Must
 	///   satisfy `rs_code.log_dim() + fold_arities[0] >= poly_log_len`.
@@ -132,6 +132,7 @@ where
 	/// - `poly_log_len`: Base-2 logarithm of the length of the multilinear polynomial that will be
 	///   committed.
 	/// - `log_inv_rate`: Base-2 logarithm of the inverse of the rate that will be used.
+	// FIXME NOTE This might need adaptation for batched FRI.
 	pub fn estimate_optimal_arity(poly_log_len: usize, log_inv_rate: usize) -> usize {
 		// NOTE: This is copied over from the old FRI implementation.
 		let log_block_length = poly_log_len + log_inv_rate;
@@ -182,6 +183,7 @@ where
 	/// - `fold_arity <= poly_log_len`
 	/// - (in particular this implies `0 < poly_log_len`)
 	/// - `subspace.dim() == poly_log_len + log_inv_rate - fold_arity`
+	// FIXME NOTE The computation of the number of queries might needs adaptation for batched FRI.
 	pub fn new_with_constant_arity(
 		compression: C,
 		poly_log_len: usize,
@@ -234,7 +236,7 @@ where
 		&self.rs_code
 	}
 
-	/// counts the initial commitment as an additional round
+	/// counts the initial commitments as an additional round
 	pub fn num_rounds(&self) -> usize {
 		self.round_types.len()
 	}

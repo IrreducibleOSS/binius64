@@ -139,6 +139,7 @@ where
 		let domain_context = GenericOnTheFly::generate_from_subspace(subspace);
 		let mut fri_verifier = FRIVerifier::new(&self.fri_params, domain_context);
 		fri_verifier.read_initial_commitment(&mut transcript.message());
+		fri_verifier.add_batch_challenges(Vec::new());
 
 		// [phase] Verify IntMul Reduction - multiplication constraint verification
 		let intmul_guard = tracing::info_span!(

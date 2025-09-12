@@ -1,6 +1,7 @@
 // Copyright 2025 Irreducible Inc.
 use std::{cmp::min, marker::PhantomData};
 
+use binius_field::BinaryField;
 use binius_transcript::TranscriptReader;
 use binius_utils::{DeserializeBytes, SerializeBytes};
 use bytes::Buf;
@@ -97,7 +98,7 @@ where
 		}
 	}
 
-	/// Verifies opening of a leaf batch.
+	/// Verifies opening of a leaf batch and returns its value.
 	///
 	/// Arguments:
 	/// - `leaf_batch_index`: The index of the leaf batch whose opening proof should be verified.
@@ -137,5 +138,81 @@ where
 	/// Number of leaf batches.
 	pub fn log_leaf_batches(&self) -> usize {
 		self.log_leaf_batches
+	}
+
+	/// Number of leaves. (Not leaf batches!)
+	pub fn log_leaves(&self) -> usize {
+		self.log_leaf_batches + self.log_batch_size
+	}
+
+	/// Base-2 logarithm of leaf batch size.
+	pub fn log_batch_size(&self) -> usize {
+		self.log_batch_size
+	}
+}
+
+pub struct BatchedMerkleTreeVerifier<F, H: OutputSizeUser, C> {
+	verifiers: Vec<MerkleTreeVerifier<F, H, C>>,
+	batch_challenges: Vec<F>,
+}
+
+/// Provides the ability to batch [`MerkleTreeVerifier`]s together.
+impl<F, H, C> BatchedMerkleTreeVerifier<F, H, C>
+where
+	F: BinaryField,
+	H: Digest + BlockSizeUser,
+	C: PseudoCompressionFunction<Output<H>, 2>,
+{
+	pub fn new(verifiers: Vec<MerkleTreeVerifier<F, H, C>>, batch_challenges: Vec<F>) -> Self {
+		assert_eq!(batch_challenges.len() + 1, verifiers.len());
+		let log_leaves = verifiers[0].log_leaves();
+		let log_batch_size = verifiers[0].log_batch_size();
+		for verifier in &verifiers[1..] {
+			assert_eq!(verifier.log_leaves(), log_leaves);
+			assert_eq!(verifier.log_batch_size(), log_batch_size);
+		}
+
+		Self {
+			verifiers,
+			batch_challenges,
+		}
+	}
+
+	/// Verifies opening of a batched leaf batch and returns its value.
+	///
+	/// This first calls [`MerkleTreeVerifier::verify_opening`] on all the `verifiers` and then
+	/// batches them together using the `batch_challenges`.
+	pub fn verify_opening(
+		&self,
+		leaf_batch_index: usize,
+		transcript: &mut TranscriptReader<impl Buf>,
+	) -> Result<Vec<F>, VerificationError> {
+		let mut batched_leaf_batch =
+			self.verifiers[0].verify_opening(leaf_batch_index, transcript)?;
+
+		for (verifier, &batch_challenge) in
+			self.verifiers[1..].iter().zip(self.batch_challenges.iter())
+		{
+			let leaf_batch = verifier.verify_opening(leaf_batch_index, transcript)?;
+			// fold leaf_batch into batched_leaf_batch using the batch_challenge
+			assert_eq!(leaf_batch.len(), batched_leaf_batch.len());
+			for i in 0..batched_leaf_batch.len() {
+				batched_leaf_batch[i] += batch_challenge * leaf_batch[i];
+			}
+		}
+
+		Ok(batched_leaf_batch)
+	}
+
+	pub fn log_leaf_batches(&self) -> usize {
+		self.verifiers[0].log_leaf_batches
+	}
+
+	pub fn log_leaves(&self) -> usize {
+		self.verifiers[0].log_leaf_batches + self.verifiers[0].log_batch_size
+	}
+
+	pub fn log_batch_size(&self) -> usize {
+		self.verifiers[0].log_batch_size
 	}
 }
