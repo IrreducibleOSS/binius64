@@ -195,10 +195,9 @@ mod test {
 
 		let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
 
-		let fri_prover = FRIProver::write_initial_commitment(
-			&fri_params,
+		let mut fri_prover = FRIProver::new(&fri_params, &ntt);
+		fri_prover.write_initial_commitment(
 			multilinear.to_ref().as_ref(),
-			&ntt,
 			&mut prover_transcript.message(),
 		);
 
@@ -208,11 +207,8 @@ mod test {
 
 		let mut verifier_transcript = prover_transcript.into_verifier();
 
-		let fri_verifier = FRIVerifier::read_initial_commitment(
-			&fri_params,
-			&domain_context,
-			&mut verifier_transcript.message(),
-		);
+		let mut fri_verifier = FRIVerifier::new(&fri_params, &domain_context);
+		fri_verifier.read_initial_commitment(&mut verifier_transcript.message());
 
 		let basefold::ReducedOutput {
 			final_fri_value,

@@ -53,23 +53,37 @@ where
 	C: PseudoCompressionFunction<Output<H>, 2> + Sync,
 	NTT: AdditiveNTT<Field = F> + Sync,
 {
-	/// Encodes the message (multilinear polynomial) and commits to it. Returns a prover instance
-	/// which allows to run the FRI protocol on the codeword.
+	/// Creates a prover instance which allows to run the FRI protocol.
+	///
+	/// Arguments:
+	/// - `params`: Parameters used for the FRI protocol.
+	/// - `ntt`: The NTT instance used for encoding and for folding.
+	pub fn new(params: &'a FRIParams<F, H, C>, ntt: &'a NTT) -> Self {
+		Self {
+			params,
+			ntt,
+			unprocessed_fold_challenges: Vec::new(),
+			merkle_tree_provers: Vec::new(),
+			terminal_codeword: None,
+			rounds_done: 0,
+		}
+	}
+
+	/// Encodes the message (multilinear polynomial) and commits to it.
 	///
 	/// The counterpart on the verifier side is [`FRIVerifier::read_initial_commitment`].
 	///
 	/// Arguments:
-	/// - `params`: Parameters used for the FRI protocol.
 	/// - `poly`: The multilinear polynomial that one wants to commit to, in Lagrange basis.
-	/// - `ntt`: The NTT instance used for encoding, and later for folding.
 	/// - `transcript`: The [`TranscriptWriter`] used for writing the commitment.
 	pub fn write_initial_commitment<P: PackedField<Scalar = F>>(
-		params: &'a FRIParams<F, H, C>,
+		&mut self,
 		poly: &[P],
-		ntt: &'a NTT,
 		transcript: &mut TranscriptWriter<impl BufMut>,
-	) -> Self {
-		let (log_len, log_batch_size) = match *params.round_type(0) {
+	) {
+		assert_eq!(self.rounds_done, 0);
+
+		let (log_len, log_batch_size) = match *self.params.round_type(0) {
 			RoundType::InitialCommitment {
 				log_len,
 				log_batch_size,
@@ -78,11 +92,14 @@ where
 		};
 
 		// encode poly to initial codeword
-		assert_eq!(poly.len(), 1 << (log_len - params.rs_code().log_inv_rate() - P::LOG_WIDTH));
+		assert_eq!(
+			poly.len(),
+			1 << (log_len - self.params.rs_code().log_inv_rate() - P::LOG_WIDTH)
+		);
 		let mut codeword: Vec<P> = Vec::with_capacity(1 << (log_len - P::LOG_WIDTH));
-		params
+		self.params
 			.rs_code()
-			.encode_batch(ntt, poly, codeword.spare_capacity_mut(), log_batch_size)
+			.encode_batch(self.ntt, poly, codeword.spare_capacity_mut(), log_batch_size)
 			.unwrap();
 		unsafe {
 			// SAFETY: encode_batch guarantees all elements are initialized on success
@@ -114,21 +131,15 @@ where
 
 		// commit initial codeword
 		let initial_prover = MerkleTreeProver::write_commitment(
-			params.compression().clone(),
+			self.params.compression().clone(),
 			codeword,
 			log_batch_size,
-			params.commit_layer(),
+			self.params.commit_layer(),
 			transcript,
 		);
 
-		Self {
-			params,
-			ntt,
-			unprocessed_fold_challenges: Vec::new(),
-			merkle_tree_provers: vec![initial_prover],
-			terminal_codeword: None,
-			rounds_done: 1,
-		}
+		self.merkle_tree_provers.push(initial_prover);
+		self.rounds_done += 1;
 	}
 
 	/// The number of times [`Self::prove_fold_round`] must be called.
@@ -310,14 +321,10 @@ mod tests {
 			let domain_context =
 				GenericPreExpanded::generate_from_subspace(params.rs_code().subspace());
 			let ntt = NeighborsLastMultiThread::new(domain_context, 4);
+			let mut fri_prover = FRIProver::new(params, &ntt);
 
 			// commit
-			let mut fri_prover = FRIProver::write_initial_commitment(
-				params,
-				poly,
-				&ntt,
-				&mut prover_transcript.message(),
-			);
+			fri_prover.write_initial_commitment(poly, &mut prover_transcript.message());
 
 			// prove COMMIT phase
 			for _ in 0..fri_prover.num_fold_rounds() {
@@ -341,13 +348,10 @@ mod tests {
 			// prepare verifier
 			let domain_context =
 				GenericOnTheFly::generate_from_subspace(params.rs_code().subspace());
+			let mut fri_verifier = FRIVerifier::new(params, domain_context);
 
 			// read commitment
-			let mut fri_verifier = FRIVerifier::read_initial_commitment(
-				params,
-				domain_context,
-				&mut verifier_transcript.message(),
-			);
+			fri_verifier.read_initial_commitment(&mut verifier_transcript.message());
 
 			// verify COMMIT phase
 			for _ in 0..fri_verifier.num_fold_rounds() {
