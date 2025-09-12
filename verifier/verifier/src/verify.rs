@@ -6,7 +6,7 @@ use binius_math::{
 	BinarySubspace, FieldBuffer,
 	inner_product::inner_product_subfield,
 	multilinear::{eq::eq_ind_partial_eval, evaluate::evaluate_inplace},
-	ntt::{NeighborsLastSingleThread, domain_context::GenericOnTheFly},
+	ntt::domain_context::GenericOnTheFly,
 	univariate::lagrange_evals,
 };
 use binius_transcript::{
@@ -73,17 +73,16 @@ where
 			log2_ceil_usize(constraint_system.value_vec_len()).max(LOG_WORDS_PER_ELEM);
 		let log_witness_elems = log_witness_words - LOG_WORDS_PER_ELEM;
 
-		let log_code_len = log_witness_elems + log_inv_rate;
-
-		let subspace = BinarySubspace::with_dim(log_code_len)?;
-		let domain_context = GenericOnTheFly::generate_from_subspace(&subspace);
-		let ntt = NeighborsLastSingleThread::new(domain_context);
-		let fri_params = FRIParams::new_with_good_choices(
+		let fold_arity =
+			FRIParams::<B128, H, C>::estimate_optimal_arity(log_witness_elems, log_inv_rate);
+		let subspace = BinarySubspace::with_dim(log_witness_elems + log_inv_rate - fold_arity)?;
+		let fri_params = FRIParams::new_with_constant_arity(
 			compression,
 			log_witness_elems,
 			log_inv_rate,
+			subspace,
+			fold_arity,
 			SECURITY_BITS,
-			&ntt.domain_context,
 		);
 
 		Ok(Self {

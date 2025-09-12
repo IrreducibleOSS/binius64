@@ -5,7 +5,7 @@ use std::{
 };
 
 use binius_field::BinaryField;
-use binius_math::{ReedSolomonCode, ntt::DomainContext};
+use binius_math::{BinarySubspace, ReedSolomonCode};
 use binius_utils::checked_arithmetics::log2_ceil_usize;
 use digest::{Output, OutputSizeUser};
 
@@ -63,6 +63,13 @@ where
 	/// - `fold_arities`: The arities for folding. Each arity must be at least 1, and there must be
 	///   at least one folding arity.
 	/// - `num_queries`: The number of queries in the QUERY phase.
+	///
+	/// ## Preconditions
+	///
+	/// - `fold_arities` must contain at least one arity
+	/// - each arity in `fold_arities` must be strictly bigger than 0
+	/// - the sum of the fold arities must be at most `poly_log_len`
+	/// - `rs_code.log_dim() + fold_arities[0] >= poly_log_len`
 	pub fn new(
 		compression: C,
 		commit_layer: usize,
@@ -75,18 +82,18 @@ where
 		assert!(rs_code.log_dim() + fold_arities[0] >= poly_log_len);
 
 		// we count the initial commitment as a "round", hence the "+1"
-		let num_rounds = rs_code.log_dim() + fold_arities[0] + 1;
+		let num_rounds = poly_log_len + 1;
 		let mut round_types = vec![RoundType::Vacant; num_rounds];
 
 		// round 0 is the commitment of the initial codeword
+		let mut log_len = poly_log_len + rs_code.log_inv_rate();
 		round_types[0] = RoundType::InitialCommitment {
-			log_len: rs_code.log_len() + fold_arities[0],
+			log_len,
 			log_batch_size: fold_arities[0],
 		};
 
 		// determine the other round types depending on the fold arities
 		let mut index = 0;
-		let mut log_len = rs_code.log_len() + fold_arities[0];
 		let mut fold_arities_iter = fold_arities.iter().peekable();
 		while let Some(&fold_arity) = fold_arities_iter.next() {
 			assert!(fold_arity > 0);
@@ -102,6 +109,7 @@ where
 					}
 				}
 				None => {
+					assert!(log_len >= rs_code.log_inv_rate());
 					// this is the terminal folding round, where we reveal the full codeword
 					RoundType::TerminalCodeword { log_len }
 				}
@@ -118,19 +126,18 @@ where
 		}
 	}
 
-	pub fn new_with_good_choices(
-		compression: C,
-		poly_log_len: usize,
-		log_inv_rate: usize,
-		security_bits: usize,
-		domain_context: &impl DomainContext<Field = F>,
-	) -> Self {
-		// find good constant arity
+	/// Heuristic for estimating the optimal FRI folding arity that minimizes proof size.
+	///
+	/// Arguments:
+	/// - `poly_log_len`: Base-2 logarithm of the length of the multilinear polynomial that will be
+	///   committed.
+	/// - `log_inv_rate`: Base-2 logarithm of the inverse of the rate that will be used.
+	pub fn estimate_optimal_arity(poly_log_len: usize, log_inv_rate: usize) -> usize {
 		// NOTE: This is copied over from the old FRI implementation.
 		let log_block_length = poly_log_len + log_inv_rate;
 		let digest_size = size_of::<Output<H>>();
 		let field_size = size_of::<F>();
-		let mut fold_arity = (1..=log_block_length)
+		let fold_arity = (1..=log_block_length)
 			.map(|arity| {
 				(
 					// for given arity, return a tuple (arity, estimate of query_proof_size).
@@ -153,15 +160,44 @@ where
 			.last()
 			.map(|(arity, _)| arity)
 			.unwrap_or(1);
-		fold_arity = min(fold_arity, poly_log_len);
+
+		min(fold_arity, poly_log_len)
+	}
+
+	/// Create FRI parameters with constant fold arity and automatically computed number of queries.
+	///
+	/// Arguments:
+	/// - `compression`: Compression algorithm used in merkle tree.
+	/// - `poly_log_len`: Base-2 logarithm of the length of the multilinear polynomial that will be
+	///   committed.
+	/// - `log_inv_rate`: Base-2 logarithm of the inverse of the rate that will be used.
+	/// - `subspace`: The subspace used for encoding the first interleaved codeword.
+	/// - `fold_arity`: The constant folding arity.
+	/// - `security_bits`: Determines required level of security, which determines the number of
+	///   queries.
+	///
+	/// ## Preconditions
+	///
+	/// - `0 < fold_arity`
+	/// - `fold_arity <= poly_log_len`
+	/// - (in particular this implies `0 < poly_log_len`)
+	/// - `subspace.dim() == poly_log_len + log_inv_rate - fold_arity`
+	pub fn new_with_constant_arity(
+		compression: C,
+		poly_log_len: usize,
+		log_inv_rate: usize,
+		subspace: BinarySubspace<F>,
+		fold_arity: usize,
+		security_bits: usize,
+	) -> Self {
+		assert!(0 < fold_arity);
+		assert!(fold_arity <= poly_log_len);
+		assert_eq!(subspace.dim(), poly_log_len + log_inv_rate - fold_arity);
 
 		// pick RS code accordingly
-		let rs_code = ReedSolomonCode::with_domain_context_subspace(
-			domain_context,
-			poly_log_len - fold_arity,
-			log_inv_rate,
-		)
-		.unwrap();
+		let rs_code =
+			ReedSolomonCode::with_subspace(subspace, poly_log_len - fold_arity, log_inv_rate)
+				.unwrap();
 
 		// compute number of queries according to required security
 		// NOTE: This is copied over from the old FRI implementation.
@@ -217,5 +253,68 @@ where
 
 	pub fn num_queries(&self) -> usize {
 		self.num_queries
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use binius_math::BinarySubspace;
+
+	use super::*;
+	use crate::hash::{StdCompression, StdDigest};
+
+	type F = crate::config::B128;
+	type H = StdDigest;
+	type C = StdCompression;
+
+	#[test]
+	fn test_estimate_optimal_arity() {
+		for poly_log_len in 22..35 {
+			let arity = FRIParams::<F, H, C>::estimate_optimal_arity(poly_log_len, 0);
+			assert_eq!(arity, 4);
+		}
+	}
+
+	#[test]
+	fn test_num_queries() {
+		{
+			let poly_log_len = 32;
+			let log_inv_rate = 1;
+			let fold_arity =
+				FRIParams::<F, H, C>::estimate_optimal_arity(poly_log_len, log_inv_rate);
+			let subspace =
+				BinarySubspace::with_dim(poly_log_len + log_inv_rate - fold_arity).unwrap();
+			let security_bits = 96;
+			let fri_params = FRIParams::<F, H, C>::new_with_constant_arity(
+				C::default(),
+				poly_log_len,
+				log_inv_rate,
+				subspace,
+				fold_arity,
+				security_bits,
+			);
+
+			assert_eq!(fri_params.num_queries(), 232);
+		}
+
+		{
+			let poly_log_len = 32;
+			let log_inv_rate = 2;
+			let fold_arity =
+				FRIParams::<F, H, C>::estimate_optimal_arity(poly_log_len, log_inv_rate);
+			let subspace =
+				BinarySubspace::with_dim(poly_log_len + log_inv_rate - fold_arity).unwrap();
+			let security_bits = 96;
+			let fri_params = FRIParams::<F, H, C>::new_with_constant_arity(
+				C::default(),
+				poly_log_len,
+				log_inv_rate,
+				subspace,
+				fold_arity,
+				security_bits,
+			);
+
+			assert_eq!(fri_params.num_queries(), 143);
+		}
 	}
 }

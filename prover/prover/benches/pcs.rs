@@ -3,7 +3,7 @@
 use binius_field::{BinaryField, ExtensionField, arch::OptimalPackedB128};
 use binius_math::{
 	BinarySubspace,
-	ntt::{AdditiveNTT, NeighborsLastMultiThread, domain_context::GenericPreExpanded},
+	ntt::{NeighborsLastMultiThread, domain_context::GenericPreExpanded},
 	test_utils::{random_field_buffer, random_scalars},
 };
 use binius_prover::pcs::OneBitPCSProver;
@@ -32,19 +32,21 @@ fn bench_pcs(c: &mut Criterion) {
 		let packed_multilin = random_field_buffer::<P>(&mut rng, log_len);
 
 		type H = StdDigest;
-		let compression = StdCompression::default();
-		let subspace =
-			BinarySubspace::<B128>::with_dim(log_len).expect("Failed to create subspace");
+		type C = StdCompression;
+		let compression = C::default();
+		let fold_arity = FRIParams::<B128, H, C>::estimate_optimal_arity(log_len, LOG_INV_RATE);
+		let subspace = BinarySubspace::<B128>::with_dim(log_len + LOG_INV_RATE - fold_arity)
+			.expect("Failed to create subspace");
 		let domain_context = GenericPreExpanded::generate_from_subspace(&subspace);
 		let log_num_shares = binius_utils::rayon::current_num_threads().ilog2() as usize;
 		let ntt = NeighborsLastMultiThread::new(domain_context, log_num_shares);
-
-		let fri_params = FRIParams::<B128, H, _>::new_with_good_choices(
+		let fri_params = FRIParams::<B128, H, _>::new_with_constant_arity(
 			compression,
 			log_len,
 			LOG_INV_RATE,
+			subspace,
+			fold_arity,
 			SECURITY_BITS,
-			&ntt.domain_context(),
 		);
 
 		let pcs_prover = OneBitPCSProver::new(&ntt, &fri_params);
