@@ -17,7 +17,7 @@ use digest::{Digest, Output, OutputSizeUser, core_api::BlockSizeUser};
 use crate::{
 	fri::fold::{fold_chunk_in_place, fold_chunk_without_ntt_in_place},
 	hash::PseudoCompressionFunction,
-	merkle_tree::MerkleTreeVerifier,
+	merkle_tree::{BatchedMerkleTreeVerifier, MerkleTreeVerifier},
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -44,7 +44,10 @@ pub enum VerificationError {
 /// - `NTT`: The NTT type used for encoding and folding.
 ///
 /// Usage:
-/// - To read the commitment to the initial codeword, use [`Self::read_initial_commitment`].
+/// - To read the commitments to the initial codewords, use [`Self::read_initial_commitment`].
+/// - To provide the batch challenges, call [`Self::add_batch_challenges`]. This **must** be called
+///   even if read only a single commitment (in which case you should provide an empty `Vec` of
+///   batch challenges).
 /// - To run the COMMIT phase, call [`Self::verify_fold_round`] exactly [`Self::num_fold_rounds`]
 ///   many times.
 /// - To run the QUERY phase, call [`Self::verify_queries`].
@@ -52,6 +55,7 @@ pub struct FRIVerifier<'a, F, H: OutputSizeUser, C, DC> {
 	params: &'a FRIParams<F, H, C>,
 	domain_context: DC,
 	initial_verifiers: Vec<MerkleTreeVerifier<F, H, C>>,
+	batched_initial_verifier: Option<BatchedMerkleTreeVerifier<F, H, C>>,
 	fold_challenges: Vec<Vec<F>>,
 	fold_verifiers: Vec<MerkleTreeVerifier<F, H, C>>,
 	terminal_codeword: Option<Vec<F>>,
@@ -75,6 +79,7 @@ where
 			params,
 			domain_context,
 			initial_verifiers: Vec::new(),
+			batched_initial_verifier: None,
 			fold_challenges: vec![Vec::new()],
 			fold_verifiers: Vec::new(),
 			terminal_codeword: None,
@@ -107,12 +112,28 @@ where
 		self.initial_verifiers.push(initial_verifier);
 	}
 
+	/// Provide the batch challenges which are used for batching the initial codewords.
+	///
+	/// The number of challenges must be one less than the number of times you called
+	/// [`Self::read_initial_commitment`].
+	///
+	/// Arguments:
+	/// - `batch_challenges`: The batching challenges for the initial codewords (which should be
+	///   sampled randomly).
+	pub fn add_batch_challenges(&mut self, batch_challenges: Vec<F>) {
+		assert!(self.batched_initial_verifier.is_none());
+
+		let initial_verifiers = std::mem::take(&mut self.initial_verifiers);
+		self.batched_initial_verifier =
+			Some(BatchedMerkleTreeVerifier::new(initial_verifiers, batch_challenges));
+	}
+
 	/// The number of times [`Self::verify_fold_round`] must be called.
 	pub fn num_fold_rounds(&self) -> usize {
 		self.params.num_rounds() - 1
 	}
 
-	/// Verifies a fold round of FRI in the COMMIT phase. Must be called `Self::num_fold_rounds`
+	/// Verifies a fold round of FRI in the COMMIT phase. Must be called [`Self::num_fold_rounds`]
 	/// many times.
 	///
 	/// Concretely, it does:
@@ -186,8 +207,8 @@ where
 		let (fold_challenges_final, fold_challenges_early) =
 			self.fold_challenges.split_last().unwrap();
 
-		assert_eq!(self.initial_verifiers.len(), 1);
-		let log_chunks = self.initial_verifiers[0].log_leaf_batches();
+		let batched_initial_verifier = self.batched_initial_verifier.as_ref().unwrap();
+		let log_chunks = batched_initial_verifier.log_leaf_batches();
 
 		// verify the queries up to the terminal codeword
 		let terminal_codeword = self.terminal_codeword.as_ref().unwrap();
@@ -197,8 +218,7 @@ where
 
 			// verify openings of merkle leaves, and check that they fold together correctly
 			let mut fold_challenges = fold_challenges_early.iter();
-			assert_eq!(self.initial_verifiers.len(), 1);
-			let mut leaf_batch = self.initial_verifiers[0]
+			let mut leaf_batch = batched_initial_verifier
 				.verify_opening(index, &mut transcript.decommitment())
 				.unwrap();
 			let mut folded_value =

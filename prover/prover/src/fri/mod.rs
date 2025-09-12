@@ -18,7 +18,7 @@ use binius_verifier::{
 use bytes::BufMut;
 use digest::{Digest, Output, OutputSizeUser, core_api::BlockSizeUser};
 
-use crate::merkle_tree::MerkleTreeProver;
+use crate::merkle_tree::{BatchedMerkleTreeProver, MerkleTreeProver};
 
 /// Provides the ability to run the FRI protocol from the prover side.
 ///
@@ -30,9 +30,12 @@ use crate::merkle_tree::MerkleTreeProver;
 /// - `NTT`: The NTT type used for encoding and folding.
 ///
 /// Usage:
-/// - To encode the message (multilinear polynomial) and commit to it, use
+/// - To encode the messages (multilinear polynomials) and commit to them, use
 ///   [`Self::write_initial_commitment`]. \ This can be read by the verifier using
 ///   [`FRIVerifier::read_initial_commitment`].
+/// - To provide the batch challenges, call [`Self::add_batch_challenges`]. This **must** be called
+///   even if you only committed to a single message (in which case you should provide an empty
+///   `Vec` of batch challenges).
 /// - To run the COMMIT phase, call [`Self::prove_fold_round`] exactly [`Self::num_fold_rounds`]
 ///   many times. \ This can be observed by the verifier using [`FRIVerifier::verify_fold_round`].
 /// - To run the QUERY phase, call [`Self::prove_queries`]. \ This can be checked by the verifier
@@ -41,6 +44,7 @@ pub struct FRIProver<'a, F, H: OutputSizeUser, C, NTT> {
 	params: &'a FRIParams<F, H, C>,
 	ntt: &'a NTT,
 	initial_provers: Vec<MerkleTreeProver<F, H, C>>,
+	batched_initial_prover: Option<BatchedMerkleTreeProver<F, H, C>>,
 	unprocessed_fold_challenges: Vec<F>,
 	fold_provers: Vec<MerkleTreeProver<F, H, C>>,
 	terminal_codeword: Option<Vec<F>>,
@@ -64,6 +68,7 @@ where
 			params,
 			ntt,
 			initial_provers: Vec::new(),
+			batched_initial_prover: None,
 			unprocessed_fold_challenges: Vec::new(),
 			fold_provers: Vec::new(),
 			terminal_codeword: None,
@@ -143,13 +148,31 @@ where
 		self.initial_provers.push(initial_prover);
 	}
 
+	/// Provide the batch challenges which are used for batching the initial codewords.
+	///
+	/// The number of challenges must be one less than the number of times you called
+	/// [`Self::write_initial_commitment`].
+	///
+	/// The counterpart on the verifier side [`FRIVerifier::add_batch_challenges`].
+	///
+	/// Arguments:
+	/// - `batch_challenges`: The batching challenges for the initial codewords (which should be
+	///   sampled randomly).
+	pub fn add_batch_challenges(&mut self, batch_challenges: Vec<F>) {
+		assert!(self.batched_initial_prover.is_none());
+
+		let initial_provers = std::mem::take(&mut self.initial_provers);
+		self.batched_initial_prover =
+			Some(BatchedMerkleTreeProver::new(initial_provers, batch_challenges));
+	}
+
 	/// The number of times [`Self::prove_fold_round`] must be called.
 	pub fn num_fold_rounds(&self) -> usize {
 		self.params.num_rounds() - 1
 	}
 
-	/// Proves a fold round of FRI in the COMMIT phase. Must be called `Self::num_fold_rounds` many
-	/// times.
+	/// Proves a fold round of FRI in the COMMIT phase. Must be called [`Self::num_fold_rounds`]
+	/// many times.
 	///
 	/// Concretely, it does:
 	/// - either nothing, if we skip this round because of a higher fold arity
@@ -206,8 +229,7 @@ where
 		match self.fold_provers.len() {
 			// in the first round we fold without applying the NTT
 			0 => {
-				assert_eq!(self.initial_provers.len(), 1);
-				let prover = self.initial_provers.last().unwrap();
+				let prover = self.batched_initial_prover.as_ref().unwrap();
 				let log_chunk_len = prover.log_batch_size();
 				let create_scratch_buffer = || vec![F::default(); 1 << (log_chunk_len - 1)];
 				prover
@@ -262,9 +284,9 @@ where
 	pub fn prove_queries(&self, transcript: &mut ProverTranscript<impl Challenger>) {
 		assert_eq!(self.fold_rounds_done, self.num_fold_rounds());
 
-		assert_eq!(self.initial_provers.len(), 1);
+		let batched_initial_prover = self.batched_initial_prover.as_ref().unwrap();
 		let log_chunks =
-			self.initial_provers[0].log_leaves() - self.initial_provers[0].log_batch_size();
+			batched_initial_prover.log_leaves() - batched_initial_prover.log_batch_size();
 
 		// prove the queries
 		for _ in 0..self.params.num_queries() {
@@ -272,8 +294,7 @@ where
 			let mut index = transcript.sample_bits(log_chunks) as usize;
 
 			// open the merkle leaves at each layer
-			assert_eq!(self.initial_provers.len(), 1);
-			self.initial_provers[0].prove_opening(index, &mut transcript.decommitment());
+			batched_initial_prover.prove_opening(index, &mut transcript.decommitment());
 			let mut fold_provers = self.fold_provers.iter();
 			for i in 0..self.num_fold_rounds() {
 				match self.params.round_type(i + 1) {
@@ -318,7 +339,7 @@ mod tests {
 	type H = StdDigest;
 	type C = StdCompression;
 
-	fn test_with_params<P: PackedField>(poly: &[P], params: &FRIParams<P::Scalar, H, C>)
+	fn test_with_params<P: PackedField>(polys: &[&[P]], params: &FRIParams<P::Scalar, H, C>)
 	where
 		P::Scalar: BinaryField,
 	{
@@ -335,7 +356,13 @@ mod tests {
 			let mut fri_prover = FRIProver::new(params, &ntt);
 
 			// commit
-			fri_prover.write_initial_commitment(poly, &mut prover_transcript.message());
+			for &poly in polys {
+				fri_prover.write_initial_commitment(poly, &mut prover_transcript.message());
+			}
+
+			// batch
+			let batch_challenges = prover_transcript.sample_vec(polys.len() - 1);
+			fri_prover.add_batch_challenges(batch_challenges);
 
 			// prove COMMIT phase
 			for _ in 0..fri_prover.num_fold_rounds() {
@@ -350,8 +377,9 @@ mod tests {
 		// create verifier transcript
 		let mut verifier_transcript = prover_transcript.into_verifier();
 
-		// used for calling `evaluate` later
-		let mut verifier_fold_challenges = Vec::new();
+		// used for checking with `evaluate` later
+		let mut verifier_fold_challenges: Vec<P::Scalar> = Vec::new();
+		let verifier_batch_challenges: Vec<P::Scalar>;
 
 		let final_value;
 		// verify
@@ -362,7 +390,14 @@ mod tests {
 			let mut fri_verifier = FRIVerifier::new(params, domain_context);
 
 			// read commitment
-			fri_verifier.read_initial_commitment(&mut verifier_transcript.message());
+			for _ in 0..polys.len() {
+				fri_verifier.read_initial_commitment(&mut verifier_transcript.message());
+			}
+
+			// batch
+			let batch_challenges = verifier_transcript.sample_vec(polys.len() - 1);
+			verifier_batch_challenges = batch_challenges.clone();
+			fri_verifier.add_batch_challenges(batch_challenges);
 
 			// verify COMMIT phase
 			for _ in 0..fri_verifier.num_fold_rounds() {
@@ -379,14 +414,28 @@ mod tests {
 				.unwrap();
 		}
 
-		let poly_buffer =
-			FieldSlice::from_slice(log2_strict_usize(poly.len()) + P::LOG_WIDTH, poly).unwrap();
-		let evaluation = evaluate(&poly_buffer, &verifier_fold_challenges).unwrap();
-		assert_eq!(final_value, evaluation);
+		let evaluations: Vec<P::Scalar> = polys
+			.iter()
+			.map(|poly| {
+				let poly_buffer =
+					FieldSlice::from_slice(log2_strict_usize(poly.len()) + P::LOG_WIDTH, poly)
+						.unwrap();
+				evaluate(&poly_buffer, &verifier_fold_challenges).unwrap()
+			})
+			.collect();
+		let mut batched_evaluation = evaluations[0];
+		assert_eq!(verifier_batch_challenges.len() + 1, evaluations.len());
+		for (&evaluation, &batch_challenge) in evaluations[1..]
+			.iter()
+			.zip(verifier_batch_challenges.iter())
+		{
+			batched_evaluation += batch_challenge * evaluation;
+		}
+		assert_eq!(final_value, batched_evaluation);
 	}
 
 	fn test_with_config<P: PackedField>(
-		poly: &FieldBuffer<P>,
+		polys: &[FieldBuffer<P>],
 		fold_arities: Vec<usize>,
 		log_inv_rate: usize,
 		commit_layer: usize,
@@ -394,17 +443,19 @@ mod tests {
 		P::Scalar: BinaryField,
 	{
 		let num_queries = 5;
-		let rs_code = ReedSolomonCode::new(poly.log_len() - fold_arities[0], log_inv_rate).unwrap();
+		let rs_code =
+			ReedSolomonCode::new(polys[0].log_len() - fold_arities[0], log_inv_rate).unwrap();
 		let params = FRIParams::new(
 			StdCompression::default(),
 			commit_layer,
-			poly.log_len(),
+			polys[0].log_len(),
 			rs_code,
 			fold_arities,
 			num_queries,
 		);
 
-		test_with_params(poly.as_ref(), &params);
+		let polys: Vec<_> = polys.iter().map(AsRef::as_ref).collect();
+		test_with_params(&polys, &params);
 	}
 
 	fn test_with_packing<P: PackedField>()
@@ -413,17 +464,20 @@ mod tests {
 	{
 		let log_len = 6;
 
-		// generate multilinear
+		// generate multilinears
 		let mut rng = StdRng::seed_from_u64(0);
-		let poly = random_field_buffer::<P>(&mut rng, log_len);
+		let poly1 = random_field_buffer::<P>(&mut rng, log_len);
+		let poly2 = random_field_buffer::<P>(&mut rng, log_len);
+		let poly3 = random_field_buffer::<P>(&mut rng, log_len);
+		let polys = vec![poly1, poly2, poly3];
 
-		// check for different configs
+		// check with different configs
 		for log_inv_rate in [0, 1, 2] {
 			for commit_layer in [0, 2, 1000] {
-				test_with_config(&poly, vec![1; 6], log_inv_rate, commit_layer);
-				test_with_config(&poly, vec![2, 2, 2], log_inv_rate, commit_layer);
-				test_with_config(&poly, vec![3], log_inv_rate, commit_layer);
-				test_with_config(&poly, vec![1, 3], log_inv_rate, commit_layer);
+				test_with_config(&polys, vec![1; 6], log_inv_rate, commit_layer);
+				test_with_config(&polys, vec![2, 2, 2], log_inv_rate, commit_layer);
+				test_with_config(&polys, vec![3], log_inv_rate, commit_layer);
+				test_with_config(&polys, vec![1, 3], log_inv_rate, commit_layer);
 			}
 		}
 	}

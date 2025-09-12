@@ -200,6 +200,7 @@ mod test {
 			multilinear.to_ref().as_ref(),
 			&mut prover_transcript.message(),
 		);
+		fri_prover.add_batch_challenges(Vec::new());
 
 		let prover = BaseFoldProver::new(multilinear, eval_point_eq, evaluation_claim, fri_prover)?;
 
@@ -209,6 +210,7 @@ mod test {
 
 		let mut fri_verifier = FRIVerifier::new(&fri_params, &domain_context);
 		fri_verifier.read_initial_commitment(&mut verifier_transcript.message());
+		fri_verifier.add_batch_challenges(Vec::new());
 
 		let basefold::ReducedOutput {
 			final_fri_value,

@@ -72,6 +72,7 @@ where
 	{
 		let mut fri_prover = FRIProver::new(self.fri_params, self.ntt);
 		fri_prover.write_initial_commitment(packed_multilin.as_ref(), transcript);
+		fri_prover.add_batch_challenges(Vec::new());
 
 		fri_prover
 	}
@@ -242,6 +243,7 @@ mod test {
 
 		let mut fri_verifier = FRIVerifier::new(&fri_params, &domain_context);
 		fri_verifier.read_initial_commitment(&mut verifier_transcript.message());
+		fri_verifier.add_batch_challenges(Vec::new());
 
 		verify(&mut verifier_transcript, evaluation_claim, &evaluation_point, fri_verifier)?;
 

@@ -1,6 +1,7 @@
 // Copyright 2025 Irreducible Inc.
 use std::{cmp::min, marker::PhantomData};
 
+use binius_field::BinaryField;
 use binius_transcript::TranscriptWriter;
 use binius_utils::{SerializeBytes, checked_arithmetics::log2_strict_usize, rayon::prelude::*};
 use binius_verifier::hash::{PseudoCompressionFunction, hash_serialize};
@@ -155,6 +156,86 @@ where
 	/// Base-2 logarithm of leaf batch size.
 	pub fn log_batch_size(&self) -> usize {
 		self.log_batch_size
+	}
+}
+
+/// Provides the ability to batch [`MerkleTreeProver`]s together.
+pub struct BatchedMerkleTreeProver<F, H: OutputSizeUser, C> {
+	provers: Vec<MerkleTreeProver<F, H, C>>,
+	// NOTE: Alternatively one could not compute this at all and instead compute it ad-hoc, which
+	// would save a lot of memory.
+	batched_leaves: Vec<F>,
+}
+
+impl<F, H, C> BatchedMerkleTreeProver<F, H, C>
+where
+	F: BinaryField,
+	H: Digest + BlockSizeUser,
+	C: PseudoCompressionFunction<Output<H>, 2> + Sync,
+{
+	/// Batches `provers` together using `batch_challenges`.
+	///
+	/// ## Preconditions
+	///
+	/// - `batch_challenges.len() + 1 == provers.len()`
+	pub fn new(provers: Vec<MerkleTreeProver<F, H, C>>, batch_challenges: Vec<F>) -> Self {
+		assert_eq!(batch_challenges.len() + 1, provers.len());
+		let log_leaves = provers[0].log_leaves();
+		let log_batch_size = provers[0].log_batch_size();
+		for prover in &provers[1..] {
+			assert_eq!(prover.log_leaves(), log_leaves);
+			assert_eq!(prover.log_batch_size(), log_batch_size);
+		}
+
+		// batch leaves
+		// FIXME NOTE We could just drop this computation (and not have `batched_leaves` at all).
+		// That's because this is only needed in `par_leaf_batches()`, and there we could compute it
+		// ad-hoc.
+		let mut batched_leaves = provers[0].leaves.clone();
+		for (leaves, &batch_challenge) in provers[1..]
+			.iter()
+			.map(|prover| &prover.leaves)
+			.zip(batch_challenges.iter())
+		{
+			assert_eq!(leaves.len(), batched_leaves.len());
+			for i in 0..batched_leaves.len() {
+				batched_leaves[i] += batch_challenge * leaves[i];
+			}
+		}
+
+		Self {
+			provers,
+			batched_leaves,
+		}
+	}
+
+	/// Proves opening of a batched leaf batch.
+	///
+	/// This simply calls [`MerkleTreeProver::prove_opening`] on all the `provers`.
+	pub fn prove_opening(
+		&self,
+		leaf_batch_index: usize,
+		transcript: &mut TranscriptWriter<impl BufMut>,
+	) {
+		for prover in &self.provers {
+			prover.prove_opening(leaf_batch_index, transcript);
+		}
+	}
+
+	pub fn par_leaf_batches(&self) -> impl IndexedParallelIterator<Item = &[F]> {
+		// FIXME NOTE We could just construct this iterator ad-hoc (batch the leaf batches together
+		// in the moment when we are iterating), and then we wouln't need `self.batched_leaves`,
+		// which would save a lot of memory.
+		self.batched_leaves
+			.par_chunks_exact(1 << self.log_batch_size())
+	}
+
+	pub fn log_leaves(&self) -> usize {
+		self.provers[0].log_leaf_batches + self.provers[0].log_batch_size
+	}
+
+	pub fn log_batch_size(&self) -> usize {
+		self.provers[0].log_batch_size
 	}
 }
 
