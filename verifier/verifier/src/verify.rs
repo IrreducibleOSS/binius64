@@ -79,7 +79,7 @@ where
 			log2_ceil_usize(constraint_system.value_vec_len()).max(LOG_WORDS_PER_ELEM);
 		let log_witness_elems = log_witness_words - LOG_WORDS_PER_ELEM;
 
-		let log_code_len = log_witness_words + log_inv_rate;
+		let log_code_len = log_witness_elems + log_inv_rate;
 		let fri_arity = estimate_optimal_arity(
 			log_code_len,
 			size_of::<Output<MerkleHash>>(),
