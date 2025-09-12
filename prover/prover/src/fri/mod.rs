@@ -43,8 +43,7 @@ use crate::merkle_tree::{BatchedMerkleTreeProver, MerkleTreeProver};
 pub struct FRIProver<'a, F, H: OutputSizeUser, C, NTT> {
 	params: &'a FRIParams<F, H, C>,
 	ntt: &'a NTT,
-	initial_provers: Vec<MerkleTreeProver<F, H, C>>,
-	batched_initial_prover: Option<BatchedMerkleTreeProver<F, H, C>>,
+	batched_initial_prover: BatchedMerkleTreeProver<F, H, C>,
 	unprocessed_fold_challenges: Vec<F>,
 	fold_provers: Vec<MerkleTreeProver<F, H, C>>,
 	terminal_codeword: Option<Vec<F>>,
@@ -64,11 +63,24 @@ where
 	/// - `params`: Parameters used for the FRI protocol.
 	/// - `ntt`: The NTT instance used for encoding and for folding.
 	pub fn new(params: &'a FRIParams<F, H, C>, ntt: &'a NTT) -> Self {
+		let (log_len, log_batch_size) = match *params.round_type(0) {
+			RoundType::InitialCommitment {
+				log_len,
+				log_batch_size,
+			} => (log_len, log_batch_size),
+			_ => panic!("first round type mismatch"),
+		};
+		let batched_initial_prover = BatchedMerkleTreeProver::new(
+			params.compression().clone(),
+			log_len,
+			log_batch_size,
+			params.commit_layer(),
+		);
+
 		Self {
 			params,
 			ntt,
-			initial_provers: Vec::new(),
-			batched_initial_prover: None,
+			batched_initial_prover,
 			unprocessed_fold_challenges: Vec::new(),
 			fold_provers: Vec::new(),
 			terminal_codeword: None,
@@ -137,15 +149,8 @@ where
 		assert_eq!(codeword.len(), 1 << log_len);
 
 		// commit initial codeword
-		let initial_prover = MerkleTreeProver::write_commitment(
-			self.params.compression().clone(),
-			codeword,
-			log_batch_size,
-			self.params.commit_layer(),
-			transcript,
-		);
-
-		self.initial_provers.push(initial_prover);
+		self.batched_initial_prover
+			.write_commitment(codeword, transcript);
 	}
 
 	/// Provide the batch challenges which are used for batching the initial codewords.
@@ -159,11 +164,8 @@ where
 	/// - `batch_challenges`: The batching challenges for the initial codewords (which should be
 	///   sampled randomly).
 	pub fn add_batch_challenges(&mut self, batch_challenges: Vec<F>) {
-		assert!(self.batched_initial_prover.is_none());
-
-		let initial_provers = std::mem::take(&mut self.initial_provers);
-		self.batched_initial_prover =
-			Some(BatchedMerkleTreeProver::new(initial_provers, batch_challenges));
+		self.batched_initial_prover
+			.add_batch_challenges(batch_challenges);
 	}
 
 	/// The number of times [`Self::prove_fold_round`] must be called.
@@ -229,7 +231,7 @@ where
 		match self.fold_provers.len() {
 			// in the first round we fold without applying the NTT
 			0 => {
-				let prover = self.batched_initial_prover.as_ref().unwrap();
+				let prover = &self.batched_initial_prover;
 				let log_chunk_len = prover.log_batch_size();
 				let create_scratch_buffer = || vec![F::default(); 1 << (log_chunk_len - 1)];
 				prover
@@ -284,9 +286,8 @@ where
 	pub fn prove_queries(&self, transcript: &mut ProverTranscript<impl Challenger>) {
 		assert_eq!(self.fold_rounds_done, self.num_fold_rounds());
 
-		let batched_initial_prover = self.batched_initial_prover.as_ref().unwrap();
 		let log_chunks =
-			batched_initial_prover.log_leaves() - batched_initial_prover.log_batch_size();
+			self.batched_initial_prover.log_leaves() - self.batched_initial_prover.log_batch_size();
 
 		// prove the queries
 		for _ in 0..self.params.num_queries() {
@@ -294,7 +295,8 @@ where
 			let mut index = transcript.sample_bits(log_chunks) as usize;
 
 			// open the merkle leaves at each layer
-			batched_initial_prover.prove_opening(index, &mut transcript.decommitment());
+			self.batched_initial_prover
+				.prove_opening(index, &mut transcript.decommitment());
 			let mut fold_provers = self.fold_provers.iter();
 			for i in 0..self.num_fold_rounds() {
 				match self.params.round_type(i + 1) {
