@@ -106,6 +106,7 @@ jobs:
           - name: "wasm-build"
             command: |
               cargo build -p binius-math -p binius-field -p binius-prover -p binius-verifier --target wasm32-wasip1 --tests --benches
+              cargo test -p binius-math -p binius-field -p binius-prover -p binius-verifier --target wasm32-wasip1 --config "target.'cfg(all())'.runner=['wasmtime']"
             rust-target: "wasm32-wasip1"
     steps:
       - name: Checkout Repository
@@ -131,6 +132,10 @@ jobs:
         run: cargo test -p binius-utils --features platform-diagnostics test_platform_diagnostics -- --nocapture
         env:
           RUSTFLAGS: "-C target-cpu=native"
+      - name: Set up Wasmer
+        uses: wasmerio/setup-wasmer@v2
+        with:
+          version: 'latest'
       - name: Run command
         run: ${{ matrix.test.command }}
         env:
