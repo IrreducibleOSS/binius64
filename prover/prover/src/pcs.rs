@@ -70,12 +70,10 @@ where
 		P: PackedField<Scalar = B128>,
 		Data: Deref<Target = [P]>,
 	{
-		FRIProver::write_initial_commitment(
-			self.fri_params,
-			packed_multilin.as_ref(),
-			self.ntt,
-			transcript,
-		)
+		let mut fri_prover = FRIProver::new(self.fri_params, self.ntt);
+		fri_prover.write_initial_commitment(packed_multilin.as_ref(), transcript);
+
+		fri_prover
 	}
 
 	/// Prove the committed polynomial's evaluation at a given point.
@@ -242,11 +240,8 @@ mod test {
 
 		let mut verifier_transcript = prover_transcript.into_verifier();
 
-		let fri_verifier = FRIVerifier::read_initial_commitment(
-			&fri_params,
-			&domain_context,
-			&mut verifier_transcript.message(),
-		);
+		let mut fri_verifier = FRIVerifier::new(&fri_params, &domain_context);
+		fri_verifier.read_initial_commitment(&mut verifier_transcript.message());
 
 		verify(&mut verifier_transcript, evaluation_claim, &evaluation_point, fri_verifier)?;
 

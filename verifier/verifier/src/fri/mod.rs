@@ -64,19 +64,30 @@ where
 	C: PseudoCompressionFunction<Output<H>, 2>,
 	DC: DomainContext<Field = F>,
 {
-	/// Reads the FRI initial codeword commitment. Returns a verifier instance which allows to run
-	/// the FRI protocol on the codeword.
+	/// Creates a verifier instance which allows to run the FRI protocol.
 	///
 	/// Arguments:
 	/// - `params`: Parameters used for the FRI protocol.
 	/// - `domain_context`: The `DomainContext` instance used later for folding.
+	pub fn new(params: &'a FRIParams<F, H, C>, domain_context: DC) -> Self {
+		Self {
+			params,
+			domain_context,
+			fold_challenges: vec![Vec::new()],
+			merkle_tree_verifiers: Vec::new(),
+			terminal_codeword: None,
+			rounds_done: 0,
+		}
+	}
+
+	/// Reads the FRI initial codeword commitment.
+	///
+	/// Arguments:
 	/// - `transcript`: The [`TranscriptReader`] used for reading the commitment.
-	pub fn read_initial_commitment(
-		params: &'a FRIParams<F, H, C>,
-		domain_context: DC,
-		transcript: &mut TranscriptReader<impl Buf>,
-	) -> Self {
-		let (log_len, log_batch_size) = match *params.round_type(0) {
+	pub fn read_initial_commitment(&mut self, transcript: &mut TranscriptReader<impl Buf>) {
+		assert_eq!(self.rounds_done, 0);
+
+		let (log_len, log_batch_size) = match *self.params.round_type(0) {
 			RoundType::InitialCommitment {
 				log_len,
 				log_batch_size,
@@ -84,21 +95,15 @@ where
 			_ => panic!("first round type mismatch"),
 		};
 		let initial_verifier = MerkleTreeVerifier::read_commitment(
-			params.compression().clone(),
+			self.params.compression().clone(),
 			log_len,
 			log_batch_size,
-			params.commit_layer(),
+			self.params.commit_layer(),
 			transcript,
 		);
 
-		Self {
-			params,
-			domain_context,
-			fold_challenges: vec![Vec::new()],
-			merkle_tree_verifiers: vec![initial_verifier],
-			terminal_codeword: None,
-			rounds_done: 1,
-		}
+		self.merkle_tree_verifiers.push(initial_verifier);
+		self.rounds_done += 1;
 	}
 
 	/// The number of times [`Self::verify_fold_round`] must be called.
