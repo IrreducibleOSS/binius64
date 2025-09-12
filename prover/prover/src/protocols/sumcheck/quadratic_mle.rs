@@ -1,5 +1,7 @@
 // Copyright 2025 Irreducible Inc.
 
+use std::array;
+
 use binius_field::{Field, PackedField};
 use binius_math::{FieldBuffer, multilinear::fold::fold_highest_var_inplace};
 use binius_utils::rayon::prelude::*;
@@ -85,7 +87,9 @@ where
 		}
 
 		let last_coeffs_or_eval = RoundCoeffsOrEval::Eval(eval_claim);
-		let gruen32 = Gruen32::new(eval_point);
+
+		const MAX_CHUNK_VARS: usize = 8;
+		let gruen32 = Gruen32::new(MAX_CHUNK_VARS, eval_point);
 
 		Ok(Self {
 			multilinears,
@@ -124,9 +128,6 @@ where
 		let n_vars_remaining = self.n_vars();
 		assert!(n_vars_remaining > 0);
 
-		let eq_expansion = self.gruen32.eq_expansion();
-		assert_eq!(eq_expansion.log_len(), n_vars_remaining - 1);
-
 		// Split each multilinear in half
 		let (splits_0, splits_1) = self
 			.multilinears
@@ -140,29 +141,49 @@ where
 
 		// Compute F(1) and F(∞) where F = ∑_{v ∈ B} C(M_1(v || X), ..., M_N(v || X)) eq(v, z).
 		// We need to iterate over all positions in parallel
-		let round_evals = eq_expansion
-			.as_ref()
+		let eq_chunk = self.gruen32.chunk_eq_expansion();
+		let chunk_vars = eq_chunk.log_len();
+		let chunk_count = 1 << (self.n_vars() - 1 - chunk_vars);
+
+		let round_evals = (0..chunk_count)
 			.into_par_iter()
-			.enumerate()
-			.map(|(i, &eq_i)| {
-				// Collect evaluations at 1 and ∞ for each multilinear
-				let mut evals_1 = [P::default(); N];
-				let mut evals_inf = [P::default(); N];
-				for j in 0..N {
-					evals_1[j] = splits_1[j].as_ref()[i];
-					evals_inf[j] = splits_0[j].as_ref()[i] + splits_1[j].as_ref()[i];
+			.map(|chunk_index| -> Result<_, Error> {
+				let chunks_0 = array::from_fn::<_, N, _>(|i| {
+					splits_0[i]
+						.chunk(chunk_vars, chunk_index)
+						.expect("correct chunk_index")
+				});
+				let chunks_1 = array::from_fn::<_, N, _>(|i| {
+					splits_1[i]
+						.chunk(chunk_vars, chunk_index)
+						.expect("correct chunk_index")
+				});
+
+				let mut chunk_round_evals = RoundEvals2::<P>::default();
+				for (i, &eq_i) in eq_chunk.as_ref().iter().enumerate() {
+					// Collect evaluations at 1 and ∞ for each multilinear
+					let mut evals_1 = [P::default(); N];
+					let mut evals_inf = [P::default(); N];
+					for j in 0..N {
+						evals_1[j] = chunks_1[j].as_ref()[i];
+						evals_inf[j] = chunks_0[j].as_ref()[i] + chunks_1[j].as_ref()[i];
+					}
+					// Evaluate composition at X=1
+					let y_1 = (self.composition)(evals_1) * eq_i;
+
+					// Evaluate composition at X=∞ (where M(∞) = M(0) + M(1))
+					let y_inf = (self.infinity_composition)(evals_inf) * eq_i;
+
+					chunk_round_evals.y_1 += y_1;
+					chunk_round_evals.y_inf += y_inf;
 				}
 
-				// Evaluate composition at X=1
-				let y_1 = (self.composition)(evals_1) * eq_i;
-
-				// Evaluate composition at X=∞ (where M(∞) = M(0) + M(1))
-				let y_inf = (self.infinity_composition)(evals_inf) * eq_i;
-
-				RoundEvals2 { y_1, y_inf }
+				// Apply the common factor from the outer product representation of the eq ind
+				let eq_suffix_eval = self.gruen32.suffix_eq_expansion().get(chunk_index)?;
+				Ok(chunk_round_evals * eq_suffix_eval)
 			})
-			.reduce(RoundEvals2::default, |lhs, rhs| lhs + &rhs)
-			.sum_scalars(n_vars_remaining - 1);
+			.try_reduce(RoundEvals2::default, |lhs, rhs| Ok(lhs + &rhs))?
+			.sum_scalars(n_vars_remaining);
 
 		let alpha = self.gruen32.next_coordinate();
 		let round_coeffs = round_evals.interpolate_eq(*last_eval, alpha);

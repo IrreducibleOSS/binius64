@@ -1,7 +1,5 @@
 // Copyright 2025 Irreducible Inc.
 
-use std::cmp::max;
-
 use binius_field::{Field, PackedField};
 use binius_math::FieldBuffer;
 use binius_utils::{bitwise::Bitwise, rayon::prelude::*};
@@ -53,7 +51,9 @@ where
 			return Err(Error::BitmasksSizeMismatch);
 		}
 
-		let gruen32 = Gruen32::new(eval_point);
+		const MAX_CHUNK_VARS: usize = 8;
+		let gruen32 = Gruen32::new(MAX_CHUNK_VARS, eval_point);
+
 		let switchover = BinarySwitchover::new(eval_claims.len(), switchover.min(n_vars), bitmasks);
 		let last_coeffs_or_sums = RoundCoeffsOrSums::Sums(eval_claims.to_vec());
 
@@ -86,12 +86,13 @@ where
 		// results to an array of round evals accumulators. Alternative would be to sum each
 		// composition on its own pass, but that would require reading the entirety of eq field
 		// buffer on each pass, which will evict the latter from the cache. By doing chunked
-		// compute, we reasonably hope that eq chunk always stays in L1 cache.
+		// compute, we reasonably hope that eq chunk always stays in L1 cache. We can also
+		// leverage the outer product representation of the eq indicator in the Gruen32 struct.
 		//
 		// We also do switchover there, which by definition requires small scratchpads to hold
 		// large field partial evaluations of the transparent multilinears.
-		const MAX_CHUNK_VARS: usize = 8;
-		let chunk_vars = max(MAX_CHUNK_VARS, P::LOG_WIDTH).min(self.n_vars() - 1);
+		let eq_chunk = self.gruen32.chunk_eq_expansion();
+		let chunk_vars = eq_chunk.log_len();
 		let chunk_count = 1 << (self.n_vars() - 1 - chunk_vars);
 
 		let packed_prime_evals = (0..chunk_count)
@@ -105,7 +106,7 @@ where
 				),
 				 chunk_index|
 				 -> Result<_, Error> {
-					let eq_chunk = self.gruen32.eq_expansion().chunk(chunk_vars, chunk_index)?;
+					let eq_suffix_eval = self.gruen32.suffix_eq_expansion().get(chunk_index)?;
 
 					for (bit_offset, round_evals) in packed_prime_evals.iter_mut().enumerate() {
 						// Degree-1 composition - evaluate at 1 only
@@ -115,10 +116,16 @@ where
 							chunk_vars,
 							chunk_index | chunk_count,
 						)?;
+
+						let mut chunk_round_evals = RoundEvals1::default();
 						for (&eq_i, &evals_1_i) in izip!(eq_chunk.as_ref(), evals_1_chunk.as_ref())
 						{
-							round_evals.y_1 += eq_i * evals_1_i;
+							chunk_round_evals.y_1 += eq_i * evals_1_i;
 						}
+
+						// Apply the common factor from the outer product representation of the eq
+						// ind
+						*round_evals += &(chunk_round_evals * eq_suffix_eval);
 					}
 
 					Ok((packed_prime_evals, binary_chunk))

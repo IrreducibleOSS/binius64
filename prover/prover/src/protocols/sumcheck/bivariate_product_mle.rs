@@ -4,6 +4,7 @@ use binius_field::{Field, PackedField};
 use binius_math::{FieldBuffer, multilinear::fold::fold_highest_var_inplace};
 use binius_utils::rayon::prelude::*;
 use binius_verifier::protocols::sumcheck::RoundCoeffs;
+use itertools::izip;
 
 use super::{common::SumcheckProver, error::Error, gruen32::Gruen32, round_evals::RoundEvals2};
 use crate::protocols::sumcheck::common::MleCheckProver;
@@ -81,7 +82,8 @@ impl<F: Field, P: PackedField<Scalar = F>> BivariateProductMlecheckProver<P> {
 
 		let last_coeffs_or_sum = RoundCoeffsOrEval::Eval(eval_claim);
 
-		let gruen32 = Gruen32::new(eval_point);
+		const MAX_CHUNK_VARS: usize = 8;
+		let gruen32 = Gruen32::new(MAX_CHUNK_VARS, eval_point);
 
 		Ok(Self {
 			multilinears,
@@ -113,34 +115,46 @@ where
 
 		// For P' the eq expansion does not depend on the currently specialized variable and
 		// thus doesn't need to be interpolated.
-		let eq_expansion = self.gruen32.eq_expansion();
-
 		let (evals_a_0, evals_a_1) = self.multilinears[0].split_half()?;
 		let (evals_b_0, evals_b_1) = self.multilinears[1].split_half()?;
 
 		// Compute F(1) and F(∞) where F = ∑_{v ∈ B} A(v || X) B(v || X) eq(v, z)
-		let round_evals = (
-			eq_expansion.as_ref(),
-			evals_a_0.as_ref(),
-			evals_a_1.as_ref(),
-			evals_b_0.as_ref(),
-			evals_b_1.as_ref(),
-		)
+		let eq_chunk = self.gruen32.chunk_eq_expansion();
+		let chunk_vars = eq_chunk.log_len();
+		let chunk_count = 1 << (self.n_vars() - 1 - chunk_vars);
+
+		let round_evals = (0..chunk_count)
 			.into_par_iter()
-			.map(|(&eq_i, &evals_a_0_i, &evals_a_1_i, &evals_b_0_i, &evals_b_1_i)| {
-				// Evaluate M(∞) = M(0) + M(1)
-				let evals_a_inf_i = evals_a_0_i + evals_a_1_i;
-				let evals_b_inf_i = evals_b_0_i + evals_b_1_i;
+			.map(|chunk_index| -> Result<_, Error> {
+				let evals_a_0_chunk = evals_a_0.chunk(chunk_vars, chunk_index)?;
+				let evals_b_0_chunk = evals_b_0.chunk(chunk_vars, chunk_index)?;
+				let evals_a_1_chunk = evals_a_1.chunk(chunk_vars, chunk_index)?;
+				let evals_b_1_chunk = evals_b_1.chunk(chunk_vars, chunk_index)?;
 
-				let prod_1_i = eq_i * evals_a_1_i * evals_b_1_i;
-				let prod_inf_i = eq_i * evals_a_inf_i * evals_b_inf_i;
+				let mut chunk_round_evals = RoundEvals2::<P>::default();
+				for (&eq_i, &evals_a_0_i, &evals_b_0_i, &evals_a_1_i, &evals_b_1_i) in izip!(
+					eq_chunk.as_ref(),
+					evals_a_0_chunk.as_ref(),
+					evals_b_0_chunk.as_ref(),
+					evals_a_1_chunk.as_ref(),
+					evals_b_1_chunk.as_ref()
+				) {
+					// Evaluate M(∞) = M(0) + M(1)
+					let evals_a_inf_i = evals_a_0_i + evals_a_1_i;
+					let evals_b_inf_i = evals_b_0_i + evals_b_1_i;
 
-				RoundEvals2 {
-					y_1: prod_1_i,
-					y_inf: prod_inf_i,
+					let prod_1_i = eq_i * evals_a_1_i * evals_b_1_i;
+					let prod_inf_i = eq_i * evals_a_inf_i * evals_b_inf_i;
+
+					chunk_round_evals.y_1 += prod_1_i;
+					chunk_round_evals.y_inf += prod_inf_i;
 				}
+
+				// Apply the common factor from the outer product representation of the eq ind
+				let eq_suffix_eval = self.gruen32.suffix_eq_expansion().get(chunk_index)?;
+				Ok(chunk_round_evals * eq_suffix_eval)
 			})
-			.reduce(RoundEvals2::default, |lhs, rhs| lhs + &rhs)
+			.try_reduce(RoundEvals2::default, |lhs, rhs| Ok(lhs + &rhs))?
 			.sum_scalars(n_vars_remaining);
 
 		let alpha = self.gruen32.next_coordinate();
