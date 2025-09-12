@@ -152,9 +152,20 @@ where
 }
 
 /// Provides the ability to batch [`MerkleTreeVerifier`]s together.
+///
+/// Usage:
+/// - Call [`Self::read_commitment`] multiple times
+/// - Then call [`Self::add_batch_challenges`]. This **must** be called even when
+///   [`Self::read_commitment`] was called only once and no real batching is going on (in which case
+///   an empty `Vec` of batch challenges should be provided).
+/// - Then call [`Self::verify_opening`] as often as you want.
 pub struct BatchedMerkleTreeVerifier<F, H: OutputSizeUser, C> {
+	compression: C,
 	verifiers: Vec<MerkleTreeVerifier<F, H, C>>,
-	batch_challenges: Vec<F>,
+	batch_challenges: Option<Vec<F>>,
+	log_leaves: usize,
+	log_batch_size: usize,
+	commit_layer: usize,
 }
 
 impl<F, H, C> BatchedMerkleTreeVerifier<F, H, C>
@@ -163,19 +174,47 @@ where
 	H: Digest + BlockSizeUser,
 	C: PseudoCompressionFunction<Output<H>, 2>,
 {
-	pub fn new(verifiers: Vec<MerkleTreeVerifier<F, H, C>>, batch_challenges: Vec<F>) -> Self {
-		assert_eq!(batch_challenges.len() + 1, verifiers.len());
-		let log_leaves = verifiers[0].log_leaves();
-		let log_batch_size = verifiers[0].log_batch_size();
-		for verifier in &verifiers[1..] {
-			assert_eq!(verifier.log_leaves(), log_leaves);
-			assert_eq!(verifier.log_batch_size(), log_batch_size);
-		}
+	pub fn new(
+		compression: C,
+		log_leaves: usize,
+		log_batch_size: usize,
+		commit_layer: usize,
+	) -> Self {
+		assert!(log_batch_size <= log_leaves);
 
 		Self {
-			verifiers,
-			batch_challenges,
+			compression,
+			verifiers: Vec::new(),
+			batch_challenges: None,
+			log_leaves,
+			log_batch_size,
+			commit_layer,
 		}
+	}
+
+	pub fn read_commitment(
+		&mut self,
+		log_leaves: usize,
+		transcript: &mut TranscriptReader<impl Buf>,
+	) {
+		assert!(self.batch_challenges.is_none());
+		assert_eq!(log_leaves, self.log_leaves);
+
+		let verifier = MerkleTreeVerifier::read_commitment(
+			self.compression.clone(),
+			log_leaves,
+			self.log_batch_size,
+			self.commit_layer,
+			transcript,
+		);
+		self.verifiers.push(verifier);
+	}
+
+	pub fn add_batch_challenges(&mut self, batch_challenges: Vec<F>) {
+		assert!(self.batch_challenges.is_none());
+		assert_eq!(batch_challenges.len() + 1, self.verifiers.len());
+
+		self.batch_challenges = Some(batch_challenges)
 	}
 
 	/// Verifies opening of a batched leaf batch and returns its value.
@@ -187,11 +226,12 @@ where
 		leaf_batch_index: usize,
 		transcript: &mut TranscriptReader<impl Buf>,
 	) -> Result<Vec<F>, VerificationError> {
+		let batch_challenges = self.batch_challenges.as_ref().unwrap();
+
 		let mut batched_leaf_batch =
 			self.verifiers[0].verify_opening(leaf_batch_index, transcript)?;
 
-		for (verifier, &batch_challenge) in
-			self.verifiers[1..].iter().zip(self.batch_challenges.iter())
+		for (verifier, &batch_challenge) in self.verifiers[1..].iter().zip(batch_challenges.iter())
 		{
 			let leaf_batch = verifier.verify_opening(leaf_batch_index, transcript)?;
 			// fold leaf_batch into batched_leaf_batch using the batch_challenge
@@ -205,14 +245,14 @@ where
 	}
 
 	pub fn log_leaf_batches(&self) -> usize {
-		self.verifiers[0].log_leaf_batches
+		self.log_leaves - self.log_batch_size
 	}
 
 	pub fn log_leaves(&self) -> usize {
-		self.verifiers[0].log_leaf_batches + self.verifiers[0].log_batch_size
+		self.log_leaves
 	}
 
 	pub fn log_batch_size(&self) -> usize {
-		self.verifiers[0].log_batch_size
+		self.log_batch_size
 	}
 }

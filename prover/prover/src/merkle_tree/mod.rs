@@ -148,6 +148,10 @@ where
 		self.leaves.par_chunks_exact(1 << self.log_batch_size)
 	}
 
+	pub fn log_leaf_batches(&self) -> usize {
+		self.log_leaf_batches
+	}
+
 	/// Number of leaves. (Not leaf batches!)
 	pub fn log_leaves(&self) -> usize {
 		self.log_leaf_batches + self.log_batch_size
@@ -161,10 +165,14 @@ where
 
 /// Provides the ability to batch [`MerkleTreeProver`]s together.
 pub struct BatchedMerkleTreeProver<F, H: OutputSizeUser, C> {
+	compression: C,
 	provers: Vec<MerkleTreeProver<F, H, C>>,
-	// NOTE: Alternatively one could not compute this at all and instead compute it ad-hoc, which
-	// would save a lot of memory.
-	batched_leaves: Vec<F>,
+	// NOTE: Alternatively one could not compute this at all and instead save `batched_challenges`
+	// and compute `batched_leaves` ad-hoc, which would save a lot of memory.
+	batched_leaves: Option<Vec<F>>,
+	log_leaves: usize,
+	log_batch_size: usize,
+	commit_layer: usize,
 }
 
 impl<F, H, C> BatchedMerkleTreeProver<F, H, C>
@@ -178,21 +186,53 @@ where
 	/// ## Preconditions
 	///
 	/// - `batch_challenges.len() + 1 == provers.len()`
-	pub fn new(provers: Vec<MerkleTreeProver<F, H, C>>, batch_challenges: Vec<F>) -> Self {
-		assert_eq!(batch_challenges.len() + 1, provers.len());
-		let log_leaves = provers[0].log_leaves();
-		let log_batch_size = provers[0].log_batch_size();
-		for prover in &provers[1..] {
-			assert_eq!(prover.log_leaves(), log_leaves);
-			assert_eq!(prover.log_batch_size(), log_batch_size);
+	pub fn new(
+		compression: C,
+		log_leaves: usize,
+		log_batch_size: usize,
+		commit_layer: usize,
+	) -> Self {
+		assert!(log_batch_size <= log_leaves);
+
+		Self {
+			compression,
+			provers: Vec::new(),
+			batched_leaves: None,
+			log_leaves,
+			log_batch_size,
+			commit_layer,
 		}
+	}
+
+	pub fn write_commitment(
+		&mut self,
+		leaves: Vec<F>,
+		transcript: &mut TranscriptWriter<impl BufMut>,
+	) {
+		assert!(self.batched_leaves.is_none());
+		let log_leaves = log2_strict_usize(leaves.len());
+		assert_eq!(log_leaves, self.log_leaves);
+
+		let prover = MerkleTreeProver::write_commitment(
+			self.compression.clone(),
+			leaves,
+			self.log_batch_size,
+			self.commit_layer,
+			transcript,
+		);
+		self.provers.push(prover);
+	}
+
+	pub fn add_batch_challenges(&mut self, batch_challenges: Vec<F>) {
+		assert!(self.batched_leaves.is_none());
+		assert_eq!(batch_challenges.len() + 1, self.provers.len());
 
 		// batch leaves
-		// FIXME NOTE We could just drop this computation (and not have `batched_leaves` at all).
-		// That's because this is only needed in `par_leaf_batches()`, and there we could compute it
-		// ad-hoc.
-		let mut batched_leaves = provers[0].leaves.clone();
-		for (leaves, &batch_challenge) in provers[1..]
+		// FIXME NOTE We could just drop this computation (and not have `batched_leaves` at all,
+		// instead one would save `batch_challenges`). That's because this is only needed in
+		// `par_leaf_batches()`, and there we could compute it ad-hoc.
+		let mut batched_leaves = self.provers[0].leaves.clone();
+		for (leaves, &batch_challenge) in self.provers[1..]
 			.iter()
 			.map(|prover| &prover.leaves)
 			.zip(batch_challenges.iter())
@@ -203,10 +243,7 @@ where
 			}
 		}
 
-		Self {
-			provers,
-			batched_leaves,
-		}
+		self.batched_leaves = Some(batched_leaves);
 	}
 
 	/// Proves opening of a batched leaf batch.
@@ -217,6 +254,8 @@ where
 		leaf_batch_index: usize,
 		transcript: &mut TranscriptWriter<impl BufMut>,
 	) {
+		assert!(self.batched_leaves.is_some());
+
 		for prover in &self.provers {
 			prover.prove_opening(leaf_batch_index, transcript);
 		}
@@ -226,16 +265,20 @@ where
 		// FIXME NOTE We could just construct this iterator ad-hoc (batch the leaf batches together
 		// in the moment when we are iterating), and then we wouln't need `self.batched_leaves`,
 		// which would save a lot of memory.
-		self.batched_leaves
-			.par_chunks_exact(1 << self.log_batch_size())
+		let batched_leaves = self.batched_leaves.as_ref().unwrap();
+		batched_leaves.par_chunks_exact(1 << self.log_batch_size())
+	}
+
+	pub fn log_leaf_batches(&self) -> usize {
+		self.log_leaves - self.log_batch_size
 	}
 
 	pub fn log_leaves(&self) -> usize {
-		self.provers[0].log_leaf_batches + self.provers[0].log_batch_size
+		self.log_leaves
 	}
 
 	pub fn log_batch_size(&self) -> usize {
-		self.provers[0].log_batch_size
+		self.log_batch_size
 	}
 }
 

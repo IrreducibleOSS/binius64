@@ -54,8 +54,7 @@ pub enum VerificationError {
 pub struct FRIVerifier<'a, F, H: OutputSizeUser, C, DC> {
 	params: &'a FRIParams<F, H, C>,
 	domain_context: DC,
-	initial_verifiers: Vec<MerkleTreeVerifier<F, H, C>>,
-	batched_initial_verifier: Option<BatchedMerkleTreeVerifier<F, H, C>>,
+	batched_initial_verifier: BatchedMerkleTreeVerifier<F, H, C>,
 	fold_challenges: Vec<Vec<F>>,
 	fold_verifiers: Vec<MerkleTreeVerifier<F, H, C>>,
 	terminal_codeword: Option<Vec<F>>,
@@ -75,11 +74,24 @@ where
 	/// - `params`: Parameters used for the FRI protocol.
 	/// - `domain_context`: The `DomainContext` instance used later for folding.
 	pub fn new(params: &'a FRIParams<F, H, C>, domain_context: DC) -> Self {
+		let (log_len, log_batch_size) = match *params.round_type(0) {
+			RoundType::InitialCommitment {
+				log_len,
+				log_batch_size,
+			} => (log_len, log_batch_size),
+			_ => panic!("first round type mismatch"),
+		};
+		let batched_initial_verifier = BatchedMerkleTreeVerifier::new(
+			params.compression().clone(),
+			log_len,
+			log_batch_size,
+			params.commit_layer(),
+		);
+
 		Self {
 			params,
 			domain_context,
-			initial_verifiers: Vec::new(),
-			batched_initial_verifier: None,
+			batched_initial_verifier,
 			fold_challenges: vec![Vec::new()],
 			fold_verifiers: Vec::new(),
 			terminal_codeword: None,
@@ -94,22 +106,16 @@ where
 	pub fn read_initial_commitment(&mut self, transcript: &mut TranscriptReader<impl Buf>) {
 		assert_eq!(self.fold_rounds_done, 0);
 
-		let (log_len, log_batch_size) = match *self.params.round_type(0) {
+		let (log_len, _) = match *self.params.round_type(0) {
 			RoundType::InitialCommitment {
 				log_len,
 				log_batch_size,
 			} => (log_len, log_batch_size),
 			_ => panic!("first round type mismatch"),
 		};
-		let initial_verifier = MerkleTreeVerifier::read_commitment(
-			self.params.compression().clone(),
-			log_len,
-			log_batch_size,
-			self.params.commit_layer(),
-			transcript,
-		);
 
-		self.initial_verifiers.push(initial_verifier);
+		self.batched_initial_verifier
+			.read_commitment(log_len, transcript);
 	}
 
 	/// Provide the batch challenges which are used for batching the initial codewords.
@@ -121,11 +127,8 @@ where
 	/// - `batch_challenges`: The batching challenges for the initial codewords (which should be
 	///   sampled randomly).
 	pub fn add_batch_challenges(&mut self, batch_challenges: Vec<F>) {
-		assert!(self.batched_initial_verifier.is_none());
-
-		let initial_verifiers = std::mem::take(&mut self.initial_verifiers);
-		self.batched_initial_verifier =
-			Some(BatchedMerkleTreeVerifier::new(initial_verifiers, batch_challenges));
+		self.batched_initial_verifier
+			.add_batch_challenges(batch_challenges);
 	}
 
 	/// The number of times [`Self::verify_fold_round`] must be called.
@@ -207,8 +210,7 @@ where
 		let (fold_challenges_final, fold_challenges_early) =
 			self.fold_challenges.split_last().unwrap();
 
-		let batched_initial_verifier = self.batched_initial_verifier.as_ref().unwrap();
-		let log_chunks = batched_initial_verifier.log_leaf_batches();
+		let log_chunks = self.batched_initial_verifier.log_leaf_batches();
 
 		// verify the queries up to the terminal codeword
 		let terminal_codeword = self.terminal_codeword.as_ref().unwrap();
@@ -218,7 +220,8 @@ where
 
 			// verify openings of merkle leaves, and check that they fold together correctly
 			let mut fold_challenges = fold_challenges_early.iter();
-			let mut leaf_batch = batched_initial_verifier
+			let mut leaf_batch = self
+				.batched_initial_verifier
 				.verify_opening(index, &mut transcript.decommitment())
 				.unwrap();
 			let mut folded_value =
