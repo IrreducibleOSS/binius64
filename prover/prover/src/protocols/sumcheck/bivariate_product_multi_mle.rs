@@ -8,7 +8,7 @@ use binius_utils::rayon::prelude::*;
 use binius_verifier::protocols::sumcheck::RoundCoeffs;
 use itertools::{Itertools, izip};
 
-use super::{common::SumcheckProver, error::Error, gruen34::Gruen34, round_evals::RoundEvals2};
+use super::{common::SumcheckProver, error::Error, gruen32::Gruen32, round_evals::RoundEvals2};
 use crate::protocols::sumcheck::common::MleCheckProver;
 
 /// Multiple claim version of `BivariateProductMlecheckProver` that can prove mlechecks
@@ -16,7 +16,7 @@ use crate::protocols::sumcheck::common::MleCheckProver;
 pub struct BivariateProductMultiMlecheckProver<P: PackedField> {
 	multilinears: Vec<FieldBuffer<P>>,
 	last_coeffs_or_sums: RoundCoeffsOrSums<P::Scalar>,
-	gruen34: Gruen34<P>,
+	gruen32: Gruen32<P>,
 }
 
 impl<F: Field, P: PackedField<Scalar = F>> BivariateProductMultiMlecheckProver<P> {
@@ -44,12 +44,12 @@ impl<F: Field, P: PackedField<Scalar = F>> BivariateProductMultiMlecheckProver<P
 		let multilinears = multilinears.into_iter().flatten().collect_vec();
 		let last_coeffs_or_sums = RoundCoeffsOrSums::Sums(eval_claims);
 
-		let gruen34 = Gruen34::new(eval_point);
+		let gruen32 = Gruen32::new(eval_point);
 
 		Ok(Self {
 			multilinears,
 			last_coeffs_or_sums,
-			gruen34,
+			gruen32,
 		})
 	}
 }
@@ -60,7 +60,7 @@ where
 	P: PackedField<Scalar = F>,
 {
 	fn n_vars(&self) -> usize {
-		self.gruen34.n_vars_remaining()
+		self.gruen32.n_vars_remaining()
 	}
 
 	fn execute(&mut self) -> Result<Vec<RoundCoeffs<F>>, Error> {
@@ -83,7 +83,7 @@ where
 			.try_fold(
 				|| vec![RoundEvals2::default(); sums.len()],
 				|mut packed_prime_evals: Vec<RoundEvals2<P>>, chunk_index| -> Result<_, Error> {
-					let eq_chunk = self.gruen34.eq_expansion().chunk(chunk_vars, chunk_index)?;
+					let eq_chunk = self.gruen32.eq_expansion().chunk(chunk_vars, chunk_index)?;
 
 					for (round_evals, (evals_a, evals_b)) in
 						izip!(&mut packed_prime_evals, self.multilinears.iter().tuples())
@@ -119,7 +119,7 @@ where
 				|lhs, rhs| Ok(izip!(lhs, rhs).map(|(l, r)| l + &r).collect()),
 			)?;
 
-		let alpha = self.gruen34.next_coordinate();
+		let alpha = self.gruen32.next_coordinate();
 		let round_coeffs = izip!(sums, packed_prime_evals)
 			.map(|(&sum, packed_evals)| {
 				let round_evals = packed_evals.sum_scalars(self.n_vars());
@@ -147,7 +147,7 @@ where
 			.par_iter_mut()
 			.try_for_each(|multilinear| fold_highest_var_inplace(multilinear, challenge))?;
 
-		self.gruen34.fold(challenge)?;
+		self.gruen32.fold(challenge)?;
 		self.last_coeffs_or_sums = RoundCoeffsOrSums::Sums(sums);
 		Ok(())
 	}
@@ -178,7 +178,7 @@ where
 	P: PackedField<Scalar = F>,
 {
 	fn eval_point(&self) -> &[F] {
-		self.gruen34.eval_point()
+		self.gruen32.eval_point()
 	}
 }
 

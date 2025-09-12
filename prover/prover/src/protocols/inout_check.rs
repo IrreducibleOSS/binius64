@@ -11,7 +11,7 @@ use binius_verifier::protocols::sumcheck::RoundCoeffs;
 use crate::protocols::sumcheck::{
 	Error,
 	common::{MleCheckProver, SumcheckProver},
-	gruen34::Gruen34,
+	gruen32::Gruen32,
 };
 
 /// An MLE-check prover instance for the argument of public input/witness consistency.
@@ -21,7 +21,7 @@ pub struct InOutCheckProver<P: PackedField> {
 	witness: FieldBuffer<P>,
 	inout: FieldBuffer<P>,
 	last_coeffs_or_eval: RoundCoeffsOrEval<P::Scalar>,
-	gruen34: Gruen34<P>,
+	gruen32: Gruen32<P>,
 	zero_padded_eval_point: Vec<P::Scalar>,
 }
 
@@ -65,7 +65,7 @@ impl<F: Field, P: PackedField<Scalar = F>> InOutCheckProver<P> {
 			witness,
 			inout,
 			last_coeffs_or_eval: RoundCoeffsOrEval::Eval(F::ZERO),
-			gruen34: Gruen34::new(eval_point),
+			gruen32: Gruen32::new(eval_point),
 			zero_padded_eval_point,
 		})
 	}
@@ -107,12 +107,12 @@ impl<F: Field, P: PackedField<Scalar = F>> InOutCheckProver<P> {
 			.chunk(n_vars, 1 << (self.witness.log_len() - n_vars - 1))
 			.expect("pre-condition: witness.log_len() > inout.log_len()");
 
-		// The Gruen34 structure doesn't fully expand the eq tensor because it omits the last
+		// The Gruen32 structure doesn't fully expand the eq tensor because it omits the last
 		// variable. In the early rounds, we do want an evaluation of the witness - inout values at
 		// the full evaluation point. We work around this by computing the evaluation on the lower
 		// and upper halves of the witness and inout vector separately, then extrapolating with the
 		// last coordinate of the evaluation point.
-		let eq_expansion = self.gruen34.eq_expansion();
+		let eq_expansion = self.gruen32.eq_expansion();
 		let (witness_0, witness_1) = truncated_witness.split_half().expect(
 			"pre-condition: witness.log_len() > inout.log_len(); thus, witness.log_len() > 0",
 		);
@@ -133,7 +133,7 @@ impl<F: Field, P: PackedField<Scalar = F>> InOutCheckProver<P> {
 			eq_expansion.as_ref(),
 		);
 
-		let alpha = self.gruen34.next_coordinate();
+		let alpha = self.gruen32.next_coordinate();
 		extrapolate_line_packed(lo, hi, alpha)
 	}
 
@@ -151,7 +151,7 @@ impl<F: Field, P: PackedField<Scalar = F>> InOutCheckProver<P> {
 	fn compute_round_eval_later_rounds(&self) -> F {
 		let n_vars = self.inout.log_len();
 
-		let eq_expansion = self.gruen34.eq_expansion();
+		let eq_expansion = self.gruen32.eq_expansion();
 		let (_, witness_1) = self
 			.witness
 			.split_half()
@@ -201,7 +201,7 @@ where
 			// R(1) = y_1
 			// R(α) = last_eval
 			// ==> y_0 = (sum - y_1 * alpha) / (1 - alpha)
-			let alpha = self.gruen34.next_coordinate();
+			let alpha = self.gruen32.next_coordinate();
 			let y_0 = (*last_eval - y_1 * alpha) * (F::ONE - alpha).invert_or_zero();
 
 			(y_0, y_1)
@@ -229,10 +229,10 @@ where
 		// Always fold the witness
 		fold_highest_var_inplace(&mut self.witness, challenge)?;
 
-		// Fold inout and gruen34 in the last m rounds
+		// Fold inout and gruen32 in the last m rounds
 		if n_vars == self.inout.log_len() {
 			fold_highest_var_inplace(&mut self.inout, challenge)?;
-			self.gruen34.fold(challenge)?;
+			self.gruen32.fold(challenge)?;
 		}
 
 		self.last_coeffs_or_eval = RoundCoeffsOrEval::Eval(eval);

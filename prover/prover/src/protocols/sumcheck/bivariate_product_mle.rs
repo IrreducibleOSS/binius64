@@ -5,7 +5,7 @@ use binius_math::{FieldBuffer, multilinear::fold::fold_highest_var_inplace};
 use binius_utils::rayon::prelude::*;
 use binius_verifier::protocols::sumcheck::RoundCoeffs;
 
-use super::{common::SumcheckProver, error::Error, gruen34::Gruen34, round_evals::RoundEvals2};
+use super::{common::SumcheckProver, error::Error, gruen32::Gruen32, round_evals::RoundEvals2};
 use crate::protocols::sumcheck::common::MleCheckProver;
 
 /// A [`SumcheckProver`] implementation that reduces an evaluation claim on a multilinear extension
@@ -44,8 +44,8 @@ use crate::protocols::sumcheck::common::MleCheckProver;
 ///   interpolated
 ///
 /// After computing the round polynomial for $P'(x)$ in monomial form, one can simply multiply by
-/// (2) and (1) in polynomial form. For more details, see [`Gruen34`]('gruen34::Gruen34') struct and
-/// [Gruen24] Section 3.4.
+/// (2) and (1) in polynomial form. For more details, see [`Gruen32`]('gruen32::Gruen32') struct and
+/// [Gruen24] Section 3.2.
 ///
 /// Note 1: as evident from the definition, this prover binds variables in high-to-low index order.
 ///
@@ -60,7 +60,7 @@ use crate::protocols::sumcheck::common::MleCheckProver;
 pub struct BivariateProductMlecheckProver<P: PackedField> {
 	multilinears: [FieldBuffer<P>; 2],
 	last_coeffs_or_eval: RoundCoeffsOrEval<P::Scalar>,
-	gruen34: Gruen34<P>,
+	gruen32: Gruen32<P>,
 }
 
 impl<F: Field, P: PackedField<Scalar = F>> BivariateProductMlecheckProver<P> {
@@ -81,12 +81,12 @@ impl<F: Field, P: PackedField<Scalar = F>> BivariateProductMlecheckProver<P> {
 
 		let last_coeffs_or_sum = RoundCoeffsOrEval::Eval(eval_claim);
 
-		let gruen34 = Gruen34::new(eval_point);
+		let gruen32 = Gruen32::new(eval_point);
 
 		Ok(Self {
 			multilinears,
 			last_coeffs_or_eval: last_coeffs_or_sum,
-			gruen34,
+			gruen32,
 		})
 	}
 }
@@ -97,7 +97,7 @@ where
 	P: PackedField<Scalar = F>,
 {
 	fn n_vars(&self) -> usize {
-		self.gruen34.n_vars_remaining()
+		self.gruen32.n_vars_remaining()
 	}
 
 	fn execute(&mut self) -> Result<Vec<RoundCoeffs<F>>, Error> {
@@ -113,7 +113,7 @@ where
 
 		// For P' the eq expansion does not depend on the currently specialized variable and
 		// thus doesn't need to be interpolated.
-		let eq_expansion = self.gruen34.eq_expansion();
+		let eq_expansion = self.gruen32.eq_expansion();
 
 		let (evals_a_0, evals_a_1) = self.multilinears[0].split_half()?;
 		let (evals_b_0, evals_b_1) = self.multilinears[1].split_half()?;
@@ -143,7 +143,7 @@ where
 			.reduce(RoundEvals2::default, |lhs, rhs| lhs + &rhs)
 			.sum_scalars(n_vars_remaining);
 
-		let alpha = self.gruen34.next_coordinate();
+		let alpha = self.gruen32.next_coordinate();
 		let round_coeffs = round_evals.interpolate_eq(*last_eval, alpha);
 
 		self.last_coeffs_or_eval = RoundCoeffsOrEval::Coeffs(round_coeffs.clone());
@@ -163,7 +163,7 @@ where
 			.par_iter_mut()
 			.try_for_each(|multilinear| fold_highest_var_inplace(multilinear, challenge))?;
 
-		self.gruen34.fold(challenge)?;
+		self.gruen32.fold(challenge)?;
 		self.last_coeffs_or_eval = RoundCoeffsOrEval::Eval(sum);
 		Ok(())
 	}
@@ -194,7 +194,7 @@ where
 	P: PackedField<Scalar = F>,
 {
 	fn eval_point(&self) -> &[F] {
-		&self.gruen34.eval_point()[..self.n_vars()]
+		&self.gruen32.eval_point()[..self.n_vars()]
 	}
 }
 

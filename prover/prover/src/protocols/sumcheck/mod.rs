@@ -6,7 +6,7 @@ pub mod bivariate_product_mle;
 pub mod bivariate_product_multi_mle;
 pub mod common;
 mod error;
-pub mod gruen34;
+pub mod gruen32;
 mod mle_to_sumcheck;
 mod prove;
 pub mod quadratic_mle;

@@ -5,7 +5,7 @@ use binius_math::{FieldBuffer, multilinear::fold::fold_highest_var_inplace};
 use binius_utils::rayon::prelude::*;
 use binius_verifier::protocols::sumcheck::RoundCoeffs;
 
-use super::{common::SumcheckProver, error::Error, gruen34::Gruen34, round_evals::RoundEvals2};
+use super::{common::SumcheckProver, error::Error, gruen32::Gruen32, round_evals::RoundEvals2};
 use crate::protocols::sumcheck::common::MleCheckProver;
 
 /// MLE-check prover for polynomials defined as quadratic compositions of N multilinear polynomials.
@@ -24,7 +24,7 @@ pub struct QuadraticMleCheckProver<P: PackedField, Composition, InfinityComposit
 	composition: Composition,
 	infinity_composition: InfinityComposition,
 	last_coeffs_or_eval: RoundCoeffsOrEval<P::Scalar>,
-	gruen34: Gruen34<P>,
+	gruen32: Gruen32<P>,
 }
 
 impl<F, P, Composition, InfinityComposition, const N: usize>
@@ -85,14 +85,14 @@ where
 		}
 
 		let last_coeffs_or_eval = RoundCoeffsOrEval::Eval(eval_claim);
-		let gruen34 = Gruen34::new(eval_point);
+		let gruen32 = Gruen32::new(eval_point);
 
 		Ok(Self {
 			multilinears,
 			composition,
 			infinity_composition,
 			last_coeffs_or_eval,
-			gruen34,
+			gruen32,
 		})
 	}
 }
@@ -106,7 +106,7 @@ where
 	InfinityComposition: Fn([P; N]) -> P + Sync,
 {
 	fn n_vars(&self) -> usize {
-		self.gruen34.n_vars_remaining()
+		self.gruen32.n_vars_remaining()
 	}
 
 	fn execute(&mut self) -> Result<Vec<RoundCoeffs<F>>, Error> {
@@ -124,7 +124,7 @@ where
 		let n_vars_remaining = self.n_vars();
 		assert!(n_vars_remaining > 0);
 
-		let eq_expansion = self.gruen34.eq_expansion();
+		let eq_expansion = self.gruen32.eq_expansion();
 		assert_eq!(eq_expansion.log_len(), n_vars_remaining - 1);
 
 		// Split each multilinear in half
@@ -164,7 +164,7 @@ where
 			.reduce(RoundEvals2::default, |lhs, rhs| lhs + &rhs)
 			.sum_scalars(n_vars_remaining - 1);
 
-		let alpha = self.gruen34.next_coordinate();
+		let alpha = self.gruen32.next_coordinate();
 		let round_coeffs = round_evals.interpolate_eq(*last_eval, alpha);
 
 		self.last_coeffs_or_eval = RoundCoeffsOrEval::Coeffs(round_coeffs.clone());
@@ -190,7 +190,7 @@ where
 			fold_highest_var_inplace(multilinear, challenge)?;
 		}
 
-		self.gruen34.fold(challenge)?;
+		self.gruen32.fold(challenge)?;
 		self.last_coeffs_or_eval = RoundCoeffsOrEval::Eval(eval);
 		Ok(())
 	}
@@ -224,7 +224,7 @@ where
 	InfinityComposition: Fn([P; N]) -> P + Sync,
 {
 	fn eval_point(&self) -> &[F] {
-		&self.gruen34.eval_point()[..self.n_vars()]
+		&self.gruen32.eval_point()[..self.n_vars()]
 	}
 }
 
