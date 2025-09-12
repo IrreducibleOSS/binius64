@@ -51,10 +51,11 @@ pub enum VerificationError {
 pub struct FRIVerifier<'a, F, H: OutputSizeUser, C, DC> {
 	params: &'a FRIParams<F, H, C>,
 	domain_context: DC,
+	initial_verifiers: Vec<MerkleTreeVerifier<F, H, C>>,
 	fold_challenges: Vec<Vec<F>>,
-	merkle_tree_verifiers: Vec<MerkleTreeVerifier<F, H, C>>,
+	fold_verifiers: Vec<MerkleTreeVerifier<F, H, C>>,
 	terminal_codeword: Option<Vec<F>>,
-	rounds_done: usize,
+	fold_rounds_done: usize,
 }
 
 impl<'a, F, H, C, DC> FRIVerifier<'a, F, H, C, DC>
@@ -73,10 +74,11 @@ where
 		Self {
 			params,
 			domain_context,
+			initial_verifiers: Vec::new(),
 			fold_challenges: vec![Vec::new()],
-			merkle_tree_verifiers: Vec::new(),
+			fold_verifiers: Vec::new(),
 			terminal_codeword: None,
-			rounds_done: 0,
+			fold_rounds_done: 0,
 		}
 	}
 
@@ -85,7 +87,7 @@ where
 	/// Arguments:
 	/// - `transcript`: The [`TranscriptReader`] used for reading the commitment.
 	pub fn read_initial_commitment(&mut self, transcript: &mut TranscriptReader<impl Buf>) {
-		assert_eq!(self.rounds_done, 0);
+		assert_eq!(self.fold_rounds_done, 0);
 
 		let (log_len, log_batch_size) = match *self.params.round_type(0) {
 			RoundType::InitialCommitment {
@@ -102,8 +104,7 @@ where
 			transcript,
 		);
 
-		self.merkle_tree_verifiers.push(initial_verifier);
-		self.rounds_done += 1;
+		self.initial_verifiers.push(initial_verifier);
 	}
 
 	/// The number of times [`Self::verify_fold_round`] must be called.
@@ -125,12 +126,15 @@ where
 	///   is one to observe).
 	pub fn verify_fold_round(
 		&mut self,
-		challenge: F,
+		fold_challenge: F,
 		transcript: &mut TranscriptReader<impl Buf>,
 	) -> Result<(), VerificationError> {
-		self.fold_challenges.last_mut().unwrap().push(challenge);
+		self.fold_challenges
+			.last_mut()
+			.unwrap()
+			.push(fold_challenge);
 
-		match *self.params.round_type(self.rounds_done) {
+		match *self.params.round_type(self.fold_rounds_done + 1) {
 			RoundType::Vacant => {}
 			RoundType::Commitment {
 				log_len,
@@ -144,7 +148,7 @@ where
 					self.params.commit_layer(),
 					transcript,
 				);
-				self.merkle_tree_verifiers.push(verifier);
+				self.fold_verifiers.push(verifier);
 			}
 			RoundType::TerminalCodeword { log_len } => {
 				self.fold_challenges.push(Vec::new());
@@ -154,7 +158,7 @@ where
 			_ => panic!("round type mismatch"),
 		}
 
-		self.rounds_done += 1;
+		self.fold_rounds_done += 1;
 
 		Ok(())
 	}
@@ -177,12 +181,13 @@ where
 		&mut self,
 		transcript: &mut VerifierTranscript<impl Challenger>,
 	) -> Result<F, VerificationError> {
-		assert_eq!(self.rounds_done, self.params.num_rounds());
+		assert_eq!(self.fold_rounds_done, self.num_fold_rounds());
 
 		let (fold_challenges_final, fold_challenges_early) =
 			self.fold_challenges.split_last().unwrap();
 
-		let log_chunks = self.merkle_tree_verifiers[0].log_leaf_batches();
+		assert_eq!(self.initial_verifiers.len(), 1);
+		let log_chunks = self.initial_verifiers[0].log_leaf_batches();
 
 		// verify the queries up to the terminal codeword
 		let terminal_codeword = self.terminal_codeword.as_ref().unwrap();
@@ -191,17 +196,16 @@ where
 			let mut index = transcript.sample_bits(log_chunks) as usize;
 
 			// verify openings of merkle leaves, and check that they fold together correctly
-			let mut merkle_tree_verifiers = self.merkle_tree_verifiers.iter();
 			let mut fold_challenges = fold_challenges_early.iter();
-			let mut leaf_batch = merkle_tree_verifiers
-				.next()
-				.unwrap()
+			assert_eq!(self.initial_verifiers.len(), 1);
+			let mut leaf_batch = self.initial_verifiers[0]
 				.verify_opening(index, &mut transcript.decommitment())
 				.unwrap();
 			let mut folded_value =
 				fold_chunk_without_ntt_in_place(&mut leaf_batch, fold_challenges.next().unwrap());
-			for i in 1..self.params.num_rounds() {
-				match *self.params.round_type(i) {
+			let mut fold_verifiers = self.fold_verifiers.iter();
+			for i in 0..self.num_fold_rounds() {
+				match *self.params.round_type(i + 1) {
 					RoundType::Vacant => {}
 					RoundType::Commitment {
 						log_len,
@@ -209,7 +213,7 @@ where
 					} => {
 						let offset = index & ((1 << log_batch_size) - 1);
 						index >>= log_batch_size;
-						leaf_batch = merkle_tree_verifiers
+						leaf_batch = fold_verifiers
 							.next()
 							.unwrap()
 							.verify_opening(index, &mut transcript.decommitment())
@@ -233,7 +237,7 @@ where
 					_ => panic!("round type mismatch"),
 				}
 			}
-			assert!(merkle_tree_verifiers.next().is_none());
+			assert!(fold_verifiers.next().is_none());
 			assert!(fold_challenges.next().is_none());
 		}
 
