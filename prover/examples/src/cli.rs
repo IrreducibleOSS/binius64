@@ -2,9 +2,9 @@
 use std::{fs, path::Path};
 
 use anyhow::Result;
-use binius_core::constraint_system::{ValueVec, ValuesData};
+use binius_core::constraint_system::{ConstraintSystem, ValueVec, ValuesData};
 use binius_frontend::{CircuitBuilder, CircuitStat};
-use binius_utils::serialization::SerializeBytes;
+use binius_utils::serialization::{DeserializeBytes, SerializeBytes};
 use clap::{Arg, Args, Command, FromArgMatches, Subcommand};
 
 use crate::{ExampleCircuit, prove_verify, setup};
@@ -23,6 +23,14 @@ fn write_serialized<T: SerializeBytes>(value: &T, path: &str) -> Result<()> {
 	fs::write(path, &buf)
 		.map_err(|e| anyhow::anyhow!("Failed to write serialized data to '{}': {}", path, e))?;
 	Ok(())
+}
+
+/// Deserialize a value implementing `DeserializeBytes` from the given path.
+fn read_deserialized<T: DeserializeBytes>(path: &str) -> Result<T> {
+	let buf =
+		fs::read(path).map_err(|e| anyhow::anyhow!("Failed to read file '{}': {}", path, e))?;
+	T::deserialize(buf.as_slice())
+		.map_err(|e| anyhow::anyhow!("Failed to deserialize data from '{}': {}", path, e))
 }
 
 /// A CLI builder for circuit examples that handles all command-line parsing and execution.
@@ -116,6 +124,28 @@ enum Commands {
 		#[command(flatten)]
 		instance: CommandArgs,
 	},
+
+	/// Load constraint system and witness data from files and prove
+	LoadProve {
+		/// Input path for the constraint system binary
+		#[arg(long = "cs-path", required = true)]
+		cs_path: String,
+
+		/// Input path for the public witness binary
+		#[arg(long = "pub-witness-path", required = true)]
+		pub_witness_path: String,
+
+		/// Input path for the non-public data (witness + internal) binary
+		#[arg(long = "non-pub-data-path", required = true)]
+		non_pub_data_path: String,
+
+		/// Log of the inverse rate for the proof system
+		#[arg(
+			short = 'l', long, default_value_t = 1,
+			value_parser = clap::value_parser!(u32).range(1..)
+		)]
+		log_inv_rate: u32,
+	},
 }
 
 /// Wrapper for dynamic command arguments
@@ -145,6 +175,7 @@ where
 		let check_snapshot_cmd = Self::build_check_snapshot_subcommand();
 		let bless_snapshot_cmd = Self::build_bless_snapshot_subcommand();
 		let save_cmd = Self::build_save_subcommand();
+		let load_prove_cmd = Self::build_load_prove_subcommand();
 
 		let command = command
 			.subcommand(prove_cmd)
@@ -152,7 +183,8 @@ where
 			.subcommand(composition_cmd)
 			.subcommand(check_snapshot_cmd)
 			.subcommand(bless_snapshot_cmd)
-			.subcommand(save_cmd);
+			.subcommand(save_cmd)
+			.subcommand(load_prove_cmd);
 
 		// Also add top-level args for default prove behavior
 		let command = command.arg(
@@ -243,6 +275,41 @@ where
 		cmd
 	}
 
+	fn build_load_prove_subcommand() -> Command {
+		Command::new("load-prove")
+			.about("Load constraint system and witness data from files and generate/verify proof")
+			.arg(
+				Arg::new("cs_path")
+					.long("cs-path")
+					.value_name("PATH")
+					.help("Input path for the constraint system binary")
+					.required(true),
+			)
+			.arg(
+				Arg::new("pub_witness_path")
+					.long("pub-witness-path")
+					.value_name("PATH")
+					.help("Input path for the public witness binary")
+					.required(true),
+			)
+			.arg(
+				Arg::new("non_pub_data_path")
+					.long("non-pub-data-path")
+					.value_name("PATH")
+					.help("Input path for the non-public data (witness + internal) binary")
+					.required(true),
+			)
+			.arg(
+				Arg::new("log_inv_rate")
+					.short('l')
+					.long("log-inv-rate")
+					.value_name("RATE")
+					.help("Log of the inverse rate for the proof system")
+					.default_value("1")
+					.value_parser(clap::value_parser!(u32).range(1..)),
+			)
+	}
+
 	/// Set the about/description text for the command.
 	///
 	/// This appears in the help output.
@@ -285,6 +352,7 @@ where
 				Self::run_bless_snapshot_impl(sub_matches.clone(), circuit_name)
 			}
 			Some(("save", sub_matches)) => Self::run_save(sub_matches.clone()),
+			Some(("load-prove", sub_matches)) => Self::run_load_prove(sub_matches.clone()),
 			Some((cmd, _)) => anyhow::bail!("Unknown subcommand: {}", cmd),
 			None => {
 				// No subcommand - default to prove behavior for backward compatibility
@@ -436,6 +504,55 @@ where
 			write_serialized(&data, path)?;
 			tracing::info!("Non-public witness saved to '{}'", path);
 		}
+
+		Ok(())
+	}
+
+	fn run_load_prove(matches: clap::ArgMatches) -> Result<()> {
+		// Extract file paths and parameters
+		let cs_path = matches
+			.get_one::<String>("cs_path")
+			.expect("cs_path is required");
+		let pub_witness_path = matches
+			.get_one::<String>("pub_witness_path")
+			.expect("pub_witness_path is required");
+		let non_pub_data_path = matches
+			.get_one::<String>("non_pub_data_path")
+			.expect("non_pub_data_path is required");
+		let log_inv_rate = *matches
+			.get_one::<u32>("log_inv_rate")
+			.expect("has default value");
+
+		// Load constraint system
+		let cs_load_scope = tracing::info_span!("Loading constraint system").entered();
+		let cs: ConstraintSystem = read_deserialized(cs_path)?;
+		tracing::info!("Constraint system loaded from '{}'", cs_path);
+		drop(cs_load_scope);
+
+		// Get the layout from the constraint system
+		let layout = cs.value_vec_layout.clone();
+
+		// Set up prover and verifier
+		let (verifier, prover) = setup(cs, log_inv_rate as usize)?;
+
+		// Load witness data
+		let witness_load_scope = tracing::info_span!("Loading witness data").entered();
+		let pub_witness_data: ValuesData = read_deserialized(pub_witness_path)?;
+		tracing::info!("Public witness loaded from '{}'", pub_witness_path);
+
+		let non_pub_data: ValuesData = read_deserialized(non_pub_data_path)?;
+		tracing::info!("Non-public data loaded from '{}'", non_pub_data_path);
+
+		// Reconstruct the full witness using the layout
+		let witness = ValueVec::new_from_data(
+			layout,
+			pub_witness_data.into_owned(),
+			non_pub_data.into_owned(),
+		)?;
+		drop(witness_load_scope);
+
+		// Prove and verify
+		prove_verify(&verifier, &prover, witness)?;
 
 		Ok(())
 	}
