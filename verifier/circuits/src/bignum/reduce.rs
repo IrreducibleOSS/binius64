@@ -5,7 +5,7 @@ use binius_frontend::{CircuitBuilder, Wire};
 use super::{
 	addsub::{add, sub},
 	biguint::{BigUint, assert_eq, assert_eq_cond},
-	mul::mul,
+	mul::{optimal_mul, textbook_mul},
 };
 
 /// Modular reduction verification for BigUint.
@@ -41,7 +41,7 @@ impl ModReduce {
 	) -> Self {
 		let zero = builder.add_constant(Word::ZERO);
 
-		let product = mul(builder, &quotient, &modulus);
+		let product = optimal_mul(builder, &quotient, &modulus);
 
 		let remainder_padded = remainder.pad_limbs_to(product.limbs.len(), zero);
 		let reconstructed = add(builder, &product, &remainder_padded);
@@ -130,7 +130,7 @@ impl PseudoMersenneModReduce {
 			.pad_limbs_to(n_lo_limbs, zero)
 			.concat_limbs(&rhs_hi);
 
-		let quotient_modulus_subtrahend = mul(builder, quotient, modulus_subtrahend);
+		let quotient_modulus_subtrahend = textbook_mul(builder, quotient, modulus_subtrahend);
 		let lhs_rhs_len = [
 			rhs.limbs.len(),
 			quotient_modulus_subtrahend.limbs.len() + 1,

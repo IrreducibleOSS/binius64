@@ -55,14 +55,14 @@ fn test_add_overflow_detection_via_final_carry() {
 }
 
 #[test]
-fn test_mul_single_case() {
+fn test_textbook_mul_single_case() {
 	let builder = CircuitBuilder::new();
 
 	// Create 2048-bit numbers for inputs (32 limbs)
 	let a = BigUint::new_witness(&builder, 32);
 	let b = BigUint::new_witness(&builder, 32);
 
-	let mul = mul(&builder, &a, &b);
+	let mul = textbook_mul(&builder, &a, &b);
 
 	let cs = builder.build();
 	let mut w = cs.new_witness_filler();
@@ -251,7 +251,7 @@ proptest! {
 	}
 
 	#[test]
-	fn test_mul_with_values(
+	fn test_textbook_mul_with_values(
 		a_limbs in prop::collection::vec(any::<u64>(), 1..10),
 		b_limbs in prop::collection::vec(any::<u64>(), 1..10)
 	) {
@@ -260,7 +260,7 @@ proptest! {
 		let a = BigUint::new_inout(&builder, a_limbs.len());
 		let b = BigUint::new_inout(&builder, b_limbs.len());
 
-		let result = mul(&builder, &a, &b);
+		let result = textbook_mul(&builder, &a, &b);
 
 		let cs = builder.build();
 		let mut w = cs.new_witness_filler();
@@ -289,11 +289,11 @@ proptest! {
 	}
 
 	#[test]
-	fn test_square_with_values(a_limbs in prop::collection::vec(any::<u64>(), 1..10)) {
+	fn test_textbook_square_with_values(a_limbs in prop::collection::vec(any::<u64>(), 1..10)) {
 		let builder = CircuitBuilder::new();
 
 		let a = BigUint::new_witness(&builder, a_limbs.len());
-		let result = square(&builder, &a);
+		let result = textbook_square(&builder, &a);
 
 		let cs = builder.build();
 
@@ -355,13 +355,13 @@ proptest! {
 	}
 
 	#[test]
-	fn prop_square_vs_mul_equivalence(vals in prop::collection::vec(any::<u64>(), 1..=8)) {
+	fn prop_textbook_square_vs_mul_equivalence(vals in prop::collection::vec(any::<u64>(), 1..=8)) {
 		let builder = CircuitBuilder::new();
 
 		let a = BigUint::new_witness(&builder, vals.len());
 
-		let square_result = square(&builder, &a);
-		let mul_result = mul(&builder, &a, &a);
+		let square_result = textbook_square(&builder, &a);
+		let mul_result = textbook_mul(&builder, &a, &a);
 
 		let cs = builder.build();
 		let mut w = cs.new_witness_filler();
@@ -444,11 +444,11 @@ proptest! {
 		let a = BigUint::new_witness(&builder, a_vals.len());
 		let b = BigUint::new_witness(&builder, b_vals.len());
 
-		let textbook_product = mul(&builder, &a, &b);
+		let textbook_product = textbook_mul(&builder, &a, &b);
 		let karatsuba_product = karatsuba_mul(&builder, &a, &b);
 		let equal = biguint_eq(&builder, &textbook_product, &karatsuba_product);
 
-		builder.assert_true("karatsuba_mul() conforms to mul()", equal);
+		builder.assert_true("karatsuba_mul() conforms to textbook_mul()", equal);
 
 		let cs = builder.build();
 		let mut w = cs.new_witness_filler();

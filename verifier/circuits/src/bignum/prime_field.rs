@@ -2,7 +2,9 @@
 use binius_core::{consts::WORD_SIZE_BITS, word::Word};
 use binius_frontend::{CircuitBuilder, Wire, util::num_biguint_from_u64_limbs};
 
-use super::{BigUint, PseudoMersenneModReduce, add, biguint_lt, mul, square, sub};
+use super::{
+	BigUint, PseudoMersenneModReduce, add, biguint_lt, sub, textbook_mul, textbook_square,
+};
 
 /// A struct that implements prime field arithmetic over pseudo-Mersenne modulus.
 ///
@@ -88,7 +90,7 @@ impl PseudoMersennePrimeField {
 	/// Equivalent formula: `(fe ** 2) % modulus`
 	pub fn square(&self, b: &CircuitBuilder, fe: &BigUint) -> BigUint {
 		assert!(fe.limbs.len() == self.limbs_len());
-		self.reduce_product(b, square(b, fe))
+		self.reduce_product(b, textbook_square(b, fe))
 	}
 
 	/// Field multiplication.
@@ -97,7 +99,7 @@ impl PseudoMersennePrimeField {
 	/// Note: Both fe1 and fe2 may be greater or equal to modulus.
 	pub fn mul(&self, b: &CircuitBuilder, fe1: &BigUint, fe2: &BigUint) -> BigUint {
 		assert!(fe1.limbs.len() == self.limbs_len() && fe2.limbs.len() == self.limbs_len());
-		self.reduce_product(b, mul(b, fe1, fe2))
+		self.reduce_product(b, textbook_mul(b, fe1, fe2))
 	}
 
 	fn reduce_product(&self, b: &CircuitBuilder, product: BigUint) -> BigUint {
@@ -141,7 +143,7 @@ impl PseudoMersennePrimeField {
 		let one = BigUint::new_constant(b, &num_bigint::BigUint::from(1usize))
 			.pad_limbs_to(self.limbs_len(), zero);
 
-		let product = mul(b, &inverse, fe);
+		let product = textbook_mul(b, &inverse, fe);
 
 		b.assert_true("inverse < modulus", biguint_lt(b, &inverse, &self.modulus));
 
