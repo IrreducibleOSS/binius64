@@ -3,7 +3,9 @@ blake2s circuit
 Gates & Instructions
 ├─ Number of gates: 2,318
 ├─ Number of evaluation instructions: 2,318
-└─ Distinct shifted value indices: 6,155
+├─ Distinct value indices: 6,155
+│  ├─ Distinct shifted value indices: 3,544
+│  └─ Distinct unshifted value indices: 2,611
 
 Constraints
 ├─ AND constraints: 2,584 used (63.1% of 2^12)

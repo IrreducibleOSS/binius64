@@ -3,7 +3,9 @@ sha256 circuit
 Gates & Instructions
 ├─ Number of gates: 74,954
 ├─ Number of evaluation instructions: 76,589
-└─ Distinct shifted value indices: 131,539
+├─ Distinct value indices: 131,539
+│  ├─ Distinct shifted value indices: 62,563
+│  └─ Distinct unshifted value indices: 68,976
 
 Constraints
 ├─ AND constraints: 68,881 used (52.6% of 2^17)

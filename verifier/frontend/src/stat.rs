@@ -24,13 +24,16 @@ pub struct CircuitStat {
 	///
 	/// Affects performance of intmul reduction phase.
 	pub n_mul_constraints: usize,
-	/// Number of distinct shifted value indices in the circuit.
+	/// Number of distinct value indices with non-zero shift in the circuit.
 	///
-	/// A single use of any value is counted here. Additionally, every use of a value with a
-	/// distinct shift type and amount is also counted here.
+	/// Every use of a value with a distinct type and amount is counted here.
 	///
 	/// Affects performance of shift reduction phase.
 	pub distinct_shifted_value_indices: usize,
+	/// Number of distinct value indices with zero shift in the circuit.
+	///
+	/// Affects performance of shift reduction phase.
+	pub distinct_unshifted_value_indices: usize,
 	/// Length of the value vector.
 	///
 	/// Affects performance of committing.
@@ -74,7 +77,8 @@ impl CircuitStat {
 		// Store original counts before padding
 		let n_and_constraints = cs.n_and_constraints();
 		let n_mul_constraints = cs.n_mul_constraints();
-		let distinct_indices = distinct_shifted_value_indices(&cs);
+		let (distinct_shifted_value_indices, distinct_unshifted_value_indices) =
+			traverse_constraint_system(&cs);
 
 		// validate_and_prepare will pad constraints to power of 2
 		cs.validate_and_prepare()
@@ -97,7 +101,8 @@ impl CircuitStat {
 			n_and_constraints,
 			n_mul_constraints,
 			value_vec_len: total_allocated,
-			distinct_shifted_value_indices: distinct_indices,
+			distinct_shifted_value_indices,
+			distinct_unshifted_value_indices,
 			n_const,
 			n_inout,
 			n_witness: cs.value_vec_layout.n_witness,
@@ -158,8 +163,18 @@ impl fmt::Display for CircuitStat {
 		writeln!(f, "├─ Number of evaluation instructions: {}", fmt_num(self.n_eval_insn))?;
 		writeln!(
 			f,
-			"└─ Distinct shifted value indices: {}",
+			"├─ Distinct value indices: {}",
+			fmt_num(self.distinct_shifted_value_indices + self.distinct_unshifted_value_indices)
+		)?;
+		writeln!(
+			f,
+			"│  ├─ Distinct shifted value indices: {}",
 			fmt_num(self.distinct_shifted_value_indices)
+		)?;
+		writeln!(
+			f,
+			"│  └─ Distinct unshifted value indices: {}",
+			fmt_num(self.distinct_unshifted_value_indices)
 		)?;
 		writeln!(f)?;
 
@@ -267,25 +282,39 @@ impl fmt::Display for CircuitStat {
 	}
 }
 
-fn distinct_shifted_value_indices(cs: &ConstraintSystem) -> usize {
+/// Traverses the constraint system and returns the number of distinct value indices that
+/// are shifted and unshifted, respectively.
+fn traverse_constraint_system(cs: &ConstraintSystem) -> (usize, usize) {
 	use std::collections::HashSet;
-	let mut indices = HashSet::new();
+	let mut cx = Cx {
+		shifted_terms: HashSet::new(),
+		unshifted_terms: HashSet::new(),
+	};
 	for and in &cs.and_constraints {
-		visit_operand(&and.a, &mut indices);
-		visit_operand(&and.b, &mut indices);
-		visit_operand(&and.c, &mut indices);
+		visit_operand(&and.a, &mut cx);
+		visit_operand(&and.b, &mut cx);
+		visit_operand(&and.c, &mut cx);
 	}
 	for mul in &cs.mul_constraints {
-		visit_operand(&mul.a, &mut indices);
-		visit_operand(&mul.b, &mut indices);
-		visit_operand(&mul.lo, &mut indices);
-		visit_operand(&mul.hi, &mut indices);
+		visit_operand(&mul.a, &mut cx);
+		visit_operand(&mul.b, &mut cx);
+		visit_operand(&mul.lo, &mut cx);
+		visit_operand(&mul.hi, &mut cx);
 	}
-	return indices.len();
+	return (cx.shifted_terms.len(), cx.unshifted_terms.len());
 
-	fn visit_operand(operand: &Operand, indices: &mut HashSet<ShiftedValueIndex>) {
+	struct Cx {
+		shifted_terms: HashSet<ShiftedValueIndex>,
+		unshifted_terms: HashSet<ShiftedValueIndex>,
+	}
+
+	fn visit_operand(operand: &Operand, cx: &mut Cx) {
 		for term in operand {
-			indices.insert(*term);
+			if term.amount == 0 {
+				cx.unshifted_terms.insert(*term);
+			} else {
+				cx.shifted_terms.insert(*term);
+			}
 		}
 	}
 }

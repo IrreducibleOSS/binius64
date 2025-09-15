@@ -3,7 +3,9 @@ hashsign circuit
 Gates & Instructions
 ├─ Number of gates: 2,385,261
 ├─ Number of evaluation instructions: 2,886,906
-└─ Distinct shifted value indices: 3,322,922
+├─ Distinct value indices: 3,322,922
+│  ├─ Distinct shifted value indices: 1,726,928
+│  └─ Distinct unshifted value indices: 1,595,994
 
 Constraints
 ├─ AND constraints: 1,600,305 used (76.3% of 2^21)
