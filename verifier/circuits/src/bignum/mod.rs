@@ -18,6 +18,6 @@ mod tests;
 pub use addsub::{add, sub};
 pub use biguint::{BigUint, assert_eq, select};
 pub use cmp::{biguint_eq, biguint_lt};
-pub use mul::{karatsuba_mul, mul, square};
+pub use mul::{karatsuba_mul, optimal_mul, optimal_sqr, textbook_mul, textbook_square};
 pub use prime_field::PseudoMersennePrimeField;
 pub use reduce::{ModReduce, PseudoMersenneModReduce};

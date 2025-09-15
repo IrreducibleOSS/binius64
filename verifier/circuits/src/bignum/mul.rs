@@ -9,7 +9,9 @@ use super::{
 	biguint::BigUint,
 };
 
-/// Multiply two arbitrary-sized `BigUint`s.
+/// Multiply two arbitrary-sized `BigUint`s using textbook algorithm.
+///
+/// Produces `O(a.len() * b.len())` constraints.
 ///
 /// Computes `a * b` where both inputs are `BigUint`s. The result will have
 /// `a.limbs.len() + b.limbs.len()` limbs to accommodate the full product
@@ -22,7 +24,7 @@ use super::{
 ///
 /// # Returns
 /// Product `BigUint` with `a.limbs.len() + b.limbs.len()` limbs
-pub fn mul(builder: &CircuitBuilder, a: &BigUint, b: &BigUint) -> BigUint {
+pub fn textbook_mul(builder: &CircuitBuilder, a: &BigUint, b: &BigUint) -> BigUint {
 	// Multiply argument's limbs pairwise.
 	//
 	// The accumulator has exactly a.limbs.len() + b.limbs.len() slots to hold
@@ -39,11 +41,11 @@ pub fn mul(builder: &CircuitBuilder, a: &BigUint, b: &BigUint) -> BigUint {
 	compute_stack_adds(builder, &accumulator)
 }
 
-/// Square an arbitrary-sized `BigUint`.
+/// Square an arbitrary-sized `BigUint` using textbook algorithm.
 ///
 /// Computes `a * a` using an optimized algorithm that takes advantage of the symmetry
-/// in squaring (each cross-product appears twice). This is more efficient than
-/// using general multiplication.
+/// in squaring (each cross-product appears twice). This is roughly twice more efficient
+/// than using `textbook_mul`, though still quadratic in the number of constraints.
 ///
 /// # Arguments
 /// * `builder` - Circuit builder for constraint generation
@@ -51,7 +53,7 @@ pub fn mul(builder: &CircuitBuilder, a: &BigUint, b: &BigUint) -> BigUint {
 ///
 /// # Returns
 /// The square of `a` as a `BigUint` with `2 * a.limbs.len()` limbs
-pub fn square(builder: &CircuitBuilder, a: &BigUint) -> BigUint {
+pub fn textbook_square(builder: &CircuitBuilder, a: &BigUint) -> BigUint {
 	let mut accumulator = vec![vec![]; a.limbs.len() + a.limbs.len()];
 	for (i, &ai) in a.limbs.iter().enumerate() {
 		for (j, &aj) in a.limbs.iter().enumerate().skip(i) {
@@ -68,9 +70,55 @@ pub fn square(builder: &CircuitBuilder, a: &BigUint) -> BigUint {
 	compute_stack_adds(builder, &accumulator)
 }
 
+/// BigUint size at which Karatsuba becomes better than textbook multiplication.
+const KARATSUBA_LIMBS_THRESHOLD: usize = 8;
+
+/// Multiply two arbitrary-sized `BigUint`s using textbook algorithm.
+///
+/// This method attempts to pick the most efficient multiplication algorithm.
+///
+/// Computes `a * b` where both inputs are `BigUint`s. The result will have
+/// `a.limbs.len() + b.limbs.len()` limbs to accommodate the full product
+/// without overflow.
+///
+/// # Arguments
+/// * `builder` - Circuit builder for constraint generation
+/// * `a` - First operand `BigUint`
+/// * `b` - Second operand `BigUint`
+///
+/// # Returns
+/// Product `BigUint` with `a.limbs.len() + b.limbs.len()` limbs
+pub fn optimal_mul(builder: &CircuitBuilder, a: &BigUint, b: &BigUint) -> BigUint {
+	let n = a.limbs.len();
+	if n == b.limbs.len() && n.is_power_of_two() && n >= KARATSUBA_LIMBS_THRESHOLD {
+		karatsuba_mul(builder, a, b)
+	} else {
+		textbook_mul(builder, a, b)
+	}
+}
+
+/// Square an arbitrary-sized `BigUint`.
+///
+/// This method attempts to pick the most efficient multiplication algorithm.
+///
+/// # Arguments
+/// * `builder` - Circuit builder for constraint generation
+/// * `a` - The `BigUint` to be squared
+///
+/// # Returns
+/// The square of `a` as a `BigUint` with `2 * a.limbs.len()` limbs
+pub fn optimal_sqr(builder: &CircuitBuilder, a: &BigUint) -> BigUint {
+	let n = a.limbs.len();
+	if n.is_power_of_two() && n >= KARATSUBA_LIMBS_THRESHOLD {
+		karatsuba_mul(builder, a, a)
+	} else {
+		textbook_square(builder, a)
+	}
+}
+
 /// Multiply two `BigUint`s with po2 number of limbs using Karatsuba (aka Toom-22).
 ///
-/// Whereas `mul` and `square` require $O(n^2)$ constraints for $n$ limbs,
+/// Whereas `textbook_mul` and `textbook_square` require $O(n^2)$ constraints for $n$ limbs,
 /// this method is asymptotically more efficient with $O(n^{log_2 3}) = O(n^{1.58})$,
 /// however due to larger constant factor it's beneficial for longer `BigUint`s only.
 ///

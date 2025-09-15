@@ -4,7 +4,7 @@ use num_integer::Integer;
 
 use super::fixed_byte_vec::FixedByteVec;
 use crate::{
-	bignum::{BigUint, ModReduce, assert_eq, mul, square},
+	bignum::{BigUint, ModReduce, assert_eq, optimal_mul, optimal_sqr},
 	sha256::Sha256,
 };
 
@@ -275,7 +275,7 @@ fn modexp_65537_verify(
 
 	for i in 0..16 {
 		let builder = builder.subcircuit(format!("square[{i}]"));
-		let squared = square(&builder, &result);
+		let squared = optimal_sqr(&builder, &result);
 		let circuit = ModReduce::new(
 			&builder,
 			squared,
@@ -287,7 +287,7 @@ fn modexp_65537_verify(
 	}
 
 	let builder = builder.subcircuit("final_multiply");
-	let multiplied = mul(&builder, &result, base);
+	let multiplied = optimal_mul(&builder, &result, base);
 	let _mod_reduce_multiplied = ModReduce::new(
 		&builder,
 		multiplied,
