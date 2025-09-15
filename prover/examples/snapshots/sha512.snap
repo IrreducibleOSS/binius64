@@ -2,16 +2,16 @@ sha512 circuit
 --
 Gates & Instructions
 ├─ Number of gates: 48,779
-├─ Number of evaluation instructions: 49,886
-├─ Distinct value indices: 63,034
-│  ├─ Distinct shifted value indices: 41,309
-│  └─ Distinct unshifted value indices: 21,725
+└─ Number of evaluation instructions: 49,886
 
 Constraints
 ├─ AND constraints: 21,349 used (65.2% of 2^15)
 │  [▓▓▓▓▓▓░░░░] spare: 11,419
-└─ MUL constraints: 0 used (0.0% of 2^0)
-   [░░░░░░░░░░] spare: 1
+├─ MUL constraints: 0 used (0.0% of 2^0)
+│  [░░░░░░░░░░] spare: 1
+└─ Distinct value indices: 63,034
+   ├─ Distinct shifted value indices: 41,309
+   └─ Distinct unshifted value indices: 21,725
 
 Value Vector
 ├─ Public Section: 641 used (62.6% of 2^10)

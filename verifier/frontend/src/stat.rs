@@ -160,22 +160,7 @@ impl fmt::Display for CircuitStat {
 		// Gates & Instructions
 		writeln!(f, "Gates & Instructions")?;
 		writeln!(f, "├─ Number of gates: {}", fmt_num(self.n_gates))?;
-		writeln!(f, "├─ Number of evaluation instructions: {}", fmt_num(self.n_eval_insn))?;
-		writeln!(
-			f,
-			"├─ Distinct value indices: {}",
-			fmt_num(self.distinct_shifted_value_indices + self.distinct_unshifted_value_indices)
-		)?;
-		writeln!(
-			f,
-			"│  ├─ Distinct shifted value indices: {}",
-			fmt_num(self.distinct_shifted_value_indices)
-		)?;
-		writeln!(
-			f,
-			"│  └─ Distinct unshifted value indices: {}",
-			fmt_num(self.distinct_unshifted_value_indices)
-		)?;
+		writeln!(f, "└─ Number of evaluation instructions: {}", fmt_num(self.n_eval_insn))?;
 		writeln!(f)?;
 
 		// Constraints
@@ -204,16 +189,31 @@ impl fmt::Display for CircuitStat {
 		let mul_spare = self.mul_allocated - self.n_mul_constraints;
 		writeln!(
 			f,
-			"└─ MUL constraints: {} used ({:.1}% of 2^{})",
+			"├─ MUL constraints: {} used ({:.1}% of 2^{})",
 			fmt_num(self.n_mul_constraints),
 			mul_percent,
 			log2(self.mul_allocated)
 		)?;
 		writeln!(
 			f,
-			"   {} spare: {}",
+			"│  {} spare: {}",
 			progress_bar(self.n_mul_constraints, self.mul_allocated),
 			fmt_num(mul_spare)
+		)?;
+		writeln!(
+			f,
+			"└─ Distinct value indices: {}",
+			fmt_num(self.distinct_shifted_value_indices + self.distinct_unshifted_value_indices)
+		)?;
+		writeln!(
+			f,
+			"   ├─ Distinct shifted value indices: {}",
+			fmt_num(self.distinct_shifted_value_indices)
+		)?;
+		writeln!(
+			f,
+			"   └─ Distinct unshifted value indices: {}",
+			fmt_num(self.distinct_unshifted_value_indices)
 		)?;
 		writeln!(f)?;
 
