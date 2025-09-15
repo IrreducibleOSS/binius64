@@ -12,9 +12,9 @@ use binius_verifier::{
 use clap::Parser;
 
 // Embedded test files from test_load_prove directory
-const CS_BYTES: &[u8] = include_bytes!("../../../../test_load_prove/cs.bin");
-const PUB_WITNESS_BYTES: &[u8] = include_bytes!("../../../../test_load_prove/pub_witness.bin");
-const NON_PUB_DATA_BYTES: &[u8] = include_bytes!("../../../../test_load_prove/non_pub_data.bin");
+const CS_BYTES: &[u8] = include_bytes!("../../../test_load_prove/cs.bin");
+const PUB_WITNESS_BYTES: &[u8] = include_bytes!("../../../test_load_prove/pub_witness.bin");
+const NON_PUB_DATA_BYTES: &[u8] = include_bytes!("../../../test_load_prove/non_pub_data.bin");
 
 /// Prover CLI: generate a proof from a serialized constraint system and witnesses.
 #[derive(Debug, Parser)]
