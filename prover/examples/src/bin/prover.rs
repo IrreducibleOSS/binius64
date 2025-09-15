@@ -11,6 +11,11 @@ use binius_verifier::{
 };
 use clap::Parser;
 
+// Embedded test files from test_load_prove directory
+const CS_BYTES: &[u8] = include_bytes!("../../../../test_load_prove/cs.bin");
+const PUB_WITNESS_BYTES: &[u8] = include_bytes!("../../../../test_load_prove/pub_witness.bin");
+const NON_PUB_DATA_BYTES: &[u8] = include_bytes!("../../../../test_load_prove/non_pub_data.bin");
+
 /// Prover CLI: generate a proof from a serialized constraint system and witnesses.
 #[derive(Debug, Parser)]
 #[command(
@@ -18,20 +23,20 @@ use clap::Parser;
 	about = "Generate and save a proof from CS and witnesses"
 )]
 struct Args {
-	/// Path to the constraint system binary
+	/// Path to the constraint system binary (ignored, using embedded data)
 	#[arg(long = "cs-path")]
-	cs_path: PathBuf,
+	cs_path: Option<PathBuf>,
 
-	/// Path to the public values (ValuesData) binary
+	/// Path to the public values (ValuesData) binary (ignored, using embedded data)
 	#[arg(long = "pub-witness-path")]
-	pub_witness_path: PathBuf,
+	pub_witness_path: Option<PathBuf>,
 
-	/// Path to the non-public values (ValuesData) binary
+	/// Path to the non-public values (ValuesData) binary (ignored, using embedded data)
 	#[arg(long = "non-pub-data-path")]
-	non_pub_data_path: PathBuf,
+	non_pub_data_path: Option<PathBuf>,
 
 	/// Path to write the proof binary
-	#[arg(long = "proof-path")]
+	#[arg(long = "proof-path", default_value = "proof.bin")]
 	proof_path: PathBuf,
 
 	/// Log of the inverse rate for the proof system
@@ -43,26 +48,20 @@ fn main() -> Result<()> {
 	let _tracing_guard = tracing_profile::init_tracing().ok();
 	let args = Args::parse();
 
-	// Read and deserialize constraint system
-	let cs_bytes = fs::read(&args.cs_path).with_context(|| {
-		format!("Failed to read constraint system from {}", args.cs_path.display())
-	})?;
-	let cs = ConstraintSystem::deserialize(&mut cs_bytes.as_slice())
-		.context("Failed to deserialize ConstraintSystem")?;
+	// DEBUG: Using embedded test files instead of command-line paths
+	tracing::info!("Using embedded test files from test_load_prove/");
 
-	// Read and deserialize public values
-	let pub_bytes = fs::read(&args.pub_witness_path).with_context(|| {
-		format!("Failed to read public values from {}", args.pub_witness_path.display())
-	})?;
-	let public = ValuesData::deserialize(&mut pub_bytes.as_slice())
-		.context("Failed to deserialize public ValuesData")?;
+	// Deserialize constraint system from embedded bytes
+	let cs = ConstraintSystem::deserialize(&mut &CS_BYTES[..])
+		.context("Failed to deserialize embedded ConstraintSystem")?;
 
-	// Read and deserialize non-public values
-	let non_pub_bytes = fs::read(&args.non_pub_data_path).with_context(|| {
-		format!("Failed to read non-public values from {}", args.non_pub_data_path.display())
-	})?;
-	let non_public = ValuesData::deserialize(&mut non_pub_bytes.as_slice())
-		.context("Failed to deserialize non-public ValuesData")?;
+	// Deserialize public values from embedded bytes
+	let public = ValuesData::deserialize(&mut &PUB_WITNESS_BYTES[..])
+		.context("Failed to deserialize embedded public ValuesData")?;
+
+	// Deserialize non-public values from embedded bytes
+	let non_public = ValuesData::deserialize(&mut &NON_PUB_DATA_BYTES[..])
+		.context("Failed to deserialize embedded non-public ValuesData")?;
 
 	// Reconstruct the full ValueVec
 	// Take ownership of the underlying vectors without extra copies
