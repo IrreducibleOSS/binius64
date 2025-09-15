@@ -35,10 +35,6 @@ struct Args {
 	#[arg(long = "non-pub-data-path")]
 	non_pub_data_path: Option<PathBuf>,
 
-	/// Path to write the proof binary
-	#[arg(long = "proof-path", default_value = "proof.bin")]
-	proof_path: PathBuf,
-
 	/// Log of the inverse rate for the proof system
 	#[arg(short = 'l', long = "log-inv-rate", default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..))]
 	log_inv_rate: u32,
@@ -82,22 +78,7 @@ fn main() -> Result<()> {
 
 	// Wrap into serializable Proof with a stable challenger type identifier.
 	// NOTE: Avoid std::any::type_name for cross-platform stability; use a constant instead.
-	let proof = Proof::owned(transcript, StdChallenger::NAME.to_string());
+	let _proof = Proof::owned(transcript, StdChallenger::NAME.to_string());
 
-	// Serialize and save the proof
-	if let Some(parent) = args.proof_path.parent()
-		&& !parent.as_os_str().is_empty()
-	{
-		fs::create_dir_all(parent)
-			.with_context(|| format!("Failed to create parent directory {}", parent.display()))?;
-	}
-	let mut buf = Vec::new();
-	proof
-		.serialize(&mut buf)
-		.context("Failed to serialize proof")?;
-	fs::write(&args.proof_path, &buf)
-		.with_context(|| format!("Failed to write proof to {}", args.proof_path.display()))?;
-
-	tracing::info!("Saved proof to {} ({} bytes)", args.proof_path.display(), buf.len());
 	Ok(())
 }
