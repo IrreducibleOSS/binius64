@@ -18,6 +18,7 @@ import argparse
 # Format: (name, example, args, enabled)
 BENCHMARKS = [
     ("sha256", "sha256", "--max-len-bytes 65536", True),
+    ("zklogin", "zklogin", "", True),
     ("base64", "base64", "--max-len 32768", False),
     ("skein512", "skein512", "--max-len 16384", False),
     ("keccak256", "keccak256", "--max-len 32768", False),

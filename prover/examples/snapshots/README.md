@@ -4,7 +4,7 @@ This directory contains snapshot files for example circuit statistics. These sna
 
 ## Usage
 
-For any example circuit (e.g., `sha256`, `keccak`):
+For any example circuit (e.g., `sha256`, `zklogin`):
 
 - **Check snapshot**: `cargo run --example <name> -- check-snapshot [params]`
 - **Update snapshot**: `cargo run --example <name> -- bless-snapshot [params]`
@@ -15,8 +15,8 @@ For any example circuit (e.g., `sha256`, `keccak`):
 # Check sha256 circuit snapshot with specific parameters
 cargo run --example sha256 -- check-snapshot --max-len 64
 
-# Update keccak circuit snapshot with default parameters
-cargo run --example keccak -- bless-snapshot
+# Update zklogin circuit snapshot with default parameters
+cargo run --example zklogin -- bless-snapshot
 
 # View circuit statistics without checking snapshot
 cargo run --example sha256 -- stat --max-len 2048
