@@ -3,7 +3,9 @@ ethsign circuit
 Gates & Instructions
 ├─ Number of gates: 253,204
 ├─ Number of evaluation instructions: 299,208
-└─ Distinct shifted value indices: 475,243
+├─ Distinct value indices: 475,243
+│  ├─ Distinct shifted value indices: 221,027
+│  └─ Distinct unshifted value indices: 254,216
 
 Constraints
 ├─ AND constraints: 218,471 used (83.3% of 2^18)
