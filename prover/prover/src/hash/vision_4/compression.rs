@@ -16,7 +16,7 @@ use binius_verifier::hash::vision_4::{
 use digest::Output;
 
 use super::{
-	super::parallel_compression::ParallelPseudoCompression, parallel::parallel_permutation,
+	super::parallel_compression::ParallelPseudoCompression, permutation::batch_permutation,
 };
 
 // The number of parallel compressions N must be a power of 2.
@@ -131,7 +131,7 @@ impl VisionParallelCompression {
 		let originals: [_; N] = array::from_fn(|i| (states[i * M], states[i * M + 1]));
 
 		// Step 3: Apply parallel permutation to all states
-		parallel_permutation::<N, MN>(&mut states, scratchpad);
+		batch_permutation::<N, MN>(&mut states, scratchpad);
 
 		// Step 4: Add original elements back and serialize outputs
 		for i in 0..N {
