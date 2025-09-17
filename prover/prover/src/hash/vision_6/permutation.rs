@@ -21,7 +21,7 @@ use binius_verifier::hash::vision_6::{
 
 /// Applies forward B-polynomial transformation: B(x) = c₀ + c₁x + c₂x² + c₃x⁴.
 #[inline]
-fn parallel_forward_transform<const N: usize, const MN: usize>(states: &mut [Ghash; MN]) {
+fn batch_forward_transform<const N: usize, const MN: usize>(states: &mut [Ghash; MN]) {
 	for i in 0..MN {
 		let scalar = states[i];
 		let square = scalar.square();
@@ -36,24 +36,24 @@ fn parallel_forward_transform<const N: usize, const MN: usize>(states: &mut [Gha
 
 /// Applies inverse B-polynomial transformation using lookups.
 #[inline]
-fn parallel_inverse_transform<const N: usize, const MN: usize>(states: &mut [Ghash; MN]) {
+fn batch_inverse_transform<const N: usize, const MN: usize>(states: &mut [Ghash; MN]) {
 	for i in 0..MN {
 		linearized_b_inv_transform_scalar(&mut states[i]);
 	}
 }
 
-/// Applies MDS matrix multiplication to each of the N parallel states.
+/// Applies MDS matrix multiplication to each of the N batch states.
 #[inline]
-fn parallel_mds_mul<const N: usize, const MN: usize>(states: &mut [Ghash; MN]) {
+fn batch_mds_mul<const N: usize, const MN: usize>(states: &mut [Ghash; MN]) {
 	for i in 0..N {
 		let state = &mut states[i * M..];
 		mds_mul(state);
 	}
 }
 
-/// Adds round constants to each of the N parallel states.
+/// Adds round constants to each of the N batch states.
 #[inline]
-fn parallel_constants_add<const N: usize, const MN: usize>(
+fn batch_constants_add<const N: usize, const MN: usize>(
 	states: &mut [Ghash; MN],
 	constants: &[Ghash; M],
 ) {
@@ -65,9 +65,9 @@ fn parallel_constants_add<const N: usize, const MN: usize>(
 	}
 }
 
-/// Applies batch inversion to all parallel states, splitting each 6-element state into 3 pairs.
+/// Applies batch inversion to all batch states, splitting each 6-element state into 3 pairs.
 #[inline]
-fn parallel_batch_invert<const N: usize, const MN: usize, const MN_DIV_3: usize>(
+fn batch_batch_invert<const N: usize, const MN: usize, const MN_DIV_3: usize>(
 	states: &mut [Ghash; MN],
 	scratchpad: &mut [Ghash],
 ) {
@@ -82,40 +82,40 @@ fn parallel_batch_invert<const N: usize, const MN: usize, const MN_DIV_3: usize>
 	);
 }
 
-/// Executes a complete Vision-6 round on all parallel states.
+/// Executes a complete Vision-6 round on all batch states.
 #[inline]
-fn parallel_round<const N: usize, const MN: usize, const MN_DIV_3: usize>(
+fn batch_round<const N: usize, const MN: usize, const MN_DIV_3: usize>(
 	states: &mut [Ghash; MN],
 	scratchpad: &mut [Ghash],
 	round_constants_idx: usize,
 ) {
 	// First half-round: inversion → inverse transform → MDS → constants
-	parallel_batch_invert::<N, MN, MN_DIV_3>(states, scratchpad);
-	parallel_inverse_transform::<N, MN>(states);
-	parallel_mds_mul::<N, MN>(states);
-	parallel_constants_add::<N, MN>(states, &ROUND_CONSTANTS[round_constants_idx]);
+	batch_batch_invert::<N, MN, MN_DIV_3>(states, scratchpad);
+	batch_inverse_transform::<N, MN>(states);
+	batch_mds_mul::<N, MN>(states);
+	batch_constants_add::<N, MN>(states, &ROUND_CONSTANTS[round_constants_idx]);
 
 	// Second half-round: inversion → forward transform → MDS → constants
-	parallel_batch_invert::<N, MN, MN_DIV_3>(states, scratchpad);
-	parallel_forward_transform::<N, MN>(states);
-	parallel_mds_mul::<N, MN>(states);
-	parallel_constants_add::<N, MN>(states, &ROUND_CONSTANTS[round_constants_idx + 1]);
+	batch_batch_invert::<N, MN, MN_DIV_3>(states, scratchpad);
+	batch_forward_transform::<N, MN>(states);
+	batch_mds_mul::<N, MN>(states);
+	batch_constants_add::<N, MN>(states, &ROUND_CONSTANTS[round_constants_idx + 1]);
 }
 
-/// Executes the complete Vision-6 permutation on N parallel states.
+/// Executes the complete Vision-6 permutation on N batch states.
 ///
-/// Main entry point for parallel Vision-6 hashing. Requires scratchpad ≥ 2×MN-1 elements.
+/// Main entry point for batch Vision-6 hashing. Requires scratchpad ≥ 2×MN-1 elements.
 #[inline]
-pub fn parallel_permutation<const N: usize, const MN: usize, const MN_DIV_3: usize>(
+pub fn batch_permutation<const N: usize, const MN: usize, const MN_DIV_3: usize>(
 	states: &mut [Ghash; MN],
 	scratchpad: &mut [Ghash],
 ) {
 	// Initial round constant addition
-	parallel_constants_add::<N, MN>(states, &ROUND_CONSTANTS[0]);
+	batch_constants_add::<N, MN>(states, &ROUND_CONSTANTS[0]);
 
 	// Execute all rounds of the permutation
 	for round_num in 0..NUM_ROUNDS {
-		parallel_round::<N, MN, MN_DIV_3>(states, scratchpad, 1 + 2 * round_num);
+		batch_round::<N, MN, MN_DIV_3>(states, scratchpad, 1 + 2 * round_num);
 	}
 }
 
@@ -129,7 +129,7 @@ mod tests {
 
 	use super::*;
 
-	macro_rules! test_parallel_permutation {
+	macro_rules! test_batch_permutation {
 		($name:ident, $n:expr) => {
 			#[test]
 			fn $name() {
@@ -139,33 +139,32 @@ mod tests {
 				let mut rng = StdRng::seed_from_u64(0);
 
 				for _ in 0..4 {
-					let mut parallel_states: [Ghash; MN] =
-						array::from_fn(|_| Ghash::random(&mut rng));
+					let mut batch_states: [Ghash; MN] = array::from_fn(|_| Ghash::random(&mut rng));
 
 					let mut single_states: [[Ghash; M]; N] =
-						array::from_fn(|i| array::from_fn(|j| parallel_states[i * M + j]));
+						array::from_fn(|i| array::from_fn(|j| batch_states[i * M + j]));
 
 					let scratchpad = &mut [Ghash::ZERO; { 2 * MN }];
-					parallel_permutation::<N, MN, MN_DIV_3>(&mut parallel_states, scratchpad);
+					batch_permutation::<N, MN, MN_DIV_3>(&mut batch_states, scratchpad);
 
 					for state in single_states.iter_mut() {
 						permutation(state);
 					}
 
-					let expected_parallel: [Ghash; MN] =
+					let expected_batch: [Ghash; MN] =
 						array::from_fn(|i| single_states[i / M][i % M]);
 
-					assert_eq!(parallel_states, expected_parallel);
+					assert_eq!(batch_states, expected_batch);
 				}
 			}
 		};
 	}
 
-	test_parallel_permutation!(test_parallel_permutation_1, 1);
-	test_parallel_permutation!(test_parallel_permutation_2, 2);
-	test_parallel_permutation!(test_parallel_permutation_4, 4);
-	test_parallel_permutation!(test_parallel_permutation_8, 8);
-	test_parallel_permutation!(test_parallel_permutation_16, 16);
-	test_parallel_permutation!(test_parallel_permutation_32, 32);
-	test_parallel_permutation!(test_parallel_permutation_64, 64);
+	test_batch_permutation!(test_batch_permutation_1, 1);
+	test_batch_permutation!(test_batch_permutation_2, 2);
+	test_batch_permutation!(test_batch_permutation_4, 4);
+	test_batch_permutation!(test_batch_permutation_8, 8);
+	test_batch_permutation!(test_batch_permutation_16, 16);
+	test_batch_permutation!(test_batch_permutation_32, 32);
+	test_batch_permutation!(test_batch_permutation_64, 64);
 }
