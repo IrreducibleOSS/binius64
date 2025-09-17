@@ -31,7 +31,7 @@ pub struct Params {
 pub struct Instance {
 	/// Length of the randomly generated message, in bytes (defaults to --max-len).
 	#[arg(long)]
-	pub len_bytes: Option<usize>,
+	pub message_len: Option<usize>,
 
 	/// UTF-8 string to hash (if not provided, random bytes are generated)
 	#[arg(long)]
@@ -59,8 +59,11 @@ impl ExampleCircuit for Sha256Example {
 			message_string.as_bytes().to_vec()
 		} else {
 			let mut rng = StdRng::seed_from_u64(42);
+			let len = instance
+				.message_len
+				.unwrap_or(self.sha256_gadget.max_len_bytes());
 
-			let mut message_bytes = vec![0u8; self.sha256_gadget.max_len_bytes()];
+			let mut message_bytes = vec![0u8; len];
 			rng.fill_bytes(&mut message_bytes);
 			message_bytes
 		};

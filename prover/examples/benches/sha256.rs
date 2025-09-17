@@ -39,7 +39,7 @@ impl ExampleBenchmark for Sha256Benchmark {
 
 	fn create_instance(&self) -> Self::Instance {
 		Instance {
-			len_bytes: Some(self.config.max_bytes),
+			message_len: Some(self.config.max_bytes),
 			message_string: None,
 		}
 	}
