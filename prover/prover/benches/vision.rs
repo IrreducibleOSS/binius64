@@ -131,7 +131,7 @@ fn bench_hash_vision_4(c: &mut Criterion) {
 
 	// Number of parallel hashing instances
 	// Larger powers of 2 perform better.
-	const N: usize = 32;
+	const N: usize = 128;
 
 	group.bench_function("MultiDigest", |bench| {
 		bench.iter(|| {
@@ -183,7 +183,7 @@ fn bench_hash_vision_6(c: &mut Criterion) {
 
 	// Number of parallel hashing instances
 	// Larger powers of 2 perform better.
-	const N: usize = 32;
+	const N: usize = 128;
 
 	group.bench_function("MultiDigest", |bench| {
 		bench.iter(|| {
