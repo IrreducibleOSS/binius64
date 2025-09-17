@@ -3,18 +3,20 @@
 use binius_field::{BinaryField, ExtensionField, arch::OptimalPackedB128};
 use binius_math::{
 	BinarySubspace,
+	multilinear::{eq::eq_ind_partial_eval, evaluate::evaluate_inplace},
 	ntt::{NeighborsLastMultiThread, domain_context::GenericPreExpanded},
 	test_utils::{random_field_buffer, random_scalars},
 };
 use binius_prover::{
 	fri::CommitOutput, hash::parallel_compression::ParallelCompressionAdaptor,
-	merkle_tree::prover::BinaryMerkleTreeProver, pcs::OneBitPCSProver,
+	merkle_tree::prover::BinaryMerkleTreeProver, pcs::OneBitPCSProver, ring_switch,
 };
-use binius_transcript::ProverTranscript;
+use binius_transcript::{ProverTranscript, VerifierTranscript};
 use binius_verifier::{
 	config::{B1, B128, StdChallenger},
 	fri::FRIParams,
 	hash::{StdCompression, StdDigest},
+	pcs,
 };
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 
@@ -25,7 +27,7 @@ fn bench_pcs(c: &mut Criterion) {
 
 	for log_len in [12, 16, 20] {
 		const LOG_INV_RATE: usize = 1;
-		const SECURITY_BITS: usize = 32;
+		const SECURITY_BITS: usize = 96;
 		const ARITY: usize = 4;
 
 		// Calculate throughput based on the input message size in bytes
@@ -68,24 +70,63 @@ fn bench_pcs(c: &mut Criterion) {
 			.commit(packed_multilin.clone())
 			.expect("Failed to commit");
 
+		let mut transcript = ProverTranscript::new(StdChallenger::default());
+		transcript.message().write(&codeword_commitment);
+
+		// Generate random evaluation point
+		let eval_point =
+			random_scalars(&mut rng, log_len + <B128 as ExtensionField<B1>>::LOG_DEGREE);
+
+		let (prefix, suffix) = eval_point.split_at(<B128 as ExtensionField<B1>>::LOG_DEGREE);
+		let prefix_tensor = eq_ind_partial_eval(prefix);
+		let partial = ring_switch::fold_b128_elems_inplace(packed_multilin.clone(), &prefix_tensor);
+		let eval = evaluate_inplace(partial, suffix).unwrap();
+		transcript.message().write_scalar(eval);
+
 		group.bench_function(format!("prove/log_len={log_len}"), |b| {
-			let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
-			prover_transcript.message().write(&codeword_commitment);
-
-			// Generate random evaluation point
-			let evaluation_point =
-				random_scalars(&mut rng, log_len + <B128 as ExtensionField<B1>>::LOG_DEGREE);
-
 			b.iter(|| {
+				let mut transcript = transcript.clone();
 				pcs_prover
 					.prove(
 						&codeword,
 						&codeword_committed,
 						packed_multilin.clone(),
-						evaluation_point.clone(),
-						&mut prover_transcript,
+						eval_point.clone(),
+						&mut transcript,
 					)
 					.unwrap()
+			});
+		});
+
+		pcs_prover
+			.prove(
+				&codeword,
+				&codeword_committed,
+				packed_multilin.clone(),
+				eval_point.clone(),
+				&mut transcript,
+			)
+			.unwrap();
+
+		let proof = transcript.finalize();
+		println!("Proof size {} B", proof.len());
+
+		let mut verifier_transcript = VerifierTranscript::new(StdChallenger::default(), proof);
+		let commitment = verifier_transcript.message().read().unwrap();
+		let eval = verifier_transcript.message().read_scalar().unwrap();
+
+		group.bench_function(format!("verify/log_len={log_len}"), |b| {
+			b.iter(|| {
+				let mut transcript = verifier_transcript.clone();
+				pcs::verify(
+					&mut transcript,
+					eval,
+					&eval_point,
+					commitment,
+					&fri_params,
+					merkle_prover.scheme(),
+				)
+				.unwrap()
 			});
 		});
 	}
