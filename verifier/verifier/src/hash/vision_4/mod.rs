@@ -1,5 +1,6 @@
 // Copyright 2025 Irreducible Inc.
 
+pub mod compression;
 pub mod constants;
 pub mod digest;
 mod linear_tables;
