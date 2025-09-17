@@ -9,7 +9,7 @@ use digest::{
 
 use super::{constants::M, permutation::permutation};
 
-pub const RATE_AS_U128: usize = 2;
+pub const RATE_AS_U128: usize = 4;
 pub const RATE_AS_U8: usize = RATE_AS_U128 * std::mem::size_of::<u128>();
 
 const PADDING_START: u8 = 0x80;
