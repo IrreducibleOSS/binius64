@@ -25,7 +25,7 @@ use binius_verifier::{
 };
 use clap::ValueEnum;
 pub use cli::Cli;
-use sha2::digest::{Digest, FixedOutputReset, Output, core_api::BlockSizeUser};
+use digest::{Digest, FixedOutputReset, Output, core_api::BlockSizeUser};
 
 #[derive(Debug, Clone, ValueEnum)]
 pub enum CompressionType {
@@ -83,16 +83,16 @@ pub fn setup_vision4(
 	Ok((verifier, prover))
 }
 
-pub fn prove_verify<D, C, PC>(
+pub fn prove_verify<D, C, ParD, ParC>(
 	verifier: &Verifier<D, C>,
-	prover: &Prover<OptimalPackedB128, PC, D>,
+	prover: &Prover<OptimalPackedB128, ParC, ParD>,
 	witness: ValueVec,
 ) -> Result<()>
 where
-	D: ParallelDigest + Digest + BlockSizeUser,
-	D::Digest: BlockSizeUser + FixedOutputReset,
+	D: Digest + BlockSizeUser + FixedOutputReset,
 	C: PseudoCompressionFunction<Output<D>, 2>,
-	PC: ParallelPseudoCompression<Output<D::Digest>, 2>,
+	ParD: ParallelDigest<Digest = D>,
+	ParC: ParallelPseudoCompression<Output<D>, 2, Compression = C>,
 {
 	let challenger = StdChallenger::default();
 
