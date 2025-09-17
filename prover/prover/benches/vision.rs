@@ -6,12 +6,12 @@ use binius_field::{BinaryField128bGhash as Ghash, Field, Random};
 use binius_prover::hash::{
 	parallel_digest::{MultiDigest, ParallelDigest, ParallelMultidigestImpl},
 	vision_4::{
-		parallel::parallel_permutation as parallel_permutation_4,
-		single::VisionHasherMultiDigest as VisionHasherMultiDigest_4,
+		digest::VisionHasherMultiDigest as VisionHasherMultiDigest_4,
+		permutation::batch_permutation as batch_permutation_4,
 	},
 	vision_6::{
-		parallel::parallel_permutation as parallel_permutation_6,
-		single::VisionHasherMultiDigest as VisionHasherMultiDigest_6,
+		digest::VisionHasherMultiDigest as VisionHasherMultiDigest_6,
+		permutation::batch_permutation as batch_permutation_6,
 	},
 };
 use binius_utils::rayon::prelude::*;
@@ -73,7 +73,7 @@ fn bench_parallel_permutation_4(c: &mut Criterion) {
 	bench_parallel_permutation_sizes_4!(
 		&mut group,
 		&mut rng,
-		parallel_permutation_4,
+		batch_permutation_4,
 		scratchpad,
 		M,
 		2,
@@ -98,7 +98,7 @@ fn bench_parallel_permutation_6(c: &mut Criterion) {
 	bench_parallel_permutation_sizes_6!(
 		&mut group,
 		&mut rng,
-		parallel_permutation_6,
+		batch_permutation_6,
 		scratchpad,
 		M,
 		2,
