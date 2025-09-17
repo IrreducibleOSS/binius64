@@ -18,15 +18,15 @@ pub struct Blake2sExample {
 #[derive(Debug, Clone, Args)]
 pub struct Params {
 	/// Maximum message length in bytes that the circuit can handle.
-	#[arg(long, default_value_t = 128)]
-	pub max_bytes: usize,
+	#[arg(long)]
+	pub max_bytes: Option<usize>,
 }
 
 /// Instance data for witness population (runtime values)
 #[derive(Debug, Clone, Args)]
 #[group(multiple = false)]
 pub struct Instance {
-	/// Length of the randomly generated message, in bytes (defaults to half of --max-message-len).
+	/// Length of the randomly generated message, in bytes (defaults to 1024).
 	#[arg(long)]
 	pub message_len: Option<usize>,
 
@@ -39,9 +39,33 @@ impl ExampleCircuit for Blake2sExample {
 	type Params = Params;
 	type Instance = Instance;
 
-	fn build(params: Params, builder: &mut CircuitBuilder) -> Result<Self> {
+	fn build(mut params: Params, builder: &mut CircuitBuilder) -> Result<Self> {
+		// If max_bytes not specified, determine from command line args
+		if params.max_bytes.is_none() {
+			let args: Vec<String> = std::env::args().collect();
+			let mut message_len = None;
+			let mut message_string = None;
+
+			for i in 0..args.len() {
+				if args[i] == "--message-len" && i + 1 < args.len() {
+					message_len = args[i + 1].parse::<usize>().ok();
+				} else if args[i] == "--message-string" && i + 1 < args.len() {
+					message_string = Some(args[i + 1].clone());
+				}
+			}
+
+			params.max_bytes = Some(if let Some(msg_string) = message_string {
+				msg_string.len()
+			} else {
+				message_len.unwrap_or(1024)
+			});
+		}
+
+		let max_bytes = params.max_bytes.unwrap();
+		ensure!(max_bytes > 0, "max_bytes must be positive");
+
 		// Create the Blake2s gadget with witness wires
-		let blake2s_gadget = Blake2s::new_witness(builder, params.max_bytes);
+		let blake2s_gadget = Blake2s::new_witness(builder, max_bytes);
 
 		Ok(Self { blake2s_gadget })
 	}
@@ -64,7 +88,7 @@ impl ExampleCircuit for Blake2sExample {
 		} else {
 			// Generate random bytes
 			let mut rng = StdRng::seed_from_u64(0);
-			let len = instance.message_len.unwrap_or(self.blake2s_gadget.length);
+			let len = instance.message_len.unwrap_or(1024); // Default to 1KiB
 			ensure!(
 				len <= self.blake2s_gadget.length,
 				"Message length ({}) exceeds maximum ({})",

@@ -4,6 +4,6 @@ use binius_examples::{Cli, circuits::keccak::KeccakExample};
 
 fn main() -> Result<()> {
 	Cli::<KeccakExample>::new("keccak")
-		.about("Keccak-f[1600] permutation example - chains multiple permutations together")
+		.about("Keccak-256 hash function circuit example")
 		.run()
 }

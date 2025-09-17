@@ -18,15 +18,15 @@ pub struct Blake2bExample {
 #[derive(Args, Debug, Clone)]
 pub struct Params {
 	/// Maximum message length in bytes that the circuit can handle.
-	#[arg(long, default_value_t = 128)]
-	pub max_msg_len_bytes: usize,
+	#[arg(long)]
+	pub max_msg_len_bytes: Option<usize>,
 }
 
 /// Instance data for witness population (runtime values)
 #[derive(Args, Debug, Clone)]
 #[group(multiple = false)]
 pub struct Instance {
-	/// Length of the randomly generated message, in bytes (defaults to max_msg_len_bytes).
+	/// Length of the randomly generated message, in bytes (defaults to 1024).
 	#[arg(long)]
 	pub message_len: Option<usize>,
 
@@ -39,15 +39,36 @@ impl ExampleCircuit for Blake2bExample {
 	type Params = Params;
 	type Instance = Instance;
 
-	fn build(params: Params, builder: &mut CircuitBuilder) -> Result<Self> {
-		// Blake2b processes messages in 128-byte blocks
-		ensure!(params.max_msg_len_bytes > 0, "Message length must be positive");
+	fn build(mut params: Params, builder: &mut CircuitBuilder) -> Result<Self> {
+		// If max_msg_len_bytes not specified, determine from command line args
+		if params.max_msg_len_bytes.is_none() {
+			let args: Vec<String> = std::env::args().collect();
+			let mut message_len = None;
+			let mut message_string = None;
 
-		let blake2b_circuit = Blake2bCircuit::new_with_length(builder, params.max_msg_len_bytes);
+			for i in 0..args.len() {
+				if args[i] == "--message-len" && i + 1 < args.len() {
+					message_len = args[i + 1].parse::<usize>().ok();
+				} else if args[i] == "--message-string" && i + 1 < args.len() {
+					message_string = Some(args[i + 1].clone());
+				}
+			}
+
+			params.max_msg_len_bytes = Some(if let Some(msg_string) = message_string {
+				msg_string.len()
+			} else {
+				message_len.unwrap_or(1024)
+			});
+		}
+
+		let max_msg_len_bytes = params.max_msg_len_bytes.unwrap();
+		ensure!(max_msg_len_bytes > 0, "Message length must be positive");
+
+		let blake2b_circuit = Blake2bCircuit::new_with_length(builder, max_msg_len_bytes);
 
 		Ok(Self {
 			blake2b_circuit,
-			max_msg_len_bytes: params.max_msg_len_bytes,
+			max_msg_len_bytes,
 		})
 	}
 
@@ -69,7 +90,7 @@ impl ExampleCircuit for Blake2bExample {
 		} else {
 			// Generate random bytes
 			let mut rng = StdRng::seed_from_u64(42);
-			let len = instance.message_len.unwrap_or(self.max_msg_len_bytes);
+			let len = instance.message_len.unwrap_or(1024); // Default to 1KiB
 			ensure!(
 				len <= self.max_msg_len_bytes,
 				"Message length ({}) exceeds maximum ({})",

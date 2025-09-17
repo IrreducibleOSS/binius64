@@ -1,79 +1,113 @@
 // Copyright 2025 Irreducible Inc.
-use anyhow::Result;
-use binius_circuits::keccak::permutation::Permutation;
-use binius_core::word::Word;
+use anyhow::{Result, ensure};
+use binius_circuits::keccak::{Keccak, N_WORDS_PER_DIGEST};
 use binius_frontend::{CircuitBuilder, Wire, WitnessFiller};
 use clap::Args;
-use rand::{Rng, SeedableRng, rngs::StdRng};
+use rand::{RngCore, SeedableRng, rngs::StdRng};
+use sha3::{Digest, Keccak256};
 
 use crate::ExampleCircuit;
 
-/// Example circuit that chains multiple Keccak-f\[1600\] permutations
+/// Keccak-256 hash circuit example
 pub struct KeccakExample {
-	n_permutations: usize,
-	initial_state: [Wire; 25],
-	final_state: [Wire; 25],
+	keccak_hash: Keccak,
+	max_len_bytes: usize,
 }
 
 #[derive(Args, Debug, Clone)]
 pub struct Params {
-	/// Number of Keccak-f\[1600\] permutations to chain together
-	#[arg(short = 'n', long, default_value_t = 10)]
-	pub n_permutations: usize,
+	/// Maximum message length in bytes that the circuit can handle
+	#[arg(long)]
+	pub max_len_bytes: Option<usize>,
 }
 
 #[derive(Args, Debug, Clone)]
+#[group(multiple = false)]
 pub struct Instance {
-	// No instance-specific data needed - using fixed random seed
+	/// Length of the randomly generated message, in bytes (defaults to 1024)
+	#[arg(long)]
+	pub message_len: Option<usize>,
+
+	/// UTF-8 string to hash (if not provided, random bytes are generated)
+	#[arg(long)]
+	pub message_string: Option<String>,
 }
 
 impl ExampleCircuit for KeccakExample {
 	type Params = Params;
 	type Instance = Instance;
 
-	fn build(params: Params, builder: &mut CircuitBuilder) -> Result<Self> {
-		// Create:
-		// 1. initial state as inout wires.
-		// 2. expected final state as inout wires.
-		let initial_state: [Wire; 25] = std::array::from_fn(|_| builder.add_inout());
-		let expected_final_state: [Wire; 25] = std::array::from_fn(|_| builder.add_inout());
+	fn build(mut params: Params, builder: &mut CircuitBuilder) -> Result<Self> {
+		// If max_len_bytes not specified, we need to determine it based on instance
+		// Since we don't have instance yet, we'll check command line args directly
+		if params.max_len_bytes.is_none() {
+			// Parse command line args to peek at instance values
+			let args: Vec<String> = std::env::args().collect();
+			let mut message_len = None;
+			let mut message_string = None;
 
-		// Chain n permutations starting from initial state
-		let mut computed_state = initial_state;
-		for _ in 0..params.n_permutations {
-			Permutation::keccak_f1600(builder, &mut computed_state);
+			// Look for --message-len or --message-string in args
+			for i in 0..args.len() {
+				if args[i] == "--message-len" && i + 1 < args.len() {
+					message_len = args[i + 1].parse::<usize>().ok();
+				} else if args[i] == "--message-string" && i + 1 < args.len() {
+					message_string = Some(args[i + 1].clone());
+				}
+			}
+
+			// Determine capacity based on what we found
+			params.max_len_bytes = Some(if let Some(msg_string) = message_string {
+				msg_string.len()
+			} else {
+				message_len.unwrap_or(1024)
+			});
 		}
 
-		// Constrain computed final state to equal expected final state
-		builder.assert_eq_v("final_state", computed_state, expected_final_state);
+		let max_len_bytes = params.max_len_bytes.unwrap();
+
+		let len_bytes = builder.add_witness();
+		let digest: [Wire; N_WORDS_PER_DIGEST] = std::array::from_fn(|_| builder.add_inout());
+
+		let n_words = max_len_bytes.div_ceil(8);
+		let message = (0..n_words).map(|_| builder.add_inout()).collect();
+
+		let keccak = Keccak::new(builder, len_bytes, digest, message);
 
 		Ok(Self {
-			n_permutations: params.n_permutations,
-			initial_state,
-			final_state: expected_final_state,
+			keccak_hash: keccak,
+			max_len_bytes,
 		})
 	}
 
-	fn populate_witness(&self, _instance: Instance, w: &mut WitnessFiller) -> Result<()> {
-		// Generate random initial state with fixed seed for reproducibility
-		let mut rng = StdRng::seed_from_u64(42);
-		let initial_state: [u64; 25] = rng.random();
+	fn populate_witness(&self, instance: Instance, w: &mut WitnessFiller) -> Result<()> {
+		// Determine the message bytes to hash
+		let message_bytes = if let Some(message_string) = instance.message_string {
+			message_string.as_bytes().to_vec()
+		} else {
+			let mut rng = StdRng::seed_from_u64(42);
+			let len = instance.message_len.unwrap_or(1024); // Default to 1KiB
 
-		// Populate initial state witness
-		for i in 0..25 {
-			w[self.initial_state[i]] = Word(initial_state[i]);
-		}
+			let mut message_bytes = vec![0u8; len];
+			rng.fill_bytes(&mut message_bytes);
+			message_bytes
+		};
 
-		// Compute expected final state by running the permutation outside the circuit
-		let mut expected_final_state = initial_state;
-		for _ in 0..self.n_permutations {
-			binius_circuits::keccak::reference::keccak_f1600_reference(&mut expected_final_state);
-		}
+		ensure!(
+			message_bytes.len() <= self.max_len_bytes,
+			"Message length ({}) exceeds circuit capacity ({})",
+			message_bytes.len(),
+			self.max_len_bytes
+		);
 
-		// Populate expected final state witness
-		for i in 0..25 {
-			w[self.final_state[i]] = Word(expected_final_state[i]);
-		}
+		// Compute expected digest using reference implementation
+		let mut hasher = Keccak256::new();
+		hasher.update(&message_bytes);
+		let digest: [u8; 32] = hasher.finalize().into();
+
+		// Populate witness
+		self.keccak_hash.populate_len_bytes(w, message_bytes.len());
+		self.keccak_hash.populate_message(w, &message_bytes);
+		self.keccak_hash.populate_digest(w, digest);
 
 		Ok(())
 	}

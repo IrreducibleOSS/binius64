@@ -3,8 +3,8 @@
 
 use std::env;
 
-/// Default HASH_MAX_BYTES for hash benchmarks
-pub const DEFAULT_HASH_MAX_BYTES: usize = 128;
+/// Default HASH_MAX_BYTES for hash benchmarks (1KiB)
+pub const DEFAULT_HASH_MAX_BYTES: usize = 1024;
 
 /// Default LOG_INV_RATE for hash benchmarks
 pub const DEFAULT_HASH_LOG_INV_RATE: usize = 1;
