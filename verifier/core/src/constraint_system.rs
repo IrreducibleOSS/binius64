@@ -57,6 +57,10 @@ pub enum ShiftVariant {
 	/// This is similar to the logical shift right but instead of shifting in 0 bits it will
 	/// replicate the sign bit.
 	Sar,
+	/// Rotate right.
+	///
+	/// Rotates bits to the right, with bits shifted off the right end wrapping around to the left.
+	Ror,
 }
 
 impl SerializeBytes for ShiftVariant {
@@ -65,6 +69,7 @@ impl SerializeBytes for ShiftVariant {
 			ShiftVariant::Sll => 0u8,
 			ShiftVariant::Slr => 1u8,
 			ShiftVariant::Sar => 2u8,
+			ShiftVariant::Ror => 3u8,
 		};
 		index.serialize(write_buf)
 	}
@@ -80,6 +85,7 @@ impl DeserializeBytes for ShiftVariant {
 			0 => Ok(ShiftVariant::Sll),
 			1 => Ok(ShiftVariant::Slr),
 			2 => Ok(ShiftVariant::Sar),
+			3 => Ok(ShiftVariant::Ror),
 			_ => Err(SerializationError::UnknownEnumVariant {
 				name: "ShiftVariant",
 				index,
@@ -155,6 +161,21 @@ impl ShiftedValueIndex {
 		Self {
 			value_index,
 			shift_variant: ShiftVariant::Sar,
+			amount,
+		}
+	}
+
+	/// Rotate Right by the given number of bits.
+	///
+	/// Rotates bits to the right, with bits shifted off the right end wrapping around to the left.
+	///
+	/// # Panics
+	/// Panics if the shift amount is greater than or equal to 64.
+	pub fn ror(value_index: ValueIndex, amount: usize) -> Self {
+		assert!(amount < 64, "shift amount n={amount} out of range");
+		Self {
+			value_index,
+			shift_variant: ShiftVariant::Ror,
 			amount,
 		}
 	}
@@ -1069,7 +1090,12 @@ mod serialization_tests {
 
 	#[test]
 	fn test_shift_variant_serialization_round_trip() {
-		let variants = [ShiftVariant::Sll, ShiftVariant::Slr, ShiftVariant::Sar];
+		let variants = [
+			ShiftVariant::Sll,
+			ShiftVariant::Slr,
+			ShiftVariant::Sar,
+			ShiftVariant::Ror,
+		];
 
 		for variant in variants {
 			let mut buf = Vec::new();
@@ -1079,7 +1105,8 @@ mod serialization_tests {
 			match (variant, deserialized) {
 				(ShiftVariant::Sll, ShiftVariant::Sll)
 				| (ShiftVariant::Slr, ShiftVariant::Slr)
-				| (ShiftVariant::Sar, ShiftVariant::Sar) => {}
+				| (ShiftVariant::Sar, ShiftVariant::Sar)
+				| (ShiftVariant::Ror, ShiftVariant::Ror) => {}
 				_ => panic!("ShiftVariant round trip failed: {:?} != {:?}", variant, deserialized),
 			}
 		}
