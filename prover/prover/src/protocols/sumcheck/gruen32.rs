@@ -1,5 +1,7 @@
 // Copyright 2023-2025 Irreducible Inc.
 
+use std::cmp::min;
+
 use binius_field::{Field, PackedField};
 use binius_math::{
 	field_buffer::FieldBuffer,
@@ -20,22 +22,39 @@ use super::{
 // indicator expansion, updating prefix product and multiplying by the linear part (denoted (3), (1)
 // and (2) in the mentioned docstring).
 //
+// The eq indicator may be treated as an outer product of "chunk" and "suffix" sub-eq-indicators.
+// "Chunk" is instantiated over lower indexed variables and "suffix" over the remaining variables.
+//
 // [Gruen24]: <https://eprint.iacr.org/2024/108>
 #[derive(Debug, Clone)]
 pub struct Gruen32<P: PackedField> {
 	n_vars_remaining: usize,
-	eq_expansion: FieldBuffer<P>,
+	chunk_eq_expansion: FieldBuffer<P>,
+	suffix_eq_expansion: FieldBuffer<P>,
 	eval_point: Vec<P::Scalar>,
 	eq_prefix_eval: P::Scalar,
 }
 
 impl<F: Field, P: PackedField<Scalar = F>> Gruen32<P> {
 	pub fn new(eval_point: &[F]) -> Self {
+		Self::new_with_suffix(eval_point.len(), eval_point)
+	}
+
+	pub fn new_with_suffix(max_chunk_vars: usize, eval_point: &[F]) -> Self {
 		let n_vars_remaining = eval_point.len();
+
+		let truncated_eval_point = &eval_point[..n_vars_remaining.saturating_sub(1)];
+
+		let chunk_vars = min(max_chunk_vars, truncated_eval_point.len());
+		let (chunk_eval_point, suffix_eval_point) = truncated_eval_point.split_at(chunk_vars);
+
+		let chunk_eq_expansion = eq_ind_partial_eval(chunk_eval_point);
+		let suffix_eq_expansion = eq_ind_partial_eval(suffix_eval_point);
 
 		Self {
 			n_vars_remaining,
-			eq_expansion: eq_ind_partial_eval(&eval_point[..n_vars_remaining.saturating_sub(1)]),
+			chunk_eq_expansion,
+			suffix_eq_expansion,
 			eval_point: eval_point.to_vec(),
 			eq_prefix_eval: F::ONE,
 		}
@@ -51,7 +70,16 @@ impl<F: Field, P: PackedField<Scalar = F>> Gruen32<P> {
 	}
 
 	pub fn eq_expansion(&self) -> &FieldBuffer<P> {
-		&self.eq_expansion
+		assert_eq!(self.suffix_eq_expansion.log_len(), 0);
+		&self.chunk_eq_expansion
+	}
+
+	pub fn chunk_eq_expansion(&self) -> &FieldBuffer<P> {
+		&self.chunk_eq_expansion
+	}
+
+	pub fn suffix_eq_expansion(&self) -> &FieldBuffer<P> {
+		&self.suffix_eq_expansion
 	}
 
 	pub fn n_vars_remaining(&self) -> usize {
@@ -80,9 +108,17 @@ impl<F: Field, P: PackedField<Scalar = F>> Gruen32<P> {
 
 		// Eq indicator folding is just an xor. Remember that we are one variable less than other
 		// multilinears.
-		if self.n_vars_remaining > 1 {
-			debug_assert_eq!(self.eq_expansion.log_len(), self.n_vars_remaining - 1);
-			eq_ind_truncate_low_inplace(&mut self.eq_expansion, self.n_vars_remaining - 2)?;
+		debug_assert_eq!(
+			self.chunk_eq_expansion.log_len() + self.suffix_eq_expansion.log_len(),
+			self.n_vars_remaining - 1
+		);
+		// High-to-low evaluation order means we need to fold suffix first.
+		if self.suffix_eq_expansion.log_len() > 0 {
+			let new_log_len = self.suffix_eq_expansion.log_len() - 1;
+			eq_ind_truncate_low_inplace(&mut self.suffix_eq_expansion, new_log_len)?;
+		} else if self.chunk_eq_expansion.log_len() > 0 {
+			let new_log_len = self.chunk_eq_expansion.log_len() - 1;
+			eq_ind_truncate_low_inplace(&mut self.chunk_eq_expansion, new_log_len)?;
 		}
 
 		// Update the prefix product (1)
