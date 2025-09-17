@@ -37,7 +37,10 @@ impl ExampleBenchmark for Blake2bBenchmark {
 	}
 
 	fn create_instance(&self) -> Self::Instance {
-		Instance {}
+		Instance {
+			message_len: Some(self.config.max_bytes),
+			message_string: None,
+		}
 	}
 
 	fn bench_name(&self) -> String {

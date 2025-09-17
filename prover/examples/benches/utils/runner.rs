@@ -117,6 +117,8 @@ pub fn run_cs_benchmark<B: ExampleBenchmark>(
 	{
 		let mut group = c.benchmark_group(format!("{}_witness_generation", group_prefix));
 		group.throughput(benchmark.throughput());
+		group.sample_size(10);
+		group.warm_up_time(std::time::Duration::from_secs(2));
 
 		group.bench_function(BenchmarkId::from_parameter(&bench_name), |b| {
 			b.iter(|| {
@@ -136,6 +138,8 @@ pub fn run_cs_benchmark<B: ExampleBenchmark>(
 	{
 		let mut group = c.benchmark_group(format!("{}_proof_generation", group_prefix));
 		group.throughput(benchmark.throughput());
+		group.sample_size(10);
+		group.warm_up_time(std::time::Duration::from_secs(2));
 
 		group.bench_function(BenchmarkId::from_parameter(&bench_name), |b| {
 			b.iter(|| {
@@ -162,6 +166,8 @@ pub fn run_cs_benchmark<B: ExampleBenchmark>(
 	{
 		let mut group = c.benchmark_group(format!("{}_proof_verification", group_prefix));
 		group.throughput(benchmark.throughput());
+		group.sample_size(10);
+		group.warm_up_time(std::time::Duration::from_secs(2));
 
 		group.bench_function(BenchmarkId::from_parameter(&bench_name), |b| {
 			b.iter(|| {
