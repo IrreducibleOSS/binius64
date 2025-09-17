@@ -7,7 +7,7 @@ use binius_frontend::{CircuitBuilder, CircuitStat};
 use binius_utils::serialization::{DeserializeBytes, SerializeBytes};
 use clap::{Arg, Args, Command, FromArgMatches, Subcommand};
 
-use crate::{ExampleCircuit, prove_verify, setup, setup_with_key_collection};
+use crate::{CompressionType, ExampleCircuit, prove_verify, setup_sha256, setup_vision4};
 
 /// Serialize a value implementing `SerializeBytes` and write it to the given path.
 fn write_serialized<T: SerializeBytes>(value: &T, path: &str) -> Result<()> {
@@ -72,6 +72,10 @@ enum Commands {
 		/// Log of the inverse rate for the proof system
 		#[arg(short = 'l', long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..))]
 		log_inv_rate: u32,
+
+		/// Compression function to use
+		#[arg(short = 'c', long, value_enum, default_value_t = CompressionType::Sha256)]
+		compression: CompressionType,
 
 		#[command(flatten)]
 		params: CommandArgs,
@@ -198,16 +202,26 @@ where
 			.subcommand(save_cmd)
 			.subcommand(load_prove_cmd);
 
-		// Also add top-level args for default prove behavior
-		let command = command.arg(
-			Arg::new("log_inv_rate")
-				.short('l')
-				.long("log-inv-rate")
-				.value_name("RATE")
-				.help("Log of the inverse rate for the proof system")
-				.default_value("1")
-				.value_parser(clap::value_parser!(u32).range(1..)),
-		);
+		// Add top-level args for default prove behavior (when no subcommand specified)
+		let command = command
+			.arg(
+				Arg::new("log_inv_rate")
+					.short('l')
+					.long("log-inv-rate")
+					.value_name("RATE")
+					.help("Log of the inverse rate for the proof system")
+					.default_value("1")
+					.value_parser(clap::value_parser!(u32).range(1..)),
+			)
+			.arg(
+				Arg::new("compression")
+					.short('c')
+					.long("compression")
+					.value_name("TYPE")
+					.help("Compression function to use")
+					.value_parser(clap::value_parser!(crate::CompressionType))
+					.default_value("sha256"),
+			);
 
 		// Augment with Params arguments at top level for default behavior
 		let command = E::Params::augment_args(command);
@@ -231,6 +245,15 @@ where
 					.help("Log of the inverse rate for the proof system")
 					.default_value("1")
 					.value_parser(clap::value_parser!(u32).range(1..)),
+			)
+			.arg(
+				Arg::new("compression")
+					.short('c')
+					.long("compression")
+					.value_name("TYPE")
+					.help("Compression function to use")
+					.value_parser(clap::value_parser!(crate::CompressionType))
+					.default_value("sha256"),
 			);
 		cmd = E::Params::augment_args(cmd);
 		cmd = E::Instance::augment_args(cmd);
@@ -390,6 +413,11 @@ where
 		let log_inv_rate = *matches
 			.get_one::<u32>("log_inv_rate")
 			.expect("has default value");
+		let compression = matches
+			.get_one::<crate::CompressionType>("compression")
+			.expect("has default value")
+			.clone();
+		tracing::info!("Parsed compression type: {compression:?}");
 
 		// Parse Params and Instance from matches
 		let params = E::Params::from_arg_matches(&matches)?;
@@ -404,7 +432,6 @@ where
 
 		// Set up prover and verifier
 		let cs = circuit.constraint_system().clone();
-		let (verifier, prover) = setup(cs, log_inv_rate as usize)?;
 
 		// Population of the input to the witness and then evaluating the circuit.
 		let witness_population = tracing::info_span!("Generating witness").entered();
@@ -416,8 +443,18 @@ where
 		let witness = filler.into_value_vec();
 		drop(witness_population);
 
-		// Prove and verify
-		prove_verify(&verifier, &prover, witness)?;
+		match compression {
+			CompressionType::Sha256 => {
+				tracing::info!("Using SHA256 compression for Merkle tree");
+				let (verifier, prover) = setup_sha256(cs, log_inv_rate as usize, None)?;
+				prove_verify(&verifier, &prover, witness)?;
+			}
+			CompressionType::Vision4 => {
+				tracing::info!("Using Vision4 compression for Merkle tree");
+				let (verifier, prover) = setup_vision4(cs, log_inv_rate as usize, None)?;
+				prove_verify(&verifier, &prover, witness)?;
+			}
+		}
 
 		Ok(())
 	}
@@ -562,6 +599,10 @@ where
 		let log_inv_rate = *matches
 			.get_one::<u32>("log_inv_rate")
 			.expect("has default value");
+		let compression = matches
+			.get_one::<crate::CompressionType>("compression")
+			.expect("has default value")
+			.clone();
 
 		// Load constraint system
 		let cs_load_scope = tracing::info_span!("Loading constraint system").entered();
@@ -572,22 +613,16 @@ where
 		// Get the layout from the constraint system
 		let layout = cs.value_vec_layout.clone();
 
-		// Set up verifier and prover.
-		//
-		// In case the `key_collection_path` was provided, we load the prebuilt KeyCollection.
-		// In case the path to prebuilt key collection was not provided, we are going to run
-		// the regular setup.
-		let (verifier, prover) = if let Some(kc_path) = key_collection_path {
-			// Load pre-built KeyCollection.
-			let kc_load_scope = tracing::info_span!("Loading key collection").entered();
-			let key_collection: binius_prover::KeyCollection = read_deserialized(&kc_path)?;
-			tracing::info!("Key collection loaded from '{}'", kc_path);
-			drop(kc_load_scope);
-
-			setup_with_key_collection(cs, key_collection, log_inv_rate as usize)?
-		} else {
-			setup(cs, log_inv_rate as usize)?
-		};
+		// Load pre-built KeyCollection if path provided
+		let maybe_key_collection = key_collection_path
+			.map(|kc_path| -> Result<_> {
+				let kc_load_scope = tracing::info_span!("Loading key collection").entered();
+				let key_collection: binius_prover::KeyCollection = read_deserialized(&kc_path)?;
+				tracing::info!("Key collection loaded from '{kc_path}'");
+				drop(kc_load_scope);
+				Ok(key_collection)
+			})
+			.transpose()?;
 
 		// Load witness data
 		let witness_load_scope = tracing::info_span!("Loading witness data").entered();
@@ -605,8 +640,20 @@ where
 		)?;
 		drop(witness_load_scope);
 
-		// Prove and verify
-		prove_verify(&verifier, &prover, witness)?;
+		match compression {
+			CompressionType::Sha256 => {
+				tracing::info!("Using SHA256 compression for Merkle tree");
+				let (verifier, prover) =
+					setup_sha256(cs, log_inv_rate as usize, maybe_key_collection)?;
+				prove_verify(&verifier, &prover, witness)?;
+			}
+			CompressionType::Vision4 => {
+				tracing::info!("Using Vision4 compression for Merkle tree");
+				let (verifier, prover) =
+					setup_vision4(cs, log_inv_rate as usize, maybe_key_collection)?;
+				prove_verify(&verifier, &prover, witness)?;
+			}
+		};
 
 		Ok(())
 	}

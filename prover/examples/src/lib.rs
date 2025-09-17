@@ -7,47 +7,93 @@ use anyhow::Result;
 use binius_core::constraint_system::{ConstraintSystem, ValueVec};
 use binius_frontend::{CircuitBuilder, WitnessFiller};
 use binius_prover::{
-	OptimalPackedB128, Prover, hash::parallel_compression::ParallelCompressionAdaptor,
+	KeyCollection, OptimalPackedB128, Prover,
+	hash::{
+		ParallelDigest,
+		parallel_compression::{ParallelCompressionAdaptor, ParallelPseudoCompression},
+		vision_4::compression::VisionParallelCompression,
+	},
 };
 use binius_verifier::{
 	Verifier,
 	config::StdChallenger,
-	hash::{StdCompression, StdDigest},
+	hash::{
+		PseudoCompressionFunction, StdCompression, StdDigest,
+		vision_4::{compression::VisionCompression, digest::VisionHasherDigest},
+	},
 	transcript::{ProverTranscript, VerifierTranscript},
 };
+use clap::ValueEnum;
 pub use cli::Cli;
+use sha2::digest::{Digest, FixedOutputReset, Output, core_api::BlockSizeUser};
 
+#[derive(Debug, Clone, ValueEnum)]
+pub enum CompressionType {
+	/// SHA-256 compression function
+	Sha256,
+	/// Vision 4-element compression function
+	Vision4,
+}
+
+/// Standard verifier using SHA256 compression
 pub type StdVerifier = Verifier<StdDigest, StdCompression>;
+/// Standard prover using SHA256 compression
 pub type StdProver =
 	Prover<OptimalPackedB128, ParallelCompressionAdaptor<StdCompression>, StdDigest>;
+/// Vision4 verifier
+pub type VisionVerifier = Verifier<VisionHasherDigest, VisionCompression>;
+/// Vision4 prover  
+pub type VisionProver = Prover<OptimalPackedB128, VisionParallelCompression, VisionHasherDigest>;
 
-pub fn setup(cs: ConstraintSystem, log_inv_rate: usize) -> Result<(StdVerifier, StdProver)> {
-	let _setup_guard = tracing::info_span!("Setup", log_inv_rate).entered();
-	let verifier = Verifier::<StdDigest, _>::setup(cs, log_inv_rate, StdCompression::default())?;
-	let prover = Prover::<OptimalPackedB128, _, StdDigest>::setup(
-		verifier.clone(),
-		ParallelCompressionAdaptor::new(StdCompression::default()),
-	)?;
-	Ok((verifier, prover))
-}
-
-/// Like [`setup`] but skips expensive key collection building.
-pub fn setup_with_key_collection(
+/// Setup the prover and verifier and use SHA256 for Merkle tree compression.
+/// Providing the `key_collection` skips expensive key collection building.
+pub fn setup_sha256(
 	cs: ConstraintSystem,
-	key_collection: binius_prover::KeyCollection,
 	log_inv_rate: usize,
+	key_collection: Option<KeyCollection>,
 ) -> Result<(StdVerifier, StdProver)> {
 	let _setup_guard = tracing::info_span!("Setup", log_inv_rate).entered();
-	let verifier = Verifier::<StdDigest, _>::setup(cs, log_inv_rate, StdCompression::default())?;
-	let prover = Prover::<OptimalPackedB128, _, StdDigest>::setup_with_key_collection(
-		verifier.clone(),
-		ParallelCompressionAdaptor::new(StdCompression::default()),
-		key_collection,
-	)?;
+	let parallel_compression = ParallelCompressionAdaptor::new(StdCompression::default());
+	let compression = parallel_compression.compression().clone();
+	let verifier = Verifier::setup(cs, log_inv_rate, compression)?;
+	let prover = if let Some(key_collection) = key_collection {
+		Prover::setup_with_key_collection(verifier.clone(), parallel_compression, key_collection)?
+	} else {
+		Prover::setup(verifier.clone(), parallel_compression)?
+	};
 	Ok((verifier, prover))
 }
 
-pub fn prove_verify(verifier: &StdVerifier, prover: &StdProver, witness: ValueVec) -> Result<()> {
+/// Setup the prover and verifier and use ZK-friendly hash Vision4 for Merkle tree compression.
+/// Providing the `key_collection` skips expensive key collection building.
+pub fn setup_vision4(
+	cs: ConstraintSystem,
+	log_inv_rate: usize,
+	key_collection: Option<KeyCollection>,
+) -> Result<(VisionVerifier, VisionProver)> {
+	let _setup_guard = tracing::info_span!("Setup", log_inv_rate).entered();
+	let parallel_compression = VisionParallelCompression::default();
+	let compression = parallel_compression.compression().clone();
+	let verifier = Verifier::setup(cs, log_inv_rate, compression)?;
+	let prover = if let Some(key_collection) = key_collection {
+		Prover::setup_with_key_collection(verifier.clone(), parallel_compression, key_collection)?
+	} else {
+		Prover::setup(verifier.clone(), parallel_compression)?
+	};
+	Ok((verifier, prover))
+}
+
+pub fn prove_verify<D, C, PC>(
+	verifier: &Verifier<D, C>,
+	prover: &Prover<OptimalPackedB128, PC, D>,
+	witness: ValueVec,
+) -> Result<()>
+where
+	D: ParallelDigest + Digest + BlockSizeUser,
+	D::Digest: BlockSizeUser + FixedOutputReset,
+	C: PseudoCompressionFunction<Output<D>, 2>,
+	PC: ParallelPseudoCompression<Output<D::Digest>, 2>,
+{
 	let challenger = StdChallenger::default();
 
 	let mut prover_transcript = ProverTranscript::new(challenger.clone());
