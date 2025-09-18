@@ -10,6 +10,8 @@ use cranelift_entity::SecondaryMap;
 use crate::compiler::{
 	eval_form::EvalForm,
 	gate_graph::{GateGraph, Wire},
+	hints::HintRegistry,
+	llvm_eval_form::LlvmEvalForm,
 };
 
 /// Error returned when populating wire witness fails due to assertion failures.
@@ -72,6 +74,7 @@ pub struct Circuit {
 	constraint_system: ConstraintSystem,
 	wire_mapping: SecondaryMap<Wire, ValueIndex>,
 	eval_form: EvalForm,
+	llvm_eval_form: Option<LlvmEvalForm>,
 }
 
 impl Circuit {
@@ -82,6 +85,7 @@ impl Circuit {
 		constraint_system: ConstraintSystem,
 		wire_mapping: SecondaryMap<Wire, ValueIndex>,
 		eval_form: EvalForm,
+		llvm_eval_form: Option<LlvmEvalForm>,
 	) -> Self {
 		assert!(constraint_system.value_vec_layout.validate().is_ok());
 		Self {
@@ -89,6 +93,7 @@ impl Circuit {
 			constraint_system,
 			wire_mapping,
 			eval_form,
+			llvm_eval_form,
 		}
 	}
 
@@ -104,6 +109,22 @@ impl Circuit {
 			circuit: self,
 			value_vec: ValueVec::new(self.constraint_system.value_vec_layout.clone()),
 		}
+	}
+
+	fn populate_constants(&self, value_vec: &mut ValueVec) {
+		for (index, constant) in self.constraint_system.constants.iter().enumerate() {
+			value_vec.set(index, *constant);
+		}
+	}
+
+	/// Returns true if the circuit was compiled with the LLVM backend enabled.
+	pub fn has_llvm_backend(&self) -> bool {
+		self.llvm_eval_form.is_some()
+	}
+
+	/// Exposes the LLVM evaluation form for benchmarking and diagnostics.
+	pub fn llvm_eval_form(&self) -> Option<&LlvmEvalForm> {
+		self.llvm_eval_form.as_ref()
 	}
 
 	/// Populates non-input values (wires) in the witness.
@@ -130,9 +151,7 @@ impl Circuit {
 	/// [`CircuitBuilder::add_witness`]: super::CircuitBuilder::add_witness
 	pub fn populate_wire_witness(&self, w: &mut WitnessFiller) -> Result<(), PopulateError> {
 		// Fill the constant part from the witness.
-		for (index, constant) in self.constraint_system.constants.iter().enumerate() {
-			w.value_vec.set(index, *constant);
-		}
+		self.populate_constants(&mut w.value_vec);
 
 		// Execute the evaluation form - it modifies the ValueVec in place
 		// Pass the PathSpecTree for assertion error symbolication
@@ -140,6 +159,17 @@ impl Circuit {
 			.evaluate(&mut w.value_vec, Some(&self.gate_graph.path_spec_tree))?;
 
 		Ok(())
+	}
+
+	/// Executes the LLVM-backed evaluator to populate witness values.
+	pub fn populate_wire_witness_llvm(&self, w: &mut WitnessFiller) -> Result<(), PopulateError> {
+		let llvm_eval = self
+			.llvm_eval_form
+			.as_ref()
+			.expect("LLVM evaluation form not enabled for this circuit");
+		self.populate_constants(&mut w.value_vec);
+		let hints = HintRegistry::new();
+		llvm_eval.evaluate(&mut w.value_vec, &hints)
 	}
 
 	/// Returns the constraint system for this circuit.

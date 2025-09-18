@@ -36,13 +36,11 @@ It should contain at least:
 
 ## Lowering
 
-The gates should compute wires and store them into temporaries. We should minimize memory traffic. Concretely, we should not store every wire into the value vec, we should store only the
-ones that appear in the `constrained` set passed as an argument.
-
-That means that every value that is not computed as an internal wire but rather is an input should
-be loaded into a temporary upon the first access. Every value that is computed should be stored as
-a temporary and read from the temporary next time it is needed. Finally, the values that are
-constrained must be dumped into the value vec.
+Each gate computes its outputs into SSA temporaries. Inputs are loaded from the value vec the first
+time they are used and then kept in registers for subsequent uses. Today we still materialize every
+non-scratch wire back into the value vec for compatibility with the existing prover pipeline. Once
+the LLVM backend is pervasive we can refine this to only spill the subset of wires that appear in
+the `constrained` set.
 
 # Milestone 0
 

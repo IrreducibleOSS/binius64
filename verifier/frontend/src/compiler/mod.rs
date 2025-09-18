@@ -38,6 +38,7 @@ pub use gate_graph::Wire;
 pub(crate) struct Options {
 	enable_gate_fusion: bool,
 	enable_constant_propagation: bool,
+	enable_llvm_eval: bool,
 }
 
 // Shut up clippy since this is just so happens to be derivable for now.
@@ -47,6 +48,7 @@ impl Default for Options {
 		Self {
 			enable_gate_fusion: true,
 			enable_constant_propagation: false,
+			enable_llvm_eval: false,
 		}
 	}
 }
@@ -60,6 +62,9 @@ impl Options {
 		let mut opts = Self::default();
 		if std::env::var("MONBIJOU_CONSTPROP").is_ok() {
 			opts.enable_constant_propagation = true;
+		}
+		if std::env::var("MONBIJOU_LLVM_EVAL").is_ok() {
+			opts.enable_llvm_eval = true;
 		}
 		opts
 	}
@@ -274,8 +279,13 @@ impl CircuitBuilder {
 
 		// Build evaluation form
 		let eval_form = eval_form::EvalForm::build(&graph, &wire_mapping);
+		let llvm_eval_form = if shared.opts.enable_llvm_eval {
+			Some(llvm_eval_form::compile(&graph, &wire_mapping, &constrained_wires))
+		} else {
+			None
+		};
 
-		Circuit::new(graph, cs, wire_mapping, eval_form)
+		Circuit::new(graph, cs, wire_mapping, eval_form, llvm_eval_form)
 	}
 
 	/// Creates a reference to the same underlying circuit builder that is namespaced to the

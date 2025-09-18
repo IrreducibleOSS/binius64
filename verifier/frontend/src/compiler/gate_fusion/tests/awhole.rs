@@ -96,6 +96,7 @@ fn mk_circuit_builder() -> CircuitBuilder {
 	let opts = Options {
 		enable_gate_fusion: true,
 		enable_constant_propagation: false,
+		enable_llvm_eval: false,
 	};
 	CircuitBuilder::with_opts(opts)
 }

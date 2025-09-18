@@ -37,3 +37,8 @@ proptest = { workspace = true }
 rstest = { workspace = true }
 sha2 = { workspace = true }
 insta = { workspace = true }
+criterion = { workspace = true }
+
+[[bench]]
+name = "eval_backends"
+harness = false

@@ -20,7 +20,7 @@ use crate::{
 	compiler::{
 		circuit::PopulateError,
 		gate::opcode::Opcode,
-		gate_graph::{GateData, GateGraph, GateParam},
+		gate_graph::{GateData, GateGraph, GateParam, WireKind},
 		hints::HintRegistry,
 	},
 };
@@ -46,17 +46,16 @@ impl RuntimeContext {
 #[allow(dead_code)]
 type EntryPoint = unsafe extern "C" fn(*mut RuntimeContext);
 
-/// `EvalForm` encapsulates compiled code ready for evaluation of the circuit.
+/// `LlvmEvalForm` encapsulates compiled code ready for evaluation of the circuit.
 #[allow(dead_code)]
-pub struct EvalForm {
+pub struct LlvmEvalForm {
 	jit: OwnedJit,
 	entry: EntryPoint,
-	hint_registry: HintRegistry,
 	n_eval_insn: usize,
 }
 
 #[allow(dead_code)]
-impl EvalForm {
+impl LlvmEvalForm {
 	/// Evaluates the circuit with the given value vec.
 	pub fn evaluate(
 		&self,
@@ -87,21 +86,41 @@ impl EvalForm {
 	}
 }
 
-/// Compiles the gate graph into a natively compiled EvalForm.
+/// Compiles the gate graph into a natively compiled LlvmEvalForm.
 #[allow(dead_code)]
 pub fn compile(
 	gate_graph: &GateGraph,
 	wire_mapping: &SecondaryMap<Wire, ValueIndex>,
-	_constrained_wires: &EntitySet<Wire>,
-	hint_registry: HintRegistry,
-) -> EvalForm {
+	constrained_wires: &EntitySet<Wire>,
+) -> LlvmEvalForm {
 	Target::initialize_native(&InitializationConfig::default())
 		.expect("LLVM target initialization");
 
 	let context_ptr = Box::into_raw(Box::new(Context::create()));
 	let module = {
 		let context_ref = unsafe { &*context_ptr };
-		let mut codegen = CodeGenerator::new(context_ref);
+		let mut max_index = 0usize;
+		for (wire, _) in gate_graph.wires.iter() {
+			if let Some(&value_index) = wire_mapping.get(wire) {
+				max_index = max_index.max(value_index.0 as usize);
+			}
+		}
+		let mut cache_len = max_index + 1;
+		let mut store_mask = vec![false; cache_len];
+		for (wire, data) in gate_graph.wires.iter() {
+			let Some(&index) = wire_mapping.get(wire) else {
+				continue;
+			};
+			let idx = index.0 as usize;
+			if constrained_wires.contains(wire) || !matches!(data.kind, WireKind::Scratch) {
+				store_mask[idx] = true;
+			}
+		}
+		cache_len = cache_len.max(1);
+		if store_mask.len() < cache_len {
+			store_mask.resize(cache_len, true);
+		}
+		let mut codegen = CodeGenerator::new(context_ref, cache_len, store_mask);
 		for (idx, (_, data)) in gate_graph.gates.iter().enumerate() {
 			codegen.lower_gate(idx, data, wire_mapping);
 		}
@@ -110,10 +129,9 @@ pub fn compile(
 	let (jit, entry) =
 		unsafe { OwnedJit::from_raw(context_ptr, module) }.expect("LLVM JIT creation");
 
-	EvalForm {
+	LlvmEvalForm {
 		jit,
 		entry,
-		hint_registry,
 		n_eval_insn: gate_graph.gates.len(),
 	}
 }
@@ -173,13 +191,15 @@ struct CodeGenerator<'ctx> {
 	counter_type: IntType<'ctx>,
 	values_ptr: PointerValue<'ctx>,
 	assertion_ptr: PointerValue<'ctx>,
+	value_cache: Vec<Option<IntValue<'ctx>>>,
+	store_mask: Vec<bool>,
 	module: Module<'ctx>,
 }
 
 #[allow(dead_code)]
 impl<'ctx> CodeGenerator<'ctx> {
 	#[allow(deprecated)]
-	fn new(context: &'ctx Context) -> Self {
+	fn new(context: &'ctx Context, cache_len: usize, store_mask: Vec<bool>) -> Self {
 		let module = context.create_module("llvm_eval_form");
 		let builder = context.create_builder();
 
@@ -241,6 +261,8 @@ impl<'ctx> CodeGenerator<'ctx> {
 			counter_type,
 			values_ptr,
 			assertion_ptr,
+			value_cache: vec![None; cache_len],
+			store_mask,
 			module,
 		}
 	}
@@ -421,16 +443,31 @@ impl<'ctx> CodeGenerator<'ctx> {
 	}
 
 	fn load_value(&mut self, index: ValueIndex) -> IntValue<'ctx> {
+		let idx = index.0 as usize;
+		if let Some(Some(value)) = self.value_cache.get(idx).copied() {
+			return value;
+		}
 		let ptr = self.value_ptr(index);
-		self.builder
+		let loaded = self
+			.builder
 			.build_load(self.word_type, ptr, "load_word")
 			.expect("load value")
-			.into_int_value()
+			.into_int_value();
+		if let Some(slot) = self.value_cache.get_mut(idx) {
+			*slot = Some(loaded);
+		}
+		loaded
 	}
 
 	fn store_value(&mut self, index: ValueIndex, value: IntValue<'ctx>) {
-		let ptr = self.value_ptr(index);
-		self.builder.build_store(ptr, value).expect("store value");
+		let idx = index.0 as usize;
+		if let Some(slot) = self.value_cache.get_mut(idx) {
+			*slot = Some(value);
+		}
+		if self.store_mask.get(idx).copied().unwrap_or(true) {
+			let ptr = self.value_ptr(index);
+			self.builder.build_store(ptr, value).expect("store value");
+		}
 	}
 
 	fn value_ptr(&mut self, index: ValueIndex) -> PointerValue<'ctx> {
@@ -496,7 +533,7 @@ mod tests {
 		value_vec[wire_mapping[b]] = Word(0x0FED_CBA9_8765_4321);
 
 		let constrained = EntitySet::new();
-		let eval_form = compile(&graph, &wire_mapping, &constrained, HintRegistry::new());
+		let eval_form = compile(&graph, &wire_mapping, &constrained);
 		let hints = HintRegistry::new();
 		eval_form.evaluate(&mut value_vec, &hints).unwrap();
 
@@ -531,7 +568,7 @@ mod tests {
 		value_vec[wire_mapping[w]] = wv;
 
 		let constrained = EntitySet::new();
-		let eval_form = compile(&graph, &wire_mapping, &constrained, HintRegistry::new());
+		let eval_form = compile(&graph, &wire_mapping, &constrained);
 		let hints = HintRegistry::new();
 		eval_form.evaluate(&mut value_vec, &hints).unwrap();
 
@@ -571,7 +608,7 @@ mod tests {
 		}
 
 		let constrained = EntitySet::new();
-		let eval_form = compile(&graph, &wire_mapping, &constrained, HintRegistry::new());
+		let eval_form = compile(&graph, &wire_mapping, &constrained);
 		let hints = HintRegistry::new();
 		eval_form.evaluate(&mut value_vec, &hints).unwrap();
 
@@ -600,7 +637,7 @@ mod tests {
 		value_vec[wire_mapping[x]] = xv;
 
 		let constrained = EntitySet::new();
-		let eval_form = compile(&graph, &wire_mapping, &constrained, HintRegistry::new());
+		let eval_form = compile(&graph, &wire_mapping, &constrained);
 		let hints = HintRegistry::new();
 		eval_form.evaluate(&mut value_vec, &hints).unwrap();
 
@@ -628,7 +665,7 @@ mod tests {
 		value_vec[wire_mapping[y]] = Word(7);
 
 		let constrained = EntitySet::new();
-		let eval_form = compile(&graph, &wire_mapping, &constrained, HintRegistry::new());
+		let eval_form = compile(&graph, &wire_mapping, &constrained);
 		let hints = HintRegistry::new();
 
 		let err = eval_form.evaluate(&mut value_vec, &hints).unwrap_err();

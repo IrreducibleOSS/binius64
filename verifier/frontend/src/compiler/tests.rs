@@ -7,6 +7,54 @@ use super::*;
 use crate::util::num_biguint_from_u64_limbs;
 
 #[test]
+fn llvm_backend_matches_interpreter_on_mixed_gates() {
+	unsafe {
+		std::env::set_var("MONBIJOU_LLVM_EVAL", "1");
+	}
+	let builder = CircuitBuilder::new();
+	let a = builder.add_inout();
+	let b = builder.add_inout();
+	let c = builder.add_inout();
+	let d = builder.add_inout();
+
+	let ab_xor = builder.bxor(a, b);
+	let mix = builder.bxor_multi(&[ab_xor, c, d]);
+	let fax = builder.fax(a, b, c);
+	let rotated = builder.rotr(mix, 7);
+	let _sink = builder.fax(rotated, fax, ab_xor);
+	let zero = builder.bxor(rotated, rotated);
+	builder.assert_eq("consistency", zero, zero);
+
+	let circuit = builder.build();
+
+	let mut rng = StdRng::seed_from_u64(1234);
+	let mut interp = circuit.new_witness_filler();
+	let mut llvm = circuit.new_witness_filler();
+	let val_a = Word(rng.random::<u64>());
+	let val_b = Word(rng.random::<u64>());
+	let val_c = Word(rng.random::<u64>());
+	let val_d = Word(rng.random::<u64>());
+	interp[a] = val_a;
+	interp[b] = val_b;
+	interp[c] = val_c;
+	interp[d] = val_d;
+	llvm[a] = val_a;
+	llvm[b] = val_b;
+	llvm[c] = val_c;
+	llvm[d] = val_d;
+
+	circuit.populate_wire_witness(&mut interp).unwrap();
+	circuit.populate_wire_witness_llvm(&mut llvm).unwrap();
+
+	let interp_vec = interp.into_value_vec();
+	let llvm_vec = llvm.into_value_vec();
+	assert_eq!(interp_vec.combined_witness(), llvm_vec.combined_witness());
+	unsafe {
+		std::env::remove_var("MONBIJOU_LLVM_EVAL");
+	}
+}
+
+#[test]
 fn test_icmp_ult() {
 	// Build a circuit with only two inputs and check c = a < b.
 	let builder = CircuitBuilder::new();
