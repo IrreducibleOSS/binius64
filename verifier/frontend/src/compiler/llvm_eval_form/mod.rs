@@ -99,6 +99,7 @@ pub fn compile(
 
 	let context_ptr = Box::into_raw(Box::new(Context::create()));
 	let opt_selection = selected_optimization_level();
+	let ir_paths = ir_dump_paths();
 	let module = {
 		let context_ref = unsafe { &*context_ptr };
 		let mut max_index = 0usize;
@@ -126,18 +127,26 @@ pub fn compile(
 		for (idx, (_, data)) in gate_graph.gates.iter().enumerate() {
 			codegen.lower_gate(idx, data, wire_mapping);
 		}
+		if let Some(path) = ir_paths.0.as_ref() {
+			codegen
+				.module
+				.print_to_file(path)
+				.expect("write raw LLVM IR dump");
+		}
 		let module = codegen.finish();
 		if opt_selection.custom_pipeline {
 			run_custom_pipeline(&module);
+		}
+		if let Some(path) = ir_paths.1.as_ref() {
+			module.print_to_file(path).expect("write LLVM IR dump");
 		}
 		if let Some(path) = assembly_dump_path() {
 			dump_assembly(&module, opt_selection.level, path);
 		}
 		module
 	};
-	let (jit, entry) =
-		unsafe { OwnedJit::from_raw(context_ptr, module, opt_selection.level) }
-			.expect("LLVM JIT creation");
+	let (jit, entry) = unsafe { OwnedJit::from_raw(context_ptr, module, opt_selection.level) }
+		.expect("LLVM JIT creation");
 
 	LlvmEvalForm {
 		jit,
@@ -502,17 +511,41 @@ fn selected_optimization_level() -> OptSelection {
 		.to_ascii_lowercase()
 		.as_str()
 	{
-		"default" => OptSelection { level: OptimizationLevel::Default, custom_pipeline: false },
-		"less" => OptSelection { level: OptimizationLevel::Less, custom_pipeline: false },
-		"aggressive" => OptSelection { level: OptimizationLevel::Aggressive, custom_pipeline: false },
-		"custom" => OptSelection { level: OptimizationLevel::None, custom_pipeline: true },
-		"none" | "" => OptSelection { level: OptimizationLevel::None, custom_pipeline: false },
-		_ => OptSelection { level: OptimizationLevel::None, custom_pipeline: false },
+		"default" => OptSelection {
+			level: OptimizationLevel::Default,
+			custom_pipeline: false,
+		},
+		"less" => OptSelection {
+			level: OptimizationLevel::Less,
+			custom_pipeline: false,
+		},
+		"aggressive" => OptSelection {
+			level: OptimizationLevel::Aggressive,
+			custom_pipeline: false,
+		},
+		"custom" => OptSelection {
+			level: OptimizationLevel::None,
+			custom_pipeline: true,
+		},
+		"none" | "" => OptSelection {
+			level: OptimizationLevel::None,
+			custom_pipeline: false,
+		},
+		_ => OptSelection {
+			level: OptimizationLevel::None,
+			custom_pipeline: false,
+		},
 	}
 }
 
 fn assembly_dump_path() -> Option<PathBuf> {
 	env::var_os("MONBIJOU_LLVM_DUMP_ASM").map(PathBuf::from)
+}
+
+fn ir_dump_paths() -> (Option<PathBuf>, Option<PathBuf>) {
+	let raw = env::var_os("MONBIJOU_LLVM_DUMP_IR_RAW").map(PathBuf::from);
+	let final_path = env::var_os("MONBIJOU_LLVM_DUMP_IR").map(PathBuf::from);
+	(raw, final_path)
 }
 
 fn dump_assembly(module: &Module<'_>, opt_level: OptimizationLevel, path: PathBuf) {
@@ -550,8 +583,15 @@ fn run_custom_pipeline(module: &Module<'_>) {
 		)
 		.expect("target machine");
 
-	let passes = ["mem2reg", "instcombine", "reassociate", "gvn", "simplifycfg", "adce"]
-		.join(",");
+	let passes = [
+		"mem2reg",
+		"instcombine",
+		"reassociate",
+		"gvn",
+		"simplifycfg",
+		"adce",
+	]
+	.join(",");
 	let options = PassBuilderOptions::create();
 	module
 		.run_passes(&passes, &target_machine, options)
