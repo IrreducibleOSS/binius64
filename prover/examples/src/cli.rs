@@ -219,7 +219,7 @@ where
 					.long("compression")
 					.value_name("TYPE")
 					.help("Compression function to use")
-					.value_parser(clap::value_parser!(crate::CompressionType))
+					.value_parser(clap::value_parser!(CompressionType))
 					.default_value("sha256"),
 			);
 
@@ -252,7 +252,7 @@ where
 					.long("compression")
 					.value_name("TYPE")
 					.help("Compression function to use")
-					.value_parser(clap::value_parser!(crate::CompressionType))
+					.value_parser(clap::value_parser!(CompressionType))
 					.default_value("sha256"),
 			);
 		cmd = E::Params::augment_args(cmd);
@@ -355,6 +355,15 @@ where
 					.default_value("1")
 					.value_parser(clap::value_parser!(u32).range(1..)),
 			)
+			.arg(
+				Arg::new("compression")
+					.short('c')
+					.long("compression")
+					.value_name("TYPE")
+					.help("Compression function to use")
+					.value_parser(clap::value_parser!(CompressionType))
+					.default_value("sha256"),
+			)
 	}
 
 	/// Set the about/description text for the command.
@@ -414,7 +423,7 @@ where
 			.get_one::<u32>("log_inv_rate")
 			.expect("has default value");
 		let compression = matches
-			.get_one::<crate::CompressionType>("compression")
+			.get_one::<CompressionType>("compression")
 			.expect("has default value")
 			.clone();
 		tracing::info!("Parsed compression type: {compression:?}");
@@ -600,7 +609,7 @@ where
 			.get_one::<u32>("log_inv_rate")
 			.expect("has default value");
 		let compression = matches
-			.get_one::<crate::CompressionType>("compression")
+			.get_one::<CompressionType>("compression")
 			.expect("has default value")
 			.clone();
 
