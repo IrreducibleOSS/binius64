@@ -23,7 +23,7 @@ use binius_utils::checked_arithmetics::strict_log_2;
 use binius_verifier::{
 	config::{LOG_WORD_SIZE_BITS, StdChallenger},
 	evaluate_public_mle,
-	protocols::shift::{OperatorData as VerifierOperatorData, verify},
+	protocols::shift::{OperatorData as VerifierOperatorData, check_eval, verify},
 };
 use itertools::Itertools;
 use rand::{SeedableRng, rngs::StdRng};
@@ -212,9 +212,7 @@ where
 }
 
 /// Compute inner product of tensor with all bits from words
-pub fn evaluate_witness<F: Field>(words: &[Word], r_jr_y: &[F]) -> F {
-	let (r_j, r_y) = r_jr_y.split_at(LOG_WORD_SIZE_BITS);
-
+pub fn evaluate_witness<F: Field>(words: &[Word], r_j: &[F], r_y: &[F]) -> F {
 	let r_j_tensor = eq_ind_partial_eval::<F>(r_j);
 	let r_y_tensor = eq_ind_partial_eval::<F>(r_y);
 
@@ -317,23 +315,35 @@ fn test_shift_prove_and_verify() {
 			VerifierOperatorData::new(r_zhat_prime_intmul, r_x_prime_intmul, intmul_evals);
 
 		let verifier_output =
-			verify(&cs, verifier_bitand_data, verifier_intmul_data, &mut verifier_transcript)
+			verify(&cs, &verifier_bitand_data, &verifier_intmul_data, &mut verifier_transcript)
 				.unwrap();
 
 		// Compute the expected public input evaluation
-		let (z_coords, remaining) = verifier_output.eval_point.split_at(LOG_WORD_SIZE_BITS);
+		let z_coords = verifier_output.r_j();
+		let remaining = verifier_output.r_y();
 		let y_coords = &remaining[..inout_n_vars];
 		let expected_public_eval = evaluate_public_mle(value_vec.public(), z_coords, y_coords);
 		// and check consistency with verifier output
-		assert_eq!(expected_public_eval, verifier_output.public_eval);
+		check_eval(
+			&cs,
+			&verifier_bitand_data,
+			&verifier_intmul_data,
+			&verifier_output,
+			expected_public_eval,
+		)
+		.unwrap();
 
 		// Check the claimed eval matches the computed eval
-		let expected_eval =
-			evaluate_witness(value_vec.combined_witness(), &verifier_output.eval_point);
+		let expected_eval = evaluate_witness(
+			value_vec.combined_witness(),
+			verifier_output.r_j(),
+			verifier_output.r_y(),
+		);
 		assert_eq!(expected_eval, verifier_output.witness_eval);
 
 		// Check consistency of prover and verifier outputs
-		assert_eq!(prover_output.challenges, verifier_output.eval_point);
+		let eval_point = [verifier_output.r_j(), verifier_output.r_y()].concat();
+		assert_eq!(prover_output.challenges, eval_point);
 		assert_eq!(prover_output.eval, verifier_output.witness_eval);
 	}
 }

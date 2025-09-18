@@ -11,4 +11,4 @@ mod error;
 mod verify;
 
 pub use error::Error;
-pub use verify::{OperatorData, verify};
+pub use verify::{OperatorData, VerifyOutput, check_eval, verify};

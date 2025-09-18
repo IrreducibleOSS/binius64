@@ -127,7 +127,8 @@ fn evaluate_monster_multilinear_term_for_operand<F: Field>(
 /// as $r_j$, $r_s$, and $r_y$.
 pub fn evaluate_monster_multilinear_for_operation<F, const ARITY: usize>(
 	operand_vecs: Vec<Vec<&Operand>>,
-	operator_data: OperatorData<F, ARITY>,
+	operator_data: &OperatorData<F, ARITY>,
+	lambda: F,
 	r_j: &[F],
 	r_s: &[F],
 	r_y: &[F],
@@ -158,7 +159,7 @@ where
 		.into_par_iter()
 		.enumerate()
 		.map(|(i, operand_vec)| {
-			operator_data.lambda.pow([i as u64 + 1])
+			lambda.pow([i as u64 + 1])
 				* evaluate_monster_multilinear_term_for_operand(
 					operand_vec,
 					&h_op_r_s_product,

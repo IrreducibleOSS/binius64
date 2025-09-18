@@ -12,10 +12,8 @@ use crate::{
 /// Output of [`verify`].
 #[derive(Debug)]
 pub struct VerifyOutput<F: Field> {
-	/// Reduced evaluation claim on the witness multilinear at the challenge point.
-	pub witness_eval: F,
-	/// Reduced evaluation claim on the public multilinear at a prefix of the challenge point.
-	pub public_eval: F,
+	/// Evaluation of the (w - p) polynomial at `eval_point`.
+	pub eval: F,
 	/// Evaluation point from the MLE-check.
 	pub eval_point: Vec<F>,
 }
@@ -69,15 +67,13 @@ pub fn verify<F: Field, Challenger_: Challenger>(
 	// MLE-check expects prover to bind variables high-to-low, so reverse challenge order.
 	challenges.reverse();
 
-	// Read the witness evaluation w(r_z, r_y').
-	let witness_eval = transcript.message().read::<F>()?;
-
-	// Derive the expected public evaluation
-	let public_eval = witness_eval - eval;
-
 	Ok(VerifyOutput {
-		witness_eval,
-		public_eval,
+		eval,
 		eval_point: challenges,
 	})
+}
+
+/// Derive the expected witness evaluation
+pub fn compute_witness_eval<F: Field>(public_eval: F, reduced_eval: F) -> F {
+	reduced_eval + public_eval
 }
