@@ -1,28 +1,28 @@
 sha512 circuit
 --
 Gates & Instructions
-├─ Number of gates: 48,779
-└─ Number of evaluation instructions: 49,886
+├─ Number of gates: 25,841
+└─ Number of evaluation instructions: 26,420
 
 Constraints
-├─ AND constraints: 21,349 used (65.2% of 2^15)
-│  [▓▓▓▓▓▓░░░░] spare: 11,419
+├─ AND constraints: 11,314 used (69.1% of 2^14)
+│  [▓▓▓▓▓▓░░░░] spare: 5,070
 ├─ MUL constraints: 0 used (0.0% of 2^0)
 │  [░░░░░░░░░░] spare: 1
-└─ Distinct value indices: 63,034
-   ├─ Distinct shifted value indices: 41,309
-   └─ Distinct unshifted value indices: 21,725
+└─ Distinct value indices: 33,451
+   ├─ Distinct shifted value indices: 21,889
+   └─ Distinct unshifted value indices: 11,562
 
 Value Vector
-├─ Public Section: 641 used (62.6% of 2^10)
-│  [▓▓▓▓▓▓░░░░] spare: 383
-│  ├─ Constants: 377
-│  └─ Inout: 264
-├─ Private Section: 21,084 used (66.4%)
-│  [▓▓▓▓▓▓░░░░] spare: 10,660
-│  ├─ Witness: 273
-│  └─ Internal: 20,811
-├─ Total Committed: 21,725 used (66.3% of 2^15)
-│  [▓▓▓▓▓▓░░░░] spare: 11,043
-└─ Scratch (uncommitted): 54,941
+├─ Public Section: 385 used (75.2% of 2^9)
+│  [▓▓▓▓▓▓▓░░░] spare: 127
+│  ├─ Constants: 249
+│  └─ Inout: 136
+├─ Private Section: 11,177 used (70.4%)
+│  [▓▓▓▓▓▓▓░░░] spare: 4,695
+│  ├─ Witness: 145
+│  └─ Internal: 11,032
+├─ Total Committed: 11,562 used (70.6% of 2^14)
+│  [▓▓▓▓▓▓▓░░░] spare: 4,822
+└─ Scratch (uncommitted): 29,086
 

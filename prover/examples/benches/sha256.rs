@@ -32,7 +32,7 @@ impl ExampleBenchmark for Sha256Benchmark {
 
 	fn create_params(&self) -> Self::Params {
 		Params {
-			max_len_bytes: self.config.max_bytes,
+			max_len_bytes: Some(self.config.max_bytes),
 			exact_len: true,
 		}
 	}

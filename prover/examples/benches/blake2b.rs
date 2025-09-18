@@ -32,7 +32,7 @@ impl ExampleBenchmark for Blake2bBenchmark {
 
 	fn create_params(&self) -> Self::Params {
 		Params {
-			max_msg_len_bytes: self.config.max_bytes,
+			max_msg_len_bytes: Some(self.config.max_bytes),
 		}
 	}
 

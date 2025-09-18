@@ -17,8 +17,8 @@ pub struct Sha512Example {
 #[derive(Args, Debug, Clone)]
 pub struct Params {
 	/// Maximum message length in bytes that the circuit can handle.
-	#[arg(long, default_value_t = 2048)]
-	pub max_len_bytes: usize,
+	#[arg(long)]
+	pub max_len_bytes: Option<usize>,
 
 	/// Build circuit for exact message length (makes length a compile-time constant instead of
 	/// runtime witness).
@@ -29,7 +29,7 @@ pub struct Params {
 #[derive(Args, Debug, Clone)]
 #[group(multiple = false)]
 pub struct Instance {
-	/// Length of the randomly generated message, in bytes (defaults to max_len_bytes).
+	/// Length of the randomly generated message, in bytes (defaults to 1024).
 	#[arg(long)]
 	pub message_len: Option<usize>,
 
@@ -43,9 +43,29 @@ impl ExampleCircuit for Sha512Example {
 	type Instance = Instance;
 
 	fn build(params: Params, builder: &mut CircuitBuilder) -> Result<Self> {
-		let max_len = params.max_len_bytes.div_ceil(8);
+		// If max_len_bytes not specified, determine from command line args
+		let max_len_bytes = params.max_len_bytes.unwrap_or_else(|| {
+			let args: Vec<String> = std::env::args().collect();
+			let mut message_len = None;
+			let mut message_string = None;
+
+			for i in 0..args.len() {
+				if args[i] == "--message-len" && i + 1 < args.len() {
+					message_len = args[i + 1].parse::<usize>().ok();
+				} else if args[i] == "--message-string" && i + 1 < args.len() {
+					message_string = Some(args[i + 1].clone());
+				}
+			}
+
+			if let Some(msg_string) = message_string {
+				msg_string.len()
+			} else {
+				message_len.unwrap_or(1024)
+			}
+		});
+		let max_len = max_len_bytes.div_ceil(8);
 		let len_bytes = if params.exact_len {
-			builder.add_constant_64(params.max_len_bytes as u64)
+			builder.add_constant_64(max_len_bytes as u64)
 		} else {
 			builder.add_witness()
 		};
@@ -59,9 +79,7 @@ impl ExampleCircuit for Sha512Example {
 			message_string.as_bytes().to_vec()
 		} else {
 			let mut rng = StdRng::seed_from_u64(42);
-			let len = instance
-				.message_len
-				.unwrap_or(self.sha512_gadget.max_len_bytes());
+			let len = instance.message_len.unwrap_or(1024); // Default to 1KiB
 
 			let mut message_bytes = vec![0u8; len];
 			rng.fill_bytes(&mut message_bytes);
@@ -82,7 +100,7 @@ impl ExampleCircuit for Sha512Example {
 	}
 
 	fn param_summary(params: &Self::Params) -> Option<String> {
-		let base = format!("{}b", params.max_len_bytes);
+		let base = format!("{}b", params.max_len_bytes.unwrap_or(1024));
 		if params.exact_len {
 			Some(format!("{}-exact", base))
 		} else {

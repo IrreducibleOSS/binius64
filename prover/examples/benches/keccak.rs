@@ -15,21 +15,12 @@ static KECCAK_PEAK_ALLOC: PeakAlloc<System> = PeakAlloc::new(System);
 
 struct KeccakBenchmark {
 	config: HashBenchConfig,
-	n_permutations: usize,
 }
 
 impl KeccakBenchmark {
 	fn new() -> Self {
 		let config = HashBenchConfig::from_env();
-		// Keccak-256 rate is 136 bytes (1088 bits)
-		// For n bytes, we need n/136 permutations (rounded up)
-		const KECCAK_256_RATE: usize = 136;
-		let n_permutations = config.max_bytes.div_ceil(KECCAK_256_RATE);
-
-		Self {
-			config,
-			n_permutations,
-		}
+		Self { config }
 	}
 }
 
@@ -40,12 +31,15 @@ impl ExampleBenchmark for KeccakBenchmark {
 
 	fn create_params(&self) -> Self::Params {
 		Params {
-			n_permutations: self.n_permutations,
+			max_len_bytes: Some(self.config.max_bytes),
 		}
 	}
 
 	fn create_instance(&self) -> Self::Instance {
-		Instance {}
+		Instance {
+			message_len: Some(self.config.max_bytes),
+			message_string: None,
+		}
 	}
 
 	fn bench_name(&self) -> String {
@@ -57,7 +51,7 @@ impl ExampleBenchmark for KeccakBenchmark {
 	}
 
 	fn proof_description(&self) -> String {
-		format!("{} bytes", self.config.max_bytes)
+		format!("{} bytes message", self.config.max_bytes)
 	}
 
 	fn log_inv_rate(&self) -> usize {
@@ -66,25 +60,26 @@ impl ExampleBenchmark for KeccakBenchmark {
 
 	fn print_params(&self) {
 		const KECCAK_256_RATE: usize = 136;
+		let n_permutations = self.config.max_bytes.div_ceil(KECCAK_256_RATE);
 		let params = vec![
-			("Max bytes".to_string(), format!("{} bytes", self.config.max_bytes)),
+			("Message size".to_string(), format!("{} bytes", self.config.max_bytes)),
 			(
-				"Permutations".to_string(),
+				"Permutations required".to_string(),
 				format!(
 					"{} (for {} bytes at {} bytes/permutation)",
-					self.n_permutations, self.config.max_bytes, KECCAK_256_RATE
+					n_permutations, self.config.max_bytes, KECCAK_256_RATE
 				),
 			),
 			("Log inverse rate".to_string(), self.config.log_inv_rate.to_string()),
 		];
-		print_benchmark_header("Keccak", &params);
+		print_benchmark_header("Keccak-256", &params);
 	}
 }
 
-fn bench_keccak_permutations(c: &mut Criterion) {
+fn bench_keccak(c: &mut Criterion) {
 	let benchmark = KeccakBenchmark::new();
 	run_cs_benchmark(c, benchmark, "keccak", &KECCAK_PEAK_ALLOC);
 }
 
-criterion_group!(keccak, bench_keccak_permutations);
+criterion_group!(keccak, bench_keccak);
 criterion_main!(keccak);
