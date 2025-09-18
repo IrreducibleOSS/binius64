@@ -2,9 +2,37 @@ name: Benchmarks
 
 on:
   workflow_dispatch:
-  # TODO: Enable pull_request trigger for testing
-  # pull_request:
-  #   types: [opened, synchronize, reopened]
+    inputs:
+      run_blake2b:
+        description: 'Run BLAKE2B benchmark'
+        type: boolean
+        default: true
+      run_blake2s:
+        description: 'Run BLAKE2S benchmark'
+        type: boolean
+        default: true
+      run_keccak:
+        description: 'Run Keccak benchmark'
+        type: boolean
+        default: true
+      run_sha256:
+        description: 'Run SHA256 benchmark'
+        type: boolean
+        default: true
+      run_sha512:
+        description: 'Run SHA512 benchmark'
+        type: boolean
+        default: true
+      run_ethsign:
+        description: 'Run Ethereum signature benchmark'
+        type: boolean
+        default: true
+      run_hashsign:
+        description: 'Run hash-based signature benchmark'
+        type: boolean
+        default: true
+  pull_request:
+    types: [opened, synchronize, reopened]
   push:
     branches: [main]
 
@@ -13,80 +41,19 @@ permissions:
   contents: read
 
 jobs:
-  setup:
-    name: Setup benchmark configuration
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-      timestamp: ${{ steps.set-timestamp.outputs.timestamp }}
-      runs: ${{ steps.set-runs.outputs.runs }}
-    steps:
-      - name: Generate timestamp
-        id: set-timestamp
-        run: |
-          TIMESTAMP=$(date -u +%Y%m%d-%H%M%S)
-          echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
-          echo "Generated timestamp: $TIMESTAMP"
-
-      - name: Set number of benchmark runs
-        id: set-runs
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "runs=1" >> $GITHUB_OUTPUT
-            echo "PR detected: Running benchmarks 1 time"
-          else
-            echo "runs=5" >> $GITHUB_OUTPUT
-            echo "Main/manual run: Running benchmarks 5 times"
-          fi
-
-      - name: Generate matrix configuration
-        id: set-matrix
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const prMachines = [
-              {runner: 'c7i-16xlarge', name: 'x86-intel-64cpu-128gb'},
-              {runner: 'c8g-16xlarge', name: 'arm-graviton4-64cpu-128gb'}
-            ];
-
-            const additionalMachines = [
-              // Additional high-memory instances disabled for cost optimization
-              // Uncomment these lines to enable more instance types in the future
-              // {runner: 'm7i-16xlarge', name: 'x86-intel-64cpu-256gb'},
-              // {runner: 'r7i-16xlarge', name: 'x86-intel-64cpu-512gb'},
-              // {runner: 'm8g-16xlarge', name: 'arm-graviton4-64cpu-256gb'},
-              // {runner: 'r8g-16xlarge', name: 'arm-graviton4-64cpu-512gb'}
-            ];
-
-            const isPR = context.eventName === 'pull_request';
-            const selected = isPR ? prMachines : [...prMachines, ...additionalMachines];
-
-            console.log(`Event type: ${context.eventName}`);
-            console.log(`Is PR: ${isPR}`);
-            console.log(`Selected ${selected.length} machines:`);
-            selected.forEach(m => console.log(`  - ${m.name} (${m.runner})`));
-
-            core.setOutput('matrix', JSON.stringify({instance: selected}));
-
-      - name: Display configuration summary
-        run: |
-          echo "=== Benchmark Configuration ==="
-          echo "Timestamp: ${{ steps.set-timestamp.outputs.timestamp }}"
-          echo "Event: ${{ github.event_name }}"
-          echo "Branch: ${{ github.head_ref || github.ref_name }}"
-          echo "Commit: ${{ github.sha }}"
-          echo "Runs per benchmark: ${{ steps.set-runs.outputs.runs }}"
-          echo ""
-          echo "Matrix configuration:"
-          echo '${{ steps.set-matrix.outputs.matrix }}' | jq .
-
   benchmarks:
-    name: benchmarks-${{ matrix.instance.name }}
-    needs: setup
-    runs-on: ${{ matrix.instance.runner }}
+    name: criterion-${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
-      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
+      matrix:
+        include:
+          - runner: c7i-16xlarge
+            name: x86-intel-64cpu-128gb
+          - runner: c8g-16xlarge
+            name: arm-graviton4-64cpu-128gb
+    env:
+      PERFETTO_MACHINE_NAME: ${{ matrix.runner }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -96,8 +63,8 @@ jobs:
       - name: Set safe directory
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-      - name: Install deps
-        run: sudo yum -y install gcc openssl-devel curl jq z3-devel clang pkg-config python3
+      - name: Install dependencies
+        run: sudo yum -y install gcc openssl-devel curl jq z3-devel clang pkg-config python3 gnuplot
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -105,7 +72,7 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          key: benchmarks-${{ matrix.instance.name }}
+          key: criterion-${{ matrix.name }}
           cache-on-failure: true
 
       - name: Run platform diagnostics
@@ -113,26 +80,154 @@ jobs:
         env:
           RUSTFLAGS: "-C target-cpu=native"
 
-      - name: Run benchmarks
-        run: |
-          RUN_ID="${{ needs.setup.outputs.timestamp }}-$(git rev-parse --short HEAD)"
-
-          python3 .github/scripts/run_benchmarks.py \
-            --runs ${{ needs.setup.outputs.runs }} \
-            --run-id "$RUN_ID" \
-            --generate-stats
+      - name: Compile benchmarks and examples
         env:
-          PERFETTO_PLATFORM_NAME: "${{ matrix.instance.runner }}"
-
-      - name: List perfetto traces
-        if: always()
+          RUSTFLAGS: "-C target-cpu=native"
         run: |
-          echo "=== Trace directory structure ==="
-          find perfetto_traces -type d | sort
-          echo ""
-          echo "=== Summary ==="
-          echo "Total files: $(find perfetto_traces -name "*.perfetto-trace" | wc -l)"
-          echo "Total size: $(du -sh perfetto_traces | cut -f1)"
+          echo "::group::📦 Compiling all benchmarks"
+          cargo build --release --benches -p binius-examples
+          echo "::endgroup::"
+
+          echo "::group::📦 Compiling all examples (multi-threaded with perfetto)"
+          cargo build --release --examples -p binius-examples --features perfetto
+          echo "::endgroup::"
+
+          echo "::group::📦 Compiling all examples (single-threaded with perfetto)"
+          cargo build --release --examples -p binius-examples --features perfetto --no-default-features
+          echo "::endgroup::"
+
+      - name: Benchmark - blake2b
+        if: github.event_name != 'workflow_dispatch' || inputs.run_blake2b
+        continue-on-error: true
+        env:
+          RUSTFLAGS: "-C target-cpu=native"
+          HASH_MAX_BYTES: 1024
+          LOG_INV_RATE: 1
+        run: ./.github/scripts/run_benchmark.sh blake2b "--max-msg-len-bytes ${HASH_MAX_BYTES}"
+
+      - name: Benchmark - blake2s
+        if: github.event_name != 'workflow_dispatch' || inputs.run_blake2s
+        continue-on-error: true
+        env:
+          RUSTFLAGS: "-C target-cpu=native"
+          HASH_MAX_BYTES: 1024
+          LOG_INV_RATE: 1
+        run: ./.github/scripts/run_benchmark.sh blake2s "--max-bytes ${HASH_MAX_BYTES}"
+
+      - name: Benchmark - keccak
+        if: github.event_name != 'workflow_dispatch' || inputs.run_keccak
+        continue-on-error: true
+        env:
+          RUSTFLAGS: "-C target-cpu=native"
+          HASH_MAX_BYTES: 1024
+          LOG_INV_RATE: 1
+        run: ./.github/scripts/run_benchmark.sh keccak "--max-len-bytes ${HASH_MAX_BYTES}"
+
+      - name: Benchmark - sha256
+        if: github.event_name != 'workflow_dispatch' || inputs.run_sha256
+        continue-on-error: true
+        env:
+          RUSTFLAGS: "-C target-cpu=native"
+          HASH_MAX_BYTES: 1024
+          LOG_INV_RATE: 1
+        run: ./.github/scripts/run_benchmark.sh sha256 "--max-len-bytes ${HASH_MAX_BYTES}"
+
+      - name: Benchmark - sha512
+        if: github.event_name != 'workflow_dispatch' || inputs.run_sha512
+        continue-on-error: true
+        env:
+          RUSTFLAGS: "-C target-cpu=native"
+          HASH_MAX_BYTES: 1024
+          LOG_INV_RATE: 1
+        run: ./.github/scripts/run_benchmark.sh sha512 "--max-len-bytes ${HASH_MAX_BYTES}"
+
+      - name: Benchmark - ethsign
+        if: github.event_name != 'workflow_dispatch' || inputs.run_ethsign
+        continue-on-error: true
+        env:
+          RUSTFLAGS: "-C target-cpu=native"
+          N_SIGNATURES: 1
+          MESSAGE_MAX_BYTES: 67
+          LOG_INV_RATE: 2
+        run: ./.github/scripts/run_benchmark.sh ethsign "-n ${N_SIGNATURES} -m ${MESSAGE_MAX_BYTES}"
+
+      - name: Benchmark - hashsign
+        if: github.event_name != 'workflow_dispatch' || inputs.run_hashsign
+        continue-on-error: true
+        env:
+          RUSTFLAGS: "-C target-cpu=native"
+          N_SIGNATURES: 4
+          XMSS_TREE_HEIGHT: 13
+          WOTS_SPEC: 2
+          LOG_INV_RATE: 2
+        run: ./.github/scripts/run_benchmark.sh hashsign "-n ${N_SIGNATURES} -t ${XMSS_TREE_HEIGHT} -s ${WOTS_SPEC}"
+
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ matrix.name }}
+          path: |
+            criterion_results/
+            perfetto_traces/
+          retention-days: 7
+
+  process-results:
+    name: Process Benchmark Results
+    needs: benchmarks
+    runs-on: ubuntu-latest
+    if: always()
+    permissions:
+      id-token: write  # For AWS OIDC authentication
+      contents: read
+      pull-requests: write  # For posting PR comments if needed
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref }}
+
+      - name: Download all benchmark artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: benchmark-results-*
+          path: downloaded-artifacts/
+
+      - name: Check artifacts exist
+        run: |
+          if [ ! -d "downloaded-artifacts" ] || [ -z "$(ls -A downloaded-artifacts)" ]; then
+            echo "No artifacts to process"
+            exit 1
+          fi
+
+      - name: Generate execution timestamp
+        id: timestamp
+        run: |
+          # Generate timestamp and extract git info
+          TIMESTAMP=$(date -u +"%Y%m%d-%H%M%S")
+          GIT_HASH=$(git rev-parse --short=7 HEAD)
+          BRANCH_NAME="${{ github.head_ref || github.ref_name }}"
+
+          echo "timestamp=${TIMESTAMP}" >> $GITHUB_OUTPUT
+          echo "git_hash=${GIT_HASH}" >> $GITHUB_OUTPUT
+          echo "branch_name=${BRANCH_NAME}" >> $GITHUB_OUTPUT
+          echo "execution_id=${TIMESTAMP}-${GIT_HASH}" >> $GITHUB_OUTPUT
+
+          echo "📅 Execution timestamp: ${TIMESTAMP}"
+          echo "🔖 Git hash: ${GIT_HASH}"
+          echo "🌿 Branch: ${BRANCH_NAME}"
+
+      - name: Process benchmark results
+        id: process
+        run: |
+          echo "TODO: Process criterion results and generate metrics"
+          # python3 .github/scripts/process_benchmark_results.py \
+          #   --input-dir downloaded-artifacts \
+          #   --timestamp "${{ steps.timestamp.outputs.timestamp }}" \
+          #   --git-hash "${{ steps.timestamp.outputs.git_hash }}" \
+          #   --branch "${{ steps.timestamp.outputs.branch_name }}" \
+          #   --output-markdown results_summary.md \
+          #   --output-json results_summary.json
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -140,136 +235,188 @@ jobs:
           role-to-assume: ${{ secrets.AWS_UPLOAD_ROLE }}
           aws-region: us-east-1
 
-      - name: Upload perfetto traces to S3
+      - name: Upload Perfetto traces to S3
         run: |
-          BRANCH_NAME="${{ github.head_ref || github.ref_name }}"
+          BRANCH_NAME="${{ steps.timestamp.outputs.branch_name }}"
+          TIMESTAMP="${{ steps.timestamp.outputs.timestamp }}"
+          GIT_HASH="${{ steps.timestamp.outputs.git_hash }}"
+
+          # Sanitize branch name for S3 path
           if [ "$BRANCH_NAME" = "main" ]; then
             BRANCH_PATH="main"
           else
-            BRANCH_PATH="branch-${BRANCH_NAME//\//-}"
+            # Lowercase, keep a-z 0-9 . _ -, replace others with dash
+            SANITIZED_BRANCH=$(echo "$BRANCH_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/-/g' | sed 's/^-*//g' | sed 's/-*$//g' | sed 's/--*/-/g')
+            BRANCH_PATH="branch-${SANITIZED_BRANCH}"
           fi
 
-          aws s3 cp "perfetto_traces/" "${{ secrets.PERFETTO_BUCKET }}/traces/binius64/${BRANCH_PATH}/" --recursive
+          echo "📤 Uploading Perfetto traces to S3..."
+          echo "   Branch path: ${BRANCH_PATH}"
+          echo "   Execution: ${TIMESTAMP}-${GIT_HASH}"
 
-          echo "BRANCH_PATH=${BRANCH_PATH}" >> $GITHUB_ENV
+          # Process each benchmark directory
+          for artifact_dir in downloaded-artifacts/*/; do
+            if [ -d "${artifact_dir}/perfetto_traces" ]; then
+              MACHINE_NAME=$(basename "$artifact_dir" | sed 's/benchmark-results-//')
+              echo "   Processing traces for machine: ${MACHINE_NAME}"
 
-      - name: Generate Perfetto UI URLs
+              # Upload each trace file, extracting benchmark name from filename
+              for trace_file in ${artifact_dir}/perfetto_traces/*.perfetto-trace; do
+                if [ -f "$trace_file" ]; then
+                  FILENAME=$(basename "$trace_file")
+                  # Extract benchmark name (first component before .)
+                  BENCHMARK_NAME=$(echo "$FILENAME" | cut -d. -f1)
+
+                  # Upload with branch/benchmark/machine path structure for better organization
+                  S3_PATH="${{ secrets.PERFETTO_BUCKET }}/traces/binius64/${BRANCH_PATH}/${BENCHMARK_NAME}/${MACHINE_NAME}/${TIMESTAMP}-${GIT_HASH}/"
+
+                  echo "     Uploading: ${FILENAME}"
+                  echo "     To: ${S3_PATH}"
+
+                  aws s3 cp "$trace_file" "${S3_PATH}${FILENAME}"
+                fi
+              done
+            fi
+          done
+
+          echo "✅ Perfetto traces upload complete"
+
+      - name: Generate GitHub summary
         run: |
-          python3 - <<'EOF' >> $GITHUB_STEP_SUMMARY
-          import os
-          import urllib.parse
-          from pathlib import Path
+          echo "TODO: Add benchmark results to GitHub summary"
+          # cat results_summary.md >> $GITHUB_STEP_SUMMARY
 
-          perfetto_host = "https://perfetto.irreducible.com"
-          branch_path = os.environ["BRANCH_PATH"]
-          run_id = os.environ.get("RUN_ID", "")
-          runs = int("${{ needs.setup.outputs.runs }}")
-
-          print(f"## 📊 Perfetto Traces for ${{ matrix.instance.name }}")
-          print()
-
-          traces_dir = Path("perfetto_traces")
-          for bench_dir in sorted(traces_dir.glob("*/*")):
-              if not bench_dir.is_dir():
-                  continue
-              benchmark = bench_dir.parent.name
-
-              print(f"### {benchmark}")
-
-              for mode in ["multi-fusion", "multi", "single-fusion", "single"]:
-                  traces = sorted(bench_dir.glob(f"{mode}-run*.perfetto-trace"))
-                  if traces:
-                      links = []
-                      for run in range(1, runs + 1):
-                          trace = next((t for t in traces if f"run{run}-" in t.name), None)
-                          if trace:
-                              s3_key = f"traces/binius64/{branch_path}/{benchmark}/{bench_dir.name}/{trace.name}"
-                              trace_url = f"{perfetto_host}/{s3_key}"
-                              encoded = urllib.parse.quote_plus(trace_url)
-                              ui_url = f"{perfetto_host}/#!/?url={encoded}"
-                              links.append(f"[#{run}]({ui_url})")
-                      if links:
-                          print(f"- **{mode}**: {' '.join(links)}")
-              print()
-          EOF
-        env:
-          RUN_ID: "${{ needs.setup.outputs.timestamp }}-$(git rev-parse --short HEAD)"
-
-      - name: Extract benchmark metrics
+      - name: Commit results to metrics repository
+        if: github.ref == 'refs/heads/main'
         run: |
-          python3 - <<'EOF' | tee -a $GITHUB_STEP_SUMMARY
-          import json
-          import re
-          import subprocess
-          import statistics
-          from pathlib import Path
+          echo "TODO: Commit JSON results to metrics repository"
+          # git clone https://github.com/${{ github.repository_owner }}/binius-metrics.git metrics-repo
+          # cp results_summary.json metrics-repo/data/${TIMESTAMP}-${GIT_HASH}.json
+          # cd metrics-repo
+          # git add .
+          # git commit -m "Add benchmark results for ${GIT_HASH}"
+          # git push
 
-          def parse_time(s):
-              m = re.match(r'([\d.]+)\s*(s|ms)', s)
-              if m:
-                  val = float(m.group(1))
-                  return val * 1000 if m.group(2) == 's' else val
-              return None
+      # TODO: Uncomment and implement the following steps after testing artifact upload/download
+      # - name: Extract benchmark metrics
+      #   run: |
+      #     python3 .github/scripts/criterion_metrics.py \
+      #       --criterion-dir target/criterion \
+      #       --timestamp "${TIMESTAMP}" \
+      #       --commit "${COMMIT_SHA}" \
+      #       --branch "${{ github.head_ref || github.ref_name }}" \
+      #       --machine "${{ matrix.name }}" \
+      #       --output-json benchmark_summary.json \
+      #       --output-markdown benchmark_report.md
+      #
+      #     # Add report to GitHub summary
+      #     cat benchmark_report.md >> $GITHUB_STEP_SUMMARY
+      #
+      # - name: Configure AWS credentials
+      #   if: github.ref == 'refs/heads/main'
+      #   uses: aws-actions/configure-aws-credentials@v4
+      #   with:
+      #     role-to-assume: ${{ secrets.AWS_UPLOAD_ROLE }}
+      #     aws-region: us-east-1
+      #
+      # - name: Upload results to S3
+      #   if: github.ref == 'refs/heads/main'
+      #   run: |
+      #     S3_PATH="${TIMESTAMP}-${COMMIT_SHA}/${{ matrix.name }}"
+      #
+      #     # Upload JSON summary
+      #     aws s3 cp benchmark_summary.json \
+      #       "${{ secrets.PERFETTO_BUCKET }}/criterion-results/main/${S3_PATH}/summary.json"
+      #
+      #     # Upload HTML reports if they exist
+      #     if [ -d "benchmark_results/criterion-html" ]; then
+      #       aws s3 cp benchmark_results/criterion-html \
+      #         "${{ secrets.PERFETTO_BUCKET }}/criterion-results/main/${S3_PATH}/html/" \
+      #         --recursive
+      #
+      #       echo "Results uploaded to S3 at criterion-results/main/${S3_PATH}/"
+      #     fi
+      #
+      # - name: Compare with baseline
+      #   if: github.ref == 'refs/heads/main'
+      #   continue-on-error: true
+      #   run: |
+      #     CURRENT_DIR="${TIMESTAMP}-${COMMIT_SHA}"
+      #
+      #     # Try to download the previous baseline from S3
+      #     PREV_DIR=$(aws s3 ls "${{ secrets.PERFETTO_BUCKET }}/criterion-results/main/" | \
+      #       grep PRE | awk '{print $2}' | sed 's|/||g' | \
+      #       grep -v "${CURRENT_DIR}" | \
+      #       sort -r | head -1)
+      #
+      #     if [ -n "$PREV_DIR" ]; then
+      #       echo "Found previous baseline: $PREV_DIR"
+      #
+      #       # Download previous summary
+      #       aws s3 cp \
+      #         "${{ secrets.PERFETTO_BUCKET }}/criterion-results/main/${PREV_DIR}/${{ matrix.name }}/summary.json" \
+      #         previous_summary.json || true
+      #
+      #       if [ -f "previous_summary.json" ]; then
+      #         python3 .github/scripts/criterion_compare.py \
+      #           --current benchmark_summary.json \
+      #           --previous previous_summary.json \
+      #           --threshold 5.0 \
+      #           --output-json comparison.json \
+      #           --output-markdown comparison.md \
+      #           --verbose
+      #
+      #         # Add comparison to GitHub summary
+      #         echo "" >> $GITHUB_STEP_SUMMARY
+      #         cat comparison.md >> $GITHUB_STEP_SUMMARY
+      #       fi
+      #     else
+      #       echo "No previous baseline found for comparison"
+      #     fi
+      #
+      # - name: Upload artifacts
+      #   if: always()
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: criterion-results-${{ matrix.name }}
+      #     path: |
+      #       benchmark_results/
+      #       benchmark_summary.json
+      #       benchmark_report.md
+      #       benchmark_run_results.json
+      #       comparison.json
+      #       comparison.md
+      #     retention-days: 30
 
-          metrics = {
-              "timestamp": "${{ needs.setup.outputs.timestamp }}",
-              "commit": subprocess.check_output(["git", "rev-parse", "--short", "HEAD"]).decode().strip(),
-              "branch": "${{ github.head_ref || github.ref_name }}",
-              "machine": "${{ matrix.instance.name }}",
-              "benchmarks": {}
-          }
-
-          proving_pattern = r'Proving \[ ([\d.]+(?:s|ms))'
-          verifying_pattern = r'Verifying \[ ([\d.]+(?:s|ms))'
-
-          for log_file in Path("benchmark_logs").glob("*.log"):
-              parts = log_file.stem.split("_", 1)
-              if len(parts) == 2:
-                  bench, mode = parts
-                  if bench not in metrics["benchmarks"]:
-                      metrics["benchmarks"][bench] = {}
-
-                  with open(log_file) as f:
-                      content = re.sub(r'\x1b\[[0-9;]*m', '', f.read())
-
-                      proving = [parse_time(m) for m in re.findall(proving_pattern, content)]
-                      proving = [t for t in proving if t]
-
-                      verifying = [parse_time(m) for m in re.findall(verifying_pattern, content)]
-                      verifying = [t for t in verifying if t]
-
-                      metrics["benchmarks"][bench][mode] = {
-                          "proving_avg_ms": round(statistics.mean(proving), 2) if proving else None,
-                          "proving_std_ms": round(statistics.stdev(proving), 2) if len(proving) > 1 else None,
-                          "verifying_avg_ms": round(statistics.mean(verifying), 2) if verifying else None,
-                          "verifying_std_ms": round(statistics.stdev(verifying), 2) if len(verifying) > 1 else None
-                      }
-
-          with open("benchmark_metrics.json", "w") as f:
-              json.dump(metrics, f, indent=2)
-
-          print("## 📊 Benchmark Performance Metrics")
-          print("```json")
-          print(json.dumps(metrics, indent=2))
-          print("```")
-          EOF
-
-      - name: Add circuit stats to GitHub summary
-        if: always()
-        run: |
-          if [ -f circuit_stats.md ]; then
-            echo "## 📈 Circuit Statistics for ${{ matrix.instance.name }}" >> $GITHUB_STEP_SUMMARY
-            cat circuit_stats.md >> $GITHUB_STEP_SUMMARY
-          fi
-
-      - name: Upload artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: perfetto-traces-${{ matrix.instance.name }}
-          path: |
-            perfetto_traces/**/*.perfetto-trace
-            circuit_stats.md
-            benchmark_results.json
-            benchmark_metrics.json
-          retention-days: 30
+  # TODO: Uncomment and update the summary job after testing
+  # summary:
+  #   name: Benchmark Summary
+  #   needs: benchmarks
+  #   runs-on: ubuntu-latest
+  #   if: always()
+  #   steps:
+  #     - name: Download all artifacts
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         pattern: criterion-results-*
+  #         merge-multiple: true
+  #
+  #     - name: Generate combined summary
+  #       run: |
+  #         cat > combined_summary.md <<'EOF'
+  #         # 🎯 Criterion Benchmarks Summary
+  #
+  #         **Commit**: ${{ github.sha }}
+  #         **Branch**: ${{ github.ref_name }}
+  #
+  #         EOF
+  #
+  #         # Combine all machine results
+  #         for report in benchmark_report.md comparison.md; do
+  #           if [ -f "$report" ]; then
+  #             cat "$report" >> combined_summary.md
+  #             echo "" >> combined_summary.md
+  #           fi
+  #         done
+  #
+  #         cat combined_summary.md >> $GITHUB_STEP_SUMMARY
