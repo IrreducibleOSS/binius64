@@ -163,6 +163,7 @@ impl Context {
 					ShiftOp::Sll => ShiftedValueIndex::sll(index, *amount),
 					ShiftOp::Slr => ShiftedValueIndex::srl(index, *amount),
 					ShiftOp::Sar => ShiftedValueIndex::sar(index, *amount),
+					ShiftOp::Ror => ShiftedValueIndex::rotr(index, *amount),
 				}
 			}
 		}

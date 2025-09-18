@@ -6,6 +6,7 @@ pub enum ShiftOp {
 	Sll,
 	Slr,
 	Sar,
+	Ror,
 }
 
 impl ShiftOp {
@@ -15,6 +16,7 @@ impl ShiftOp {
 			ShiftOp::Sll => ShiftVariant::Sll,
 			ShiftOp::Slr => ShiftVariant::Slr,
 			ShiftOp::Sar => ShiftVariant::Sar,
+			ShiftOp::Ror => ShiftVariant::Rotr,
 		}
 	}
 }
