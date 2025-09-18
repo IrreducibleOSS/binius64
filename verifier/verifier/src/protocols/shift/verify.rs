@@ -57,34 +57,63 @@ impl<F: Field, const ARITY: usize> OperatorData<F, ARITY> {
 	}
 }
 
-/// Output of [`verify`].
+/// Output of the shift reduction verification protocol.
+///
+/// Contains all the challenge points, evaluation claims, and random coefficients
+/// produced during the shift reduction protocol. These values are used for subsequent
+/// verification steps including public input checking and PCS verification.
 #[derive(Debug, CopyGetters)]
 pub struct VerifyOutput<F: Field> {
+	/// Random coefficient for batching AND constraint evaluations.
 	bitand_lambda: F,
+	/// Random coefficient for batching MUL constraint evaluations.
 	intmul_lambda: F,
+	/// Random coefficient for batching shift and public input checks.
 	batch_coeff: F,
+	/// Challenge point for the bit index variables (length `LOG_WORD_SIZE_BITS`).
 	pub r_j: Vec<F>,
+	/// Challenge point for the shift variables (length `LOG_WORD_SIZE_BITS`).
 	pub r_s: Vec<F>,
+	/// Challenge point for the word index variables (length `log_word_count`).
 	pub r_y: Vec<F>,
+	/// Final evaluation claim from the second sumcheck.
 	eval: F,
+	/// The claimed witness evaluation at the challenge point.
 	#[getset(get_copy = "pub")]
 	pub witness_eval: F,
+	/// Challenge point for the public input/output variables.
 	pub inout_eval_point: Vec<F>,
 }
 
 impl<F: Field> VerifyOutput<F> {
+	/// Returns the challenge point for bit index variables.
+	///
+	/// This corresponds to the first `LOG_WORD_SIZE_BITS` variables
+	/// in the witness encoding, indexing individual bits within words.
 	pub fn r_j(&self) -> &[F] {
 		&self.r_j
 	}
 
+	/// Returns the challenge point for shift variables.
+	///
+	/// This corresponds to `LOG_WORD_SIZE_BITS` variables encoding
+	/// the shift operations in the constraint system.
 	pub fn r_s(&self) -> &[F] {
 		&self.r_s
 	}
 
+	/// Returns the challenge point for word index variables.
+	///
+	/// This corresponds to `log_word_count` variables indexing
+	/// the words in the witness vector.
 	pub fn r_y(&self) -> &[F] {
 		&self.r_y
 	}
 
+	/// Returns the challenge point for public input/output variables.
+	///
+	/// This point is used for verifying consistency between the witness
+	/// and public input multilinears.
 	pub fn inout_eval_point(&self) -> &[F] {
 		&self.inout_eval_point
 	}
@@ -174,6 +203,42 @@ pub fn verify<F: BinaryField, C: Challenger>(
 	})
 }
 
+/// Validates the evaluation claims from the shift reduction protocol.
+///
+/// After the shift reduction protocol completes, this function checks that the
+/// prover-provided witness evaluation is consistent with the expected values.
+/// It computes the monster multilinear evaluations for both AND and MUL constraints
+/// and verifies the final equation relating the witness, public, and monster evaluations.
+///
+/// # Protocol Details
+///
+/// The function verifies that:
+/// ```text
+/// eval = witness_eval * monster_eval + batch_coeff * eq_eval * (witness_eval - public_eval)
+/// ```
+///
+/// Where:
+/// - `monster_eval` is the sum of evaluations for AND and MUL constraint polynomials
+/// - `eq_eval` is the evaluation of the equality indicator at the zero-padded public point
+/// - `batch_coeff` is a random batching coefficient from the protocol
+///
+/// # Arguments
+///
+/// * `constraint_system` - The constraint system containing AND and MUL constraints
+/// * `bitand_data` - Operator data for AND constraints (bit multiplication operations)
+/// * `intmul_data` - Operator data for MUL constraints (integer multiplication operations)
+/// * `output` - The output from the [`verify`] function containing challenge points and evaluations
+/// * `public_eval` - The evaluation of the public input multilinear at the challenge point
+///
+/// # Returns
+///
+/// Returns `Ok(())` if the evaluation check passes, or `Error::VerificationFailure` if
+/// the computed evaluation doesn't match the expected value.
+///
+/// # Errors
+///
+/// - `Error::VerificationFailure` if the evaluation equation doesn't hold
+/// - Propagates errors from monster multilinear evaluation
 pub fn check_eval<F>(
 	constraint_system: &ConstraintSystem,
 	bitand_data: &OperatorData<F, BITAND_ARITY>,

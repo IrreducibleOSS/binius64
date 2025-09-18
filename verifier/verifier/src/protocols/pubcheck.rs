@@ -73,7 +73,27 @@ pub fn verify<F: Field, Challenger_: Challenger>(
 	})
 }
 
-/// Derive the expected witness evaluation
+/// Derive the expected witness evaluation.
+///
+/// Given the public input evaluation and the reduced evaluation from the pubcheck
+/// protocol, computes the witness evaluation.
+///
+/// The pubcheck protocol reduces the claim `(w - p)(r) = reduced_eval`, where
+/// `w` is the witness multilinear, `p` is the public multilinear, and `r` is
+/// the evaluation point. This function recovers `w(r)` from the equation:
+///
+/// ```text
+/// w(r) = reduced_eval + p(r)
+/// ```
+///
+/// # Arguments
+///
+/// * `public_eval` - The evaluation of the public multilinear `p` at point `r`
+/// * `reduced_eval` - The evaluation of `(w - p)` at point `r`
+///
+/// # Returns
+///
+/// The evaluation of the witness multilinear `w` at point `r`
 pub fn compute_witness_eval<F: Field>(public_eval: F, reduced_eval: F) -> F {
 	reduced_eval + public_eval
 }

@@ -116,15 +116,41 @@ fn evaluate_monster_multilinear_term_for_operand<F: Field>(
 		.sum()
 }
 
-/// The monster multilinear for an operation is written
+/// Evaluates the monster multilinear polynomial for a constraint operation.
+///
+/// The monster multilinear encodes all constraints of a given type (AND or MUL) into
+/// a single polynomial. For an operation with multiple operands, it computes:
+///
 /// $$
 /// \sum_{\text{m_idx} \in \text{enumerate(operands)}}
 ///     \lambda^{\text{m_idx}+1}
 ///     \sum_{\text{op}} h_{\text{op}}(r_j, r_s) \cdot M_{\text{m}, \text{op}}(r_x', r_y, r_s)
 /// $$
-/// where $op$ ranges over the shift variants.
-/// This function computes this expression given corresponding `OperatorData`, as well
-/// as $r_j$, $r_s$, and $r_y$.
+///
+/// where:
+/// - `m_idx` indexes the operand position (0 to ARITY-1)
+/// - `op` ranges over the shift variants (logical/arithmetic shifts)
+/// - `h_op` is the shift selector polynomial
+/// - `M_m,op` is the multilinear extension of the operand values
+///
+/// # Arguments
+///
+/// * `operand_vecs` - Vector of operand vectors, one per operand position in the constraint
+/// * `operator_data` - Contains the multilinear challenge `r_x'`, univariate challenge `r_zhat'`,
+///   and evaluation claims for each operand
+/// * `lambda` - Random coefficient for batching operand evaluations
+/// * `r_j` - Challenge point for bit index variables (length `LOG_WORD_SIZE_BITS`)
+/// * `r_s` - Challenge point for shift variables (length `LOG_WORD_SIZE_BITS`)
+/// * `r_y` - Challenge point for word index variables
+///
+/// # Returns
+///
+/// The evaluation of the monster multilinear at the given challenge points, or an error
+/// if the computation fails.
+///
+/// # Errors
+///
+/// Returns an error if the binary subspace construction fails.
 pub fn evaluate_monster_multilinear_for_operation<F, const ARITY: usize>(
 	operand_vecs: Vec<Vec<&Operand>>,
 	operator_data: &OperatorData<F, ARITY>,
