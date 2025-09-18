@@ -201,7 +201,7 @@ impl<B: Buf> TranscriptReader<'_, B> {
 ///
 /// A Transcript is an abstraction over Fiat-Shamir so the prover and verifier can send and receive
 /// data.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ProverTranscript<Challenger> {
 	combined: FiatShamirBuf<BytesMut, Challenger>,
 	options: Options,
