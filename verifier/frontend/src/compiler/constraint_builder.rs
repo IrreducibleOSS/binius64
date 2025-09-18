@@ -89,30 +89,15 @@ impl Default for ConstraintBuilder {
 	}
 }
 
-/// Helper function to expand rotr operations and convert to ShiftedValueIndex
+/// Helper function to convert operand to ShiftedValueIndex
 fn expand_and_convert_operand(
 	operand: WireOperand,
 	wire_mapping: &SecondaryMap<Wire, ValueIndex>,
 ) -> Vec<ShiftedValueIndex> {
-	let mut result = Vec::new();
-	for sw in operand {
-		match sw.shift {
-			Shift::Rotr(n) => {
-				let idx = wire_mapping[sw.wire];
-				if n == 0 {
-					result.push(ShiftedValueIndex::plain(idx));
-				} else {
-					// Expand rotr(w, n) => srl(w, n) ⊕ sll(w, 64-n)
-					result.push(ShiftedValueIndex::srl(idx, n as usize));
-					result.push(ShiftedValueIndex::sll(idx, (64 - n) as usize));
-				}
-			}
-			_ => {
-				result.push(sw.to_shifted_value_index(wire_mapping));
-			}
-		}
-	}
-	result
+	operand
+		.into_iter()
+		.map(|sw| sw.to_shifted_value_index(wire_mapping))
+		.collect()
 }
 
 /// AND constraint using Wire references
@@ -287,8 +272,12 @@ impl ShiftedWire {
 					ShiftedValueIndex::sar(idx, n as usize)
 				}
 			}
-			Shift::Rotr(_) => {
-				unreachable!("Rotr should be expanded in expand_and_convert_operand()")
+			Shift::Rotr(n) => {
+				if n == 0 {
+					ShiftedValueIndex::plain(idx)
+				} else {
+					ShiftedValueIndex::rotr(idx, n as usize)
+				}
 			}
 		}
 	}
