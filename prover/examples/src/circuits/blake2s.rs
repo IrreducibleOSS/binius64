@@ -39,9 +39,9 @@ impl ExampleCircuit for Blake2sExample {
 	type Params = Params;
 	type Instance = Instance;
 
-	fn build(mut params: Params, builder: &mut CircuitBuilder) -> Result<Self> {
+	fn build(params: Params, builder: &mut CircuitBuilder) -> Result<Self> {
 		// If max_bytes not specified, determine from command line args
-		if params.max_bytes.is_none() {
+		let max_bytes = params.max_bytes.unwrap_or_else(|| {
 			let args: Vec<String> = std::env::args().collect();
 			let mut message_len = None;
 			let mut message_string = None;
@@ -54,14 +54,12 @@ impl ExampleCircuit for Blake2sExample {
 				}
 			}
 
-			params.max_bytes = Some(if let Some(msg_string) = message_string {
+			if let Some(msg_string) = message_string {
 				msg_string.len()
 			} else {
 				message_len.unwrap_or(1024)
-			});
-		}
-
-		let max_bytes = params.max_bytes.unwrap();
+			}
+		});
 		ensure!(max_bytes > 0, "max_bytes must be positive");
 
 		// Create the Blake2s gadget with witness wires

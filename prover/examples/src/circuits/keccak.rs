@@ -37,16 +37,12 @@ impl ExampleCircuit for KeccakExample {
 	type Params = Params;
 	type Instance = Instance;
 
-	fn build(mut params: Params, builder: &mut CircuitBuilder) -> Result<Self> {
-		// If max_len_bytes not specified, we need to determine it based on instance
-		// Since we don't have instance yet, we'll check command line args directly
-		if params.max_len_bytes.is_none() {
-			// Parse command line args to peek at instance values
+	fn build(params: Params, builder: &mut CircuitBuilder) -> Result<Self> {
+		let max_len_bytes = params.max_len_bytes.unwrap_or_else(|| {
 			let args: Vec<String> = std::env::args().collect();
 			let mut message_len = None;
 			let mut message_string = None;
 
-			// Look for --message-len or --message-string in args
 			for i in 0..args.len() {
 				if args[i] == "--message-len" && i + 1 < args.len() {
 					message_len = args[i + 1].parse::<usize>().ok();
@@ -55,15 +51,12 @@ impl ExampleCircuit for KeccakExample {
 				}
 			}
 
-			// Determine capacity based on what we found
-			params.max_len_bytes = Some(if let Some(msg_string) = message_string {
+			if let Some(msg_string) = message_string {
 				msg_string.len()
 			} else {
 				message_len.unwrap_or(1024)
-			});
-		}
-
-		let max_len_bytes = params.max_len_bytes.unwrap();
+			}
+		});
 
 		let len_bytes = builder.add_witness();
 		let digest: [Wire; N_WORDS_PER_DIGEST] = std::array::from_fn(|_| builder.add_inout());
