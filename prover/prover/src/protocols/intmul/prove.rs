@@ -28,7 +28,7 @@ use super::{
 };
 use crate::protocols::sumcheck::{
 	MleToSumCheckDecorator,
-	batch::{BatchSumcheckOutput, batch_prove},
+	batch::{BatchSumcheckOutput, batch_prove_and_write_evals},
 	bivariate_product_mle::BivariateProductMlecheckProver,
 	bivariate_product_multi_mle::BivariateProductMultiMlecheckProver,
 	rerand_mle::RerandMlecheckProver,
@@ -219,7 +219,7 @@ where
 			let BatchSumcheckOutput {
 				challenges,
 				mut multilinear_evals,
-			} = batch_prove(vec![a_prover], self.transcript)?;
+			} = batch_prove_and_write_evals(vec![a_prover], self.transcript)?;
 
 			assert_eq!(multilinear_evals.len(), 1);
 
@@ -276,7 +276,7 @@ where
 		let BatchSumcheckOutput {
 			challenges,
 			mut multilinear_evals,
-		} = batch_prove(provers, self.transcript)?;
+		} = batch_prove_and_write_evals(provers, self.transcript)?;
 
 		assert_eq!(multilinear_evals.len(), 2);
 		let c_root_prover_evals = multilinear_evals
@@ -323,7 +323,7 @@ where
 			let BatchSumcheckOutput {
 				challenges,
 				mut multilinear_evals,
-			} = batch_prove(vec![prover], self.transcript)?;
+			} = batch_prove_and_write_evals(vec![prover], self.transcript)?;
 
 			assert_eq!(multilinear_evals.len(), 1);
 			eval_point = challenges;
@@ -455,7 +455,7 @@ where
 		let BatchSumcheckOutput {
 			challenges,
 			mut multilinear_evals,
-		} = batch_prove(
+		} = batch_prove_and_write_evals(
 			vec![
 				Either::Left(bivariate_sumcheck_prover),
 				Either::Right(c_lo_0_sumcheck_prover),

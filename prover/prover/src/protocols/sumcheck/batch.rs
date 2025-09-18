@@ -89,15 +89,26 @@ where
 		.map(|prover| prover.finish())
 		.collect::<Result<Vec<_>, _>>()?;
 
-	let mut writer = transcript.message();
-	for multilinear_evals in &multilinear_evals {
-		writer.write_scalar_slice(multilinear_evals);
-	}
-
-	let output = BatchSumcheckOutput {
+	Ok(BatchSumcheckOutput {
 		challenges,
 		multilinear_evals,
-	};
+	})
+}
 
+pub fn batch_prove_and_write_evals<F, Prover, Challenger_>(
+	provers: Vec<Prover>,
+	transcript: &mut ProverTranscript<Challenger_>,
+) -> Result<BatchSumcheckOutput<F>, Error>
+where
+	F: Field,
+	Prover: SumcheckProver<F>,
+	Challenger_: Challenger,
+{
+	let output = batch_prove(provers, transcript)?;
+
+	let mut writer = transcript.message();
+	for evals in &output.multilinear_evals {
+		writer.write_scalar_slice(evals);
+	}
 	Ok(output)
 }
