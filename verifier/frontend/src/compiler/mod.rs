@@ -26,6 +26,7 @@ pub mod eval_form;
 mod gate_fusion;
 mod gate_graph;
 pub mod hints;
+mod llvm_eval_form;
 mod pathspec;
 #[cfg(test)]
 mod tests;

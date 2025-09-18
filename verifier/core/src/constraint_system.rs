@@ -747,6 +747,11 @@ impl ValueVec {
 		let end = self.layout.committed_total_len;
 		&self.data[start..end]
 	}
+
+	/// Returns the entire backing storage as a mutable slice.
+	pub fn as_mut_slice(&mut self) -> &mut [Word] {
+		self.data.as_mut_slice()
+	}
 }
 
 impl Index<ValueIndex> for ValueVec {

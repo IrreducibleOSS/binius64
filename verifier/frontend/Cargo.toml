@@ -22,6 +22,7 @@ sha3.workspace = true
 smallvec.workspace = true
 rustc-hash.workspace = true
 ripemd = { workspace = true }
+inkwell = { version = "0.6.0", features = ["target-aarch64", "llvm18-1-prefer-dynamic"] }
 
 [dev-dependencies]
 base64 = { workspace = true }
