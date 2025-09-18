@@ -106,6 +106,6 @@ impl ExampleCircuit for KeccakExample {
 	}
 
 	fn param_summary(params: &Self::Params) -> Option<String> {
-		Some(format!("{}p", params.n_permutations))
+		Some(format!("{}b", params.max_len_bytes.unwrap_or(1024)))
 	}
 }

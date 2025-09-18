@@ -100,7 +100,7 @@ impl ExampleCircuit for Sha256Example {
 	}
 
 	fn param_summary(params: &Self::Params) -> Option<String> {
-		let base = format!("{}b", params.max_len_bytes);
+		let base = format!("{}b", params.max_len_bytes.unwrap_or(1024));
 		if params.exact_len {
 			Some(format!("{}-exact", base))
 		} else {
