@@ -20,18 +20,24 @@ pub struct BatchSumcheckOutput<F: Field> {
 	/// Note: reverse when folding high-to-low to obtain evaluation claim.
 	pub challenges: Vec<F>,
 	/// Evaluation claims on non-transparent multilinears, per prover.
-	/// These values are concatenated and written to the transcript.
+	///
+	/// Each inner vector contains the evaluation values for one prover's
+	/// multilinear polynomials at the challenge point.
 	pub multilinear_evals: Vec<Vec<F>>,
 }
 
 /// Prove a batched sumcheck protocol execution, where all provers have the same number of rounds.
 ///
-/// The batched sumcheck reduces a set of claims about the sums of a multivariate polynomials over
+/// The batched sumcheck reduces a set of claims about the sums of multivariate polynomials over
 /// the boolean hypercube to their evaluation at a (shared) challenge point. This is achieved by
 /// constructing an `n_vars + 1`-variate polynomial whose coefficients in the "new variable" are the
 /// individual sum claims and evaluating it at a random point. Due to linearity of sums each claim
 /// can be proven separately with an individual [`SumcheckProver`] followed by weighted summation of
 /// the round polynomials.
+///
+/// This function performs the sumcheck protocol and returns the challenges and evaluation claims,
+/// but does not write the evaluation claims to the transcript. Use [`batch_prove_and_write_evals`]
+/// if you need to write the evaluations to the transcript.
 pub fn batch_prove<F, Prover, Challenger_>(
 	mut provers: Vec<Prover>,
 	transcript: &mut ProverTranscript<Challenger_>,
@@ -95,6 +101,21 @@ where
 	})
 }
 
+/// Prove a batched sumcheck protocol and write evaluation claims to the transcript.
+///
+/// This function combines [`batch_prove`] with writing the evaluation claims to the transcript.
+/// It performs the batched sumcheck protocol execution and then writes all the multilinear
+/// evaluation values to the transcript in order.
+///
+/// # Arguments
+///
+/// * `provers` - Vector of sumcheck provers, each handling one claim in the batch
+/// * `transcript` - The prover's transcript for the Fiat-Shamir protocol
+///
+/// # Returns
+///
+/// Returns [`BatchSumcheckOutput`] containing the challenges and evaluation claims that were
+/// written to the transcript.
 pub fn batch_prove_and_write_evals<F, Prover, Challenger_>(
 	provers: Vec<Prover>,
 	transcript: &mut ProverTranscript<Challenger_>,
