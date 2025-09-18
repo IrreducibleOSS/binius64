@@ -4,8 +4,6 @@ use anyhow::Result;
 use binius_examples::{Cli, circuits::bitcoin_p2pkh::BitcoinP2PKHExample};
 
 fn main() -> Result<()> {
-	let _tracing_guard = tracing_profile::init_tracing()?;
-
 	Cli::<BitcoinP2PKHExample>::new("bitcoin_p2pkh")
 		.about("Bitcoin P2PKH address validation example - proves knowledge of private key without revealing it")
 		.run()

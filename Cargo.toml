@@ -82,7 +82,7 @@ thiserror = "2.0.3"
 transpose = "0.2.2"
 tracing = "0.1.38"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt"] }
-tracing-profile = "0.10.9"
+tracing-profile = "0.10.11"
 trait-set = "0.3.0"
 uninit = "0.6.2"
 z3 = "0.13.3"
