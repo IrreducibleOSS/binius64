@@ -10,6 +10,7 @@ use inkwell::{
 	context::Context,
 	execution_engine::ExecutionEngine,
 	module::Module,
+	passes::PassBuilderOptions,
 	targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine},
 	types::{BasicType, IntType},
 	values::{FunctionValue, IntValue, PointerValue},
@@ -97,7 +98,7 @@ pub fn compile(
 		.expect("LLVM target initialization");
 
 	let context_ptr = Box::into_raw(Box::new(Context::create()));
-	let opt_level = selected_optimization_level();
+	let opt_selection = selected_optimization_level();
 	let module = {
 		let context_ref = unsafe { &*context_ptr };
 		let mut max_index = 0usize;
@@ -126,13 +127,17 @@ pub fn compile(
 			codegen.lower_gate(idx, data, wire_mapping);
 		}
 		let module = codegen.finish();
+		if opt_selection.custom_pipeline {
+			run_custom_pipeline(&module);
+		}
 		if let Some(path) = assembly_dump_path() {
-			dump_assembly(&module, opt_level, path);
+			dump_assembly(&module, opt_selection.level, path);
 		}
 		module
 	};
 	let (jit, entry) =
-		unsafe { OwnedJit::from_raw(context_ptr, module, opt_level) }.expect("LLVM JIT creation");
+		unsafe { OwnedJit::from_raw(context_ptr, module, opt_selection.level) }
+			.expect("LLVM JIT creation");
 
 	LlvmEvalForm {
 		jit,
@@ -486,17 +491,23 @@ impl<'ctx> CodeGenerator<'ctx> {
 	}
 }
 
-fn selected_optimization_level() -> OptimizationLevel {
+struct OptSelection {
+	level: OptimizationLevel,
+	custom_pipeline: bool,
+}
+
+fn selected_optimization_level() -> OptSelection {
 	match env::var("MONBIJOU_LLVM_OPT")
 		.unwrap_or_default()
 		.to_ascii_lowercase()
 		.as_str()
 	{
-		"default" => OptimizationLevel::Default,
-		"less" => OptimizationLevel::Less,
-		"aggressive" => OptimizationLevel::Aggressive,
-		"none" | "" => OptimizationLevel::None,
-		_ => OptimizationLevel::None,
+		"default" => OptSelection { level: OptimizationLevel::Default, custom_pipeline: false },
+		"less" => OptSelection { level: OptimizationLevel::Less, custom_pipeline: false },
+		"aggressive" => OptSelection { level: OptimizationLevel::Aggressive, custom_pipeline: false },
+		"custom" => OptSelection { level: OptimizationLevel::None, custom_pipeline: true },
+		"none" | "" => OptSelection { level: OptimizationLevel::None, custom_pipeline: false },
+		_ => OptSelection { level: OptimizationLevel::None, custom_pipeline: false },
 	}
 }
 
@@ -523,6 +534,28 @@ fn dump_assembly(module: &Module<'_>, opt_level: OptimizationLevel, path: PathBu
 	if let Err(err) = fs::write(&path, buffer.as_slice()) {
 		eprintln!("failed to write assembly dump to {:?}: {err}", path);
 	}
+}
+
+fn run_custom_pipeline(module: &Module<'_>) {
+	let triple = TargetMachine::get_default_triple();
+	let target = Target::from_triple(&triple).expect("target");
+	let target_machine = target
+		.create_target_machine(
+			&triple,
+			"generic",
+			"",
+			OptimizationLevel::None,
+			RelocMode::Default,
+			CodeModel::Default,
+		)
+		.expect("target machine");
+
+	let passes = ["mem2reg", "instcombine", "reassociate", "gvn", "simplifycfg", "adce"]
+		.join(",");
+	let options = PassBuilderOptions::create();
+	module
+		.run_passes(&passes, &target_machine, options)
+		.expect("run custom LLVM pipeline");
 }
 
 #[cfg(test)]
