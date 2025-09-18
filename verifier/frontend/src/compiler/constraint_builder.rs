@@ -628,22 +628,14 @@ mod tests {
 
 			let and_c = &and_constraints[0];
 
-			// rotr(5) should expand to srl(5) ⊕ sll(59)
-			// So operand a should have: srl(a, 5), sll(a, 59), plain(b)
-			assert_eq!(and_c.a.len(), 3);
+			// Operand a should have: ror(a, 5), plain(b)
+			assert_eq!(and_c.a.len(), 2);
 
-			// Check for srl(a, 5)
+			// Check for native ror(a, 5)
 			assert!(and_c.a.iter().any(|svi| {
 				svi.value_index == ValueIndex(0)
 					&& svi.amount == 5
-					&& matches!(svi.shift_variant, ShiftVariant::Slr)
-			}));
-
-			// Check for sll(a, 59)
-			assert!(and_c.a.iter().any(|svi| {
-				svi.value_index == ValueIndex(0)
-					&& svi.amount == 59
-					&& matches!(svi.shift_variant, ShiftVariant::Sll)
+					&& matches!(svi.shift_variant, ShiftVariant::Rotr)
 			}));
 
 			// Check for plain(b)
@@ -711,19 +703,13 @@ mod tests {
 			assert_eq!(and_constraints.len(), 1);
 			let and_c = &and_constraints[0];
 
-			// Check operand b: should have srl(b, 8) and sll(b, 56)
-			assert_eq!(and_c.b.len(), 2);
+			// Check operand b: should have native ror(b, 8)
+			assert_eq!(and_c.b.len(), 1);
 
 			assert!(and_c.b.iter().any(|svi| {
 				svi.value_index == ValueIndex(1)
 					&& svi.amount == 8
-					&& matches!(svi.shift_variant, ShiftVariant::Slr)
-			}));
-
-			assert!(and_c.b.iter().any(|svi| {
-				svi.value_index == ValueIndex(1)
-					&& svi.amount == 56
-					&& matches!(svi.shift_variant, ShiftVariant::Sll)
+					&& matches!(svi.shift_variant, ShiftVariant::Rotr)
 			}));
 		}
 	}
@@ -762,9 +748,8 @@ mod tests {
 		// Expected operand a components:
 		// - plain(a) from rotr(a, 0)
 		// - sll(b, 5)
-		// - srl(a, 12) from rotr(a, 12)
-		// - sll(a, 52) from rotr(a, 12)
-		assert_eq!(and_c.a.len(), 4);
+		// - ror(a, 12)
+		assert_eq!(and_c.a.len(), 3);
 
 		// Check for plain(a) from rotr(0)
 		assert!(
@@ -785,24 +770,14 @@ mod tests {
 			"Should have sll(b, 5)"
 		);
 
-		// Check for srl(a, 12) from rotr expansion
+		// Check for ror(a, 12)
 		assert!(
 			and_c.a.iter().any(|svi| {
 				svi.value_index == ValueIndex(0)
 					&& svi.amount == 12
-					&& matches!(svi.shift_variant, ShiftVariant::Slr)
+					&& matches!(svi.shift_variant, ShiftVariant::Rotr)
 			}),
-			"Should have srl(a, 12) from rotr(a, 12)"
-		);
-
-		// Check for sll(a, 52) from rotr expansion
-		assert!(
-			and_c.a.iter().any(|svi| {
-				svi.value_index == ValueIndex(0)
-					&& svi.amount == 52
-					&& matches!(svi.shift_variant, ShiftVariant::Sll)
-			}),
-			"Should have sll(a, 52) from rotr(a, 12)"
+			"Should have native ror(a, 12)"
 		);
 	}
 }

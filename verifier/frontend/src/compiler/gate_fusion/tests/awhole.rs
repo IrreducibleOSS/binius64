@@ -654,8 +654,7 @@ fn test_rotr_wrap_around() {
 	let _v4 = b.band(v3, v2);
 
 	let cs = compile(b);
-	// rotr(v0, 80) should wrap to rotr(v0, 16) which is (v[2]>>16 ^ v[2]<<48)
-	insta::assert_snapshot!(stringify_constraint_system(&cs), @"AND[0]: (v[3]) ∧ (v[2]≫16 ⊕ v[2]≪48) = (v[4])");
+	insta::assert_snapshot!(stringify_constraint_system(&cs), @"AND[0]: (v[3]) ∧ (v[2]≫≫16) = (v[4])");
 }
 
 #[test]
@@ -701,8 +700,7 @@ fn test_rotr_chain_with_wrap() {
 	let _v5 = b.band(v4, v3);
 
 	let cs = compile(b);
-	// rotr(v0, 75) should wrap to rotr(v0, 11) which is (v[2]>>11 ^ v[2]<<53)
-	insta::assert_snapshot!(stringify_constraint_system(&cs), @"AND[0]: (v[3]) ∧ (v[2]≫11 ⊕ v[2]≪53) = (v[4])");
+	insta::assert_snapshot!(stringify_constraint_system(&cs), @"AND[0]: (v[3]) ∧ (v[2]≫≫11) = (v[4])");
 }
 
 #[test]
@@ -723,8 +721,7 @@ fn test_rotr_distributes_over_xor_expanded() {
 	let _v5 = b.band(v4, v3);
 
 	let cs = compile(b);
-	// Should distribute rotr(_, 6) over the XOR as (x>>6 ^ x<<58)
-	insta::assert_snapshot!(stringify_constraint_system(&cs), @"AND[0]: (v[4]) ∧ (v[2]≫6 ⊕ v[2]≪58 ⊕ v[3]≫6 ⊕ v[3]≪58) = (v[5])");
+	insta::assert_snapshot!(stringify_constraint_system(&cs), @"AND[0]: (v[4]) ∧ (v[2]≫≫6 ⊕ v[3]≫≫6) = (v[5])");
 }
 
 #[test]

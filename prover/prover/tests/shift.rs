@@ -317,6 +317,7 @@ fn test_shift_prove_and_verify() {
 		let verifier_output =
 			verify(&cs, &verifier_bitand_data, &verifier_intmul_data, &mut verifier_transcript)
 				.unwrap();
+		verifier_transcript.finalize().unwrap();
 
 		// Compute the expected public input evaluation
 		let z_coords = verifier_output.r_j();
