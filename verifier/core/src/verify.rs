@@ -17,6 +17,7 @@ fn eval_shifted(witness: &ValueVec, sv: &ShiftedValueIndex) -> Word {
 		ShiftVariant::Sll => Word(val << sv.amount),
 		ShiftVariant::Slr => Word(val >> sv.amount),
 		ShiftVariant::Sar => Word(((val as i64) >> sv.amount) as u64),
+		ShiftVariant::Ror => Word(val.rotate_right(sv.amount as u32)),
 	}
 }
 
