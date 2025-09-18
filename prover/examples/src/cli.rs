@@ -3,11 +3,22 @@ use std::{fs, path::Path};
 
 use anyhow::Result;
 use binius_core::constraint_system::{ConstraintSystem, ValueVec, ValuesData};
-use binius_frontend::{CircuitBuilder, CircuitStat};
+use binius_frontend::{Circuit, CircuitBuilder, CircuitStat, WitnessFiller};
 use binius_utils::serialization::{DeserializeBytes, SerializeBytes};
 use clap::{Arg, Args, Command, FromArgMatches, Subcommand};
 
 use crate::{CompressionType, ExampleCircuit, prove_verify, setup_sha256, setup_vision4};
+
+/// Evaluate the circuit using the fastest available backend.
+fn evaluate_circuit(circuit: &Circuit, filler: &mut WitnessFiller<'_>) -> Result<()> {
+	let use_llvm = std::env::var("MONBIJOU_LLVM_EVAL").is_ok();
+	if use_llvm && circuit.has_llvm_backend() {
+		circuit.populate_wire_witness_llvm(filler)?;
+	} else {
+		circuit.populate_wire_witness(filler)?;
+	}
+	Ok(())
+}
 
 /// Serialize a value implementing `SerializeBytes` and write it to the given path.
 fn write_serialized<T: SerializeBytes>(value: &T, path: &str) -> Result<()> {
@@ -439,7 +450,7 @@ where
 		tracing::info_span!("Input population")
 			.in_scope(|| example.populate_witness(instance, &mut filler))?;
 		tracing::info_span!("Circuit evaluation")
-			.in_scope(|| circuit.populate_wire_witness(&mut filler))?;
+			.in_scope(|| evaluate_circuit(&circuit, &mut filler))?;
 		let witness = filler.into_value_vec();
 		drop(witness_population);
 
@@ -550,7 +561,7 @@ where
 		// Generate witness
 		let mut filler = circuit.new_witness_filler();
 		example.populate_witness(instance, &mut filler)?;
-		circuit.populate_wire_witness(&mut filler)?;
+		evaluate_circuit(&circuit, &mut filler)?;
 		let witness: ValueVec = filler.into_value_vec();
 
 		// Conditionally write artifacts

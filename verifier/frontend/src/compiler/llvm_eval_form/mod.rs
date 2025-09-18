@@ -1,6 +1,6 @@
 // Copyright 2025 Irreducible Inc.
 
-use std::mem::ManuallyDrop;
+use std::{env, fs, mem::ManuallyDrop, path::PathBuf};
 
 use binius_core::{ValueIndex, ValueVec, Word};
 use cranelift_entity::{EntitySet, SecondaryMap};
@@ -10,7 +10,7 @@ use inkwell::{
 	context::Context,
 	execution_engine::ExecutionEngine,
 	module::Module,
-	targets::{InitializationConfig, Target},
+	targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine},
 	types::{BasicType, IntType},
 	values::{FunctionValue, IntValue, PointerValue},
 };
@@ -97,6 +97,7 @@ pub fn compile(
 		.expect("LLVM target initialization");
 
 	let context_ptr = Box::into_raw(Box::new(Context::create()));
+	let opt_level = selected_optimization_level();
 	let module = {
 		let context_ref = unsafe { &*context_ptr };
 		let mut max_index = 0usize;
@@ -124,10 +125,14 @@ pub fn compile(
 		for (idx, (_, data)) in gate_graph.gates.iter().enumerate() {
 			codegen.lower_gate(idx, data, wire_mapping);
 		}
-		codegen.finish()
+		let module = codegen.finish();
+		if let Some(path) = assembly_dump_path() {
+			dump_assembly(&module, opt_level, path);
+		}
+		module
 	};
 	let (jit, entry) =
-		unsafe { OwnedJit::from_raw(context_ptr, module) }.expect("LLVM JIT creation");
+		unsafe { OwnedJit::from_raw(context_ptr, module, opt_level) }.expect("LLVM JIT creation");
 
 	LlvmEvalForm {
 		jit,
@@ -148,9 +153,10 @@ impl OwnedJit {
 	unsafe fn from_raw<'ctx>(
 		context: *mut Context,
 		module: Module<'ctx>,
+		opt_level: OptimizationLevel,
 	) -> Result<(Self, EntryPoint), String> {
 		let engine = module
-			.create_jit_execution_engine(OptimizationLevel::None)
+			.create_jit_execution_engine(opt_level)
 			.map_err(|err| err.to_string())?;
 		let addr = engine
 			.get_function_address("eval_entry")
@@ -477,6 +483,45 @@ impl<'ctx> CodeGenerator<'ctx> {
 				.build_in_bounds_gep(self.word_type, self.values_ptr, &[offset], "value_ptr")
 				.expect("geps")
 		}
+	}
+}
+
+fn selected_optimization_level() -> OptimizationLevel {
+	match env::var("MONBIJOU_LLVM_OPT")
+		.unwrap_or_default()
+		.to_ascii_lowercase()
+		.as_str()
+	{
+		"default" => OptimizationLevel::Default,
+		"less" => OptimizationLevel::Less,
+		"aggressive" => OptimizationLevel::Aggressive,
+		"none" | "" => OptimizationLevel::None,
+		_ => OptimizationLevel::None,
+	}
+}
+
+fn assembly_dump_path() -> Option<PathBuf> {
+	env::var_os("MONBIJOU_LLVM_DUMP_ASM").map(PathBuf::from)
+}
+
+fn dump_assembly(module: &Module<'_>, opt_level: OptimizationLevel, path: PathBuf) {
+	let triple = TargetMachine::get_default_triple();
+	let target = Target::from_triple(&triple).expect("target");
+	let target_machine = target
+		.create_target_machine(
+			&triple,
+			"generic",
+			"",
+			opt_level,
+			RelocMode::Default,
+			CodeModel::Default,
+		)
+		.expect("target machine");
+	let buffer = target_machine
+		.write_to_memory_buffer(module, FileType::Assembly)
+		.expect("emit assembly");
+	if let Err(err) = fs::write(&path, buffer.as_slice()) {
+		eprintln!("failed to write assembly dump to {:?}: {err}", path);
 	}
 }
 
