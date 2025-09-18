@@ -8,15 +8,13 @@ use binius_transcript::{
 	fiat_shamir::{CanSample, Challenger},
 };
 use binius_utils::checked_arithmetics::strict_log_2;
+use getset::CopyGetters;
 use itertools::Itertools;
 
 use super::{BITAND_ARITY, INTMUL_ARITY, error::Error, evaluate_monster_multilinear_for_operation};
 use crate::{
 	config::LOG_WORD_SIZE_BITS,
-	protocols::{
-		pubcheck::VerifyOutput,
-		sumcheck::{SumcheckOutput, verify as verify_sumcheck},
-	},
+	protocols::sumcheck::{SumcheckOutput, verify as verify_sumcheck},
 };
 
 /// Verifier data for an operation with the specified arity.
@@ -35,7 +33,6 @@ use crate::{
 pub struct OperatorData<F, const ARITY: usize> {
 	pub r_x_prime: Vec<F>,
 	pub r_zhat_prime: F,
-	pub lambda: F,
 	pub evals: [F; ARITY],
 }
 
@@ -48,7 +45,6 @@ impl<F: Field, const ARITY: usize> OperatorData<F, ARITY> {
 		Self {
 			r_x_prime,
 			r_zhat_prime,
-			lambda: F::ZERO,
 			evals,
 		}
 	}
@@ -56,8 +52,70 @@ impl<F: Field, const ARITY: usize> OperatorData<F, ARITY> {
 	// Batching is scaled by random lambda and therefore this batched
 	// evaluation claim can be added to other batched evaluation claims
 	// without further random scaling.
-	fn batched_eval(&self) -> F {
-		self.lambda * evaluate_univariate(&self.evals, self.lambda)
+	fn batched_eval(&self, lambda: F) -> F {
+		lambda * evaluate_univariate(&self.evals, lambda)
+	}
+}
+
+/// Output of the shift reduction verification protocol.
+///
+/// Contains all the challenge points, evaluation claims, and random coefficients
+/// produced during the shift reduction protocol. These values are used for subsequent
+/// verification steps including public input checking and PCS verification.
+#[derive(Debug, CopyGetters)]
+pub struct VerifyOutput<F: Field> {
+	/// Random coefficient for batching AND constraint evaluations.
+	bitand_lambda: F,
+	/// Random coefficient for batching MUL constraint evaluations.
+	intmul_lambda: F,
+	/// Random coefficient for batching shift and public input checks.
+	batch_coeff: F,
+	/// Challenge point for the bit index variables (length `LOG_WORD_SIZE_BITS`).
+	pub r_j: Vec<F>,
+	/// Challenge point for the shift variables (length `LOG_WORD_SIZE_BITS`).
+	pub r_s: Vec<F>,
+	/// Challenge point for the word index variables (length `log_word_count`).
+	pub r_y: Vec<F>,
+	/// Final evaluation claim from the second sumcheck.
+	eval: F,
+	/// The claimed witness evaluation at the challenge point.
+	#[getset(get_copy = "pub")]
+	pub witness_eval: F,
+	/// Challenge point for the public input/output variables.
+	pub inout_eval_point: Vec<F>,
+}
+
+impl<F: Field> VerifyOutput<F> {
+	/// Returns the challenge point for bit index variables.
+	///
+	/// This corresponds to the first `LOG_WORD_SIZE_BITS` variables
+	/// in the witness encoding, indexing individual bits within words.
+	pub fn r_j(&self) -> &[F] {
+		&self.r_j
+	}
+
+	/// Returns the challenge point for shift variables.
+	///
+	/// This corresponds to `LOG_WORD_SIZE_BITS` variables encoding
+	/// the shift operations in the constraint system.
+	pub fn r_s(&self) -> &[F] {
+		&self.r_s
+	}
+
+	/// Returns the challenge point for word index variables.
+	///
+	/// This corresponds to `log_word_count` variables indexing
+	/// the words in the witness vector.
+	pub fn r_y(&self) -> &[F] {
+		&self.r_y
+	}
+
+	/// Returns the challenge point for public input/output variables.
+	///
+	/// This point is used for verifying consistency between the witness
+	/// and public input multilinears.
+	pub fn inout_eval_point(&self) -> &[F] {
+		&self.inout_eval_point
 	}
 }
 
@@ -81,26 +139,23 @@ impl<F: Field, const ARITY: usize> OperatorData<F, ARITY> {
 /// - `transcript`: Interactive transcript for challenge sampling and message reading
 ///
 /// # Returns
-/// Returns `SumcheckOutput` containing the final challenges and witness evaluation,
+/// Returns [`VerifyOutput`] containing the final challenges and witness evaluation,
 /// or an error if verification fails.
 ///
 /// # Errors
 /// - Returns `Error::VerificationFailure` if monster multilinear evaluations don't match expected
 ///   values
 /// - Propagates sumcheck verification errors
-pub fn verify<F, C: Challenger>(
+pub fn verify<F: BinaryField, C: Challenger>(
 	constraint_system: &ConstraintSystem,
-	mut bitand_data: OperatorData<F, BITAND_ARITY>,
-	mut intmul_data: OperatorData<F, INTMUL_ARITY>,
+	bitand_data: &OperatorData<F, BITAND_ARITY>,
+	intmul_data: &OperatorData<F, INTMUL_ARITY>,
 	transcript: &mut VerifierTranscript<C>,
-) -> Result<VerifyOutput<F>, Error>
-where
-	F: BinaryField + From<AESTowerField8b>,
-{
-	bitand_data.lambda = transcript.sample();
-	intmul_data.lambda = transcript.sample();
+) -> Result<VerifyOutput<F>, Error> {
+	let bitand_lambda = transcript.sample();
+	let intmul_lambda = transcript.sample();
 
-	let eval = bitand_data.batched_eval() + intmul_data.batched_eval();
+	let eval = bitand_data.batched_eval(bitand_lambda) + intmul_data.batched_eval(intmul_lambda);
 
 	let SumcheckOutput {
 		eval: gamma,
@@ -119,8 +174,7 @@ where
 	let inout_n_vars = strict_log_2(constraint_system.value_vec_layout.offset_witness)
 		.expect("constraints preprocessed");
 
-	let mut inout_eval_point: Vec<F> = transcript.sample_vec(inout_n_vars);
-	inout_eval_point.extend(vec![F::ZERO; log_word_count - inout_n_vars]);
+	let inout_eval_point: Vec<F> = transcript.sample_vec(inout_n_vars);
 
 	// Batch the `gamma` as the eval claim for the shift prover
 	// together with zero as the eval claim for the inout prover.
@@ -134,9 +188,78 @@ where
 
 	r_y.reverse();
 
-	// Check that sumcheck eval equals expected compositional value
-	let mut reader = transcript.message();
-	let witness_eval = reader.read_scalar::<F>()?;
+	let witness_eval = transcript.message().read::<F>()?;
+
+	Ok(VerifyOutput {
+		bitand_lambda,
+		intmul_lambda,
+		batch_coeff,
+		r_j,
+		r_y,
+		r_s,
+		eval,
+		witness_eval,
+		inout_eval_point,
+	})
+}
+
+/// Validates the evaluation claims from the shift reduction protocol.
+///
+/// After the shift reduction protocol completes, this function checks that the
+/// prover-provided witness evaluation is consistent with the expected values.
+/// It computes the monster multilinear evaluations for both AND and MUL constraints
+/// and verifies the final equation relating the witness, public, and monster evaluations.
+///
+/// # Protocol Details
+///
+/// The function verifies that:
+/// ```text
+/// eval = witness_eval * monster_eval + batch_coeff * eq_eval * (witness_eval - public_eval)
+/// ```
+///
+/// Where:
+/// - `monster_eval` is the sum of evaluations for AND and MUL constraint polynomials
+/// - `eq_eval` is the evaluation of the equality indicator at the zero-padded public point
+/// - `batch_coeff` is a random batching coefficient from the protocol
+///
+/// # Arguments
+///
+/// * `constraint_system` - The constraint system containing AND and MUL constraints
+/// * `bitand_data` - Operator data for AND constraints (bit multiplication operations)
+/// * `intmul_data` - Operator data for MUL constraints (integer multiplication operations)
+/// * `output` - The output from the [`verify`] function containing challenge points and evaluations
+/// * `public_eval` - The evaluation of the public input multilinear at the challenge point
+///
+/// # Returns
+///
+/// Returns `Ok(())` if the evaluation check passes, or `Error::VerificationFailure` if
+/// the computed evaluation doesn't match the expected value.
+///
+/// # Errors
+///
+/// - `Error::VerificationFailure` if the evaluation equation doesn't hold
+/// - Propagates errors from monster multilinear evaluation
+pub fn check_eval<F>(
+	constraint_system: &ConstraintSystem,
+	bitand_data: &OperatorData<F, BITAND_ARITY>,
+	intmul_data: &OperatorData<F, INTMUL_ARITY>,
+	output: &VerifyOutput<F>,
+	public_eval: F,
+) -> Result<(), Error>
+where
+	F: BinaryField + From<AESTowerField8b>,
+{
+	let VerifyOutput {
+		bitand_lambda,
+		intmul_lambda,
+		batch_coeff,
+		eval,
+		r_j,
+		r_s,
+		r_y,
+		witness_eval,
+		inout_eval_point,
+	} = output;
 
 	// Compute monster multilinear evaluation
 	let monster_eval_for_bitand = {
@@ -145,7 +268,14 @@ where
 			.iter()
 			.map(|AndConstraint { a, b, c }| (a, b, c))
 			.multiunzip();
-		evaluate_monster_multilinear_for_operation(vec![a, b, c], bitand_data, &r_j, &r_s, &r_y)
+		evaluate_monster_multilinear_for_operation(
+			vec![a, b, c],
+			bitand_data,
+			*bitand_lambda,
+			r_j,
+			r_s,
+			r_y,
+		)
 	}?;
 	let monster_eval_for_intmul = {
 		let (a, b, lo, hi) = constraint_system
@@ -156,34 +286,30 @@ where
 		evaluate_monster_multilinear_for_operation(
 			vec![a, b, lo, hi],
 			intmul_data,
-			&r_j,
-			&r_s,
-			&r_y,
+			*intmul_lambda,
+			r_j,
+			r_s,
+			r_y,
 		)
 	}?;
 	let monster_eval = monster_eval_for_bitand + monster_eval_for_intmul;
 
-	// Rather than checking the eval claims read from the transcript are correct,
-	// we will derive from them the expected evaluation of the public input
-	// and return that in the `VerifyOutput`.
-	// The composition should equal
-	// `witness_eval * monster_eval + batch_coeff * eq_eval * (witness_eval - public_eval)`
-	// where
-	let eq_eval = eq_ind(&inout_eval_point, &r_y);
-	// and the prover claims this equals `eval`, output from the sumcheck.
-	// We must rearrange this equation to isolate `public_eval` on one side.
-	// Step 1: `(witness_eval * monster_eval - eval) == batch_coeff * eq_eval * (public_eval -
-	// witness_eval)`
-	// Step 2: `(witness_eval * monster_eval - eval) / (batch_coeff *
-	// eq_eval).invert() + witness_eval == public_eval`
-	// Therefore we derive `public_eval` as
-	let public_eval = (witness_eval * monster_eval - eval)
-		* (batch_coeff * eq_eval).invert_or_zero()
-		+ witness_eval;
+	// Compute the evaluation of the eq indicator with r_y and the zero-padded inout point.
+	let (r_y_head, r_y_tail) = r_y.split_at(inout_eval_point.len());
+	let eq_eval_head = eq_ind(inout_eval_point, r_y_head);
+	let eq_eval_tail = eq_ind(&vec![F::ZERO; r_y_tail.len()], r_y_tail);
+	let eq_eval = eq_eval_head * eq_eval_tail;
 
-	Ok(VerifyOutput {
-		witness_eval,
-		public_eval,
-		eval_point: [r_j, r_y].concat(),
-	})
+	// Check if the prover-provided witness value is satisfying.
+	//
+	// The protocol could compute this witness value instead of reading it from the prover. This
+	// would require inverting a random element, however, making the protocol incomplete with
+	// negligible probability. As a matter of taste, we read the witness value from the prover.
+	let expected_eval =
+		*witness_eval * monster_eval + *batch_coeff * eq_eval * (*witness_eval - public_eval);
+	if *eval != expected_eval {
+		return Err(Error::VerificationFailure);
+	}
+
+	Ok(())
 }

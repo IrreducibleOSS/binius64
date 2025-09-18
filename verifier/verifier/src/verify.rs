@@ -20,7 +20,7 @@ use binius_utils::{
 use digest::{Digest, Output, core_api::BlockSizeUser};
 use itertools::{Itertools, chain, izip};
 
-use super::{VerificationError, error::Error, pcs};
+use super::error::Error;
 use crate::{
 	and_reduction::verifier::{AndCheckOutput, verify_with_transcript},
 	config::{
@@ -30,10 +30,10 @@ use crate::{
 	fri::{FRIParams, estimate_optimal_arity},
 	hash::PseudoCompressionFunction,
 	merkle_tree::BinaryMerkleTreeScheme,
+	pcs,
 	protocols::{
 		intmul::{IntMulOutput, verify as verify_intmul_reduction},
-		pubcheck::VerifyOutput,
-		shift::{OperatorData, verify as verify_shift_reduction},
+		shift::{self, OperatorData},
 	},
 };
 
@@ -227,11 +227,8 @@ where
 			perfetto_category = "phase"
 		)
 		.entered();
-		let VerifyOutput {
-			witness_eval,
-			public_eval,
-			eval_point,
-		} = verify_shift_reduction(self.constraint_system(), bitand_claim, intmul_claim, transcript)?;
+		let shift_output =
+			shift::verify(self.constraint_system(), &bitand_claim, &intmul_claim, transcript)?;
 		drop(constraint_guard);
 
 		// [phase] Verify Public Input - public input verification
@@ -241,12 +238,18 @@ where
 			perfetto_category = "phase"
 		)
 		.entered();
-		let (z_challenge, y_challenge) = eval_point.split_at(LOG_WORD_SIZE_BITS);
-		let expected_public_eval =
-			evaluate_public_mle(public, z_challenge, &y_challenge[..self.log_public_words()]);
-		if public_eval != expected_public_eval {
-			return Err(VerificationError::PublicInputCheckFailed.into());
-		}
+		let public_eval = evaluate_public_mle(
+			public,
+			shift_output.r_j(),
+			&shift_output.r_y()[..self.log_public_words()],
+		);
+		shift::check_eval(
+			self.constraint_system(),
+			&bitand_claim,
+			&intmul_claim,
+			&shift_output,
+			public_eval,
+		)?;
 		drop(public_guard);
 
 		// [phase] Verify PCS Opening - polynomial commitment verification
@@ -256,14 +259,17 @@ where
 			perfetto_category = "phase"
 		)
 		.entered();
+
+		let eval_point = [shift_output.r_j(), shift_output.r_y()].concat();
 		pcs::verify(
 			transcript,
-			witness_eval,
+			shift_output.witness_eval(),
 			&eval_point,
 			trace_commitment,
 			&self.fri_params,
 			&self.merkle_scheme,
 		)?;
+
 		drop(pcs_guard);
 
 		Ok(())

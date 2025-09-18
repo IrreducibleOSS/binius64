@@ -327,14 +327,13 @@ mod tests {
 		let mut verifier_transcript = prover_transcript.into_verifier();
 
 		let pubcheck::VerifyOutput {
-			witness_eval,
-			public_eval,
+			eval,
 			eval_point: reduced_eval_point,
 		} = pubcheck::verify(n_witness_vars, &eval_point, &mut verifier_transcript).unwrap();
 
-		// Verifier computes the input/output evaluation and checks the reduced evaluation.
+		// Verifier computes the input/output evaluation and computes the witness evaluation.
 		let inout_eval = evaluate(&inout, &reduced_eval_point[..n_inout_vars]).unwrap();
-		assert_eq!(public_eval, inout_eval);
+		let witness_eval = pubcheck::compute_witness_eval(inout_eval, eval);
 
 		// Check that the original multilinears evaluate to the claimed values at the challenge.
 		let expected_witness_eval = evaluate(&witness, &reduced_eval_point).unwrap();
