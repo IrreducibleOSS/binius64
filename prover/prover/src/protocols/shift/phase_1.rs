@@ -37,10 +37,12 @@ use crate::protocols::sumcheck::{
 /// three shift variants. Every field buffer implicitly has
 /// `log_len = 2 * LOG_WORD_SIZE_BITS`.
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // todo: REMOVE THIS when you transition to rotr
 pub struct MultilinearTriplet<P: PackedField> {
 	pub sll: FieldBuffer<P>,
 	pub srl: FieldBuffer<P>,
 	pub sra: FieldBuffer<P>,
+	pub rotr: FieldBuffer<P>, // rename to quadruplet? or just tuple?
 }
 
 // This is the number of variables in the g (and h) multilinears of phase 1.
@@ -317,7 +319,7 @@ fn build_multilinear_triplet<P: PackedField>(
 		"P::WIDTH is not supposed to exceed 8, so this statement must hold"
 	);
 
-	let [sll_chunk, srl_chunk, sra_chunk] = multilinears
+	let [sll_chunk, srl_chunk, sra_chunk, rotr_chunk] = multilinears
 		.chunks(1 << (LOG_LEN - P::LOG_WIDTH))
 		.collect::<Vec<_>>()
 		.try_into()
@@ -326,6 +328,12 @@ fn build_multilinear_triplet<P: PackedField>(
 	let sll = FieldBuffer::new(LOG_LEN, sll_chunk.to_vec().into_boxed_slice())?;
 	let srl = FieldBuffer::new(LOG_LEN, srl_chunk.to_vec().into_boxed_slice())?;
 	let sra = FieldBuffer::new(LOG_LEN, sra_chunk.to_vec().into_boxed_slice())?;
+	let rotr = FieldBuffer::new(LOG_LEN, rotr_chunk.to_vec().into_boxed_slice())?;
 
-	Ok(MultilinearTriplet { sll, srl, sra })
+	Ok(MultilinearTriplet {
+		sll,
+		srl,
+		sra,
+		rotr,
+	})
 }
