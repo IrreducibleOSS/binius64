@@ -137,13 +137,9 @@ where
 	// Check that sumcheck eval equals expected compositional value
 	let mut reader = transcript.message();
 	let witness_eval = reader.read_scalar::<F>()?;
-	let monster_eval = reader.read_scalar::<F>()?;
-	// This inout witness evaluation is redundant and not needed.
-	// The `witness_eval` above suffices.
-	let _inout_witness_eval = reader.read_scalar::<F>()?;
 
-	// Compute expected monster eval for bitand
-	let expected_monster_eval_for_bitand = {
+	// Compute monster multilinear evaluation
+	let monster_eval_for_bitand = {
 		let (a, b, c) = constraint_system
 			.and_constraints
 			.iter()
@@ -151,9 +147,7 @@ where
 			.multiunzip();
 		evaluate_monster_multilinear_for_operation(vec![a, b, c], bitand_data, &r_j, &r_s, &r_y)
 	}?;
-
-	// Compute expected monster eval for intmul
-	let expected_monster_eval_for_intmul = {
+	let monster_eval_for_intmul = {
 		let (a, b, lo, hi) = constraint_system
 			.mul_constraints
 			.iter()
@@ -167,10 +161,7 @@ where
 			&r_y,
 		)
 	}?;
-
-	if monster_eval != expected_monster_eval_for_bitand + expected_monster_eval_for_intmul {
-		return Err(Error::VerificationFailure);
-	}
+	let monster_eval = monster_eval_for_bitand + monster_eval_for_intmul;
 
 	// Rather than checking the eval claims read from the transcript are correct,
 	// we will derive from them the expected evaluation of the public input
