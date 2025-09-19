@@ -32,11 +32,12 @@ pub trait MerkleTreeScheme<T> {
 	fn proof_size(&self, len: usize, n_queries: usize, layer_depth: usize) -> Result<usize, Error>;
 
 	/// Verify the opening of the full vector.
-	fn verify_vector(
+	fn verify_vector<B: Buf>(
 		&self,
 		root: &Self::Digest,
 		data: &[T],
 		batch_size: usize,
+		proof: &mut TranscriptReader<B>,
 	) -> Result<(), Error>;
 
 	/// Verify a given layer of the Merkle tree.

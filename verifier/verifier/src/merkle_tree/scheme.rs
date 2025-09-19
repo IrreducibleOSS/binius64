@@ -4,7 +4,7 @@ use std::{array, fmt::Debug, marker::PhantomData};
 
 use binius_transcript::{Buf, TranscriptReader};
 use binius_utils::{
-	SerializeBytes,
+	DeserializeBytes, SerializeBytes,
 	checked_arithmetics::{log2_ceil_usize, log2_strict_usize},
 };
 use digest::{Digest, Output, core_api::BlockSizeUser};
@@ -20,6 +20,7 @@ use crate::hash::{PseudoCompressionFunction, hash_serialize};
 pub struct BinaryMerkleTreeScheme<T, H, C> {
 	#[getset(get = "pub")]
 	compression: C,
+	salt_len: usize,
 	// This makes it so that `BinaryMerkleTreeScheme` remains Send + Sync
 	// See https://doc.rust-lang.org/nomicon/phantom-data.html#table-of-phantomdata-patterns
 	_phantom: PhantomData<fn() -> (T, H)>,
@@ -27,16 +28,37 @@ pub struct BinaryMerkleTreeScheme<T, H, C> {
 
 impl<T, H, C> BinaryMerkleTreeScheme<T, H, C> {
 	pub fn new(compression: C) -> Self {
+		Self::hiding(compression, 0)
+	}
+
+	pub fn hiding(compression: C, salt_len: usize) -> Self {
 		Self {
 			compression,
+			salt_len,
 			_phantom: PhantomData,
 		}
 	}
 }
 
+impl<T, H, C> BinaryMerkleTreeScheme<T, H, C>
+where
+	T: SerializeBytes + DeserializeBytes,
+	H: Digest + BlockSizeUser,
+	C: PseudoCompressionFunction<Output<H>, 2>,
+{
+	fn compute_leaf_digest<B: Buf>(
+		&self,
+		values: &[T],
+		proof: &mut TranscriptReader<B>,
+	) -> Result<Output<H>, Error> {
+		let salt = proof.read_vec::<T>(self.salt_len)?;
+		hash_serialize::<T, H>(values.iter().chain(&salt)).map_err(Error::Serialization)
+	}
+}
+
 impl<T, H, C> MerkleTreeScheme<T> for BinaryMerkleTreeScheme<T, H, C>
 where
-	T: SerializeBytes,
+	T: SerializeBytes + DeserializeBytes,
 	H: Digest + BlockSizeUser,
 	C: PseudoCompressionFunction<Output<H>, 2>,
 {
@@ -62,11 +84,12 @@ where
 			* <H as Digest>::output_size())
 	}
 
-	fn verify_vector(
+	fn verify_vector<B: Buf>(
 		&self,
 		root: &Self::Digest,
 		data: &[T],
 		batch_size: usize,
+		proof: &mut TranscriptReader<B>,
 	) -> Result<(), Error> {
 		if !data.len().is_multiple_of(batch_size) {
 			return Err(Error::IncorrectBatchSize);
@@ -74,7 +97,7 @@ where
 
 		let digests = data
 			.chunks(batch_size)
-			.map(|chunk| hash_serialize::<T, H>(chunk).map_err(Error::Serialization))
+			.map(|chunk| self.compute_leaf_digest(chunk, proof))
 			.collect::<Result<Vec<_>, _>>()?;
 
 		if fold_digests_vector_inplace(&self.compression, digests) != *root {
@@ -119,7 +142,7 @@ where
 			});
 		}
 
-		let mut leaf_digest = hash_serialize::<T, H>(values).map_err(Error::Serialization)?;
+		let mut leaf_digest = self.compute_leaf_digest(values, proof)?;
 		for branch_node in proof.read_vec(tree_depth - layer_depth)? {
 			leaf_digest = self.compression.compress(if index & 1 == 0 {
 				[leaf_digest, branch_node]
