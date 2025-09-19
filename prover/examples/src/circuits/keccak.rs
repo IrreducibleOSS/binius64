@@ -1,11 +1,11 @@
 // Copyright 2025 Irreducible Inc.
-use anyhow::{Result, ensure};
+use anyhow::Result;
 use binius_circuits::keccak::{Keccak, N_WORDS_PER_DIGEST};
 use binius_frontend::{CircuitBuilder, Wire, WitnessFiller};
 use clap::Args;
-use rand::{RngCore, SeedableRng, rngs::StdRng};
 use sha3::{Digest, Keccak256};
 
+use super::utils;
 use crate::ExampleCircuit;
 
 /// Keccak-256 hash circuit example
@@ -38,25 +38,7 @@ impl ExampleCircuit for KeccakExample {
 	type Instance = Instance;
 
 	fn build(params: Params, builder: &mut CircuitBuilder) -> Result<Self> {
-		let max_len_bytes = params.max_len_bytes.unwrap_or_else(|| {
-			let args: Vec<String> = std::env::args().collect();
-			let mut message_len = None;
-			let mut message_string = None;
-
-			for i in 0..args.len() {
-				if args[i] == "--message-len" && i + 1 < args.len() {
-					message_len = args[i + 1].parse::<usize>().ok();
-				} else if args[i] == "--message-string" && i + 1 < args.len() {
-					message_string = Some(args[i + 1].clone());
-				}
-			}
-
-			if let Some(msg_string) = message_string {
-				msg_string.len()
-			} else {
-				message_len.unwrap_or(1024)
-			}
-		});
+		let max_len_bytes = utils::determine_hash_max_bytes_from_args(params.max_len_bytes)?;
 
 		let len_bytes = builder.add_witness();
 		let digest: [Wire; N_WORDS_PER_DIGEST] = std::array::from_fn(|_| builder.add_inout());
@@ -73,39 +55,32 @@ impl ExampleCircuit for KeccakExample {
 	}
 
 	fn populate_witness(&self, instance: Instance, w: &mut WitnessFiller) -> Result<()> {
-		// Determine the message bytes to hash
-		let message_bytes = if let Some(message_string) = instance.message_string {
-			message_string.as_bytes().to_vec()
-		} else {
-			let mut rng = StdRng::seed_from_u64(42);
-			let len = instance.message_len.unwrap_or(1024); // Default to 1KiB
+		// Step 1: Get raw message bytes
+		let raw_message =
+			utils::generate_message_bytes(instance.message_string, instance.message_len);
 
-			let mut message_bytes = vec![0u8; len];
-			rng.fill_bytes(&mut message_bytes);
-			message_bytes
-		};
+		// Step 2: Zero-pad to maximum length
+		let padded_message = utils::zero_pad_message(raw_message, self.max_len_bytes)?;
 
-		ensure!(
-			message_bytes.len() <= self.max_len_bytes,
-			"Message length ({}) exceeds circuit capacity ({})",
-			message_bytes.len(),
-			self.max_len_bytes
-		);
-
-		// Compute expected digest using reference implementation
+		// Step 3: Compute digest using reference implementation
 		let mut hasher = Keccak256::new();
-		hasher.update(&message_bytes);
+		hasher.update(&padded_message);
 		let digest: [u8; 32] = hasher.finalize().into();
 
-		// Populate witness
-		self.keccak_hash.populate_len_bytes(w, message_bytes.len());
-		self.keccak_hash.populate_message(w, &message_bytes);
+		// Step 4: Populate witness values
+		self.keccak_hash.populate_len_bytes(w, padded_message.len());
+		self.keccak_hash.populate_message(w, &padded_message);
 		self.keccak_hash.populate_digest(w, digest);
 
 		Ok(())
 	}
 
 	fn param_summary(params: &Self::Params) -> Option<String> {
-		Some(format!("{}b", params.max_len_bytes.unwrap_or(1024)))
+		Some(format!(
+			"{}b",
+			params
+				.max_len_bytes
+				.unwrap_or(utils::DEFAULT_HASH_MESSAGE_BYTES)
+		))
 	}
 }
