@@ -184,90 +184,54 @@ mod tests {
 		test_utils::{index_to_hypercube_point, random_scalars},
 		univariate::lagrange_evals,
 	};
-	use rand::{SeedableRng, rngs::StdRng};
+	use rand::{Rng, SeedableRng, rngs::StdRng};
 
 	use super::*;
 
 	#[test]
 	fn test_evaluate_h_op_hypercube_vertices() {
-		// Test on specific hypercube vertices with known expected outputs
+		// Property-based test: for random i, j, s in {0..63}, with challenge being
+		// the i-th element of the subspace, the outputs must match indicator relations
+		// over integers:
+		// - sll == 1 iff j + s == i
+		// - srl == 1 iff i + s == j
+		// - sra == 1 iff i + s == j || i + s >= 64 && j == 63
+		// - rotr == 1 iff (i + s) % 64 == j
 		let mut rng = StdRng::seed_from_u64(0);
-		let challenge = BinaryField128bGhash::random(&mut rng);
 		let subspace =
 			BinarySubspace::<BinaryField128bGhash>::with_dim(LOG_WORD_SIZE_BITS).unwrap();
-		let l_tilde = lagrange_evals(&subspace, challenge);
 
-		let test_cases = [
-			(
-				0,
-				0,
-				[
-					0x2ec8d4d5160366d30481c2078b5b9979u128,
-					0x2ec8d4d5160366d30481c2078b5b9979u128,
-					0x2ec8d4d5160366d30481c2078b5b9979u128,
-					0x2ec8d4d5160366d30481c2078b5b9979u128,
-				],
-			),
-			(
-				1,
-				0,
-				[
-					0x2b08d1181c93898190f5c53f7be097ceu128,
-					0x2b08d1181c93898190f5c53f7be097ceu128,
-					0x2b08d1181c93898190f5c53f7be097ceu128,
-					0x2b08d1181c93898190f5c53f7be097ceu128,
-				],
-			),
-			(
-				0,
-				1,
-				[
-					0x2b08d1181c93898190f5c53f7be097ceu128,
-					0x00000000000000000000000000000000u128,
-					0x00000000000000000000000000000000u128,
-					0x70490febae041921f5f51d8f2382479du128,
-				],
-			),
-			(
-				7,
-				3,
-				[
-					0xeafb1544d90f85d1da5c668813c7632eu128,
-					0x33068a3041cf9e8ed356d70e0e245b76u128,
-					0x33068a3041cf9e8ed356d70e0e245b76u128,
-					0x33068a3041cf9e8ed356d70e0e245b76u128,
-				],
-			),
-			(
-				63,
-				31,
-				[
-					0x00000000000000000000000000000000u128,
-					0xbcb2dd8cc7abfb82f9d24b273792ce6au128,
-					0x6953ea91af97af7ead93a37c91ce901eu128,
-					0xbcb2dd8cc7abfb82f9d24b273792ce6au128,
-				],
-			),
-		];
+		// Run a reasonable number of random trials
+		for _trial in 0..1024 {
+			let i: usize = (rng.random::<u8>() as usize) & 63;
+			let j: usize = (rng.random::<u8>() as usize) & 63;
+			let s: usize = (rng.random::<u8>() as usize) & 63;
 
-		for (r_j_index, r_s_index, expected) in test_cases {
-			let r_j =
-				index_to_hypercube_point::<BinaryField128bGhash>(LOG_WORD_SIZE_BITS, r_j_index);
-			let r_s =
-				index_to_hypercube_point::<BinaryField128bGhash>(LOG_WORD_SIZE_BITS, r_s_index);
-			let result = evaluate_h_op(&l_tilde, &r_j, &r_s);
+			let challenge = subspace.get(i);
+			let l_tilde = lagrange_evals(&subspace, challenge);
 
-			let expected_result = [
-				BinaryField128bGhash::new(expected[0]),
-				BinaryField128bGhash::new(expected[1]),
-				BinaryField128bGhash::new(expected[2]),
-				BinaryField128bGhash::new(expected[3]),
-			];
+			let r_j = index_to_hypercube_point::<BinaryField128bGhash>(LOG_WORD_SIZE_BITS, j);
+			let r_s = index_to_hypercube_point::<BinaryField128bGhash>(LOG_WORD_SIZE_BITS, s);
 
-			assert_eq!(
-				result, expected_result,
-				"Mismatch for r_j_index={r_j_index}, r_s_index={r_s_index}"
-			);
+			let [sll, srl, sra, rotr] = evaluate_h_op(&l_tilde, &r_j, &r_s);
+
+			let expected_sll = j + s == i;
+			let expected_srl = i + s == j;
+			let expected_sra = i + s == j || i + s >= 64 && j == 63;
+			let expected_rotr = (i + s) & 63 == j;
+
+			let to_field = |b: bool| {
+				if b {
+					BinaryField128bGhash::ONE
+				} else {
+					BinaryField128bGhash::ZERO
+				}
+			};
+
+			assert_eq!(sll, to_field(expected_sll), "sll failed for i={i}, j={j}, s={s}");
+			assert_eq!(srl, to_field(expected_srl), "srl failed for i={i}, j={j}, s={s}");
+			assert_eq!(sra, to_field(expected_sra), "sra failed for i={i}, j={j}, s={s}");
+			assert_eq!(rotr, to_field(expected_rotr), "rotr failed for i={i}, j={j}, s={s}");
 		}
 	}
 
