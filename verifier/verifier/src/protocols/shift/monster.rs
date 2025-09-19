@@ -50,6 +50,8 @@ pub fn evaluate_h_op<F: Field>(l_tilde: &[F], r_j: &[F], r_s: &[F]) -> [F; SHIFT
 			s_transpose[(1 << k) | i] = xor * s_transpose[i] + zero * s_transpose_prime[i];
 			s_transpose_prime[(1 << k) | i] = both * s_transpose_prime[i];
 			s_transpose_prime[i] = both * s_transpose[i] + xor * s_transpose_prime[i];
+			// note: in last iteration k = 5, computation of `s_transpose_prime` COULD be skipped.
+			// never gets read from. keep it here just to minimize special case logic, but note it
 			s_transpose[i] *= zero;
 
 			// Update a array
@@ -69,8 +71,11 @@ pub fn evaluate_h_op<F: Field>(l_tilde: &[F], r_j: &[F], r_s: &[F]) -> [F; SHIFT
 	//     == ∑ᵢ L̃(i) ⋅ srlᵢ + ∏ₖ rⱼ[k] ⋅ [ ∑ᵢ L̃(i) ⋅ aᵢ ]
 	//     == srl + ∏ₖ rⱼ[k] ⋅ [ ∑ᵢ L̃(i) ⋅ aᵢ ]
 	let sra: F = srl + j_product * (0..WORD_SIZE_BITS).map(|i| l_tilde[i] * a[i]).sum::<F>();
+	let rotr = (0..WORD_SIZE_BITS)
+		.map(|i| l_tilde[i] * (s[i] + s_prime[i]))
+		.sum();
 
-	[sll, srl, sra]
+	[sll, srl, sra, rotr]
 }
 
 /// Evaluates the term of the monster multilinear corresponding to an operand of an operation.
@@ -200,12 +205,14 @@ mod tests {
 					0x2ec8d4d5160366d30481c2078b5b9979u128,
 					0x2ec8d4d5160366d30481c2078b5b9979u128,
 					0x2ec8d4d5160366d30481c2078b5b9979u128,
+					0x2ec8d4d5160366d30481c2078b5b9979u128,
 				],
 			),
 			(
 				1,
 				0,
 				[
+					0x2b08d1181c93898190f5c53f7be097ceu128,
 					0x2b08d1181c93898190f5c53f7be097ceu128,
 					0x2b08d1181c93898190f5c53f7be097ceu128,
 					0x2b08d1181c93898190f5c53f7be097ceu128,
@@ -218,6 +225,7 @@ mod tests {
 					0x2b08d1181c93898190f5c53f7be097ceu128,
 					0x00000000000000000000000000000000u128,
 					0x00000000000000000000000000000000u128,
+					0x70490febae041921f5f51d8f2382479du128,
 				],
 			),
 			(
@@ -225,6 +233,7 @@ mod tests {
 				3,
 				[
 					0xeafb1544d90f85d1da5c668813c7632eu128,
+					0x33068a3041cf9e8ed356d70e0e245b76u128,
 					0x33068a3041cf9e8ed356d70e0e245b76u128,
 					0x33068a3041cf9e8ed356d70e0e245b76u128,
 				],
@@ -236,6 +245,7 @@ mod tests {
 					0x00000000000000000000000000000000u128,
 					0xbcb2dd8cc7abfb82f9d24b273792ce6au128,
 					0x6953ea91af97af7ead93a37c91ce901eu128,
+					0xbcb2dd8cc7abfb82f9d24b273792ce6au128,
 				],
 			),
 		];
@@ -251,6 +261,7 @@ mod tests {
 				BinaryField128bGhash::new(expected[0]),
 				BinaryField128bGhash::new(expected[1]),
 				BinaryField128bGhash::new(expected[2]),
+				BinaryField128bGhash::new(expected[3]),
 			];
 
 			assert_eq!(

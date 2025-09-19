@@ -41,7 +41,7 @@ where
 	let subspace = BinarySubspace::<AESTowerField8b>::with_dim(LOG_WORD_SIZE_BITS)?.isomorphic();
 	let l_tilde = lagrange_evals(&subspace, r_zhat_prime);
 
-	let [mut sll_data, mut srl_data, mut sra_data] =
+	let [mut sll_data, mut srl_data, mut sra_data, mut rotr_data] =
 		array::from_fn(|_| Vec::with_capacity(WORD_SIZE_BITS * WORD_SIZE_BITS));
 
 	for s in 0..WORD_SIZE_BITS {
@@ -55,6 +55,12 @@ where
 			let val = if j >= s { l_tilde[j - s] } else { F::ZERO };
 			srl_data.push(val);
 			sra_data.push(val);
+
+			rotr_data.push(l_tilde[(j + WORD_SIZE_BITS - s) % WORD_SIZE_BITS]);
+			// what we want is the element equivalent to j – s modulo WORD_SIZE_BITS,
+			// which moreover lives in {0, ... , WORD_SIZE_BITS - 1}.
+			// it would have been nice to be able to do (j – s) % WORD_SIZE_BITS,
+			// but in rust this would give negative results in the case s > j (cf. python).
 		}
 	}
 
@@ -67,8 +73,14 @@ where
 	let sll = FieldBuffer::from_values(&sll_data)?;
 	let srl = FieldBuffer::from_values(&srl_data)?;
 	let sra = FieldBuffer::from_values(&sra_data)?;
+	let rotr = FieldBuffer::from_values(&rotr_data)?;
 
-	Ok(MultilinearTriplet { sll, srl, sra })
+	Ok(MultilinearTriplet {
+		sll,
+		srl,
+		sra,
+		rotr,
+	})
 }
 
 /// Constructs the "monster multilinear" that combines all shift operations into a single
@@ -224,7 +236,7 @@ mod tests {
 			let evaluation_point: Vec<F> = [r_j.clone(), r_s.clone()].concat();
 			let tensor = eq_ind_partial_eval::<P>(&evaluation_point);
 
-			let direct_evaluations = [h_triplet.sll, h_triplet.srl, h_triplet.sra]
+			let direct_evaluations = [h_triplet.sll, h_triplet.srl, h_triplet.sra, h_triplet.rotr]
 				.map(|buf| inner_product_buffers(&buf, &tensor));
 
 			assert_eq!(
