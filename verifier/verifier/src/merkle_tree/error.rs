@@ -1,5 +1,7 @@
 // Copyright 2024-2025 Irreducible Inc.
 
+use binius_utils::SerializationError;
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
 	#[error("Length of the input vector is incorrect, expected {expected}")]
@@ -10,6 +12,8 @@ pub enum Error {
 	IncorrectBatchSize,
 	#[error("The argument length must be a power of two.")]
 	PowerOfTwoLengthRequired,
+	#[error("Failed to serialize leaf element: {0}")]
+	Serialization(SerializationError),
 	#[error("The layer does not exist in the Merkle tree")]
 	IncorrectLayerDepth,
 	#[error("transcript error: {0}")]
