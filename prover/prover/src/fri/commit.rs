@@ -43,10 +43,6 @@ where
 
 	let rs_code = params.rs_code();
 	let log_batch_size = params.log_batch_size();
-	let log_elems = rs_code.log_dim() + log_batch_size;
-	if log_elems < P::LOG_WIDTH {
-		todo!("can't handle this case well");
-	}
 
 	let _scope = tracing::debug_span!(
 		"FRI Commit",
@@ -63,11 +59,11 @@ where
 	let merkle_tree_span = tracing::debug_span!("Merkle Tree").entered();
 	let (commitment, vcs_committed) = if log_batch_size > P::LOG_WIDTH {
 		let iterated_big_chunks = to_par_scalar_big_chunks(encoded.as_ref(), 1 << log_batch_size);
-		merkle_prover.commit_iterated(iterated_big_chunks, params.rs_code().log_len())?
+		merkle_prover.commit_iterated(iterated_big_chunks)?
 	} else {
 		let iterated_small_chunks =
 			to_par_scalar_small_chunks(encoded.as_ref(), 1 << log_batch_size);
-		merkle_prover.commit_iterated(iterated_small_chunks, params.rs_code().log_len())?
+		merkle_prover.commit_iterated(iterated_small_chunks)?
 	};
 	drop(merkle_tree_span);
 

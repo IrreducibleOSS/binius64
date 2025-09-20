@@ -1,6 +1,7 @@
 // Copyright 2025 Irreducible Inc.
+
 use binius_transcript::{BufMut, TranscriptWriter};
-use binius_utils::rayon::prelude::IndexedParallelIterator;
+use binius_utils::rayon::prelude::*;
 use binius_verifier::merkle_tree::{Commitment, Error, MerkleTreeScheme};
 
 pub mod binary_merkle_tree;
@@ -26,17 +27,24 @@ pub trait MerkleTreeProver<T> {
 		&self,
 		data: &[T],
 		batch_size: usize,
-	) -> Result<(Commitment<<Self::Scheme as MerkleTreeScheme<T>>::Digest>, Self::Committed), Error>;
+	) -> Result<(Commitment<<Self::Scheme as MerkleTreeScheme<T>>::Digest>, Self::Committed), Error>
+	where
+		T: Clone + Sync,
+	{
+		self.commit_iterated(
+			data.par_chunks_exact(batch_size)
+				.map(|chunk| chunk.iter().cloned()),
+		)
+	}
 
 	/// Commit interleaved elements from iterator by val
 	#[allow(clippy::type_complexity)]
 	fn commit_iterated<ParIter>(
 		&self,
-		iterated_chunks: ParIter,
-		log_len: usize,
+		leaves: ParIter,
 	) -> Result<(Commitment<<Self::Scheme as MerkleTreeScheme<T>>::Digest>, Self::Committed), Error>
 	where
-		ParIter: IndexedParallelIterator<Item: IntoIterator<Item = T>>;
+		ParIter: IndexedParallelIterator<Item: IntoIterator<Item = T, IntoIter: Send>>;
 
 	/// Returns the internal digest layer at the given depth.
 	fn layer<'a>(
