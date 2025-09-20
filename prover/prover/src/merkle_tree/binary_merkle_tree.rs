@@ -59,7 +59,7 @@ where
 fn internal_build<Digest, C>(
 	compression: &C,
 	// Must either successfully initialize the passed in slice or return error
-	hash_leaves: impl FnOnce(&mut [MaybeUninit<Digest>]) -> Result<(), Error>,
+	hash_leaves: impl FnOnce(&mut [MaybeUninit<Digest>]),
 	log_len: usize,
 ) -> Result<BinaryMerkleTree<Digest>, Error>
 where
@@ -69,7 +69,7 @@ where
 	let total_length = (1 << (log_len + 1)) - 1;
 	let mut inner_nodes = Vec::with_capacity(total_length);
 
-	hash_leaves(&mut inner_nodes.spare_capacity_mut()[..(1 << log_len)])?;
+	hash_leaves(&mut inner_nodes.spare_capacity_mut()[..(1 << log_len)]);
 
 	let (prev_layer, mut remaining) = inner_nodes.spare_capacity_mut().split_at_mut(1 << log_len);
 
@@ -172,37 +172,29 @@ where
 /// into N equal-sized chunks and hashes each chunks into the corresponding output digest. This
 /// returns the number of elements hashed into each digest.
 #[tracing::instrument("hash_interleaved", skip_all, level = "debug")]
-fn hash_interleaved<F, H>(
-	elems: &[F],
-	digests: &mut [MaybeUninit<Output<H::Digest>>],
-) -> Result<(), Error>
+fn hash_interleaved<F, H>(elems: &[F], digests: &mut [MaybeUninit<Output<H::Digest>>])
 where
 	F: Field,
 	H: ParallelDigest<Digest: BlockSizeUser + FixedOutputReset>,
 {
-	if !elems.len().is_multiple_of(digests.len()) {
-		return Err(Error::IncorrectVectorLen {
-			expected: digests.len(),
-		});
-	}
+	assert!(elems.len().is_multiple_of(digests.len())); // pre-condition
 
 	let hash_data_iter = elems
 		.par_chunks(elems.len() / digests.len())
 		.map(|s| s.iter().copied());
-	hash_iterated::<_, H, _>(hash_data_iter, digests)
+	hash_iterated::<_, H, _>(hash_data_iter, digests);
 }
 
 fn hash_iterated<F, H, ParIter>(
 	iterated_chunks: ParIter,
 	digests: &mut [MaybeUninit<Output<H::Digest>>],
-) -> Result<(), Error>
-where
+) where
 	F: Field,
 	H: ParallelDigest<Digest: BlockSizeUser + FixedOutputReset>,
 	ParIter: IndexedParallelIterator<Item: IntoIterator<Item = F>>,
 {
+	assert_eq!(iterated_chunks.len(), digests.len());
+
 	let hasher = H::new();
 	hasher.digest(iterated_chunks, digests);
-
-	Ok(())
 }
