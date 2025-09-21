@@ -30,7 +30,7 @@ use binius_transcript::{
 use binius_utils::DeserializeBytes;
 
 use crate::{
-	fri::{self, FRIParams, verify::FRIVerifier},
+	fri::{self, FRIParams, verify::FRIQueryVerifier},
 	merkle_tree::MerkleTreeScheme,
 	protocols::sumcheck::{RoundCoeffs, RoundProof},
 	transcript,
@@ -124,7 +124,7 @@ where
 		round_commitments.push(transcript.message().read()?);
 	}
 
-	let fri_verifier = FRIVerifier::new(
+	let fri_verifier = FRIQueryVerifier::new(
 		fri_params,
 		merkle_scheme,
 		&codeword_commitment,

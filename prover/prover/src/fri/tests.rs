@@ -16,12 +16,12 @@ use binius_transcript::{ProverTranscript, fiat_shamir::CanSample};
 use binius_utils::checked_arithmetics::log2_strict_usize;
 use binius_verifier::{
 	config::{B128, StdChallenger},
-	fri::{FRIParams, verify::FRIVerifier},
+	fri::{FRIParams, verify::FRIQueryVerifier},
 	hash::{StdCompression, StdDigest},
 };
 use rand::prelude::*;
 
-use super::{CommitOutput, FRIFolder, FoldRoundOutput, commit_interleaved};
+use super::{CommitOutput, FRIFoldProver, FoldRoundOutput, commit_interleaved};
 use crate::{
 	hash::parallel_compression::ParallelCompressionAdaptor,
 	merkle_tree::{MerkleTreeProver, prover::BinaryMerkleTreeProver},
@@ -67,7 +67,7 @@ fn test_commit_prove_verify_success<F, FA, P>(
 
 	// Run the prover to generate the proximity proof
 	let mut round_prover =
-		FRIFolder::new(&params, &ntt, &merkle_prover, &codeword, &codeword_committed).unwrap();
+		FRIFoldProver::new(&params, &ntt, &merkle_prover, &codeword, &codeword_committed).unwrap();
 
 	let mut prover_challenger = ProverTranscript::new(StdChallenger::default());
 	prover_challenger.message().write(&codeword_commitment);
@@ -114,7 +114,7 @@ fn test_commit_prove_verify_success<F, FA, P>(
 	// hypercube of) a multilinear polynomial.
 	let computed_eval = inner_product_par(eval_query.as_ref(), msg.as_ref());
 
-	let verifier = FRIVerifier::new(
+	let verifier = FRIQueryVerifier::new(
 		&params,
 		merkle_prover.scheme(),
 		&codeword_commitment,
