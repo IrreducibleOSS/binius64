@@ -2,7 +2,7 @@
 
 use std::iter;
 
-use binius_field::{BinaryField, ExtensionField};
+use binius_field::BinaryField;
 use binius_math::{
 	FieldBuffer,
 	multilinear::eq::eq_ind_partial_eval,
@@ -30,14 +30,13 @@ use crate::{
 /// The verifier is instantiated after the folding rounds and is used to test consistency of the
 /// round messages and the original purported codeword.
 #[derive(Debug)]
-pub struct FRIQueryVerifier<'a, F, FA, VCS>
+pub struct FRIQueryVerifier<'a, F, VCS>
 where
-	F: BinaryField + ExtensionField<FA>,
-	FA: BinaryField,
+	F: BinaryField,
 	VCS: MerkleTreeScheme<F>,
 {
 	vcs: &'a VCS,
-	params: &'a FRIParams<F, FA>,
+	params: &'a FRIParams<F>,
 	/// Received commitment to the codeword.
 	codeword_commitment: &'a VCS::Digest,
 	/// Received commitments to the round messages.
@@ -48,15 +47,14 @@ where
 	fold_challenges: &'a [F],
 }
 
-impl<'a, F, FA, VCS> FRIQueryVerifier<'a, F, FA, VCS>
+impl<'a, F, VCS> FRIQueryVerifier<'a, F, VCS>
 where
-	F: BinaryField + ExtensionField<FA>,
-	FA: BinaryField,
+	F: BinaryField,
 	VCS: MerkleTreeScheme<F, Digest: DeserializeBytes>,
 {
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
-		params: &'a FRIParams<F, FA>,
+		params: &'a FRIParams<F>,
 		vcs: &'a VCS,
 		codeword_commitment: &'a VCS::Digest,
 		round_commitments: &'a [VCS::Digest],
@@ -148,7 +146,7 @@ where
 	/// Returns the fully-folded message value.
 	pub fn verify_last_oracle(
 		&self,
-		ntt: &NeighborsLastSingleThread<GenericOnTheFly<FA>>,
+		ntt: &NeighborsLastSingleThread<GenericOnTheFly<F>>,
 		terminate_codeword: &[F],
 	) -> Result<F, Error> {
 		let n_final_challenges = self.params.n_final_challenges();
@@ -205,7 +203,7 @@ where
 	pub fn verify_query<B: Buf>(
 		&self,
 		mut index: usize,
-		ntt: &impl AdditiveNTT<Field = FA>,
+		ntt: &impl AdditiveNTT<Field = F>,
 		terminate_codeword: &[F],
 		layers: &[Vec<VCS::Digest>],
 		advice: &mut TranscriptReader<B>,

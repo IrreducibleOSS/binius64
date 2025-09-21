@@ -1,5 +1,5 @@
 // Copyright 2025 Irreducible Inc.
-use binius_field::{BinaryField, PackedExtension, PackedField};
+use binius_field::{BinaryField, PackedField};
 use binius_math::{FieldSlice, ntt::AdditiveNTT};
 use binius_utils::{bail, rayon::prelude::*};
 use binius_verifier::{fri::FRIParams, merkle_tree::MerkleTreeScheme};
@@ -22,18 +22,16 @@ pub struct CommitOutput<P, VCSCommitment, VCSCommitted> {
 /// * `params` - common FRI protocol parameters.
 /// * `merkle_prover` - the merke tree prover to use for committing
 /// * `message` - the interleaved message to encode and commit
-pub fn commit_interleaved<F, FA, P, PA, NTT, MerkleProver, VCS>(
-	params: &FRIParams<F, FA>,
+pub fn commit_interleaved<F, P, NTT, MerkleProver, VCS>(
+	params: &FRIParams<F>,
 	ntt: &NTT,
 	merkle_prover: &MerkleProver,
 	message: FieldSlice<P>,
 ) -> Result<CommitOutput<P, VCS::Digest, MerkleProver::Committed>, Error>
 where
 	F: BinaryField,
-	FA: BinaryField,
-	P: PackedField<Scalar = F> + PackedExtension<FA, PackedSubfield = PA>,
-	PA: PackedField<Scalar = FA>,
-	NTT: AdditiveNTT<Field = FA> + Sync,
+	P: PackedField<Scalar = F>,
+	NTT: AdditiveNTT<Field = F> + Sync,
 	MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 	VCS: MerkleTreeScheme<F>,
 {
@@ -63,12 +61,7 @@ where
 	let mut encoded = Vec::with_capacity(len);
 
 	tracing::debug_span!("Reed-Solomon Encode").in_scope(|| {
-		rs_code.encode_ext_batch(
-			ntt,
-			message.as_ref(),
-			encoded.spare_capacity_mut(),
-			log_batch_size,
-		)
+		rs_code.encode_batch(ntt, message.as_ref(), encoded.spare_capacity_mut(), log_batch_size)
 	})?;
 
 	unsafe {

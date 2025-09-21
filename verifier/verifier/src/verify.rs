@@ -46,7 +46,7 @@ pub const SECURITY_BITS: usize = 96;
 #[derive(Debug, Clone)]
 pub struct Verifier<MerkleHash, MerkleCompress> {
 	constraint_system: ConstraintSystem,
-	fri_params: FRIParams<B128, B128>,
+	fri_params: FRIParams<B128>,
 	merkle_scheme: BinaryMerkleTreeScheme<B128, MerkleHash, MerkleCompress>,
 	log_public_words: usize,
 }
@@ -124,7 +124,7 @@ where
 	}
 
 	/// Returns the chosen FRI parameters.
-	pub fn fri_params(&self) -> &FRIParams<B128, B128> {
+	pub fn fri_params(&self) -> &FRIParams<B128> {
 		&self.fri_params
 	}
 

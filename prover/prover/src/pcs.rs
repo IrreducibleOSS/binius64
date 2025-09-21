@@ -40,7 +40,7 @@ where
 {
 	ntt: &'a NTT,
 	merkle_prover: &'a MerkleProver,
-	fri_params: &'a FRIParams<B128, B128>,
+	fri_params: &'a FRIParams<B128>,
 }
 
 impl<'a, NTT, MerkleProver, VCS> OneBitPCSProver<'a, NTT, MerkleProver, VCS>
@@ -59,7 +59,7 @@ where
 	pub fn new(
 		ntt: &'a NTT,
 		merkle_prover: &'a MerkleProver,
-		fri_params: &'a FRIParams<B128, B128>,
+		fri_params: &'a FRIParams<B128>,
 	) -> Self {
 		let rs_code = fri_params.rs_code();
 		assert_eq!(&ntt.subspace(rs_code.log_len()), rs_code.subspace()); // precondition

@@ -53,7 +53,7 @@ use crate::{
 /// The [`ReducedOutput`] holding the final FRI value, the final sumcheck value, and the challenges
 /// used in the sumcheck rounds.
 pub fn verify<F, MTScheme, Challenger_>(
-	fri_params: &FRIParams<F, F>,
+	fri_params: &FRIParams<F>,
 	merkle_scheme: &MTScheme,
 	n_vars: usize,
 	codeword_commitment: MTScheme::Digest,

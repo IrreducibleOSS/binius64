@@ -2,12 +2,10 @@
 
 use std::vec;
 
-use binius_field::{
-	BinaryField, ExtensionField, PackedBinaryGhash1x128b, PackedExtension, PackedField,
-	util::inner_product_par,
-};
+use binius_field::{BinaryField, PackedBinaryGhash1x128b, PackedField};
 use binius_math::{
 	BinarySubspace, ReedSolomonCode,
+	inner_product::inner_product_par,
 	multilinear::eq::eq_ind_partial_eval,
 	ntt::{NeighborsLastSingleThread, domain_context::GenericOnTheFly},
 	test_utils::{Packed128b, random_field_buffer},
@@ -27,22 +25,21 @@ use crate::{
 	merkle_tree::{MerkleTreeProver, prover::BinaryMerkleTreeProver},
 };
 
-fn test_commit_prove_verify_success<F, FA, P>(
+fn test_commit_prove_verify_success<F, P>(
 	log_dimension: usize,
 	log_inv_rate: usize,
 	log_batch_size: usize,
 	arities: &[usize],
 ) where
-	F: BinaryField + ExtensionField<FA>,
-	FA: BinaryField,
-	P: PackedField<Scalar = F> + PackedExtension<FA>,
+	F: BinaryField,
+	P: PackedField<Scalar = F>,
 {
 	let mut rng = StdRng::seed_from_u64(0);
 
 	let parallel_compression = ParallelCompressionAdaptor::new(StdCompression::default());
 	let merkle_prover = BinaryMerkleTreeProver::<_, StdDigest, _>::new(parallel_compression);
 
-	let committed_rs_code = ReedSolomonCode::<FA>::new(log_dimension, log_inv_rate).unwrap();
+	let committed_rs_code = ReedSolomonCode::<F>::new(log_dimension, log_inv_rate).unwrap();
 
 	let n_test_queries = 3;
 	let params =
@@ -120,10 +117,10 @@ fn test_commit_prove_verify_success<F, FA, P>(
 
 	// check c == t(r'_0, ..., r'_{\ell-1})
 	// note that the prover is claiming that the final_message is [c]
-	let eval_query = eq_ind_partial_eval::<F>(&verifier_challenges);
+	let eval_query = eq_ind_partial_eval::<P>(&verifier_challenges);
 	// recall that msg, the message the prover commits to, is (the evaluations on the Boolean
 	// hypercube of) a multilinear polynomial.
-	let computed_eval = inner_product_par(eval_query.as_ref(), msg.as_ref());
+	let computed_eval = inner_product_par(&eval_query, &msg);
 
 	let verifier = FRIQueryVerifier::new(
 		&params,
@@ -169,7 +166,7 @@ fn test_commit_prove_verify_success_128b_full() {
 	let arities = vec![1; log_dimension - log_final_dimension];
 
 	// TODO: Make this test pass with non-trivial packing width
-	test_commit_prove_verify_success::<_, B128, PackedBinaryGhash1x128b>(
+	test_commit_prove_verify_success::<B128, PackedBinaryGhash1x128b>(
 		log_dimension,
 		log_inv_rate,
 		0,
@@ -184,7 +181,7 @@ fn test_commit_prove_verify_success_128b_higher_arity() {
 	let arities = [3, 2, 1];
 
 	// TODO: Make this test pass with non-trivial packing width
-	test_commit_prove_verify_success::<_, B128, PackedBinaryGhash1x128b>(
+	test_commit_prove_verify_success::<B128, PackedBinaryGhash1x128b>(
 		log_dimension,
 		log_inv_rate,
 		0,
@@ -199,7 +196,7 @@ fn test_commit_prove_verify_success_128b_interleaved() {
 	let log_batch_size = 2;
 	let arities = [3, 2, 1];
 
-	test_commit_prove_verify_success::<_, B128, Packed128b>(
+	test_commit_prove_verify_success::<B128, Packed128b>(
 		log_dimension,
 		log_inv_rate,
 		log_batch_size,
@@ -214,7 +211,7 @@ fn test_commit_prove_verify_success_128b_interleaved_packed() {
 	let log_batch_size = 2;
 	let arities = [3, 2, 1];
 
-	test_commit_prove_verify_success::<_, B128, Packed128b>(
+	test_commit_prove_verify_success::<B128, Packed128b>(
 		log_dimension,
 		log_inv_rate,
 		log_batch_size,
@@ -228,7 +225,7 @@ fn test_commit_prove_verify_success_without_folding() {
 	let log_inv_rate = 2;
 	let log_batch_size = 2;
 
-	test_commit_prove_verify_success::<_, B128, Packed128b>(
+	test_commit_prove_verify_success::<B128, Packed128b>(
 		log_dimension,
 		log_inv_rate,
 		log_batch_size,

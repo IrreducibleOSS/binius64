@@ -133,10 +133,9 @@ where
 ///
 /// This verifier encapsulates the logic of determining which FRI rounds require
 /// commitments and handles reading them from the transcript at the appropriate times.
-pub struct FRIFoldVerifier<'a, F, FA, Digest>
+pub struct FRIFoldVerifier<'a, F, Digest>
 where
-	F: BinaryField + ExtensionField<FA>,
-	FA: BinaryField,
+	F: BinaryField,
 {
 	/// Indicates which rounds require reading a commitment
 	commit_rounds: Vec<bool>,
@@ -144,13 +143,12 @@ where
 	round_commitments: Vec<Digest>,
 	/// Current round number
 	curr_round: usize,
-	_phantom: std::marker::PhantomData<&'a (F, FA)>,
+	_phantom: std::marker::PhantomData<&'a F>,
 }
 
-impl<'a, F, FA, Digest> FRIFoldVerifier<'a, F, FA, Digest>
+impl<'a, F, Digest> FRIFoldVerifier<'a, F, Digest>
 where
-	F: BinaryField + ExtensionField<FA>,
-	FA: BinaryField,
+	F: BinaryField,
 	Digest: DeserializeBytes + Clone,
 {
 	/// Creates a new FRI fold verifier.
@@ -159,7 +157,7 @@ where
 	///
 	/// * `params` - The FRI parameters
 	/// * `n_rounds` - The total number of folding rounds (typically equals n_vars for sumcheck)
-	pub fn new(params: &'a FRIParams<F, FA>) -> Self {
+	pub fn new(params: &'a FRIParams<F>) -> Self {
 		let commit_rounds = calculate_fri_commit_rounds(
 			params.log_batch_size(),
 			params.fold_arities(),

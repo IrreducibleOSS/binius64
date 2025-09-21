@@ -37,7 +37,7 @@ where
 	VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 {
 	sumcheck_prover: MultilinearSumcheckProver<F, P>,
-	fri_folder: FRIFoldProver<'a, F, F, P, NTT, MerkleProver, VCS>,
+	fri_folder: FRIFoldProver<'a, F, P, NTT, MerkleProver, VCS>,
 }
 
 impl<'a, F, P, NTT, MerkleProver, VCS> BaseFoldProver<'a, F, P, NTT, MerkleProver, VCS>
@@ -73,7 +73,7 @@ where
 		committed: &'a MerkleProver::Committed,
 		merkle_prover: &'a MerkleProver,
 		ntt: &'a NTT,
-		fri_params: &'a FRIParams<F, F>,
+		fri_params: &'a FRIParams<F>,
 	) -> Result<Self, Error> {
 		assert_eq!(multilinear.log_len(), transparent_multilinear.log_len());
 

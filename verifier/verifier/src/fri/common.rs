@@ -1,8 +1,8 @@
 // Copyright 2024-2025 Irreducible Inc.
 
-use std::{iter, marker::PhantomData};
+use std::iter;
 
-use binius_field::{BinaryField, ExtensionField};
+use binius_field::BinaryField;
 use binius_math::{ntt::AdditiveNTT, reed_solomon::ReedSolomonCode};
 use binius_utils::checked_arithmetics::log2_ceil_usize;
 use getset::{CopyGetters, Getters};
@@ -12,14 +12,13 @@ use crate::merkle_tree::MerkleTreeScheme;
 
 /// Parameters for an FRI interleaved code proximity protocol.
 #[derive(Debug, Clone, Getters, CopyGetters)]
-pub struct FRIParams<F, FA>
+pub struct FRIParams<F>
 where
 	F: BinaryField,
-	FA: BinaryField,
 {
 	/// The Reed-Solomon code the verifier is testing proximity to.
 	#[getset(get = "pub")]
-	rs_code: ReedSolomonCode<FA>,
+	rs_code: ReedSolomonCode<F>,
 	/// log2 the interleaved batch size.
 	#[getset(get_copy = "pub")]
 	log_batch_size: usize,
@@ -30,16 +29,14 @@ where
 	/// The number oracle consistency queries required during the query phase.
 	#[getset(get_copy = "pub")]
 	n_test_queries: usize,
-	_marker: PhantomData<F>,
 }
 
-impl<F, FA> FRIParams<F, FA>
+impl<F> FRIParams<F>
 where
-	F: BinaryField + ExtensionField<FA>,
-	FA: BinaryField,
+	F: BinaryField,
 {
 	pub fn new(
-		rs_code: ReedSolomonCode<FA>,
+		rs_code: ReedSolomonCode<F>,
 		log_batch_size: usize,
 		fold_arities: Vec<usize>,
 		n_test_queries: usize,
@@ -56,7 +53,6 @@ where
 			fold_arities,
 			log_terminal_dim,
 			n_test_queries,
-			_marker: PhantomData,
 		})
 	}
 
@@ -69,7 +65,7 @@ where
 	/// * `log_inv_rate` - the binary logarithm of the inverse Reed–Solomon code rate.
 	/// * `arity` - the folding arity.
 	pub fn choose_with_constant_fold_arity(
-		ntt: &impl AdditiveNTT<Field = FA>,
+		ntt: &impl AdditiveNTT<Field = F>,
 		log_msg_len: usize,
 		security_bits: usize,
 		log_inv_rate: usize,
@@ -80,7 +76,7 @@ where
 		let log_batch_size = log_msg_len.min(arity);
 		let log_dim = log_msg_len - log_batch_size;
 		let rs_code = ReedSolomonCode::with_ntt_subspace(ntt, log_dim, log_inv_rate)?;
-		let n_test_queries = calculate_n_test_queries::<F, _>(security_bits, &rs_code)?;
+		let n_test_queries = calculate_n_test_queries::<F>(security_bits, &rs_code)?;
 
 		// TODO: Use BinaryMerkleTreeScheme to estimate instead of log2_ceil_usize
 		let cap_height = log2_ceil_usize(n_test_queries);
@@ -158,14 +154,13 @@ where
 }
 
 /// This layer allows minimizing the proof size.
-pub fn vcs_optimal_layers_depths_iter<'a, F, FA, VCS>(
-	fri_params: &'a FRIParams<F, FA>,
+pub fn vcs_optimal_layers_depths_iter<'a, F, VCS>(
+	fri_params: &'a FRIParams<F>,
 	vcs: &'a VCS,
 ) -> impl Iterator<Item = usize> + 'a
 where
 	VCS: MerkleTreeScheme<F>,
-	F: BinaryField + ExtensionField<FA>,
-	FA: BinaryField,
+	F: BinaryField,
 {
 	iter::once(fri_params.log_batch_size())
 		.chain(fri_params.fold_arities().iter().copied())
@@ -179,13 +174,12 @@ where
 ///
 /// Throws [`Error::ParameterError`] if the security level is unattainable given the code
 /// parameters.
-pub fn calculate_n_test_queries<F, FEncode>(
+pub fn calculate_n_test_queries<F>(
 	security_bits: usize,
-	code: &ReedSolomonCode<FEncode>,
+	code: &ReedSolomonCode<F>,
 ) -> Result<usize, Error>
 where
-	F: BinaryField + ExtensionField<FEncode>,
-	FEncode: BinaryField,
+	F: BinaryField,
 {
 	let field_size = 2.0_f64.powi(F::N_BITS as i32);
 	let sumcheck_err = (2 * code.log_dim()) as f64 / field_size;
@@ -244,14 +238,12 @@ mod tests {
 	#[test]
 	fn test_calculate_n_test_queries() {
 		let security_bits = 96;
-		let rs_code = ReedSolomonCode::new(28, 1).unwrap();
-		let n_test_queries =
-			calculate_n_test_queries::<B128, B128>(security_bits, &rs_code).unwrap();
+		let rs_code = ReedSolomonCode::<B128>::new(28, 1).unwrap();
+		let n_test_queries = calculate_n_test_queries(security_bits, &rs_code).unwrap();
 		assert_eq!(n_test_queries, 232);
 
-		let rs_code = ReedSolomonCode::new(28, 2).unwrap();
-		let n_test_queries =
-			calculate_n_test_queries::<B128, B128>(security_bits, &rs_code).unwrap();
+		let rs_code = ReedSolomonCode::<B128>::new(28, 2).unwrap();
+		let n_test_queries = calculate_n_test_queries(security_bits, &rs_code).unwrap();
 		assert_eq!(n_test_queries, 143);
 	}
 
@@ -260,7 +252,7 @@ mod tests {
 		let security_bits = 128;
 		let rs_code = ReedSolomonCode::<B128>::new(28, 1).unwrap();
 		assert_matches!(
-			calculate_n_test_queries::<B128, _>(security_bits, &rs_code),
+			calculate_n_test_queries(security_bits, &rs_code),
 			Err(Error::ParameterError)
 		);
 	}
