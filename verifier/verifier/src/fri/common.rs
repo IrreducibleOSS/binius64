@@ -76,7 +76,7 @@ where
 		let log_batch_size = log_msg_len.min(arity);
 		let log_dim = log_msg_len - log_batch_size;
 		let rs_code = ReedSolomonCode::with_ntt_subspace(ntt, log_dim, log_inv_rate)?;
-		let n_test_queries = calculate_n_test_queries::<F>(security_bits, &rs_code)?;
+		let n_test_queries = calculate_n_test_queries(security_bits, log_inv_rate);
 
 		// TODO: Use BinaryMerkleTreeScheme to estimate instead of log2_ceil_usize
 		let cap_height = log2_ceil_usize(n_test_queries);
@@ -170,29 +170,22 @@ where
 		})
 }
 
-/// Calculates the number of test queries required to achieve a target security level.
+/// Calculates the number of test queries required to achieve a target soundness error.
+///
+/// This chooses a number of test queries so that the soundness error of the FRI query phase is
+/// at most $2^{-t}$, where $t$ is the threshold `security_bits`. This _does not_ account for the
+/// soundness error from the FRI folding phase or any other protocols, only the query phase. This
+/// sets the proximity parameter for FRI to the code's unique decoding radius. See [DP24],
+/// Section 5.2, for concrete soundness analysis.
 ///
 /// Throws [`Error::ParameterError`] if the security level is unattainable given the code
 /// parameters.
-pub fn calculate_n_test_queries<F>(
-	security_bits: usize,
-	code: &ReedSolomonCode<F>,
-) -> Result<usize, Error>
-where
-	F: BinaryField,
-{
-	let field_size = 2.0_f64.powi(F::N_BITS as i32);
-	let sumcheck_err = (2 * code.log_dim()) as f64 / field_size;
-	// 2 ⋅ ℓ' / |T_{τ}|
-	let folding_err = code.len() as f64 / field_size;
-	// 2^{ℓ' + R} / |T_{τ}|
-	let per_query_err = 0.5 * (1f64 + 2.0f64.powi(-(code.log_inv_rate() as i32)));
-	let allowed_query_err = 2.0_f64.powi(-(security_bits as i32)) - sumcheck_err - folding_err;
-	if allowed_query_err <= 0.0 {
-		return Err(Error::ParameterError);
-	}
-	let n_queries = allowed_query_err.log(per_query_err).ceil() as usize;
-	Ok(n_queries)
+///
+/// [DP24]: <https://eprint.iacr.org/2024/504>
+pub fn calculate_n_test_queries(security_bits: usize, log_inv_rate: usize) -> usize {
+	let rate = 2.0f64.powi(-(log_inv_rate as i32));
+	let per_query_err = 0.5 * (1f64 + rate);
+	(security_bits as f64 / -per_query_err.log2()).ceil() as usize
 }
 
 /// Heuristic for estimating the optimal FRI folding arity that minimizes proof size.
@@ -230,31 +223,16 @@ pub fn estimate_optimal_arity(
 
 #[cfg(test)]
 mod tests {
-	use assert_matches::assert_matches;
-
 	use super::*;
-	use crate::config::B128;
 
 	#[test]
 	fn test_calculate_n_test_queries() {
 		let security_bits = 96;
-		let rs_code = ReedSolomonCode::<B128>::new(28, 1).unwrap();
-		let n_test_queries = calculate_n_test_queries(security_bits, &rs_code).unwrap();
+		let n_test_queries = calculate_n_test_queries(security_bits, 1);
 		assert_eq!(n_test_queries, 232);
 
-		let rs_code = ReedSolomonCode::<B128>::new(28, 2).unwrap();
-		let n_test_queries = calculate_n_test_queries(security_bits, &rs_code).unwrap();
-		assert_eq!(n_test_queries, 143);
-	}
-
-	#[test]
-	fn test_calculate_n_test_queries_unsatisfiable() {
-		let security_bits = 128;
-		let rs_code = ReedSolomonCode::<B128>::new(28, 1).unwrap();
-		assert_matches!(
-			calculate_n_test_queries(security_bits, &rs_code),
-			Err(Error::ParameterError)
-		);
+		let n_test_queries = calculate_n_test_queries(security_bits, 2);
+		assert_eq!(n_test_queries, 142);
 	}
 
 	#[test]
