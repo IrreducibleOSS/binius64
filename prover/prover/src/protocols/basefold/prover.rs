@@ -127,7 +127,8 @@ where
 		challenge: F,
 	) -> Result<FoldRoundOutput<<VCS as MerkleTreeScheme<F>>::Digest>, Error> {
 		self.sumcheck_prover.fold(challenge)?;
-		let result = self.fri_folder.execute_fold_round(challenge)?;
+		self.fri_folder.receive_challenge(challenge);
+		let result = self.fri_folder.execute_fold_round()?;
 		Ok(result)
 	}
 

@@ -1,9 +1,9 @@
 // Copyright 2024-2025 Irreducible Inc.
 
-use std::iter;
-
-use binius_field::{BinaryField, ExtensionField, PackedField};
-use binius_math::{line::extrapolate_line_packed, ntt::AdditiveNTT};
+use binius_field::{BinaryField, ExtensionField, Field, PackedField};
+use binius_math::{
+	inner_product::inner_product_packed, line::extrapolate_line_packed, ntt::AdditiveNTT,
+};
 
 /// Calculate fold of `values` at `index` with `r` random coefficient.
 ///
@@ -114,50 +114,10 @@ where
 ///
 /// [DP24]: <https://eprint.iacr.org/2024/504>
 #[inline]
-#[allow(clippy::too_many_arguments)]
-pub fn fold_interleaved_chunk<F, FS, P, NTT>(
-	ntt: &NTT,
-	log_len: usize,
-	log_batch_size: usize,
-	chunk_index: usize,
-	values: &[P],
-	tensor: &[P],
-	fold_challenges: &[F],
-	scratch_buffer: &mut [F],
-) -> F
+pub fn fold_interleaved_chunk<F, P>(log_batch_size: usize, values: &[P], tensor: &[P]) -> F
 where
-	F: BinaryField + ExtensionField<FS>,
-	FS: BinaryField,
-	NTT: AdditiveNTT<Field = FS>,
+	F: Field,
 	P: PackedField<Scalar = F>,
 {
-	// Preconditions
-	debug_assert!(fold_challenges.len() <= log_len);
-	debug_assert!(log_len <= ntt.log_domain_size());
-	debug_assert_eq!(
-		values.len(),
-		1 << (fold_challenges.len() + log_batch_size).saturating_sub(P::LOG_WIDTH)
-	);
-	debug_assert_eq!(tensor.len(), 1 << log_batch_size.saturating_sub(P::LOG_WIDTH));
-	debug_assert!(scratch_buffer.len() >= 1 << fold_challenges.len());
-
-	let scratch_buffer = &mut scratch_buffer[..1 << fold_challenges.len()];
-
-	if log_batch_size == 0 {
-		iter::zip(&mut *scratch_buffer, P::iter_slice(values)).for_each(|(dst, val)| *dst = val);
-	} else {
-		let folded_values = values
-			.chunks(1 << (log_batch_size - P::LOG_WIDTH))
-			.map(|chunk| {
-				iter::zip(chunk, tensor)
-					.map(|(&a_i, &b_i)| a_i * b_i)
-					.sum::<P>()
-					.into_iter()
-					.take(1 << log_batch_size)
-					.sum()
-			});
-		iter::zip(&mut *scratch_buffer, folded_values).for_each(|(dst, val)| *dst = val);
-	};
-
-	fold_chunk(ntt, log_len, chunk_index, scratch_buffer, fold_challenges)
+	inner_product_packed(log_batch_size, values.iter().copied(), tensor.iter().copied())
 }

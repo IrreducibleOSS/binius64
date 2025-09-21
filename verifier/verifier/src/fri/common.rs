@@ -1,10 +1,10 @@
 // Copyright 2024-2025 Irreducible Inc.
 
-use std::marker::PhantomData;
+use std::{iter, marker::PhantomData};
 
 use binius_field::{BinaryField, ExtensionField};
 use binius_math::{ntt::AdditiveNTT, reed_solomon::ReedSolomonCode};
-use binius_utils::{bail, checked_arithmetics::log2_ceil_usize};
+use binius_utils::checked_arithmetics::log2_ceil_usize;
 use getset::{CopyGetters, Getters};
 
 use super::error::Error;
@@ -20,11 +20,13 @@ where
 	/// The Reed-Solomon code the verifier is testing proximity to.
 	#[getset(get = "pub")]
 	rs_code: ReedSolomonCode<FA>,
-	/// Vector commitment scheme for the codeword oracle.
+	/// log2 the interleaved batch size.
 	#[getset(get_copy = "pub")]
 	log_batch_size: usize,
 	/// The reduction arities between each oracle sent to the verifier.
 	fold_arities: Vec<usize>,
+	/// log2 the dimension of the terminal codeword.
+	log_terminal_dim: usize,
 	/// The number oracle consistency queries required during the query phase.
 	#[getset(get_copy = "pub")]
 	n_test_queries: usize,
@@ -42,14 +44,17 @@ where
 		fold_arities: Vec<usize>,
 		n_test_queries: usize,
 	) -> Result<Self, Error> {
-		if fold_arities.iter().sum::<usize>() >= rs_code.log_dim() + log_batch_size {
-			bail!(Error::InvalidFoldAritySequence)
-		}
+		let fold_arities_sum = fold_arities.iter().sum();
+		let log_terminal_dim = rs_code
+			.log_dim()
+			.checked_sub(fold_arities_sum)
+			.ok_or(Error::InvalidFoldAritySequence)?;
 
 		Ok(Self {
 			rs_code,
 			log_batch_size,
 			fold_arities,
+			log_terminal_dim,
 			n_test_queries,
 			_marker: PhantomData,
 		})
@@ -77,12 +82,17 @@ where
 		let rs_code = ReedSolomonCode::with_ntt_subspace(ntt, log_dim, log_inv_rate)?;
 		let n_test_queries = calculate_n_test_queries::<F, _>(security_bits, &rs_code)?;
 
+		// TODO: Use BinaryMerkleTreeScheme to estimate instead of log2_ceil_usize
 		let cap_height = log2_ceil_usize(n_test_queries);
-		let fold_arities = std::iter::repeat_n(
-			arity,
-			log_msg_len.saturating_sub(cap_height.saturating_sub(log_inv_rate)) / arity,
-		)
-		.collect::<Vec<_>>();
+		let log_terminal_len = cap_height.clamp(log_inv_rate, rs_code.log_len());
+
+		let quotient = (rs_code.log_len() - log_terminal_len) / arity;
+		let remainder = (rs_code.log_len() - log_terminal_len) % arity;
+		let mut fold_arities = vec![arity; quotient];
+		if remainder != 0 {
+			fold_arities.push(remainder);
+		}
+
 		// here is the down-to-earth explanation of what we're doing: we want the terminal
 		// codeword's log-length to be at least as large as the Merkle cap height. note that
 		// `total_vars + log_inv_rate - sum(fold_arities)` is exactly the log-length of the
@@ -108,29 +118,6 @@ where
 		// won't lose by doing this.
 
 		// see https://github.com/IrreducibleOSS/binius/pull/300 for proof of this fact
-
-		// how should we handle the case `fold_arities = []`, i.e. total_vars + log_inv_rate -
-		// cap_height < arity? in that case, we would lose nothing by making the entire thing
-		// interleaved, i.e., setting `log_batch_size := total_vars`, so `terminal_codeword` lives
-		// in the interleaving of the repetition code (and so is itself a repetition codeword!).
-		// encoding is trivial. but there's a circularity: whether `total_vars + log_inv_rate -
-		// cap_height < arity` or not depends on `cap_height`, which depends on `n_test_queries`,
-		// which depends on `log_dim`--- soundness depends on block length!---which finally itself
-		// depends on whether we're using the repetition code or not. of course this circular
-		// dependency is artificial, since in the case `log_batch_size = total_vars` and `log_dim
-		// = 0`, we're sending the entire message anyway, so the FRI portion is essentially
-		// trivial / superfluous, and the security is perfect. and in any case we could evade it
-		// simply by calculating `n_test_queries` and `cap_height` using the provisional `log_dim
-		// := total_vars.saturating_sub(arity)`, proceeding as above, and only then, if we find
-		// out post facto that `fold_arities = []`, overwriting `log_batch_size := total_vars` and
-		// `log_dim = 0`---and even recalculating `n_test_queries` if we wanted (though of course
-		// it doesn't matter---we could do 0 queries in that case, and we would still get
-		// security---and in fact during the actual querying part we will skip querying
-		// anyway). in any case, from a purely code-simplicity point of view, the simplest approach
-		// is to bite the bullet and let `log_batch_size := min(total_vars, arity)` for good---and
-		// keep it there, even if we post-facto find out that `fold_arities = []`. the cost of
-		// this is that the prover has to do a nontrivial (though small!) interleaved encoding, as
-		// opposed to a trivial one.
 		Self::new(rs_code, log_batch_size, fold_arities, n_test_queries)
 	}
 
@@ -140,21 +127,18 @@ where
 
 	/// Number of oracles sent during the fold rounds.
 	pub fn n_oracles(&self) -> usize {
-		self.fold_arities.len()
+		// One for the batched codeword commitment, and one for each subsequent one.
+		1 + self.fold_arities.len()
 	}
 
 	/// Number of bits in the query indices sampled during the query phase.
 	pub fn index_bits(&self) -> usize {
-		self.fold_arities
-			.first()
-			.map(|arity| self.log_len() - arity)
-			// If there is no folding, there are no random queries either
-			.unwrap_or(0)
+		self.rs_code.log_len()
 	}
 
 	/// Number of folding challenges the verifier sends after receiving the last oracle.
 	pub fn n_final_challenges(&self) -> usize {
-		self.n_fold_rounds() - self.fold_arities.iter().sum::<usize>()
+		self.log_terminal_dim
 	}
 
 	/// The reduction arities between each oracle sent to the verifier.
@@ -183,9 +167,8 @@ where
 	F: BinaryField + ExtensionField<FA>,
 	FA: BinaryField,
 {
-	fri_params
-		.fold_arities()
-		.iter()
+	iter::once(fri_params.log_batch_size())
+		.chain(fri_params.fold_arities().iter().copied())
 		.scan(fri_params.log_len(), |log_n_cosets, arity| {
 			*log_n_cosets -= arity;
 			Some(vcs.optimal_verify_layer(fri_params.n_test_queries(), *log_n_cosets))

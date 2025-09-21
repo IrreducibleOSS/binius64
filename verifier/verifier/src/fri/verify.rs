@@ -6,7 +6,7 @@ use binius_field::{BinaryField, ExtensionField};
 use binius_math::{
 	FieldBuffer,
 	multilinear::eq::eq_ind_partial_eval,
-	ntt::{NeighborsLastSingleThread, domain_context::GenericOnTheFly},
+	ntt::{AdditiveNTT, NeighborsLastSingleThread, domain_context::GenericOnTheFly},
 };
 use binius_transcript::{
 	TranscriptReader, VerifierTranscript,
@@ -129,17 +129,14 @@ where
 		}
 
 		// Verify the random openings against the decommitted layers.
-
-		let mut scratch_buffer = self.create_scratch_buffer();
 		for _ in 0..self.params.n_test_queries() {
 			let index = transcript.sample_bits(self.params.index_bits()) as usize;
-			self.verify_query_internal(
+			self.verify_query(
 				index,
 				&ntt,
 				&terminate_codeword,
 				&layers,
 				&mut transcript.decommitment(),
-				&mut scratch_buffer,
 			)?
 		}
 
@@ -155,57 +152,32 @@ where
 		terminate_codeword: &[F],
 	) -> Result<F, Error> {
 		let n_final_challenges = self.params.n_final_challenges();
+		let terminal_commitment = self
+			.round_commitments
+			.last()
+			.expect("round_commitments is non-empty as an invariant");
 
-		self.vcs.verify_vector(
-			self.round_commitments
-				.last()
-				.unwrap_or(self.codeword_commitment),
-			terminate_codeword,
-			1 << n_final_challenges,
-		)?;
+		self.vcs
+			.verify_vector(terminal_commitment, terminate_codeword, 1 << n_final_challenges)?;
 
-		let repetition_codeword = if self.n_oracles() != 0 {
-			let n_prior_challenges = self.fold_challenges.len() - n_final_challenges;
-			let final_challenges = &self.fold_challenges[n_prior_challenges..];
-			let mut scratch_buffer = vec![F::default(); 1 << n_final_challenges];
+		let n_prior_challenges = self.fold_challenges.len() - n_final_challenges;
+		let final_challenges = &self.fold_challenges[n_prior_challenges..];
 
-			terminate_codeword
-				.chunks(1 << n_final_challenges)
-				.enumerate()
-				.map(|(i, coset_values)| {
-					scratch_buffer.copy_from_slice(coset_values);
-					fold_chunk(
-						ntt,
-						n_final_challenges + self.params.rs_code().log_inv_rate(),
-						i,
-						&mut scratch_buffer,
-						final_challenges,
-					)
-				})
-				.collect::<Vec<_>>()
-		} else {
-			// When the prover did not send any round oracles, fold the original interleaved
-			// codeword.
-
-			let fold_arity = self.params.rs_code().log_dim() + self.params.log_batch_size();
-			let mut scratch_buffer = vec![F::default(); 1 << self.params.rs_code().log_dim()];
-			terminate_codeword
-				.chunks(1 << fold_arity)
-				.enumerate()
-				.map(|(i, chunk)| {
-					fold_interleaved_chunk(
-						ntt,
-						self.params.rs_code().log_len(),
-						self.params.log_batch_size(),
-						i,
-						chunk,
-						self.interleave_tensor.as_ref(),
-						self.fold_challenges,
-						&mut scratch_buffer,
-					)
-				})
-				.collect::<Vec<_>>()
-		};
+		let mut scratch_buffer = vec![F::default(); 1 << n_final_challenges];
+		let repetition_codeword = terminate_codeword
+			.chunks(1 << n_final_challenges)
+			.enumerate()
+			.map(|(i, coset_values)| {
+				scratch_buffer.copy_from_slice(coset_values);
+				fold_chunk(
+					ntt,
+					n_final_challenges + self.params.rs_code().log_inv_rate(),
+					i,
+					&mut scratch_buffer,
+					final_challenges,
+				)
+			})
+			.collect::<Vec<_>>();
 
 		let final_value = repetition_codeword[0];
 
@@ -232,80 +204,45 @@ where
 	/// * `proof` - a query proof
 	pub fn verify_query<B: Buf>(
 		&self,
-		index: usize,
-		ntt: &NeighborsLastSingleThread<GenericOnTheFly<FA>>,
-		terminate_codeword: &[F],
-		layers: &[Vec<VCS::Digest>],
-		advice: &mut TranscriptReader<B>,
-	) -> Result<(), Error> {
-		self.verify_query_internal(
-			index,
-			ntt,
-			terminate_codeword,
-			layers,
-			advice,
-			&mut self.create_scratch_buffer(),
-		)
-	}
-
-	fn verify_query_internal<B: Buf>(
-		&self,
 		mut index: usize,
-		ntt: &NeighborsLastSingleThread<GenericOnTheFly<FA>>,
+		ntt: &impl AdditiveNTT<Field = FA>,
 		terminate_codeword: &[F],
 		layers: &[Vec<VCS::Digest>],
 		advice: &mut TranscriptReader<B>,
-		scratch_buffer: &mut [F],
 	) -> Result<(), Error> {
-		let mut arities_iter = self.params.fold_arities().iter().copied();
-
-		let mut layer_digest_and_optimal_layer_depth =
-			iter::zip(layers, vcs_optimal_layers_depths_iter(self.params, self.vcs));
-
-		let Some(first_fold_arity) = arities_iter.next() else {
-			// If there are no query proofs, that means that no oracles were sent during the FRI
-			// fold rounds. In that case, the original interleaved codeword is decommitted and
-			// the only checks that need to be performed are in `verify_last_oracle`.
-			return Ok(());
-		};
-
-		let (first_layer, first_optimal_layer_depth) = layer_digest_and_optimal_layer_depth
-			.next()
-			.expect("The length should be the same as the amount of proofs.");
-
-		// This is the round of the folding phase that the codeword to be folded is committed to.
-		let mut fold_round = 0;
-		let mut log_n_cosets = self.params.index_bits();
+		let mut layer_depths_iter = vcs_optimal_layers_depths_iter(self.params, self.vcs);
+		let mut layers_iter = layers.iter();
 
 		// Check the first fold round before the main loop. It is special because in the first
 		// round we need to fold as an interleaved chunk instead of a regular coset.
-		let log_coset_size = first_fold_arity - self.params.log_batch_size();
+		let first_layer_depth = layer_depths_iter
+			.next()
+			.expect("protocol guarantees at least one commitment opening");
+		let first_layer = layers_iter
+			.next()
+			.expect("protocol guarantees at least one commitment opening");
 		let values = verify_coset_opening(
 			self.vcs,
 			index,
-			first_fold_arity,
-			first_optimal_layer_depth,
-			log_n_cosets,
+			self.params.log_batch_size(),
+			first_layer_depth,
+			self.params.index_bits(),
 			first_layer,
 			advice,
 		)?;
 		let mut next_value = fold_interleaved_chunk(
-			ntt,
-			self.params.rs_code().log_len(),
 			self.params.log_batch_size(),
-			index,
 			&values,
 			self.interleave_tensor.as_ref(),
-			&self.fold_challenges[fold_round..fold_round + log_coset_size],
-			scratch_buffer,
 		);
-		fold_round += log_coset_size;
 
-		for (i, (arity, (layer, optimal_layer_depth))) in
-			izip!(arities_iter, layer_digest_and_optimal_layer_depth).enumerate()
+		// This is the round of the folding phase that the codeword to be folded is committed to.
+		let mut fold_round = 0;
+		let mut log_n_cosets = self.params.index_bits();
+		for (i, (&arity, layer, optimal_layer_depth)) in
+			izip!(self.params.fold_arities(), layers_iter, layer_depths_iter).enumerate()
 		{
 			let coset_index = index >> arity;
-
 			log_n_cosets -= arity;
 
 			let mut values = verify_coset_opening(
@@ -346,19 +283,6 @@ where
 		}
 
 		Ok(())
-	}
-
-	// scratch buffer used in `fold_chunk`.
-	fn create_scratch_buffer(&self) -> Vec<F> {
-		let max_arity = self
-			.params
-			.fold_arities()
-			.iter()
-			.copied()
-			.max()
-			.unwrap_or_default();
-		let max_buffer_size = 2 * (1 << max_arity);
-		vec![F::default(); max_buffer_size]
 	}
 }
 

@@ -1,4 +1,7 @@
 // Copyright 2025 Irreducible Inc.
+
+use std::iter;
+
 use binius_field::{
 	BinaryField, ExtensionField, PackedField, packed::iter_packed_slice_with_offset,
 };
@@ -52,39 +55,29 @@ where
 	pub fn prove_query<B>(
 		&self,
 		mut index: usize,
-		mut advice: TranscriptWriter<B>,
+		advice: &mut TranscriptWriter<B>,
 	) -> Result<(), Error>
 	where
 		B: BufMut,
 	{
-		let mut arities_and_optimal_layers_depths = self
-			.params
-			.fold_arities()
-			.iter()
-			.copied()
-			.zip(vcs_optimal_layers_depths_iter(self.params, self.merkle_prover.scheme()));
-
-		let Some((first_fold_arity, first_optimal_layer_depth)) =
-			arities_and_optimal_layers_depths.next()
-		else {
-			// If there are no query proofs, that means that no oracles were sent during the FRI
-			// fold rounds. In that case, the original interleaved codeword is decommitted and
-			// the only checks that need to be performed are in `verify_last_oracle`.
-			return Ok(());
-		};
+		let mut layer_depths_iter =
+			vcs_optimal_layers_depths_iter(self.params, self.merkle_prover.scheme());
+		let first_layer_depth = layer_depths_iter
+			.next()
+			.expect("not empty by post-condition");
 
 		prove_coset_opening(
 			self.merkle_prover,
 			self.codeword,
 			self.codeword_committed,
 			index,
-			first_fold_arity,
-			first_optimal_layer_depth,
-			&mut advice,
+			self.params.log_batch_size(),
+			first_layer_depth,
+			advice,
 		)?;
 
-		for ((codeword, committed), (arity, optimal_layer_depth)) in
-			izip!(self.round_committed.iter(), arities_and_optimal_layers_depths)
+		for ((codeword, committed), &arity, optimal_layer_depth) in
+			izip!(&self.round_committed, self.params.fold_arities(), layer_depths_iter)
 		{
 			index >>= arity;
 			prove_coset_opening(
@@ -94,7 +87,7 @@ where
 				index,
 				arity,
 				optimal_layer_depth,
-				&mut advice,
+				advice,
 			)?;
 		}
 
@@ -102,8 +95,13 @@ where
 	}
 
 	pub fn vcs_optimal_layers(&self) -> Result<Vec<Vec<VCS::Digest>>, Error> {
-		let committed_iter = std::iter::once(self.codeword_committed)
-			.chain(self.round_committed.iter().map(|(_, committed)| committed));
+		let round_committed_excluding_terminal =
+			&self.round_committed[..self.round_committed.len() - 1];
+		let committed_iter = iter::once(self.codeword_committed).chain(
+			round_committed_excluding_terminal
+				.iter()
+				.map(|(_, committed)| committed),
+		);
 
 		committed_iter
 			.zip(vcs_optimal_layers_depths_iter(self.params, self.merkle_prover.scheme()))
