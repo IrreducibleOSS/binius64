@@ -77,8 +77,8 @@ where
 	) -> Result<Self, Error> {
 		assert!(arity > 0);
 
-		let log_dim = log_msg_len.saturating_sub(arity);
 		let log_batch_size = log_msg_len.min(arity);
+		let log_dim = log_msg_len - log_batch_size;
 		let rs_code = ReedSolomonCode::with_ntt_subspace(ntt, log_dim, log_inv_rate)?;
 		let n_test_queries = calculate_n_test_queries::<F, _>(security_bits, &rs_code)?;
 

@@ -19,6 +19,8 @@
 //! [DP24]: <https://eprint.iacr.org/2024/504>
 //! [BCS16]: <https://eprint.iacr.org/2016/116>
 
+use std::iter;
+
 use binius_field::{BinaryField, Field};
 use binius_math::multilinear::eq::eq_ind;
 use binius_transcript::{
@@ -48,14 +50,16 @@ use crate::{
 /// # Returns
 ///
 /// A vector of booleans, where true indicates a FRI commitment was made in that round.
-fn is_fri_commit_round(fri_fold_arities: &[usize], num_basefold_rounds: usize) -> Vec<bool> {
-	let mut result = vec![false; num_basefold_rounds];
+fn is_fri_commit_round(
+	log_batch_size: usize,
+	fri_fold_arities: &[usize],
+	num_basefold_rounds: usize,
+) -> Vec<bool> {
+	let mut result = vec![false; num_basefold_rounds + 1];
 	let mut result_idx = 0;
-	for arity in fri_fold_arities {
+	for arity in iter::once(log_batch_size).chain(fri_fold_arities.iter().copied()) {
 		result_idx += arity;
-		if result_idx > 0 && result_idx <= num_basefold_rounds {
-			result[result_idx - 1] = true;
-		}
+		result[result_idx] = true;
 	}
 	result
 }
@@ -95,21 +99,29 @@ where
 	const DEGREE: usize = 2;
 
 	let mut challenges = Vec::with_capacity(n_vars);
-	let fri_commit_rounds = is_fri_commit_round(fri_params.fold_arities(), n_vars);
+	let mut fri_commit_rounds =
+		is_fri_commit_round(fri_params.log_batch_size(), fri_params.fold_arities(), n_vars);
 	let mut round_commitments = Vec::with_capacity(fri_params.n_oracles());
 	let mut sum = evaluation_claim;
 
+	let commit_final = fri_commit_rounds
+		.pop()
+		.expect("fri_commit_round is not-empty by construction");
 	for is_commit_round in fri_commit_rounds {
 		let round_proof = RoundProof(RoundCoeffs(transcript.message().read_vec(DEGREE)?));
+		if is_commit_round {
+			round_commitments.push(transcript.message().read()?);
+		}
+
 		let round_coeffs = round_proof.recover(sum);
 
 		let challenge = transcript.sample();
 		sum = round_coeffs.evaluate(challenge);
 		challenges.push(challenge);
+	}
 
-		if is_commit_round {
-			round_commitments.push(transcript.message().read()?);
-		}
+	if commit_final {
+		round_commitments.push(transcript.message().read()?);
 	}
 
 	let fri_verifier = FRIVerifier::new(
