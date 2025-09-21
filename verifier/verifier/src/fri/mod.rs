@@ -30,3 +30,4 @@ pub mod verify;
 
 pub use common::*;
 pub use error::*;
+pub use fold::FRIFoldVerifier;

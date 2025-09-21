@@ -19,8 +19,6 @@
 //! [DP24]: <https://eprint.iacr.org/2024/504>
 //! [BCS16]: <https://eprint.iacr.org/2016/116>
 
-use std::iter;
-
 use binius_field::{BinaryField, Field};
 use binius_math::multilinear::eq::eq_ind;
 use binius_transcript::{
@@ -30,39 +28,11 @@ use binius_transcript::{
 use binius_utils::DeserializeBytes;
 
 use crate::{
-	fri::{self, FRIParams, verify::FRIQueryVerifier},
+	fri::{self, FRIFoldVerifier, FRIParams, verify::FRIQueryVerifier},
 	merkle_tree::MerkleTreeScheme,
 	protocols::sumcheck::{RoundCoeffs, RoundProof},
 	transcript,
 };
-
-/// Determines for each round if a FRI commitment was made depending on folding arities.
-///
-/// FRI can be optimized by folding multiple rounds at once. The FriFolder struct
-/// expects the arities for each round to be provided. During the basefold verification,
-/// we must check only those rounds where a commitment was made.
-///
-/// ## Arguments
-///
-/// * `fri_fold_arities` - The arities for each FRI round
-/// * `num_basefold_rounds` - The number of basefold rounds
-///
-/// # Returns
-///
-/// A vector of booleans, where true indicates a FRI commitment was made in that round.
-fn is_fri_commit_round(
-	log_batch_size: usize,
-	fri_fold_arities: &[usize],
-	num_basefold_rounds: usize,
-) -> Vec<bool> {
-	let mut result = vec![false; num_basefold_rounds + 1];
-	let mut result_idx = 0;
-	for arity in iter::once(log_batch_size).chain(fri_fold_arities.iter().copied()) {
-		result_idx += arity;
-		result[result_idx] = true;
-	}
-	result
-}
 
 /// Verifies a BaseFold protocol interaction.
 ///
@@ -98,31 +68,23 @@ where
 	// The multivariate polynomial evaluated is a degree-2 multilinear composite.
 	const DEGREE: usize = 2;
 
+	let mut fri_fold_verifier = FRIFoldVerifier::new(fri_params);
 	let mut challenges = Vec::with_capacity(n_vars);
-	let mut fri_commit_rounds =
-		is_fri_commit_round(fri_params.log_batch_size(), fri_params.fold_arities(), n_vars);
-	let mut round_commitments = Vec::with_capacity(fri_params.n_oracles());
 	let mut sum = evaluation_claim;
 
-	let commit_final = fri_commit_rounds
-		.pop()
-		.expect("fri_commit_round is not-empty by construction");
-	for is_commit_round in fri_commit_rounds {
+	for _ in 0..n_vars {
 		let round_proof = RoundProof(RoundCoeffs(transcript.message().read_vec(DEGREE)?));
-		if is_commit_round {
-			round_commitments.push(transcript.message().read()?);
-		}
+		fri_fold_verifier.process_round(&mut transcript.message())?;
 
 		let round_coeffs = round_proof.recover(sum);
-
 		let challenge = transcript.sample();
 		sum = round_coeffs.evaluate(challenge);
 		challenges.push(challenge);
 	}
 
-	if commit_final {
-		round_commitments.push(transcript.message().read()?);
-	}
+	// Finalize and get commitments
+	fri_fold_verifier.process_round(&mut transcript.message())?;
+	let round_commitments = fri_fold_verifier.finalize()?;
 
 	let fri_verifier = FRIQueryVerifier::new(
 		fri_params,

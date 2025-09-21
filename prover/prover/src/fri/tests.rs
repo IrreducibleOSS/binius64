@@ -1,6 +1,6 @@
 // Copyright 2024-2025 Irreducible Inc.
 
-use std::{iter, vec};
+use std::vec;
 
 use binius_field::{
 	BinaryField, ExtensionField, PackedBinaryGhash1x128b, PackedExtension, PackedField,
@@ -16,7 +16,7 @@ use binius_transcript::{ProverTranscript, fiat_shamir::CanSample};
 use binius_utils::checked_arithmetics::log2_strict_usize;
 use binius_verifier::{
 	config::{B128, StdChallenger},
-	fri::{FRIParams, verify::FRIQueryVerifier},
+	fri::{FRIFoldVerifier, FRIParams, verify::FRIQueryVerifier},
 	hash::{StdCompression, StdDigest},
 };
 use rand::prelude::*;
@@ -72,6 +72,8 @@ fn test_commit_prove_verify_success<F, FA, P>(
 	let mut prover_challenger = ProverTranscript::new(StdChallenger::default());
 	prover_challenger.message().write(&codeword_commitment);
 
+	// Note: The prover does an initial fold round before receiving any challenges
+	// This is round 0, which won't produce a commitment when log_batch_size > 0
 	let fold_round_output = round_prover.execute_fold_round().unwrap();
 	if let FoldRoundOutput::Commitment(round_commitment) = fold_round_output {
 		prover_challenger.message().write(&round_commitment);
@@ -94,16 +96,25 @@ fn test_commit_prove_verify_success<F, FA, P>(
 	let mut verifier_challenges = Vec::with_capacity(params.n_fold_rounds());
 
 	assert_eq!(params.fold_arities().len(), n_round_commitments);
-	let mut round_commitments = Vec::with_capacity(params.n_oracles());
-	for round_arity in
-		iter::once(params.log_batch_size()).chain(params.fold_arities().iter().copied())
-	{
-		verifier_challenges.append(&mut verifier_challenger.sample_vec(round_arity));
-		let commitment = verifier_challenger.message().read().unwrap();
-		round_commitments.push(commitment);
+
+	// The prover executes fold rounds starting from round 0, then receives challenges and continues
+	// We need to match this pattern in the verifier
+	let mut fri_fold_verifier = FRIFoldVerifier::new(&params);
+
+	// Process initial round (before any challenges) - round 0
+	fri_fold_verifier
+		.process_round(&mut verifier_challenger.message())
+		.unwrap();
+
+	// Process remaining rounds with challenges
+	for _ in 0..params.n_fold_rounds() {
+		verifier_challenges.push(verifier_challenger.sample());
+		fri_fold_verifier
+			.process_round(&mut verifier_challenger.message())
+			.unwrap();
 	}
 
-	verifier_challenges.append(&mut verifier_challenger.sample_vec(params.n_final_challenges()));
+	let round_commitments = fri_fold_verifier.finalize().unwrap();
 
 	assert_eq!(verifier_challenges.len(), params.n_fold_rounds());
 
