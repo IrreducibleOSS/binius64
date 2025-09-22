@@ -137,24 +137,24 @@ fn run_sumcheck<F: Field, P: PackedField<Scalar = F>, C: Challenger>(
 
 	let BatchSumcheckOutput {
 		challenges: r_y,
-		mut multilinear_evals,
+		multilinear_evals,
 	} = batch_prove(provers, transcript)?;
 
-	assert_eq!(multilinear_evals.len(), 2);
+	let [shift_evals, inout_evals] = multilinear_evals
+		.try_into()
+		.expect("batch_prove called with 2 provers");
+	let [witness_eval, _monster_eval] = shift_evals
+		.try_into()
+		.expect("shift_prover has 2 multilinear polynomials");
+	let [_inout_witness_eval] = inout_evals
+		.try_into()
+		.expect("inout_prover has 1 multilinear polynomial");
 
-	let mut inout_evals = multilinear_evals.pop().expect("there are 2 provers");
-	let mut shift_evals = multilinear_evals.pop().expect("there are 2 provers");
-
-	assert_eq!(inout_evals.len(), 1);
-	let _inout_witness_eval = inout_evals.pop().expect("there is 1 eval");
-
-	assert_eq!(shift_evals.len(), 2);
-	let _monster_eval = shift_evals.pop().expect("there are 2 multilinears");
-	let witness_eval = shift_evals.pop().expect("there is 1 remaining eval");
+	transcript.message().write_scalar(witness_eval);
 
 	#[cfg(debug_assertions)]
 	{
-		let r_y_tensor = binius_math::multilinear::eq::eq_ind_partial_eval(&r_y);
+		let r_y_tensor = eq_ind_partial_eval(&r_y);
 		let expected_witness_eval = binius_math::inner_product::inner_product_buffers(
 			&cloned_r_j_witness_for_debugging,
 			&r_y_tensor,
