@@ -51,8 +51,9 @@ impl Slice {
 		// Static assertions to ensure maximum sizes fit within 32 bits
 		let max_len_input = input.len() << 3;
 		let max_len_slice = slice.len() << 3;
-		assert!(max_len_input < (1u64 << 32) as usize, "max_n_input must be < 2^32");
-		assert!(max_len_slice < (1u64 << 32) as usize, "max_n_slice must be < 2^32");
+
+		assert!(max_len_input <= u32::MAX as usize, "max_n_input must be < 2^32");
+		assert!(max_len_slice <= u32::MAX as usize, "max_n_slice must be < 2^32");
 
 		// Ensure all values fit in 32 bits to prevent overflow in iadd_32
 		b.assert_zero("offset_32bit", b.shr(offset, 32));
