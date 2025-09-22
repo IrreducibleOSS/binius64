@@ -83,6 +83,8 @@ jobs:
           key: ${{ matrix.arch.name }}-cargo-${{ hashFiles('**/Cargo.toml') }}
       # - name: Run platform diagnostics
       #   run: cargo test -p binius-utils --features platform-diagnostics test_platform_diagnostics -- --nocapture
+      - name: Compile
+        run: cargo build --workspace --all-targets
       - name: Run clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Run tests
