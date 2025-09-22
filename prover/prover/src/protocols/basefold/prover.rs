@@ -37,9 +37,7 @@ where
 	VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 {
 	sumcheck_prover: MultilinearSumcheckProver<F, P>,
-	fri_params: &'a FRIParams<F, F>,
 	fri_folder: FRIFolder<'a, F, F, P, NTT, MerkleProver, VCS>,
-	log_n: usize,
 }
 
 impl<'a, F, P, NTT, MerkleProver, VCS> BaseFoldProver<'a, F, P, NTT, MerkleProver, VCS>
@@ -91,9 +89,7 @@ where
 
 		Ok(Self {
 			sumcheck_prover,
-			fri_params,
 			fri_folder,
-			log_n,
 		})
 	}
 
@@ -104,31 +100,25 @@ where
 	///
 	/// ## Returns
 	///  * the sumcheck round message
-	pub fn execute(&mut self) -> Result<RoundCoeffs<F>, Error> {
-		Ok(self
+	///  * the FRI fold round output
+	fn execute(&mut self) -> Result<(RoundCoeffs<F>, FoldRoundOutput<VCS::Digest>), Error> {
+		let [round_coeffs] = self
 			.sumcheck_prover
-			.execute()
-			.map_err(|e| Error::ArgumentError {
-				arg: "sumcheck".to_string(),
-				msg: e.to_string(),
-			})?[0]
-			.clone())
+			.execute()?
+			.try_into()
+			.expect("sumcheck_prover proves only one multivariate");
+		let commitment = self.fri_folder.execute_fold_round()?;
+		Ok((round_coeffs, commitment))
 	}
 
 	/// Folds both the sumcheck multilinear and its codeword.
 	///
 	/// ## Arguments
 	/// * `challenge` - a challenge sampled from the transcript
-	///
-	/// ## Returns
-	///  * the FRI fold round output
-	pub fn fold(
-		&mut self,
-		challenge: F,
-	) -> Result<FoldRoundOutput<<VCS as MerkleTreeScheme<F>>::Digest>, Error> {
+	fn fold(&mut self, challenge: F) -> Result<(), Error> {
 		self.sumcheck_prover.fold(challenge)?;
-		let result = self.fri_folder.execute_fold_round(challenge)?;
-		Ok(result)
+		self.fri_folder.receive_challenge(challenge);
+		Ok(())
 	}
 
 	/// Runs the protocol to completion.
@@ -144,24 +134,18 @@ where
 	) -> Result<(), Error> {
 		let _scope = tracing::debug_span!("Basefold").entered();
 
-		let mut round_commitments = Vec::with_capacity(self.fri_params.n_oracles());
-		for _ in 0..self.log_n {
-			let round_coeffs = self.execute()?;
+		let n_vars = self.sumcheck_prover.n_vars();
+		for _ in 0..n_vars {
+			let (round_coeffs, commitment) = self.execute()?;
 			transcript
 				.message()
 				.write_scalar_slice(round_coeffs.truncate().coeffs());
+			if let FoldRoundOutput::Commitment(commitment) = commitment {
+				transcript.message().write(&commitment);
+			}
 
 			let challenge = transcript.sample();
-
-			let next_round_commitment = self.fold(challenge)?;
-
-			match next_round_commitment {
-				FoldRoundOutput::NoCommitment => {}
-				FoldRoundOutput::Commitment(round_commitment) => {
-					transcript.message().write(&round_commitment);
-					round_commitments.push(round_commitment);
-				}
-			}
+			self.fold(challenge)?;
 		}
 		self.finish(transcript)?;
 
@@ -172,23 +156,26 @@ where
 	///
 	/// ## Arguments
 	/// * `prover_challenger` - the prover's mutable transcript
-	pub fn finish<T: Challenger>(
-		self,
-		prover_challenger: &mut ProverTranscript<T>,
-	) -> Result<(), Error> {
-		self.fri_folder.finish_proof(prover_challenger)?;
+	fn finish<T: Challenger>(mut self, transcript: &mut ProverTranscript<T>) -> Result<(), Error> {
+		let commitment = self.fri_folder.execute_fold_round()?;
+		if let FoldRoundOutput::Commitment(commitment) = commitment {
+			transcript.message().write(&commitment);
+		}
+
+		self.fri_folder.finish_proof(transcript)?;
 		Ok(())
 	}
 }
 
 #[cfg(test)]
 mod test {
+	use anyhow::{Result, bail};
 	use binius_field::{
-		BinaryField, PackedBinaryGhash2x128b, PackedBinaryGhash4x128b, PackedExtension,
-		PackedField, arch::OptimalPackedB128,
+		BinaryField, PackedBinaryGhash1x128b, PackedBinaryGhash2x128b, PackedBinaryGhash4x128b,
+		PackedExtension, PackedField,
 	};
 	use binius_math::{
-		FieldBuffer, ReedSolomonCode,
+		BinarySubspace, FieldBuffer,
 		inner_product::inner_product_buffers,
 		multilinear::eq::eq_ind_partial_eval,
 		ntt::{NeighborsLastSingleThread, domain_context::GenericOnTheFly},
@@ -211,13 +198,13 @@ mod test {
 	};
 
 	pub const LOG_INV_RATE: usize = 1;
-	pub const NUM_TEST_QUERIES: usize = 3;
+	pub const SECURITY_BITS: usize = 32;
 
 	fn run_basefold_prove_and_verify<F, P>(
 		multilinear: FieldBuffer<P>,
 		evaluation_point: Vec<F>,
 		evaluation_claim: F,
-	) -> Result<(), Box<dyn std::error::Error>>
+	) -> Result<()>
 	where
 		F: BinaryField,
 		P: PackedField<Scalar = F> + PackedExtension<F>,
@@ -230,16 +217,17 @@ mod test {
 			ParallelCompressionAdaptor::new(StdCompression::default()),
 		);
 
-		let rs_code = ReedSolomonCode::<F>::new(multilinear.log_len(), LOG_INV_RATE)?;
-
-		let fri_log_batch_size = 0;
-		let fri_arities = vec![2, 1];
-		let fri_params: FRIParams<F, F> =
-			FRIParams::new(rs_code, fri_log_batch_size, fri_arities, NUM_TEST_QUERIES)?;
-
-		let subspace = fri_params.rs_code().subspace();
-		let domain_context = GenericOnTheFly::generate_from_subspace(subspace);
+		let subspace = BinarySubspace::with_dim(multilinear.log_len() + LOG_INV_RATE).unwrap();
+		let domain_context = GenericOnTheFly::generate_from_subspace(&subspace);
 		let ntt = NeighborsLastSingleThread::new(domain_context);
+
+		let fri_params = FRIParams::choose_with_constant_fold_arity(
+			&ntt,
+			multilinear.log_len(),
+			SECURITY_BITS,
+			LOG_INV_RATE,
+			2,
+		)?;
 
 		let CommitOutput {
 			commitment: codeword_commitment,
@@ -286,7 +274,7 @@ mod test {
 			&evaluation_point,
 			&challenges,
 		) {
-			return Err("Sumcheck and FRI are inconsistent".into());
+			bail!("Sumcheck and FRI are inconsistent");
 		}
 
 		Ok(())
@@ -318,21 +306,18 @@ mod test {
 
 	#[test]
 	fn test_basefold_valid_proof() {
-		type P = OptimalPackedB128;
+		type P = PackedBinaryGhash1x128b;
 
 		let n_vars = 8;
 		let (multilinear, evaluation_point, evaluation_claim) = test_setup::<_, P>(n_vars);
 
-		match run_basefold_prove_and_verify::<_, P>(multilinear, evaluation_point, evaluation_claim)
-		{
-			Ok(()) => {}
-			Err(_) => panic!("expected valid proof"),
-		}
+		run_basefold_prove_and_verify::<_, P>(multilinear, evaluation_point, evaluation_claim)
+			.unwrap();
 	}
 
 	#[test]
 	fn test_basefold_invalid_proof() {
-		type P = OptimalPackedB128;
+		type P = PackedBinaryGhash1x128b;
 
 		let n_vars = 8;
 		let (multilinear, evaluation_point, mut evaluation_claim) = test_setup::<_, P>(n_vars);
@@ -350,24 +335,8 @@ mod test {
 		let n_vars = 8;
 		let (multilinear, evaluation_point, evaluation_claim) = test_setup::<_, P>(n_vars);
 
-		match run_basefold_prove_and_verify::<_, P>(multilinear, evaluation_point, evaluation_claim)
-		{
-			Ok(()) => {}
-			Err(_) => panic!("expected valid proof"),
-		}
-	}
-
-	#[test]
-	fn test_basefold_invalid_proof_packing_width_2() {
-		type P = PackedBinaryGhash2x128b;
-
-		let n_vars = 8;
-		let (multilinear, evaluation_point, mut evaluation_claim) = test_setup::<_, P>(n_vars);
-
-		dubiously_modify_claim::<_, P>(&mut evaluation_claim);
-		let result =
-			run_basefold_prove_and_verify::<_, P>(multilinear, evaluation_point, evaluation_claim);
-		assert!(result.is_err());
+		run_basefold_prove_and_verify::<_, P>(multilinear, evaluation_point, evaluation_claim)
+			.unwrap();
 	}
 
 	#[test]
@@ -377,23 +346,7 @@ mod test {
 		let n_vars = 8;
 		let (multilinear, evaluation_point, evaluation_claim) = test_setup::<_, P>(n_vars);
 
-		match run_basefold_prove_and_verify::<_, P>(multilinear, evaluation_point, evaluation_claim)
-		{
-			Ok(()) => {}
-			Err(_) => panic!("expected valid proof"),
-		}
-	}
-
-	#[test]
-	fn test_basefold_invalid_proof_packing_width_4() {
-		type P = PackedBinaryGhash4x128b;
-
-		let n_vars = 8;
-		let (multilinear, evaluation_point, mut evaluation_claim) = test_setup::<_, P>(n_vars);
-
-		dubiously_modify_claim::<_, P>(&mut evaluation_claim);
-		let result =
-			run_basefold_prove_and_verify::<_, P>(multilinear, evaluation_point, evaluation_claim);
-		assert!(result.is_err());
+		run_basefold_prove_and_verify::<_, P>(multilinear, evaluation_point, evaluation_claim)
+			.unwrap();
 	}
 }

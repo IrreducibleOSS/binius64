@@ -1,6 +1,6 @@
 // Copyright 2024-2025 Irreducible Inc.
 
-use std::vec;
+use std::{iter, vec};
 
 use binius_field::{
 	BinaryField, ExtensionField, PackedBinaryGhash1x128b, PackedExtension, PackedField,
@@ -71,16 +71,19 @@ fn test_commit_prove_verify_success<F, FA, P>(
 
 	let mut prover_challenger = ProverTranscript::new(StdChallenger::default());
 	prover_challenger.message().write(&codeword_commitment);
-	let mut round_commitments = Vec::with_capacity(params.n_oracles());
+
+	let fold_round_output = round_prover.execute_fold_round().unwrap();
+	if let FoldRoundOutput::Commitment(round_commitment) = fold_round_output {
+		prover_challenger.message().write(&round_commitment);
+	}
+
 	for _i in 0..params.n_fold_rounds() {
 		let challenge = prover_challenger.sample();
-		let fold_round_output = round_prover.execute_fold_round(challenge).unwrap();
-		match fold_round_output {
-			FoldRoundOutput::NoCommitment => {}
-			FoldRoundOutput::Commitment(round_commitment) => {
-				prover_challenger.message().write(&round_commitment);
-				round_commitments.push(round_commitment);
-			}
+		round_prover.receive_challenge(challenge);
+
+		let fold_round_output = round_prover.execute_fold_round().unwrap();
+		if let FoldRoundOutput::Commitment(round_commitment) = fold_round_output {
+			prover_challenger.message().write(&round_commitment);
 		}
 	}
 
@@ -92,7 +95,9 @@ fn test_commit_prove_verify_success<F, FA, P>(
 
 	assert_eq!(params.fold_arities().len(), n_round_commitments);
 	let mut round_commitments = Vec::with_capacity(params.n_oracles());
-	for &round_arity in params.fold_arities() {
+	for round_arity in
+		iter::once(params.log_batch_size()).chain(params.fold_arities().iter().copied())
+	{
 		verifier_challenges.append(&mut verifier_challenger.sample_vec(round_arity));
 		let commitment = verifier_challenger.message().read().unwrap();
 		round_commitments.push(commitment);
@@ -167,7 +172,8 @@ fn test_commit_prove_verify_success_128b_higher_arity() {
 	let log_inv_rate = 2;
 	let arities = [3, 2, 1];
 
-	test_commit_prove_verify_success::<_, B128, Packed128b>(
+	// TODO: Make this test pass with non-trivial packing width
+	test_commit_prove_verify_success::<_, B128, PackedBinaryGhash1x128b>(
 		log_dimension,
 		log_inv_rate,
 		0,

@@ -43,32 +43,6 @@ where
 		));
 	}
 
-	commit_interleaved_with(params, ntt, merkle_prover, message.as_ref())
-}
-
-/// Encodes and commits the input message with a closure for writing the message.
-///
-/// ## Arguments
-///
-/// * `rs_code` - the Reed-Solomon code to use for encoding
-/// * `params` - common FRI protocol parameters.
-/// * `merkle_prover` - the Merkle tree prover to use for committing
-/// * `message_writer` - a closure that writes the interleaved message to encode and commit
-fn commit_interleaved_with<F, FA, P, PA, NTT, MerkleProver, VCS>(
-	params: &FRIParams<F, FA>,
-	ntt: &NTT,
-	merkle_prover: &MerkleProver,
-	message: &[P],
-) -> Result<CommitOutput<P, VCS::Digest, MerkleProver::Committed>, Error>
-where
-	F: BinaryField,
-	FA: BinaryField,
-	P: PackedField<Scalar = F> + PackedExtension<FA, PackedSubfield = PA>,
-	PA: PackedField<Scalar = FA>,
-	NTT: AdditiveNTT<Field = FA> + Sync,
-	MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
-	VCS: MerkleTreeScheme<F>,
-{
 	let rs_code = params.rs_code();
 	let log_batch_size = params.log_batch_size();
 	let log_elems = rs_code.log_dim() + log_batch_size;
@@ -89,7 +63,12 @@ where
 	let mut encoded = Vec::with_capacity(len);
 
 	tracing::debug_span!("Reed-Solomon Encode").in_scope(|| {
-		rs_code.encode_ext_batch(ntt, message, encoded.spare_capacity_mut(), log_batch_size)
+		rs_code.encode_ext_batch(
+			ntt,
+			message.as_ref(),
+			encoded.spare_capacity_mut(),
+			log_batch_size,
+		)
 	})?;
 
 	unsafe {
@@ -97,18 +76,13 @@ where
 		encoded.set_len(len);
 	}
 
-	// Take the first arity as coset_log_len, or use the value such that the number of leaves equals
-	// 1 << log_inv_rate if arities is empty
-	let coset_log_len = params.fold_arities().first().copied().unwrap_or(log_elems);
-
-	let log_len = params.log_len() - coset_log_len;
 	let merkle_tree_span = tracing::debug_span!("Merkle Tree").entered();
-	let (commitment, vcs_committed) = if coset_log_len > P::LOG_WIDTH {
-		let iterated_big_chunks = to_par_scalar_big_chunks(&encoded, 1 << coset_log_len);
-		merkle_prover.commit_iterated(iterated_big_chunks, log_len)?
+	let (commitment, vcs_committed) = if log_batch_size > P::LOG_WIDTH {
+		let iterated_big_chunks = to_par_scalar_big_chunks(&encoded, 1 << log_batch_size);
+		merkle_prover.commit_iterated(iterated_big_chunks, params.rs_code().log_len())?
 	} else {
-		let iterated_small_chunks = to_par_scalar_small_chunks(&encoded, 1 << coset_log_len);
-		merkle_prover.commit_iterated(iterated_small_chunks, log_len)?
+		let iterated_small_chunks = to_par_scalar_small_chunks(&encoded, 1 << log_batch_size);
+		merkle_prover.commit_iterated(iterated_small_chunks, params.rs_code().log_len())?
 	};
 	drop(merkle_tree_span);
 

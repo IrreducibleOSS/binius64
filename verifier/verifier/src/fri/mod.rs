@@ -15,10 +15,10 @@
 //! The folding phase begins with the verifier having oracle access to an initial, purported
 //! interleaved codeword. In each round the prover receives a challenge and folds the interleaved
 //! codeword in half until it reaches a single codeword, mixing adjacent codewords as a linear
-//! interpolation. Then in each subsequent round, the prover receives a challenge and folds the
-//! codeword in half using the FRI folding procedure and may or may not send a new oracle to the
-//! verifier. The last oracle the prover sends, they send entirely in the clear to the verifier,
-//! rather than sending with oracle access.
+//! interpolation. The prover sends the folded codeword to the oracle. Then in each subsequent
+//! round, the prover receives a challenge and folds the codeword in half using the FRI folding
+//! procedure and may or may not send a new oracle to the verifier. The last oracle the prover
+//! sends, they send entirely in the clear to the verifier, rather than sending with oracle access.
 //!
 //! [BBHR17]: <https://eccc.weizmann.ac.il/report/2017/134/>
 //! [DP24]: <https://eprint.iacr.org/2024/504>
