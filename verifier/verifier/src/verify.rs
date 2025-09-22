@@ -18,7 +18,7 @@ use binius_utils::{
 	checked_arithmetics::{checked_log_2, log2_ceil_usize},
 };
 use digest::{Digest, Output, core_api::BlockSizeUser};
-use itertools::{Itertools, izip};
+use itertools::{Itertools, chain, izip};
 
 use super::{VerificationError, error::Error, pcs};
 use crate::{
@@ -308,8 +308,6 @@ fn verify_bitand_reduction<F: BinaryField + From<B8>, Challenger_: Challenger>(
 
 	let big_field_zerocheck_challenges = transcript.sample_vec(log_constraint_count - 3);
 
-	let mut all_zerocheck_challenges = vec![];
-
 	let small_field_zerocheck_challenges = PROVER_SMALL_FIELD_ZEROCHECK_CHALLENGES
 		.into_iter()
 		.map(F::from)
@@ -319,13 +317,8 @@ fn verify_bitand_reduction<F: BinaryField + From<B8>, Challenger_: Challenger>(
 		.expect("dim is positive and less than field dim")
 		.isomorphic();
 
-	for small_field_challenge in small_field_zerocheck_challenges {
-		all_zerocheck_challenges.push(small_field_challenge);
-	}
-
-	for big_field_challenge in &big_field_zerocheck_challenges {
-		all_zerocheck_challenges.push(*big_field_challenge);
-	}
-
-	verify_with_transcript(&all_zerocheck_challenges, transcript, verifier_message_domain)
+	let zerocheck_challenges =
+		chain!(small_field_zerocheck_challenges, big_field_zerocheck_challenges)
+			.collect::<Vec<_>>();
+	verify_with_transcript(&zerocheck_challenges, transcript, verifier_message_domain)
 }
