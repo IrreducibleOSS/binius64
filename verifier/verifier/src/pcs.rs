@@ -43,7 +43,7 @@ pub fn verify<F, MTScheme, Challenger_>(
 	evaluation_claim: F,
 	eval_point: &[F],
 	codeword_commitment: MTScheme::Digest,
-	fri_params: &FRIParams<F, F>,
+	fri_params: &FRIParams<F>,
 	merkle_scheme: &MTScheme,
 ) -> Result<(), Error>
 where

@@ -2,9 +2,7 @@
 
 use std::iter;
 
-use binius_field::{
-	BinaryField, ExtensionField, PackedField, packed::iter_packed_slice_with_offset,
-};
+use binius_field::{BinaryField, PackedField, packed::iter_packed_slice_with_offset};
 use binius_transcript::TranscriptWriter;
 use binius_verifier::{
 	fri::{FRIParams, vcs_optimal_layers_depths_iter},
@@ -18,25 +16,23 @@ use crate::{fri::Error, merkle_tree::MerkleTreeProver};
 
 /// A prover for the FRI query phase.
 #[derive(Debug)]
-pub struct FRIQueryProver<'a, F, FA, P, MerkleProver, VCS>
+pub struct FRIQueryProver<'a, F, P, MerkleProver, VCS>
 where
 	F: BinaryField,
-	FA: BinaryField,
 	P: PackedField<Scalar = F>,
 	MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 	VCS: MerkleTreeScheme<F>,
 {
-	pub(super) params: &'a FRIParams<F, FA>,
+	pub(super) params: &'a FRIParams<F>,
 	pub(super) codeword: &'a [P],
 	pub(super) codeword_committed: &'a MerkleProver::Committed,
 	pub(super) round_committed: Vec<(Vec<F>, MerkleProver::Committed)>,
 	pub(super) merkle_prover: &'a MerkleProver,
 }
 
-impl<F, FA, P, MerkleProver, VCS> FRIQueryProver<'_, F, FA, P, MerkleProver, VCS>
+impl<F, P, MerkleProver, VCS> FRIQueryProver<'_, F, P, MerkleProver, VCS>
 where
-	F: BinaryField + ExtensionField<FA>,
-	FA: BinaryField,
+	F: BinaryField,
 	P: PackedField<Scalar = F>,
 	MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 	VCS: MerkleTreeScheme<F>,

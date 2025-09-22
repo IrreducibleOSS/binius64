@@ -1,6 +1,6 @@
 // Copyright 2024-2025 Irreducible Inc.
 
-use binius_field::{BinaryField, ExtensionField, Field, PackedField, packed::len_packed_slice};
+use binius_field::{BinaryField, Field, PackedField, packed::len_packed_slice};
 use binius_math::{multilinear::eq::eq_ind_partial_eval, ntt::AdditiveNTT};
 use binius_transcript::{
 	ProverTranscript,
@@ -30,15 +30,14 @@ pub enum FoldRoundOutput<VCSCommitment> {
 }
 
 /// A stateful prover for the FRI fold phase.
-pub struct FRIFoldProver<'a, F, FA, P, NTT, MerkleProver, VCS>
+pub struct FRIFoldProver<'a, F, P, NTT, MerkleProver, VCS>
 where
-	FA: BinaryField,
 	F: BinaryField,
 	P: PackedField<Scalar = F>,
 	MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 	VCS: MerkleTreeScheme<F>,
 {
-	params: &'a FRIParams<F, FA>,
+	params: &'a FRIParams<F>,
 	ntt: &'a NTT,
 	merkle_prover: &'a MerkleProver,
 	codeword: &'a [P],
@@ -49,18 +48,17 @@ where
 	unprocessed_challenges: Vec<F>,
 }
 
-impl<'a, F, FA, P, NTT, MerkleProver, VCS> FRIFoldProver<'a, F, FA, P, NTT, MerkleProver, VCS>
+impl<'a, F, P, NTT, MerkleProver, VCS> FRIFoldProver<'a, F, P, NTT, MerkleProver, VCS>
 where
-	F: BinaryField + ExtensionField<FA>,
-	FA: BinaryField,
+	F: BinaryField,
 	P: PackedField<Scalar = F>,
-	NTT: AdditiveNTT<Field = FA> + Sync,
+	NTT: AdditiveNTT<Field = F> + Sync,
 	MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
 	VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 {
 	/// Constructs a new folder.
 	pub fn new(
-		params: &'a FRIParams<F, FA>,
+		params: &'a FRIParams<F>,
 		ntt: &'a NTT,
 		merkle_prover: &'a MerkleProver,
 		committed_codeword: &'a [P],
@@ -190,7 +188,7 @@ where
 	#[allow(clippy::type_complexity)]
 	pub fn finalize(
 		mut self,
-	) -> Result<(TerminateCodeword<F>, FRIQueryProver<'a, F, FA, P, MerkleProver, VCS>), Error> {
+	) -> Result<(TerminateCodeword<F>, FRIQueryProver<'a, F, P, MerkleProver, VCS>), Error> {
 		if self.curr_round != self.n_rounds() {
 			bail!(Error::EarlyProverFinish);
 		}
@@ -298,11 +296,10 @@ where
 ///
 /// [DP24]: <https://eprint.iacr.org/2024/504>
 #[instrument(skip_all, level = "debug")]
-fn fold_codeword<F, FS, NTT>(ntt: &NTT, codeword: &[F], challenges: &[F], log_len: usize) -> Vec<F>
+fn fold_codeword<F, NTT>(ntt: &NTT, codeword: &[F], challenges: &[F], log_len: usize) -> Vec<F>
 where
-	F: BinaryField + ExtensionField<FS>,
-	FS: BinaryField,
-	NTT: AdditiveNTT<Field = FS> + Sync,
+	F: BinaryField,
+	NTT: AdditiveNTT<Field = F> + Sync,
 {
 	assert_eq!(codeword.len(), 1 << log_len);
 	assert!(challenges.len() <= log_len);
