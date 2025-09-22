@@ -15,7 +15,9 @@ use super::{
 ///
 /// Currently only those methods are implemented that are used in the `binius` code base. All other
 /// methods can be implemented upon request.
-pub(crate) trait IndexedParallelIteratorInner: ParallelIteratorInner {
+pub(crate) trait IndexedParallelIteratorInner:
+	ParallelIteratorInner + ExactSizeIterator
+{
 	#[inline(always)]
 	fn with_min_len(self, _min: usize) -> Self
 	where
@@ -95,7 +97,7 @@ struct Chunks<I> {
 	chunk_size: usize,
 }
 
-impl<I: Iterator> Iterator for Chunks<I> {
+impl<I: ExactSizeIterator> Iterator for Chunks<I> {
 	type Item = Vec<I::Item>;
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -108,16 +110,26 @@ impl<I: Iterator> Iterator for Chunks<I> {
 		}
 		if chunk.is_empty() { None } else { Some(chunk) }
 	}
+
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		let size = self.inner.len().div_ceil(self.chunk_size);
+		(size, Some(size))
+	}
 }
 
-impl<I: Iterator> IndexedParallelIteratorInner for Chunks<I> {}
+impl<I: ExactSizeIterator> ExactSizeIterator for Chunks<I> {}
+
+impl<I: ExactSizeIterator> IndexedParallelIteratorInner for Chunks<I> {}
 
 // Implement `IndexedParallelIteratorInner` for different `std::iter::Iterator` types.
 // Unfortunately, we can't implement it for all `std::iter::Iterator` types because of the
 // collisions with generic implementation for tuples (see `multizip_impls!` macro in
 // `parallel_iterator.rs`). If you need to implement it for some other type, please add
 // implementation here.
-impl<Idx> IndexedParallelIteratorInner for std::ops::Range<Idx> where Self: Iterator<Item = Idx> {}
+impl<Idx> IndexedParallelIteratorInner for std::ops::Range<Idx> where
+	Self: ExactSizeIterator<Item = Idx>
+{
+}
 impl<T> IndexedParallelIteratorInner for std::slice::IterMut<'_, T> {}
 impl<L: IndexedParallelIteratorInner, R: IndexedParallelIteratorInner> IndexedParallelIteratorInner
 	for std::iter::Zip<L, R>
@@ -132,17 +144,22 @@ impl<I: IndexedParallelIteratorInner, R, F: FnMut(I::Item) -> R> IndexedParallel
 impl<I: IndexedParallelIteratorInner> IndexedParallelIteratorInner for std::iter::Take<I> {}
 impl<T> IndexedParallelIteratorInner for std::vec::IntoIter<T> {}
 impl<T, const N: usize> IndexedParallelIteratorInner for std::array::IntoIter<T, N> {}
-impl<T: Clone> IndexedParallelIteratorInner for std::iter::Repeat<T> {}
-impl<I1: IndexedParallelIteratorInner, I2: IndexedParallelIteratorInner<Item = I1::Item>>
-	IndexedParallelIteratorInner for std::iter::Chain<I1, I2>
-{
-}
+impl<T: Clone> IndexedParallelIteratorInner for std::iter::RepeatN<T> {}
+// impl<I1: IndexedParallelIteratorInner, I2: IndexedParallelIteratorInner<Item = I1::Item>>
+// 	IndexedParallelIteratorInner for std::iter::Chain<I1, I2>
+// {
+// }
 impl<I: IndexedParallelIteratorInner> IndexedParallelIteratorInner for std::iter::Skip<I> {}
 
 #[allow(private_bounds)]
 pub trait IndexedParallelIterator:
 	ParallelIterator<Inner: IndexedParallelIteratorInner<Item = Self::Item>>
 {
+	#[inline(always)]
+	fn len(&self) -> usize {
+		ParallelIterator::as_inner(self).len()
+	}
+
 	#[inline(always)]
 	fn with_min_len(self, min: usize) -> impl IndexedParallelIterator<Item = Self::Item>
 	where
