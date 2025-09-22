@@ -14,6 +14,7 @@ use itertools::Either;
 
 use self::private::Try;
 use super::{FromParallelIterator, IntoParallelIterator, parallel_wrapper::ParallelWrapper};
+use crate::rayon::iter::indexed_parallel_iterator::Chain;
 
 /// `rayon::prelude::ParallelIterator` has at least `fold` method with a signature
 /// that is not compatible with the one in `std::iter::Iterator`. That's why we can't use
@@ -392,11 +393,13 @@ pub(crate) trait ParallelIteratorInner: Sized + Iterator {
 	}
 
 	#[inline]
-	fn chain<C>(self, chain: C) -> impl ParallelIteratorInner<Item = Self::Item>
+	fn chain<C>(self, chain: C) -> Chain<Self, C>
 	where
 		C: ParallelIteratorInner<Item = Self::Item>,
 	{
-		Iterator::chain(self, chain)
+		Chain {
+			inner: Iterator::chain(self, chain),
+		}
 	}
 
 	#[inline]
@@ -950,7 +953,10 @@ pub trait ParallelIterator: Sized {
 	}
 
 	#[inline]
-	fn chain<C>(self, chain: C) -> impl ParallelIterator<Item = Self::Item>
+	fn chain<C>(
+		self,
+		chain: C,
+	) -> ParallelWrapper<Chain<Self::Inner, <C::Iter as ParallelIterator>::Inner>>
 	where
 		C: IntoParallelIterator<Item = Self::Item>,
 	{

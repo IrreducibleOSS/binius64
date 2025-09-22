@@ -121,6 +121,43 @@ impl<I: ExactSizeIterator> ExactSizeIterator for Chunks<I> {}
 
 impl<I: ExactSizeIterator> IndexedParallelIteratorInner for Chunks<I> {}
 
+/// Wrapper around std::iter::Chain that implements ExactSizeIterator.
+pub struct Chain<I1, I2> {
+	pub(super) inner: std::iter::Chain<I1, I2>,
+}
+
+impl<I1, I2> Iterator for Chain<I1, I2>
+where
+	I1: Iterator,
+	I2: Iterator<Item = I1::Item>,
+{
+	type Item = I1::Item;
+
+	#[inline]
+	fn next(&mut self) -> Option<Self::Item> {
+		self.inner.next()
+	}
+
+	#[inline]
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		self.inner.size_hint()
+	}
+}
+
+impl<I1, I2> ExactSizeIterator for Chain<I1, I2>
+where
+	I1: ExactSizeIterator,
+	I2: ExactSizeIterator<Item = I1::Item>,
+{
+}
+
+impl<I1, I2> IndexedParallelIteratorInner for Chain<I1, I2>
+where
+	I1: IndexedParallelIteratorInner,
+	I2: IndexedParallelIteratorInner<Item = I1::Item>,
+{
+}
+
 // Implement `IndexedParallelIteratorInner` for different `std::iter::Iterator` types.
 // Unfortunately, we can't implement it for all `std::iter::Iterator` types because of the
 // collisions with generic implementation for tuples (see `multizip_impls!` macro in
@@ -145,10 +182,6 @@ impl<I: IndexedParallelIteratorInner> IndexedParallelIteratorInner for std::iter
 impl<T> IndexedParallelIteratorInner for std::vec::IntoIter<T> {}
 impl<T, const N: usize> IndexedParallelIteratorInner for std::array::IntoIter<T, N> {}
 impl<T: Clone> IndexedParallelIteratorInner for std::iter::RepeatN<T> {}
-// impl<I1: IndexedParallelIteratorInner, I2: IndexedParallelIteratorInner<Item = I1::Item>>
-// 	IndexedParallelIteratorInner for std::iter::Chain<I1, I2>
-// {
-// }
 impl<I: IndexedParallelIteratorInner> IndexedParallelIteratorInner for std::iter::Skip<I> {}
 
 #[allow(private_bounds)]
@@ -299,5 +332,61 @@ mod tests {
 
 		let result = a.into_par_iter().map(|x| x * 2).collect::<Vec<_>>();
 		assert_eq!(result, vec![2, 4, 6]);
+	}
+
+	#[test]
+	fn check_chain() {
+		let a = &[1, 2, 3];
+		let b = &[4, 5, 6];
+
+		let result = a
+			.into_par_iter()
+			.chain(b.into_par_iter())
+			.collect::<Vec<_>>();
+		assert_eq!(result, vec![1, 2, 3, 4, 5, 6]);
+	}
+
+	#[test]
+	fn check_chain_with_map() {
+		let a = &[1, 2, 3];
+		let b = &[4, 5, 6];
+
+		let result = ParallelIterator::chain(
+			a.into_par_iter().map(|x| x * 2),
+			b.into_par_iter().map(|x| x * 3),
+		)
+		.collect::<Vec<_>>();
+		assert_eq!(result, vec![2, 4, 6, 12, 15, 18]);
+	}
+
+	#[test]
+	fn check_chain_len() {
+		let a = &[1, 2, 3];
+		let b = &[4, 5, 6, 7];
+
+		let chained = ParallelIterator::chain(a.into_par_iter(), b.into_par_iter());
+		assert_eq!(chained.len(), 7);
+	}
+
+	#[test]
+	fn check_chain_returns_indexed_parallel_iterator() {
+		// Test that chaining two IndexedParallelIterators returns an IndexedParallelIterator
+		let a = &[1, 2, 3];
+		let b = &[4, 5, 6, 7];
+
+		// This should compile because chain returns an IndexedParallelIterator
+		let chained = ParallelIterator::chain(a.into_par_iter(), b.into_par_iter());
+
+		// We can call len() which is only available on IndexedParallelIterator
+		assert_eq!(chained.len(), 7);
+
+		// We can also chain again, which shows it's still indexed
+		let c = &[8, 9];
+		let triple_chain = ParallelIterator::chain(chained, c.into_par_iter());
+		assert_eq!(triple_chain.len(), 9);
+
+		// And collect the results
+		let result = triple_chain.collect::<Vec<_>>();
+		assert_eq!(result, vec![1, 2, 3, 4, 5, 6, 7, 8, 9]);
 	}
 }
