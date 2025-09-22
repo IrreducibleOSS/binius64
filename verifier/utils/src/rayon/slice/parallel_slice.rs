@@ -76,13 +76,7 @@ impl<T: Sync> ParallelSlice<T> for [T] {
 
 impl<T> IndexedParallelIteratorInner for std::slice::Iter<'_, T> {}
 impl<'a, T: 'a> IndexedParallelIteratorInner for std::slice::Chunks<'a, T> {}
-impl<'a, T: 'a> IndexedParallelIteratorInner for std::slice::Split<'a, T, fn(&T) -> bool> {}
-impl<'a, T: 'a> IndexedParallelIteratorInner for std::slice::SplitInclusive<'a, T, fn(&T) -> bool> {}
 impl<'a, T: 'a> IndexedParallelIteratorInner for std::slice::Windows<'a, T> {}
 impl<'a, T: 'a> IndexedParallelIteratorInner for std::slice::ChunksExact<'a, T> {}
 impl<'a, T: 'a> IndexedParallelIteratorInner for std::slice::RChunks<'a, T> {}
 impl<'a, T: 'a> IndexedParallelIteratorInner for std::slice::RChunksExact<'a, T> {}
-impl<'a, T: 'a, F: Fn(&T, &T) -> bool + Send + Sync> IndexedParallelIteratorInner
-	for std::slice::ChunkBy<'a, T, F>
-{
-}

@@ -136,17 +136,5 @@ impl<T: Sync> ParallelSliceMut<T> for [T] {
 
 impl<'a, T: 'a> IndexedParallelIteratorInner for std::slice::ChunksExactMut<'a, T> {}
 impl<'a, T: 'a> IndexedParallelIteratorInner for std::slice::ChunksMut<'a, T> {}
-impl<'a, T: 'a, P> IndexedParallelIteratorInner for std::slice::SplitMut<'a, T, P> where
-	P: Fn(&T) -> bool + Sync + Send
-{
-}
-impl<'a, T: 'a, P> IndexedParallelIteratorInner for std::slice::SplitInclusiveMut<'a, T, P> where
-	P: Fn(&T) -> bool + Sync + Send
-{
-}
 impl<'a, T: 'a> IndexedParallelIteratorInner for std::slice::RChunksMut<'a, T> {}
 impl<'a, T: 'a> IndexedParallelIteratorInner for std::slice::RChunksExactMut<'a, T> {}
-impl<'a, T: 'a, F> IndexedParallelIteratorInner for std::slice::ChunkByMut<'a, T, F> where
-	F: Fn(&T, &T) -> bool + Send + Sync
-{
-}
