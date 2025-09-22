@@ -13,7 +13,7 @@ use binius_verifier::{
 
 use crate::{
 	Error,
-	fri::{FRIFolder, FoldRoundOutput},
+	fri::{FRIFoldProver, FoldRoundOutput},
 	merkle_tree::MerkleTreeProver,
 	protocols::{basefold::sumcheck::MultilinearSumcheckProver, sumcheck::common::SumcheckProver},
 };
@@ -37,7 +37,7 @@ where
 	VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
 {
 	sumcheck_prover: MultilinearSumcheckProver<F, P>,
-	fri_folder: FRIFolder<'a, F, F, P, NTT, MerkleProver, VCS>,
+	fri_folder: FRIFoldProver<'a, F, F, P, NTT, MerkleProver, VCS>,
 }
 
 impl<'a, F, P, NTT, MerkleProver, VCS> BaseFoldProver<'a, F, P, NTT, MerkleProver, VCS>
@@ -80,7 +80,7 @@ where
 		let log_n = multilinear.log_len();
 
 		let fri_folder =
-			FRIFolder::new(fri_params, ntt, merkle_prover, committed_codeword, committed)?;
+			FRIFoldProver::new(fri_params, ntt, merkle_prover, committed_codeword, committed)?;
 
 		let sumcheck_composition = [multilinear, transparent_multilinear];
 

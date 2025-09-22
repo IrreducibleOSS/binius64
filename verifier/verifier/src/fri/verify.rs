@@ -30,7 +30,7 @@ use crate::{
 /// The verifier is instantiated after the folding rounds and is used to test consistency of the
 /// round messages and the original purported codeword.
 #[derive(Debug)]
-pub struct FRIVerifier<'a, F, FA, VCS>
+pub struct FRIQueryVerifier<'a, F, FA, VCS>
 where
 	F: BinaryField + ExtensionField<FA>,
 	FA: BinaryField,
@@ -48,7 +48,7 @@ where
 	fold_challenges: &'a [F],
 }
 
-impl<'a, F, FA, VCS> FRIVerifier<'a, F, FA, VCS>
+impl<'a, F, FA, VCS> FRIQueryVerifier<'a, F, FA, VCS>
 where
 	F: BinaryField + ExtensionField<FA>,
 	FA: BinaryField,

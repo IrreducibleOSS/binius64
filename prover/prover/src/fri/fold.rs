@@ -30,7 +30,7 @@ pub enum FoldRoundOutput<VCSCommitment> {
 }
 
 /// A stateful prover for the FRI fold phase.
-pub struct FRIFolder<'a, F, FA, P, NTT, MerkleProver, VCS>
+pub struct FRIFoldProver<'a, F, FA, P, NTT, MerkleProver, VCS>
 where
 	FA: BinaryField,
 	F: BinaryField,
@@ -49,7 +49,7 @@ where
 	unprocessed_challenges: Vec<F>,
 }
 
-impl<'a, F, FA, P, NTT, MerkleProver, VCS> FRIFolder<'a, F, FA, P, NTT, MerkleProver, VCS>
+impl<'a, F, FA, P, NTT, MerkleProver, VCS> FRIFoldProver<'a, F, FA, P, NTT, MerkleProver, VCS>
 where
 	F: BinaryField + ExtensionField<FA>,
 	FA: BinaryField,
