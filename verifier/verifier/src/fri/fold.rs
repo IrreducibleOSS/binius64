@@ -1,9 +1,16 @@
 // Copyright 2024-2025 Irreducible Inc.
 
+use std::iter;
+
 use binius_field::{BinaryField, ExtensionField, Field, PackedField};
 use binius_math::{
 	inner_product::inner_product_packed, line::extrapolate_line_packed, ntt::AdditiveNTT,
 };
+use binius_transcript::TranscriptReader;
+use binius_utils::{DeserializeBytes, bail};
+use bytes::Buf;
+
+use super::{FRIParams, error::Error};
 
 /// Calculate fold of `values` at `index` with `r` random coefficient.
 ///
@@ -120,4 +127,154 @@ where
 	P: PackedField<Scalar = F>,
 {
 	inner_product_packed(log_batch_size, values.iter().copied(), tensor.iter().copied())
+}
+
+/// A stateful verifier for the FRI fold phase that tracks when to read commitments.
+///
+/// This verifier encapsulates the logic of determining which FRI rounds require
+/// commitments and handles reading them from the transcript at the appropriate times.
+pub struct FRIFoldVerifier<'a, F, FA, Digest>
+where
+	F: BinaryField + ExtensionField<FA>,
+	FA: BinaryField,
+{
+	/// Indicates which rounds require reading a commitment
+	commit_rounds: Vec<bool>,
+	/// The round commitments read from the transcript
+	round_commitments: Vec<Digest>,
+	/// Current round number
+	curr_round: usize,
+	_phantom: std::marker::PhantomData<&'a (F, FA)>,
+}
+
+impl<'a, F, FA, Digest> FRIFoldVerifier<'a, F, FA, Digest>
+where
+	F: BinaryField + ExtensionField<FA>,
+	FA: BinaryField,
+	Digest: DeserializeBytes + Clone,
+{
+	/// Creates a new FRI fold verifier.
+	///
+	/// ## Arguments
+	///
+	/// * `params` - The FRI parameters
+	/// * `n_rounds` - The total number of folding rounds (typically equals n_vars for sumcheck)
+	pub fn new(params: &'a FRIParams<F, FA>) -> Self {
+		let commit_rounds = calculate_fri_commit_rounds(
+			params.log_batch_size(),
+			params.fold_arities(),
+			params.n_fold_rounds() + 1,
+		);
+
+		let expected_oracles = params.n_oracles();
+
+		Self {
+			commit_rounds,
+			round_commitments: Vec::with_capacity(expected_oracles),
+			curr_round: 0,
+			_phantom: std::marker::PhantomData,
+		}
+	}
+
+	/// Processes the next round, reading a commitment from the transcript if needed.
+	///
+	/// ## Arguments
+	///
+	/// * `transcript` - The transcript to read the commitment from (if needed)
+	///
+	/// ## Returns
+	///
+	/// * `Ok(Some(commitment))` if a commitment was read in this round
+	/// * `Ok(None)` if no commitment was needed in this round
+	pub fn process_round<B: Buf>(
+		&mut self,
+		transcript: &mut TranscriptReader<B>,
+	) -> Result<Option<Digest>, Error> {
+		if self.curr_round >= self.n_rounds() {
+			bail!(Error::InvalidArgs("FRI fold verifier: too many rounds".to_string()));
+		}
+
+		let needs_commitment = self.commit_rounds[self.curr_round];
+		let commitment = if needs_commitment {
+			let commitment: Digest = transcript.read()?;
+			self.round_commitments.push(commitment.clone());
+			Some(commitment)
+		} else {
+			None
+		};
+
+		self.curr_round += 1;
+		Ok(commitment)
+	}
+
+	/// Checks if the current round requires a commitment.
+	pub fn needs_commitment(&self) -> bool {
+		*self.commit_rounds.get(self.curr_round).unwrap_or(&false)
+	}
+
+	/// Returns true if all rounds have been processed.
+	pub fn is_complete(&self) -> bool {
+		self.curr_round == self.n_rounds()
+	}
+
+	/// Finalizes the fold verifier and returns the collected commitments.
+	///
+	/// ## Returns
+	///
+	/// The collected round commitments
+	pub fn finalize(self) -> Result<Vec<Digest>, Error> {
+		if !self.is_complete() {
+			bail!(Error::InvalidArgs(format!(
+				"FRI fold verifier not complete: processed {} of {} rounds",
+				self.curr_round,
+				self.n_rounds()
+			)));
+		}
+
+		Ok(self.round_commitments)
+	}
+
+	/// Returns the current round number.
+	pub fn current_round(&self) -> usize {
+		self.curr_round
+	}
+
+	/// Returns the total number of rounds.
+	pub fn n_rounds(&self) -> usize {
+		self.commit_rounds.len()
+	}
+}
+
+/// Calculates which rounds require FRI commitments.
+///
+/// ## Arguments
+///
+/// * `log_batch_size` - The log2 of the batch size
+/// * `fold_arities` - The folding arities for each commitment round after the first
+/// * `n_rounds` - The total number of rounds
+///
+/// ## Returns
+///
+/// A vector of booleans where `true` indicates a commitment is needed in that round.
+fn calculate_fri_commit_rounds(
+	log_batch_size: usize,
+	fold_arities: &[usize],
+	n_rounds: usize,
+) -> Vec<bool> {
+	let mut result = vec![false; n_rounds];
+	let mut round_idx = 0;
+
+	// First commitment happens after log_batch_size rounds
+	for arity in iter::once(log_batch_size).chain(fold_arities.iter().copied()) {
+		round_idx += arity;
+		if round_idx < n_rounds {
+			result[round_idx] = true;
+		} else if round_idx == n_rounds {
+			// The last round might need special handling - it's the termination round
+			// We'll mark it as needing a commitment
+			break;
+		}
+	}
+
+	result
 }
