@@ -18,7 +18,7 @@ repos:
             name: Run cargo clippy
             types: [rust]
             language: rust
-            entry: cargo clippy --all --all-features --tests --benches --examples -- -D warnings
+            entry: cargo clippy --workspace --all-targets -- -D warnings
             pass_filenames: false
             stages: [pre-push]
     - repo: https://github.com/crate-ci/typos
