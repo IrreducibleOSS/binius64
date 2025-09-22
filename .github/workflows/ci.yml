@@ -156,7 +156,7 @@ jobs:
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Check ${{ matrix.example }} circuit statistics snapshot
-        run: cargo run --example ${{ matrix.example }} --release -- check-snapshot
+        run: cargo run --example ${{ matrix.example }} -- check-snapshot
 
   # This job ensures all CI checks pass
   ci-all-checks:
