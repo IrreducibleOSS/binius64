@@ -1,13 +1,13 @@
 // Copyright 2025 Irreducible Inc.
 use std::array;
 
-use anyhow::{Result, ensure};
+use anyhow::Result;
 use binius_circuits::sha256::Sha256;
 use binius_frontend::{CircuitBuilder, Wire, WitnessFiller};
 use clap::Args;
-use rand::prelude::*;
 use sha2::Digest;
 
+use super::utils;
 use crate::ExampleCircuit;
 
 pub struct Sha256Example {
@@ -43,26 +43,7 @@ impl ExampleCircuit for Sha256Example {
 	type Instance = Instance;
 
 	fn build(params: Params, builder: &mut CircuitBuilder) -> Result<Self> {
-		// If max_len_bytes not specified, determine from command line args
-		let max_len_bytes = params.max_len_bytes.unwrap_or_else(|| {
-			let args: Vec<String> = std::env::args().collect();
-			let mut message_len = None;
-			let mut message_string = None;
-
-			for i in 0..args.len() {
-				if args[i] == "--message-len" && i + 1 < args.len() {
-					message_len = args[i + 1].parse::<usize>().ok();
-				} else if args[i] == "--message-string" && i + 1 < args.len() {
-					message_string = Some(args[i + 1].clone());
-				}
-			}
-
-			if let Some(msg_string) = message_string {
-				msg_string.len()
-			} else {
-				message_len.unwrap_or(1024)
-			}
-		});
+		let max_len_bytes = utils::determine_hash_max_bytes_from_args(params.max_len_bytes)?;
 		let max_len = max_len_bytes.div_ceil(8);
 		let len_bytes = if params.exact_len {
 			builder.add_constant_64(max_len_bytes as u64)
@@ -75,32 +56,33 @@ impl ExampleCircuit for Sha256Example {
 	}
 
 	fn populate_witness(&self, instance: Instance, w: &mut WitnessFiller) -> Result<()> {
-		let message_bytes = if let Some(message_string) = instance.message_string {
-			message_string.as_bytes().to_vec()
-		} else {
-			let mut rng = StdRng::seed_from_u64(42);
-			let len = instance.message_len.unwrap_or(1024); // Default to 1KiB
+		// Step 1: Get raw message bytes
+		let raw_message =
+			utils::generate_message_bytes(instance.message_string, instance.message_len);
 
-			let mut message_bytes = vec![0u8; len];
-			rng.fill_bytes(&mut message_bytes);
-			message_bytes
-		};
+		// Step 2: Zero-pad to maximum length
+		let padded_message =
+			utils::zero_pad_message(raw_message, self.sha256_gadget.max_len_bytes())?;
 
-		ensure!(message_bytes.len() <= self.sha256_gadget.max_len_bytes(), "message too long");
+		// Step 3: Compute digest using reference implementation
+		let digest = sha2::Sha256::digest(&padded_message);
 
-		let digest = sha2::Sha256::digest(&message_bytes);
-
-		// Populate the input message for the hash function.
+		// Step 4: Populate witness values
 		self.sha256_gadget
-			.populate_len_bytes(w, message_bytes.len());
-		self.sha256_gadget.populate_message(w, &message_bytes);
+			.populate_len_bytes(w, padded_message.len());
+		self.sha256_gadget.populate_message(w, &padded_message);
 		self.sha256_gadget.populate_digest(w, digest.into());
 
 		Ok(())
 	}
 
 	fn param_summary(params: &Self::Params) -> Option<String> {
-		let base = format!("{}b", params.max_len_bytes.unwrap_or(1024));
+		let base = format!(
+			"{}b",
+			params
+				.max_len_bytes
+				.unwrap_or(utils::DEFAULT_HASH_MESSAGE_BYTES)
+		);
 		if params.exact_len {
 			Some(format!("{}-exact", base))
 		} else {
