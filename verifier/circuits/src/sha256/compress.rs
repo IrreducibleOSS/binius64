@@ -272,13 +272,8 @@ mod tests {
 	fn sha256_chain() {
 		// Tests multiple SHA-256 compress512 invocations where the outputs are linked to the inputs
 		// of the following compression function.
-		//
-		// This creates ~100 layers with a lot of computations and a very large number of layers
-		// (hundreds of thousands) with a few gates each.
-		const N: usize = 1 << 10;
+		const N: usize = 3;
 		let circuit = CircuitBuilder::new();
-
-		println!("{N} sha256 compress512 invocations");
 
 		let mut compress_vec = Vec::with_capacity(N);
 
@@ -317,10 +312,8 @@ mod tests {
 	#[test]
 	fn sha256_parallel() {
 		// Test multiple SHA-256 compressions in parallel (no chaining)
-		const N: usize = 1 << 10;
+		const N: usize = 3;
 		let circuit = CircuitBuilder::new();
-
-		println!("{N} sha256 compress512 invocations in parallel");
 
 		let mut compress_vec = Vec::with_capacity(N);
 

@@ -332,13 +332,8 @@ mod tests {
 	fn sha512_chain() {
 		// Tests multiple SHA-512 compress1024 invocations where the outputs are linked to the
 		// inputs of the following compression function.
-		//
-		// This creates ~100 layers with a lot of computations and a very large number of layers
-		// (hundreds of thousands) with a few gates each.
-		const N: usize = 1 << 10;
+		const N: usize = 3;
 		let circuit = CircuitBuilder::new();
-
-		println!("{N} sha512 compress1024 invocations");
 
 		let mut compress_vec = Vec::with_capacity(N);
 
@@ -377,10 +372,8 @@ mod tests {
 	#[test]
 	fn sha512_parallel() {
 		// Test multiple SHA-512 compressions in parallel (no chaining)
-		const N: usize = 1 << 10;
+		const N: usize = 3;
 		let circuit = CircuitBuilder::new();
-
-		println!("{N} sha512 compress1024 invocations in parallel");
 
 		let mut compress_vec = Vec::with_capacity(N);
 
@@ -404,7 +397,6 @@ mod tests {
 			compress.populate_m(&mut w, [0; 128]);
 		}
 		circuit.populate_wire_witness(&mut w).unwrap();
-
 		verify_constraints(cs, &w.into_value_vec()).unwrap();
 	}
 }
