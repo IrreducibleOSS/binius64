@@ -2,7 +2,7 @@
 use binius_frontend::{CircuitBuilder, Wire};
 
 use super::base::circuit_tweaked_keccak;
-use crate::{concat::Term, keccak::Keccak};
+use crate::{fixed_byte_vec::FixedByteVec, keccak::Keccak};
 
 pub const CHAIN_TWEAK: u8 = 0x00;
 
@@ -47,19 +47,19 @@ pub fn circuit_chain_hash(
 	// Build additional terms for hash, chain_index, and position
 	let mut additional_terms = Vec::new();
 
-	let hash_term = Term {
+	let hash_term = FixedByteVec {
 		len_bytes: builder.add_constant_64(32),
 		data: hash.to_vec(),
 	};
 	additional_terms.push(hash_term);
 
-	let chain_index_term = Term {
+	let chain_index_term = FixedByteVec {
 		len_bytes: builder.add_constant_64(8),
 		data: vec![chain_index],
 	};
 	additional_terms.push(chain_index_term);
 
-	let position_term = Term {
+	let position_term = FixedByteVec {
 		len_bytes: builder.add_constant_64(8),
 		data: vec![position],
 	};

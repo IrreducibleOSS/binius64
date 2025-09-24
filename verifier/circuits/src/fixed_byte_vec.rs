@@ -34,6 +34,11 @@ impl FixedByteVec {
 		Self { len_bytes, data }
 	}
 
+	/// Populate the length wire with the actual vector size in bytes.
+	pub fn populate_len_bytes(&self, w: &mut WitnessFiller, len_bytes: usize) {
+		w[self.len_bytes] = Word(len_bytes as u64);
+	}
+
 	/// Populate the FixedByteVec with bytes.
 	///
 	/// This method packs bytes into 64-bit words using little-endian ordering,
@@ -43,6 +48,43 @@ impl FixedByteVec {
 	pub fn populate_bytes_le(&self, w: &mut WitnessFiller, bytes: &[u8]) {
 		pack_bytes_into_wires_le(w, &self.data, bytes);
 		w[self.len_bytes] = Word(bytes.len() as u64);
+	}
+
+	/// Populate the vector's data from a byte slice.
+	///
+	/// Packs the bytes into 64-bit words in little-endian order and ensures
+	/// any unused words are zeroed out.
+	///
+	/// # Panics
+	/// Panics if `data_bytes.len()` > `self.max_len_bytes()`
+	pub fn populate_data(&self, w: &mut WitnessFiller, data_bytes: &[u8]) {
+		assert!(
+			data_bytes.len() <= self.max_len_bytes(),
+			"vector data length {} exceeds maximum {}",
+			data_bytes.len(),
+			self.max_len_bytes()
+		);
+
+		// Pack bytes into 64-bit words (little-endian)
+		for (i, chunk) in data_bytes.chunks(8).enumerate() {
+			if i < self.data.len() {
+				let mut word = 0u64;
+				for (j, &byte) in chunk.iter().enumerate() {
+					word |= (byte as u64) << (j * 8);
+				}
+				w[self.data[i]] = Word(word);
+			}
+		}
+
+		// Zero out any remaining words beyond the actual data
+		for i in data_bytes.len().div_ceil(8)..self.data.len() {
+			w[self.data[i]] = Word::ZERO;
+		}
+	}
+
+	/// Returns the maximum length of this vector in bytes.
+	pub fn max_len_bytes(&self) -> usize {
+		self.data.len() * 8
 	}
 
 	/// Construct a new FixedByteVec by truncating to `num_wires`.

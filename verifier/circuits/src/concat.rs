@@ -2,90 +2,10 @@
 use binius_core::word::Word;
 use binius_frontend::{CircuitBuilder, Wire, WitnessFiller};
 
-use crate::slice::{create_byte_mask, extract_word};
-
-/// A term in a concatenation - a variable-length byte string.
-///
-/// Terms represent the individual byte strings that will be concatenated together.
-/// Each term knows its own maximum size, allowing for efficient circuit construction
-/// with terms of different sizes.
-///
-/// # Wire Layout
-///
-/// - `len`: Single wire containing actual byte length (0 ≤ len ≤ max_len)
-/// - `data`: Vector of wires, each containing 8 packed bytes in little-endian order
-///
-/// # Example
-///
-/// For a term with max_len=24 (3 words) containing "hello" (5 bytes):
-/// - `len` = 5
-/// - `data[0]` = 0x00006F6C6C6568 (bytes 0-7: "hello" + 3 zero bytes)
-/// - `data[1]` = 0x00000000000000 (bytes 8-15: all zeros)
-/// - `data[2]` = 0x00000000000000 (bytes 16-23: all zeros)
-///
-/// # Requirements
-///
-/// - max_len is defined as `data.len() * 8`
-/// - Actual length must satisfy: 0 ≤ len ≤ max_len
-/// - Unused bytes in `data` must be zero
-pub struct Term {
-	/// The actual length of this term in bytes.
-	///
-	/// This is a witness wire that will be populated with the true length
-	/// of the term's data. Must be ≤ max_len.
-	pub len_bytes: Wire,
-	/// The term's data as bytes packed into 64-bit words.
-	///
-	/// Each Wire represents 8 bytes packed in little-endian order:
-	/// - Byte 0 goes in bits 0-7 (LSB)
-	/// - Byte 1 goes in bits 8-15
-	/// - ...
-	/// - Byte 7 goes in bits 56-63 (MSB)
-	pub data: Vec<Wire>,
-}
-
-impl Term {
-	/// Populate the length wire with the actual term size in bytes.
-	pub fn populate_len_bytes(&self, w: &mut WitnessFiller, len_bytes: usize) {
-		w[self.len_bytes] = Word(len_bytes as u64);
-	}
-
-	/// Populate the term's data from a byte slice.
-	///
-	/// Packs the bytes into 64-bit words in little-endian order and ensures
-	/// any unused words are zeroed out.
-	///
-	/// # Panics
-	/// Panics if `data.len()` > `self.max_len`
-	pub fn populate_data(&self, w: &mut WitnessFiller, data_bytes: &[u8]) {
-		assert!(
-			data_bytes.len() <= self.max_len_bytes(),
-			"term data length {} exceeds maximum {}",
-			data_bytes.len(),
-			self.max_len_bytes()
-		);
-
-		// Pack bytes into 64-bit words (little-endian)
-		for (i, chunk) in data_bytes.chunks(8).enumerate() {
-			if i < self.data.len() {
-				let mut word = 0u64;
-				for (j, &byte) in chunk.iter().enumerate() {
-					word |= (byte as u64) << (j * 8);
-				}
-				w[self.data[i]] = Word(word);
-			}
-		}
-
-		// Zero out any remaining words beyond the actual data
-		for i in data_bytes.len().div_ceil(8)..self.data.len() {
-			w[self.data[i]] = Word::ZERO;
-		}
-	}
-
-	pub fn max_len_bytes(&self) -> usize {
-		self.data.len() * 8
-	}
-}
+use crate::{
+	fixed_byte_vec::FixedByteVec,
+	slice::{create_byte_mask, extract_word},
+};
 
 /// Verifies that a joined string is the concatenation of a list of terms.
 ///
@@ -105,7 +25,7 @@ pub struct Concat {
 	/// The list of terms to be concatenated.
 	///
 	/// Terms are concatenated in order: terms\[0\] || terms\[1\] || ... || terms\[n-1\]
-	pub terms: Vec<Term>,
+	pub terms: Vec<FixedByteVec>,
 }
 
 impl Concat {
@@ -120,7 +40,7 @@ impl Concat {
 		b: &CircuitBuilder,
 		len_joined_bytes: Wire,
 		joined: Vec<Wire>,
-		terms: Vec<Term>,
+		terms: Vec<FixedByteVec>,
 	) -> Self {
 		// Input validation
 		//
@@ -286,9 +206,9 @@ mod tests {
 		let len_joined = b.add_inout();
 		let joined: Vec<Wire> = (0..max_n_joined).map(|_| b.add_inout()).collect();
 
-		let terms: Vec<Term> = term_max_lens
+		let terms: Vec<FixedByteVec> = term_max_lens
 			.into_iter()
-			.map(|max_len| Term {
+			.map(|max_len| FixedByteVec {
 				len_bytes: b.add_inout(),
 				data: (0..max_len).map(|_| b.add_inout()).collect(),
 			})

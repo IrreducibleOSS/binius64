@@ -2,7 +2,7 @@
 use binius_frontend::{CircuitBuilder, Wire};
 
 use super::base::circuit_tweaked_keccak;
-use crate::{concat::Term, keccak::Keccak};
+use crate::{fixed_byte_vec::FixedByteVec, keccak::Keccak};
 
 pub const TREE_TWEAK: u8 = 0x01;
 
@@ -51,28 +51,28 @@ pub fn circuit_tree_hash(
 	let mut additional_terms = Vec::new();
 
 	// Add level (4 bytes, truncated from 8-byte wire)
-	let level_term = Term {
+	let level_term = FixedByteVec {
 		len_bytes: builder.add_constant_64(4),
 		data: vec![level],
 	};
 	additional_terms.push(level_term);
 
 	// Add index (4 bytes, truncated from 8-byte wire)
-	let index_term = Term {
+	let index_term = FixedByteVec {
 		len_bytes: builder.add_constant_64(4),
 		data: vec![index],
 	};
 	additional_terms.push(index_term);
 
 	// Add left hash
-	let left_term = Term {
+	let left_term = FixedByteVec {
 		len_bytes: builder.add_constant_64(32),
 		data: left.to_vec(),
 	};
 	additional_terms.push(left_term);
 
 	// Add right hash
-	let right_term = Term {
+	let right_term = FixedByteVec {
 		len_bytes: builder.add_constant_64(32),
 		data: right.to_vec(),
 	};

@@ -3,7 +3,7 @@ use anyhow::{Result, ensure};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD as BASE64_URL_SAFE_NO_PAD};
 use binius_circuits::{
 	base64::Base64UrlSafe,
-	concat::{Concat, Term},
+	concat::Concat,
 	fixed_byte_vec::FixedByteVec,
 	jwt_claims::{Attribute, JwtClaims},
 	rs256::Rs256Verify,
@@ -199,19 +199,19 @@ impl ZkLogin {
 			zkaddr_preimage_len_bytes,
 			zkaddr_joined_le,
 			vec![
-				Term {
+				FixedByteVec {
 					data: sub.data.clone(),
 					len_bytes: sub.len_bytes,
 				},
-				Term {
+				FixedByteVec {
 					data: aud.data.clone(),
 					len_bytes: aud.len_bytes,
 				},
-				Term {
+				FixedByteVec {
 					data: iss.data.clone(),
 					len_bytes: iss.len_bytes,
 				},
-				Term {
+				FixedByteVec {
 					data: salt.data.clone(),
 					len_bytes: salt.len_bytes,
 				},
@@ -245,15 +245,15 @@ impl ZkLogin {
 			nonce_preimage_len_bytes,
 			nonce_joined_le,
 			vec![
-				Term {
+				FixedByteVec {
 					data: vk_u.to_vec(),
 					len_bytes: b.add_constant_64(32),
 				},
-				Term {
+				FixedByteVec {
 					data: t_max.data.clone(),
 					len_bytes: t_max.len_bytes,
 				},
-				Term {
+				FixedByteVec {
 					data: nonce_r.data.clone(),
 					len_bytes: nonce_r.len_bytes,
 				},
@@ -310,15 +310,15 @@ impl ZkLogin {
 			jwt_signing_payload_sha256_len,
 			signing_joined_le,
 			vec![
-				Term {
+				FixedByteVec {
 					data: base64_jwt_header.data.clone(),
 					len_bytes: base64_jwt_header.len_bytes,
 				},
-				Term {
+				FixedByteVec {
 					data: vec![b.add_constant_zx_8(b'.')],
 					len_bytes: b.add_constant_64(1),
 				},
-				Term {
+				FixedByteVec {
 					data: base64_jwt_payload.data.clone(),
 					len_bytes: base64_jwt_payload.len_bytes,
 				},
