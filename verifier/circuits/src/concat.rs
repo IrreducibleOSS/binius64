@@ -3,7 +3,7 @@ use binius_core::word::Word;
 use binius_frontend::{CircuitBuilder, Wire, WitnessFiller};
 
 use crate::{
-	fixed_byte_vec::FixedByteVec,
+	fixed_byte_vec::ByteVec,
 	slice::{create_byte_mask, extract_word},
 };
 
@@ -25,7 +25,7 @@ pub struct Concat {
 	/// The list of terms to be concatenated.
 	///
 	/// Terms are concatenated in order: terms\[0\] || terms\[1\] || ... || terms\[n-1\]
-	pub terms: Vec<FixedByteVec>,
+	pub terms: Vec<ByteVec>,
 }
 
 impl Concat {
@@ -40,7 +40,7 @@ impl Concat {
 		b: &CircuitBuilder,
 		len_joined_bytes: Wire,
 		joined: Vec<Wire>,
-		terms: Vec<FixedByteVec>,
+		terms: Vec<ByteVec>,
 	) -> Self {
 		// Input validation
 		//
@@ -206,9 +206,9 @@ mod tests {
 		let len_joined = b.add_inout();
 		let joined: Vec<Wire> = (0..max_n_joined).map(|_| b.add_inout()).collect();
 
-		let terms: Vec<FixedByteVec> = term_max_lens
+		let terms: Vec<ByteVec> = term_max_lens
 			.into_iter()
-			.map(|max_len| FixedByteVec {
+			.map(|max_len| ByteVec {
 				len_bytes: b.add_inout(),
 				data: (0..max_len).map(|_| b.add_inout()).collect(),
 			})

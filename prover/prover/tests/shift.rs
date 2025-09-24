@@ -68,7 +68,7 @@ pub fn create_sha256_cs_with_witness() -> (ConstraintSystem, ValueVec) {
 }
 
 pub fn create_concat_cs_with_witness() -> (ConstraintSystem, ValueVec) {
-	use binius_circuits::{concat::Concat, fixed_byte_vec::FixedByteVec};
+	use binius_circuits::{concat::Concat, fixed_byte_vec::ByteVec};
 
 	let builder = CircuitBuilder::new();
 	let max_n_joined: usize = 32; // Maximum joined size
@@ -79,15 +79,15 @@ pub fn create_concat_cs_with_witness() -> (ConstraintSystem, ValueVec) {
 
 	// Create terms: "Hello" + " " + "World!"
 	let terms = vec![
-		FixedByteVec {
+		ByteVec {
 			len_bytes: builder.add_witness(),
 			data: (0..1).map(|_| builder.add_witness()).collect(),
 		},
-		FixedByteVec {
+		ByteVec {
 			len_bytes: builder.add_witness(),
 			data: (0..1).map(|_| builder.add_witness()).collect(),
 		},
-		FixedByteVec {
+		ByteVec {
 			len_bytes: builder.add_witness(),
 			data: (0..1).map(|_| builder.add_witness()).collect(),
 		},
