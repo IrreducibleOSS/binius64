@@ -2,7 +2,7 @@
 use binius_frontend::{CircuitBuilder, Wire};
 
 use super::base::circuit_tweaked_keccak;
-use crate::{fixed_byte_vec::ByteVec, keccak::Keccak};
+use crate::{fixed_byte_vec::ByteVec, keccak::Keccak256};
 
 pub const TREE_TWEAK: u8 = 0x01;
 
@@ -44,7 +44,7 @@ pub fn circuit_tree_hash(
 	level: Wire,
 	index: Wire,
 	digest: [Wire; 4],
-) -> Keccak {
+) -> Keccak256 {
 	let message_len = domain_param_len + TREE_MESSAGE_OVERHEAD;
 	assert_eq!(domain_param_wires.len(), domain_param_len.div_ceil(8));
 
@@ -140,9 +140,9 @@ pub fn hash_tree_node_keccak(
 	level: u32,
 	index: u32,
 ) -> [u8; 32] {
-	use sha3::{Digest, Keccak256};
+	use sha3::Digest;
 	let tweaked_tree_node = build_tree_hash(param, left, right, level, index);
-	Keccak256::digest(tweaked_tree_node).into()
+	sha3::Keccak256::digest(tweaked_tree_node).into()
 }
 
 #[cfg(test)]
@@ -150,14 +150,14 @@ mod tests {
 	use binius_core::{Word, verify::verify_constraints};
 	use binius_frontend::{Circuit, CircuitBuilder, util::pack_bytes_into_wires_le};
 	use proptest::prelude::*;
-	use sha3::{Digest, Keccak256};
+	use sha3::Digest;
 
 	use super::*;
 
 	/// Helper struct for TreeHash testing
 	struct TreeTestCircuit {
 		circuit: Circuit,
-		keccak: Keccak,
+		keccak: Keccak256,
 		domain_param_wires: Vec<Wire>,
 		domain_param_len: usize,
 		left: [Wire; 4],
@@ -264,7 +264,7 @@ mod tests {
 		let message =
 			build_tree_hash(domain_param_bytes, left_bytes, right_bytes, level_val, index_val);
 
-		let expected_digest = Keccak256::digest(&message);
+		let expected_digest = sha3::Keccak256::digest(&message);
 
 		test_circuit
 			.populate_and_verify(
@@ -293,7 +293,7 @@ mod tests {
 		let message =
 			build_tree_hash(domain_param_bytes, left_bytes, right_bytes, level_val, index_val);
 
-		let expected_digest = Keccak256::digest(&message);
+		let expected_digest = sha3::Keccak256::digest(&message);
 
 		test_circuit
 			.populate_and_verify(
@@ -352,7 +352,7 @@ mod tests {
 		let message =
 			build_tree_hash(domain_param_bytes, left_bytes, right_bytes, correct_level, index_val);
 
-		let expected_digest = Keccak256::digest(&message);
+		let expected_digest = sha3::Keccak256::digest(&message);
 
 		// Populate with WRONG level but correct digest
 		let result = test_circuit.populate_and_verify(
@@ -386,7 +386,7 @@ mod tests {
 		assert_eq!(message[16], TREE_TWEAK);
 		assert_eq!(message.len(), 16 + TREE_MESSAGE_OVERHEAD);
 
-		let expected_digest = Keccak256::digest(&message);
+		let expected_digest = sha3::Keccak256::digest(&message);
 
 		test_circuit
 			.populate_and_verify(
@@ -439,7 +439,7 @@ mod tests {
 			prop_assert_eq!(message.len(), domain_param_len + TREE_MESSAGE_OVERHEAD);
 			prop_assert_eq!(message[domain_param_len], TREE_TWEAK);
 
-			let expected_digest: [u8; 32] = Keccak256::digest(&message).into();
+			let expected_digest: [u8; 32] = sha3::Keccak256::digest(&message).into();
 
 			// Verify circuit
 			test_circuit

@@ -3,7 +3,7 @@ use binius_core::Word;
 use binius_frontend::{CircuitBuilder, Wire};
 
 use super::hashing::circuit_chain_hash;
-use crate::{keccak::Keccak, multiplexer::multi_wire_multiplex};
+use crate::{keccak::Keccak256, multiplexer::multi_wire_multiplex};
 
 /// Verifies a hash chain for hash-based signature schemes using Keccak-256.
 ///
@@ -59,7 +59,7 @@ pub fn circuit_chain(
 	starting_position: Wire,
 	max_chain_len: u64,
 	public_key_element: [Wire; 4],
-) -> Vec<Keccak> {
+) -> Vec<Keccak256> {
 	assert!(
 		param_len <= domain_param.len() * 8,
 		"param_len {} exceeds maximum capacity {} of domain_param wires",

@@ -6,7 +6,7 @@ use super::{
 	codeword::codeword,
 	hashing::{circuit_chain_hash, circuit_message_hash},
 };
-use crate::keccak::Keccak;
+use crate::keccak::Keccak256;
 
 /// XMSS standard nonce length in bytes
 const NONCE_LENGTH_BYTES: usize = 23;
@@ -26,13 +26,13 @@ const HASH_WIRES_COUNT: usize = 4;
 pub struct WinternitzOtsHashers {
 	/// Hasher for tweaked message: domain_param || TWEAK_MESSAGE (0x02) || nonce || message  
 	/// This produces the hash from which coordinate values x_i are extracted
-	pub message_hasher: Keccak,
+	pub message_hasher: Keccak256,
 
 	/// Exactly dimension * (chain_len - 1) - target_sum hashers representing
 	/// all pooled hash operations across all chains.
 	/// Each enforces a chain-tweaked Keccak step:
 	/// `hash_out = H(domain_param || 0x00 || hash_in || chain_idx || position)`.
-	pub step_hashers: Vec<Keccak>,
+	pub step_hashers: Vec<Keccak256>,
 
 	/// Input hash values for each pooled step (32 bytes as HASH_WIRES_COUNT wires)
 	pub step_hash_inputs: Vec<[Wire; HASH_WIRES_COUNT]>,

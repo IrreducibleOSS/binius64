@@ -1,9 +1,8 @@
 // Copyright 2025 Irreducible Inc.
 use binius_frontend::{CircuitBuilder, Wire};
-use sha3::{Digest, Keccak256};
 
 use super::base::circuit_tweaked_keccak;
-use crate::{fixed_byte_vec::ByteVec, keccak::Keccak};
+use crate::{fixed_byte_vec::ByteVec, keccak::Keccak256};
 
 pub const MESSAGE_TWEAK: u8 = 0x02;
 
@@ -39,7 +38,7 @@ pub fn circuit_message_hash(
 	message_wires: Vec<Wire>,
 	message_len: usize,
 	digest: [Wire; 4],
-) -> Keccak {
+) -> Keccak256 {
 	let total_message_len = domain_param_len + 1 + nonce_len + message_len; // +1 for tweak byte
 
 	let mut additional_terms = Vec::new();
@@ -112,8 +111,9 @@ pub fn build_message_hash(
 ///
 /// The tweaked message hash
 pub fn hash_message(param: &[u8], nonce: &[u8], message: &[u8]) -> [u8; 32] {
+	use sha3::Digest;
 	let tweaked_message = build_message_hash(param, nonce, message);
-	Keccak256::digest(tweaked_message).into()
+	sha3::Keccak256::digest(tweaked_message).into()
 }
 
 #[cfg(test)]
@@ -121,14 +121,14 @@ mod tests {
 	use binius_core::verify::verify_constraints;
 	use binius_frontend::{Circuit, CircuitBuilder, util::pack_bytes_into_wires_le};
 	use proptest::prelude::*;
-	use sha3::{Digest, Keccak256};
+	use sha3::Digest;
 
 	use super::*;
 
 	/// Helper struct for MessageHash testing
 	struct MessageTestCircuit {
 		circuit: Circuit,
-		keccak: Keccak,
+		keccak: Keccak256,
 		domain_param_wires: Vec<Wire>,
 		domain_param_len: usize,
 		nonce_wires: Vec<Wire>,
@@ -223,7 +223,7 @@ mod tests {
 
 		let full_message = build_message_hash(domain_param_bytes, nonce_bytes, message_bytes);
 
-		let expected_digest = Keccak256::digest(&full_message);
+		let expected_digest = sha3::Keccak256::digest(&full_message);
 
 		test_circuit
 			.populate_and_verify(
@@ -247,7 +247,7 @@ mod tests {
 
 		let full_message = build_message_hash(domain_param_bytes, nonce_bytes, message_bytes);
 
-		let expected_digest = Keccak256::digest(&full_message);
+		let expected_digest = sha3::Keccak256::digest(&full_message);
 
 		test_circuit
 			.populate_and_verify(
@@ -271,7 +271,7 @@ mod tests {
 
 		let full_message = build_message_hash(domain_param_bytes, nonce_bytes, message_bytes);
 
-		let expected_digest = Keccak256::digest(&full_message);
+		let expected_digest = sha3::Keccak256::digest(&full_message);
 
 		test_circuit
 			.populate_and_verify(
@@ -321,7 +321,7 @@ mod tests {
 		let full_message =
 			build_message_hash(correct_domain_param_bytes, nonce_bytes, message_bytes);
 
-		let expected_digest = Keccak256::digest(&full_message);
+		let expected_digest = sha3::Keccak256::digest(&full_message);
 
 		// Populate with WRONG domain param but correct digest
 		let result = test_circuit.populate_and_verify(
@@ -347,7 +347,7 @@ mod tests {
 		// Build message with correct nonce
 		let full_message = build_message_hash(domain_param_bytes, correct_nonce, message_bytes);
 
-		let expected_digest = Keccak256::digest(&full_message);
+		let expected_digest = sha3::Keccak256::digest(&full_message);
 
 		// Populate with WRONG nonce but correct digest
 		let result = test_circuit.populate_and_verify(
@@ -376,7 +376,7 @@ mod tests {
 		assert_eq!(full_message[8], MESSAGE_TWEAK);
 		assert_eq!(full_message.len(), 8 + 1 + 8 + 16); // domain_param + tweak + nonce + message
 
-		let expected_digest = Keccak256::digest(&full_message);
+		let expected_digest = sha3::Keccak256::digest(&full_message);
 
 		test_circuit
 			.populate_and_verify(
@@ -422,7 +422,7 @@ mod tests {
 			prop_assert_eq!(full_message.len(), domain_param_len + 1 + nonce_len + message_len);
 			prop_assert_eq!(full_message[domain_param_len], MESSAGE_TWEAK);
 
-			let expected_digest: [u8; 32] = Keccak256::digest(&full_message).into();
+			let expected_digest: [u8; 32] = sha3::Keccak256::digest(&full_message).into();
 
 			// Verify circuit
 			test_circuit

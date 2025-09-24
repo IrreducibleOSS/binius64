@@ -19,7 +19,7 @@ pub const N_WORDS_PER_BLOCK: usize = RATE_BYTES / 8;
 /// * `len_bytes` - A wire representing the input message length in bytes
 /// * `digest` - Array of 4 wires representing the 256-bit output digest
 /// * `message` - Vector of wires representing the input message
-pub struct Keccak {
+pub struct Keccak256 {
 	pub len_bytes: Wire,
 	pub digest: [Wire; N_WORDS_PER_DIGEST],
 	pub message: Vec<Wire>,
@@ -27,7 +27,7 @@ pub struct Keccak {
 	n_blocks: usize,
 }
 
-impl Keccak {
+impl Keccak256 {
 	/// Create a new keccak circuit using the circuit builder
 	///
 	/// # Arguments
@@ -298,9 +298,9 @@ mod tests {
 	use binius_frontend::{CircuitBuilder, Wire};
 	use rand::{RngCore, SeedableRng, rngs::StdRng};
 	use rstest::rstest;
-	use sha3::{Digest, Keccak256};
+	use sha3::Digest;
 
-	use super::{Keccak, N_WORDS_PER_DIGEST};
+	use super::*;
 
 	#[rstest]
 	#[case(0, 100)] // Empty message
@@ -319,7 +319,7 @@ mod tests {
 		rng.fill_bytes(&mut message);
 
 		// Compute expected digest using sha3 crate
-		let mut hasher = Keccak256::new();
+		let mut hasher = sha3::Keccak256::new();
 		hasher.update(&message);
 		let expected_digest: [u8; 32] = hasher.finalize().into();
 
@@ -337,7 +337,7 @@ mod tests {
 		let n_words = max_message_len_bytes.div_ceil(8);
 		let message_wires = (0..n_words).map(|_| b.add_inout()).collect();
 
-		let keccak = Keccak::new(&b, len, digest, message_wires);
+		let keccak = Keccak256::new(&b, len, digest, message_wires);
 		let circuit = b.build();
 
 		// Create and populate witness

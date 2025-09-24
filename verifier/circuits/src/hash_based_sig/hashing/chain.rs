@@ -2,7 +2,7 @@
 use binius_frontend::{CircuitBuilder, Wire};
 
 use super::base::circuit_tweaked_keccak;
-use crate::{fixed_byte_vec::ByteVec, keccak::Keccak};
+use crate::{fixed_byte_vec::ByteVec, keccak::Keccak256};
 
 pub const CHAIN_TWEAK: u8 = 0x00;
 
@@ -40,7 +40,7 @@ pub fn circuit_chain_hash(
 	chain_index: Wire,
 	position: Wire,
 	digest: [Wire; 4],
-) -> Keccak {
+) -> Keccak256 {
 	let message_len = domain_param_len + FIXED_MESSAGE_OVERHEAD;
 	assert_eq!(domain_param_wires.len(), domain_param_len.div_ceil(8));
 
@@ -124,14 +124,14 @@ pub fn hash_chain_keccak(
 	start_pos: usize,
 	num_hashes: usize,
 ) -> [u8; 32] {
-	use sha3::{Digest, Keccak256};
+	use sha3::Digest;
 
 	let mut current = *start_hash;
 	for i in 0..num_hashes {
 		let position = start_pos + i + 1;
 		let tweaked_message =
 			build_chain_hash(param, &current, chain_index as u64, position as u64);
-		current = Keccak256::digest(tweaked_message).into();
+		current = sha3::Keccak256::digest(tweaked_message).into();
 	}
 	current
 }
@@ -141,14 +141,14 @@ mod tests {
 	use binius_core::{Word, verify::verify_constraints};
 	use binius_frontend::{Circuit, CircuitBuilder, util::pack_bytes_into_wires_le};
 	use proptest::prelude::*;
-	use sha3::{Digest, Keccak256};
+	use sha3::Digest;
 
 	use super::*;
 
 	/// Helper struct for ChainHash testing
 	struct ChainTestCircuit {
 		circuit: Circuit,
-		keccak: Keccak,
+		keccak: Keccak256,
 		domain_param_wires: Vec<Wire>,
 		domain_param_len: usize,
 		hash: [Wire; 4],
@@ -247,7 +247,7 @@ mod tests {
 		let message =
 			build_chain_hash(domain_param_bytes, hash_bytes, chain_index_val, position_val);
 
-		let expected_digest = Keccak256::digest(&message);
+		let expected_digest = sha3::Keccak256::digest(&message);
 
 		test_circuit
 			.populate_and_verify(
@@ -274,7 +274,7 @@ mod tests {
 		let message =
 			build_chain_hash(domain_param_bytes, hash_bytes, chain_index_val, position_val);
 
-		let expected_digest = Keccak256::digest(&message);
+		let expected_digest = sha3::Keccak256::digest(&message);
 
 		test_circuit
 			.populate_and_verify(
@@ -329,7 +329,7 @@ mod tests {
 		let message =
 			build_chain_hash(correct_domain_param_bytes, hash_bytes, chain_index_val, position_val);
 
-		let expected_digest = Keccak256::digest(&message);
+		let expected_digest = sha3::Keccak256::digest(&message);
 
 		// Populate with WRONG domain param but correct digest
 		let result = test_circuit.populate_and_verify(
@@ -358,7 +358,7 @@ mod tests {
 		let message =
 			build_chain_hash(domain_param_bytes, hash_bytes, correct_chain_index, position_val);
 
-		let expected_digest = Keccak256::digest(&message);
+		let expected_digest = sha3::Keccak256::digest(&message);
 
 		// Populate with WRONG chain_index but correct digest
 		let result = test_circuit.populate_and_verify(
@@ -408,7 +408,7 @@ mod tests {
 			prop_assert_eq!(message.len(), domain_param_len + FIXED_MESSAGE_OVERHEAD);
 			prop_assert_eq!(message[domain_param_len], CHAIN_TWEAK);
 
-			let expected_digest: [u8; 32] = Keccak256::digest(&message).into();
+			let expected_digest: [u8; 32] = sha3::Keccak256::digest(&message).into();
 
 			// Verify circuit
 			test_circuit
