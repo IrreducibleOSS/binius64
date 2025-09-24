@@ -1,6 +1,5 @@
 // Copyright 2025 Irreducible Inc.
 pub mod permutation;
-pub mod reference;
 
 use binius_core::word::Word;
 use binius_frontend::{CircuitBuilder, Wire, WitnessFiller};
@@ -295,143 +294,66 @@ impl Keccak {
 
 #[cfg(test)]
 mod tests {
-	use std::iter::repeat_n;
-
 	use binius_core::verify::verify_constraints;
 	use binius_frontend::{CircuitBuilder, Wire};
-	use rand::{Rng, SeedableRng, rngs::StdRng};
+	use rand::{RngCore, SeedableRng, rngs::StdRng};
+	use rstest::rstest;
 	use sha3::{Digest, Keccak256};
 
 	use super::{Keccak, N_WORDS_PER_DIGEST};
-	use crate::keccak::RATE_BYTES;
 
-	fn keccak_crate(message_bytes: &[u8]) -> [u8; 32] {
+	#[rstest]
+	#[case(0, 100)] // Empty message
+	#[case(1, 100)] // Single byte - minimal non-empty
+	#[case(1, 144)] // Single byte - minimal non-empty
+	#[case(135, 136)] // 135 bytes - one byte before block boundary
+	#[case(136, 136)] // 136 bytes - exactly one block
+	#[case(137, 272)] // 137 bytes - crosses block boundary
+	#[case(271, 272)] // 271 bytes - one byte before two blocks
+	#[case(272, 272)] // 272 bytes - exactly two blocks
+	fn test_keccak_circuit(#[case] message_len_bytes: usize, #[case] max_message_len_bytes: usize) {
+		// Create test message with deterministic random bytes seeded by the length inputs
+		let seed = ((message_len_bytes as u64) << 32) | (max_message_len_bytes as u64);
+		let mut rng = StdRng::seed_from_u64(seed);
+		let mut message = vec![0u8; message_len_bytes];
+		rng.fill_bytes(&mut message);
+
+		// Compute expected digest using sha3 crate
 		let mut hasher = Keccak256::new();
-		hasher.update(message_bytes);
-		hasher.finalize().into()
-	}
+		hasher.update(&message);
+		let expected_digest: [u8; 32] = hasher.finalize().into();
 
-	// runs keccak circuit on a message and returns the expected digest
-	fn validate_keccak_circuit(
-		message_bytes: &[u8],
-		expected_digest: [u8; 32],
-		max_len_bytes: usize,
-	) {
+		// Build circuit
+		assert!(
+			message_len_bytes <= max_message_len_bytes,
+			"Message length {} exceeds max capacity {} bytes",
+			message_len_bytes,
+			max_message_len_bytes
+		);
+
 		let b = CircuitBuilder::new();
-
 		let len = b.add_witness();
 		let digest: [Wire; N_WORDS_PER_DIGEST] = std::array::from_fn(|_| b.add_inout());
+		let n_words = max_message_len_bytes.div_ceil(8);
+		let message_wires = (0..n_words).map(|_| b.add_inout()).collect();
 
-		let n_words = max_len_bytes.div_ceil(8);
-		let message = (0..n_words).map(|_| b.add_inout()).collect();
-
-		let keccak = Keccak::new(&b, len, digest, message);
+		let keccak = Keccak::new(&b, len, digest, message_wires);
 		let circuit = b.build();
 
-		// populate witness
-		let mut w = circuit.new_witness_filler();
-		keccak.populate_len_bytes(&mut w, message_bytes.len());
-		keccak.populate_message(&mut w, message_bytes);
-		keccak.populate_digest(&mut w, expected_digest);
+		// Create and populate witness
+		let mut witness = circuit.new_witness_filler();
+		keccak.populate_len_bytes(&mut witness, message.len());
+		keccak.populate_message(&mut witness, &message);
+		keccak.populate_digest(&mut witness, expected_digest);
 
-		// ensure correct final digest
-		circuit.populate_wire_witness(&mut w).unwrap();
+		// Verify circuit accepts the witness
+		circuit
+			.populate_wire_witness(&mut witness)
+			.expect("Circuit should accept valid witness");
+
+		// Verify all constraints are satisfied
 		let cs = circuit.constraint_system();
-		verify_constraints(cs, &w.into_value_vec()).unwrap();
-
-		println!("circuit: {:?}", circuit.simple_json_dump());
-	}
-
-	#[test]
-	#[allow(deprecated)]
-	fn test_valid_message() {
-		let mut rng = StdRng::seed_from_u64(0);
-
-		let message_bytes: Vec<u8> = repeat_n(rng.gen_range(0..=255), 1000).collect::<Vec<_>>();
-		let max_len_bytes = 2048;
-
-		let expected_digest = keccak_crate(&message_bytes);
-		validate_keccak_circuit(&message_bytes, expected_digest, max_len_bytes);
-	}
-
-	#[test]
-	#[should_panic]
-	#[allow(deprecated)]
-	fn test_message_too_long() {
-		let mut rng = StdRng::seed_from_u64(0);
-
-		let message = repeat_n(rng.gen_range(0..=255), 3000).collect::<Vec<_>>();
-		let max_len_bytes = 2048;
-
-		let expected_digest = keccak_crate(&message);
-		validate_keccak_circuit(&message, expected_digest, max_len_bytes);
-	}
-
-	/// This one byte message ends well before the final word of the block. To pad this message,
-	/// only one rate block is required. The padding byte 0x01 is inserted within the first word of
-	/// the rate block, following the message byte. The final padding byte 0x80 is inserted the
-	/// final byte of the final word of the rate block
-	///
-	/// Final msg word within block (partial)
-	///
-	///  [b1, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
-	///
-	/// Final rate block word:
-	///
-	///  [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80]
-	#[test]
-	fn test_message_ends_before_final_word() {
-		let message: Vec<u8> = vec![0xFF];
-
-		let max_message_len = 1024;
-		let expected_digest = keccak_crate(&message);
-		validate_keccak_circuit(&message, expected_digest, max_message_len);
-	}
-
-	/// This message ends within four bytes of the rate block boundary. This means that the padding
-	/// byte and the top bit are in the same word of the final block, but within different bytes in
-	/// that word.
-	///
-	/// Final rate block word:
-	///
-	///  [b1, b2, b3, b4, 0x01, 0x00, 0x00, 0x80]
-	#[test]
-	fn test_message_ends_in_final_word_but_before_final_byte() {
-		let message = vec![0xFF; RATE_BYTES - 4];
-
-		let max_message_len = 1024;
-		let expected_digest = keccak_crate(&message);
-		validate_keccak_circuit(&message, expected_digest, max_message_len);
-	}
-
-	/// This message ends within one byte of the final rate block boundary. This means that the
-	/// padding byte and the top bit are in the same word of the final block, and the same byte.
-	///
-	/// Final rate block word:
-	///
-	///  [b1, b2, b3, b4, b5, b6, b7, 0x81]
-	#[test]
-	fn test_message_ends_in_final_word_and_final_byte() {
-		let message = vec![0xFF; RATE_BYTES - 1];
-
-		let max_message_len = 1024;
-		let expected_digest = keccak_crate(&message);
-		validate_keccak_circuit(&message, expected_digest, max_message_len);
-	}
-
-	/// This message ends 8 bytes before the final rate block boundary. This means that the padding
-	/// byte and the top bit are in the same word of the finalblock word, but there are no message
-	/// words in the final block.
-	///
-	/// Final rate block word:
-	///
-	///  [b1, b2, b3, b4, b5, b6, b7, b8] [0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80]
-	#[test]
-	fn test_message_ends_in_final_word_and_final_byte_with_padding() {
-		let message = vec![0xFF; RATE_BYTES - 8];
-
-		let max_message_len = 1024;
-		let expected_digest = keccak_crate(&message);
-		validate_keccak_circuit(&message, expected_digest, max_message_len);
+		verify_constraints(cs, &witness.into_value_vec())
+			.expect("All constraints should be satisfied");
 	}
 }

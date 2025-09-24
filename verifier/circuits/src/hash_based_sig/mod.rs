@@ -1,4 +1,5 @@
 // Copyright 2025 Irreducible Inc.
+
 pub mod chain_verification;
 pub mod codeword;
 pub mod hashing;
