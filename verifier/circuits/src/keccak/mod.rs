@@ -1,4 +1,6 @@
 // Copyright 2025 Irreducible Inc.
+
+pub mod fixed_length;
 pub mod permutation;
 
 use binius_core::word::Word;
