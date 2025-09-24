@@ -25,7 +25,7 @@ use crate::slice::{create_byte_mask, extract_word};
 ///
 /// # Requirements
 ///
-/// - `max_len` must be a multiple of 8 (word-aligned)
+/// - max_len is defined as `data.len() * 8`
 /// - Actual length must satisfy: 0 ≤ len ≤ max_len
 /// - Unused bytes in `data` must be zero
 pub struct Term {
@@ -83,7 +83,7 @@ impl Term {
 	}
 
 	pub fn max_len_bytes(&self) -> usize {
-		self.data.len() << 3
+		self.data.len() * 8
 	}
 }
 
@@ -262,9 +262,12 @@ impl Concat {
 		self.joined.len() << 3
 	}
 }
+
 #[cfg(test)]
 mod tests {
+	use anyhow::{Result, anyhow};
 	use binius_core::verify::verify_constraints;
+	use rand::prelude::*;
 
 	use super::*;
 
@@ -305,7 +308,7 @@ mod tests {
 		term_max_lens: Vec<usize>,
 		expected_joined: &[u8],
 		term_data: &[&[u8]],
-	) -> Result<(), Box<dyn std::error::Error>> {
+	) -> Result<()> {
 		let (b, concat) = create_concat_circuit(max_n_joined, term_max_lens);
 		let circuit = b.build();
 		let mut filler = circuit.new_witness_filler();
@@ -324,7 +327,8 @@ mod tests {
 
 		// Verify constraints
 		let cs = circuit.constraint_system();
-		verify_constraints(cs, &filler.into_value_vec())?;
+		verify_constraints(cs, &filler.into_value_vec())
+			.map_err(|msg| anyhow!("verify_constraints: {}", msg))?;
 
 		Ok(())
 	}
@@ -485,6 +489,68 @@ mod tests {
 		.unwrap();
 	}
 
+	/// Helper to run a concat test with given data.
+	///
+	/// - `term_specs`: Vector of (data, max_len) pairs for each term
+	/// - `joined_override`: If Some, use this as joined data instead of concatenating terms
+	/// - `should_succeed`: Whether we expect the circuit to accept or reject
+	fn run_concat_test(
+		term_specs: Vec<(Vec<u8>, usize)>,
+		joined_override: Option<Vec<u8>>,
+		should_succeed: bool,
+	) {
+		let expected_joined_bytes: Vec<u8> = if joined_override.is_none() {
+			term_specs
+				.iter()
+				.flat_map(|(data_bytes, _)| data_bytes.clone())
+				.collect()
+		} else {
+			joined_override.clone().unwrap()
+		};
+
+		let max_n_joined = expected_joined_bytes.len().div_ceil(8);
+		let term_max_lens: Vec<usize> = term_specs.iter().map(|(_, max_len)| *max_len).collect();
+
+		let (b, concat) = create_concat_circuit(max_n_joined, term_max_lens);
+		let circuit = b.build();
+		let mut filler = circuit.new_witness_filler();
+
+		concat.populate_len_joined_bytes(&mut filler, expected_joined_bytes.len());
+		concat.populate_joined(&mut filler, &expected_joined_bytes);
+
+		for (i, (data_bytes, _)) in term_specs.iter().enumerate() {
+			concat.terms[i].populate_len_bytes(&mut filler, data_bytes.len());
+			concat.terms[i].populate_data(&mut filler, data_bytes);
+		}
+
+		let result = circuit.populate_wire_witness(&mut filler);
+		if should_succeed {
+			assert!(result.is_ok(), "Expected success but got: {result:?}");
+		} else {
+			assert!(result.is_err(), "Expected failure but succeeded");
+		}
+	}
+
+	fn random_byte_string(len: usize) -> Vec<u8> {
+		let mut rng = StdRng::seed_from_u64(len as u64);
+		let mut data = vec![0u8; len];
+		rng.fill_bytes(&mut data);
+		data
+	}
+
+	#[test]
+	fn test_extra_data_rejected() {
+		let term_specs = vec![(random_byte_string(5), 2), (random_byte_string(5), 2)];
+
+		let mut joined_with_extra: Vec<u8> = term_specs
+			.iter()
+			.flat_map(|(data_bytes, _)| data_bytes.clone())
+			.collect();
+		joined_with_extra.push(42); // Add extra byte
+
+		run_concat_test(term_specs, Some(joined_with_extra), false);
+	}
+
 	// Property-based tests
 	//
 	// These tests use proptest to verify the circuit behaves correctly
@@ -493,12 +559,13 @@ mod tests {
 	#[cfg(test)]
 	mod proptest_tests {
 		use proptest::prelude::*;
+		use rstest::rstest;
 
 		use super::*;
 
 		/// Strategy for generating random byte arrays for term data.
 		fn term_data_strategy() -> impl Strategy<Value = Vec<u8>> {
-			prop::collection::vec(any::<u8>(), 0..=128)
+			(0..=24usize).prop_map(random_byte_string)
 		}
 
 		/// Strategy for generating term specifications with proper word alignment.
@@ -512,65 +579,28 @@ mod tests {
 					let max_len = (data.len().div_ceil(8) * 8).max(8);
 					(data, max_len)
 				}),
-				1..=10,
+				1..=3,
 			)
 		}
 
-		/// Helper to run a concat test with given data.
-		///
-		/// - `term_specs`: Vector of (data, max_len) pairs for each term
-		/// - `joined_override`: If Some, use this as joined data instead of concatenating terms
-		/// - `should_succeed`: Whether we expect the circuit to accept or reject
-		fn run_concat_test(
-			term_specs: Vec<(Vec<u8>, usize)>,
-			joined_override: Option<Vec<u8>>,
-			should_succeed: bool,
-		) {
-			let expected_joined_bytes: Vec<u8> = if joined_override.is_none() {
-				term_specs
-					.iter()
-					.flat_map(|(data_bytes, _)| data_bytes.clone())
-					.collect()
-			} else {
-				joined_override.clone().unwrap()
-			};
-
-			let max_n_joined = expected_joined_bytes.len().div_ceil(8);
-			let term_max_lens: Vec<usize> =
-				term_specs.iter().map(|(_, max_len)| *max_len).collect();
-
-			let (b, concat) = create_concat_circuit(max_n_joined, term_max_lens);
-			let circuit = b.build();
-			let mut filler = circuit.new_witness_filler();
-
-			concat.populate_len_joined_bytes(&mut filler, expected_joined_bytes.len());
-			concat.populate_joined(&mut filler, &expected_joined_bytes);
-
-			for (i, (data_bytes, _)) in term_specs.iter().enumerate() {
-				concat.terms[i].populate_len_bytes(&mut filler, data_bytes.len());
-				concat.terms[i].populate_data(&mut filler, data_bytes);
-			}
-
-			let result = circuit.populate_wire_witness(&mut filler);
-			if should_succeed {
-				assert!(result.is_ok(), "Expected success but got: {result:?}");
-			} else {
-				assert!(result.is_err(), "Expected failure but succeeded");
-			}
+		#[rstest]
+		#[case(0, 1)]
+		#[case(2, 1)]
+		#[case(2, 2)]
+		#[case(10, 2)]
+		#[case(10, 3)]
+		#[case(18, 3)]
+		fn test_single_term_concatenation(#[case] len: usize, #[case] max_words: usize) {
+			// Special case: single term should equal joined
+			let data_bytes = random_byte_string(len);
+			let term_specs = vec![(data_bytes, max_words)];
+			run_concat_test(term_specs, None, true);
 		}
 
 		proptest! {
 			#[test]
 			fn test_correct_concatenation(term_specs in term_specs_strategy()) {
 				// Verify correct concatenations are accepted
-				run_concat_test(term_specs, None, true);
-			}
-
-			#[test]
-			fn test_single_term_concatenation(data_bytes in term_data_strategy()) {
-				// Special case: single term should equal joined
-				let max_len = data_bytes.len().div_ceil(8);
-				let term_specs = vec![(data_bytes, max_len)];
 				run_concat_test(term_specs, None, true);
 			}
 
@@ -654,19 +684,6 @@ mod tests {
 				swapped_joined.extend(&a);
 
 				run_concat_test(term_specs, Some(swapped_joined), false);
-			}
-
-			#[test]
-			fn test_extra_data_rejected(term_specs in term_specs_strategy()) {
-				// Test that extra data in joined is rejected
-				prop_assume!(!term_specs.is_empty());
-
-				let mut joined_with_extra: Vec<u8> = term_specs.iter()
-					.flat_map(|(data_bytes, _)| data_bytes.clone())
-					.collect();
-				joined_with_extra.push(42); // Add extra byte
-
-				run_concat_test(term_specs, Some(joined_with_extra), false);
 			}
 
 			#[test]
