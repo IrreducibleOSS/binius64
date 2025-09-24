@@ -41,8 +41,6 @@
 
 mod constants;
 #[cfg(test)]
-mod test_vectors;
-#[cfg(test)]
 mod tests;
 
 use binius_core::word::Word;
