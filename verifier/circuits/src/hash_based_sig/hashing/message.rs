@@ -3,7 +3,7 @@ use binius_frontend::{CircuitBuilder, Wire};
 use sha3::{Digest, Keccak256};
 
 use super::base::circuit_tweaked_keccak;
-use crate::{concat::Term, keccak::Keccak};
+use crate::{fixed_byte_vec::ByteVec, keccak::Keccak};
 
 pub const MESSAGE_TWEAK: u8 = 0x02;
 
@@ -44,13 +44,13 @@ pub fn circuit_message_hash(
 
 	let mut additional_terms = Vec::new();
 
-	let nonce_term = Term {
+	let nonce_term = ByteVec {
 		len_bytes: builder.add_constant_64(nonce_len as u64),
 		data: nonce_wires.clone(),
 	};
 	additional_terms.push(nonce_term);
 
-	let message_term = Term {
+	let message_term = ByteVec {
 		len_bytes: builder.add_constant_64(message_len as u64),
 		data: message_wires.clone(),
 	};

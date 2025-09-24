@@ -4,7 +4,7 @@ use binius_frontend::{CircuitBuilder, Wire};
 use super::base::circuit_tweaked_keccak;
 // Note: PublicKeyTweak reuses TREE_TWEAK (0x01) for consistency with XMSS spec
 pub use super::tree::TREE_TWEAK as PUBLIC_KEY_TWEAK;
-use crate::{concat::Term, keccak::Keccak};
+use crate::{fixed_byte_vec::ByteVec, keccak::Keccak};
 
 /// A circuit that verifies a public key hash for XMSS.
 ///
@@ -40,7 +40,7 @@ pub fn circuit_public_key_hash(
 
 	// Add all public key hashes
 	for pk_hash in pk_hashes {
-		let hash_term = Term {
+		let hash_term = ByteVec {
 			len_bytes: builder.add_constant_64(32),
 			data: pk_hash.to_vec(),
 		};

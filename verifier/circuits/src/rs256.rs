@@ -2,7 +2,7 @@
 use binius_frontend::{CircuitBuilder, Wire, WitnessFiller};
 use num_integer::Integer;
 
-use super::fixed_byte_vec::FixedByteVec;
+use super::fixed_byte_vec::ByteVec;
 use crate::{
 	bignum::{BigUint, ModReduce, assert_eq, optimal_mul, optimal_sqr},
 	sha256::Sha256,
@@ -12,7 +12,7 @@ use crate::{
 ///
 /// This function converts a FixedByteVec with little-endian packed wires
 /// to a BigUint representing a big-endian number.
-fn fixedbytevec_le_to_biguint(builder: &mut CircuitBuilder, byte_vec: &FixedByteVec) -> BigUint {
+fn fixedbytevec_le_to_biguint(builder: &mut CircuitBuilder, byte_vec: &ByteVec) -> BigUint {
 	// With LE packing, each wire contains 8 bytes as: byte0 | byte1<<8 | ... | byte7<<56
 	// For a BE number, we need to both reverse wire order AND byte-swap within each wire
 	let mut limbs = Vec::new();
@@ -48,11 +48,11 @@ fn fixedbytevec_le_to_biguint(builder: &mut CircuitBuilder, byte_vec: &FixedByte
 /// <https://datatracker.ietf.org/doc/html/rfc7518#section-3.1>
 pub struct Rs256Verify {
 	/// The message to verify (packed as 64-bit words, 8 bytes per wire)
-	pub message: FixedByteVec,
+	pub message: ByteVec,
 	/// The RSA signature as a FixedByteVec (the primary input interface)
-	pub signature: FixedByteVec,
+	pub signature: ByteVec,
 	/// The RSA modulus as a FixedByteVec (the primary input interface)
-	pub modulus: FixedByteVec,
+	pub modulus: ByteVec,
 	/// Wires associated with intermediate RSA computations
 	pub rsa_intermediates: RsaIntermediates,
 	/// SHA256 circuit for hashing the message
@@ -84,9 +84,9 @@ impl Rs256Verify {
 	/// * If signature or modulus don't have at least 256 bytes
 	pub fn new(
 		builder: &mut CircuitBuilder,
-		message: FixedByteVec,
-		signature: FixedByteVec,
-		modulus: FixedByteVec,
+		message: ByteVec,
+		signature: ByteVec,
+		modulus: ByteVec,
 	) -> Self {
 		assert!(
 			signature.data.len() >= 32,
@@ -485,9 +485,9 @@ mod tests {
 	fn setup_circuit(builder: &mut CircuitBuilder, max_len: usize) -> Rs256Verify {
 		// max_len is now denominated in wires, not bytes.
 		// this is a consistent change made throughout the codebase.
-		let signature_bytes = FixedByteVec::new_inout(builder, 32);
-		let modulus_bytes = FixedByteVec::new_inout(builder, 32);
-		let message = FixedByteVec::new_witness(builder, max_len);
+		let signature_bytes = ByteVec::new_inout(builder, 32);
+		let modulus_bytes = ByteVec::new_inout(builder, 32);
+		let message = ByteVec::new_witness(builder, max_len);
 
 		Rs256Verify::new(builder, message, signature_bytes, modulus_bytes)
 	}
