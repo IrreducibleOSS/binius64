@@ -61,7 +61,7 @@ impl<'ctx> SmtChecker<'ctx> {
 			ShiftVariant::Sll => val.bvshl(&ast::BV::from_u64(self.ctx, sv.amount as u64, 64)),
 			ShiftVariant::Slr => val.bvlshr(&ast::BV::from_u64(self.ctx, sv.amount as u64, 64)),
 			ShiftVariant::Sar => val.bvashr(&ast::BV::from_u64(self.ctx, sv.amount as u64, 64)),
-			ShiftVariant::Ror => val.bvrotr(&ast::BV::from_u64(self.ctx, sv.amount as u64, 64)),
+			ShiftVariant::Rotr => val.bvrotr(&ast::BV::from_u64(self.ctx, sv.amount as u64, 64)),
 		}
 	}
 
