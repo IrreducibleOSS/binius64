@@ -6,6 +6,7 @@ authors.workspace = true
 
 [dependencies]
 binius-field = { path = "../field" }
+bytemuck.workspace = true
 smallvec.workspace = true
 
 [lints]
