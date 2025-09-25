@@ -373,7 +373,7 @@ impl WinternitzSpec {
 			message_hash_len
 		);
 		assert!(
-			(message_hash_len * 8) % coordinate_resolution_bits == 0,
+			(message_hash_len * 8).is_multiple_of(coordinate_resolution_bits),
 			"coordinate_resolution_bits {} must divide evenly into message_hash_len * 8 = {}",
 			coordinate_resolution_bits,
 			message_hash_len * 8

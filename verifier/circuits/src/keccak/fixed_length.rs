@@ -60,7 +60,7 @@ pub fn keccak256(
 
 	// Apply Keccak padding within the circuit
 	// The padding consists of 0x01 byte after the message and 0x80 in the final byte of the block
-	if len_bytes % 8 == 0 {
+	if len_bytes.is_multiple_of(8) {
 		// Message ends on a word boundary - all words are complete
 		padded_message.extend_from_slice(message);
 		// The 0x01 byte goes at the start of the next word
