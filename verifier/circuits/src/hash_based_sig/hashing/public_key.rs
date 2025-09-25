@@ -4,7 +4,7 @@ use binius_frontend::{CircuitBuilder, Wire};
 use super::base::circuit_tweaked_keccak;
 // Note: PublicKeyTweak reuses TREE_TWEAK (0x01) for consistency with XMSS spec
 pub use super::tree::TREE_TWEAK as PUBLIC_KEY_TWEAK;
-use crate::{fixed_byte_vec::ByteVec, keccak::Keccak};
+use crate::{fixed_byte_vec::ByteVec, keccak::Keccak256};
 
 /// A circuit that verifies a public key hash for XMSS.
 ///
@@ -30,7 +30,7 @@ pub fn circuit_public_key_hash(
 	domain_param_len: usize,
 	pk_hashes: &[[Wire; 4]],
 	digest: [Wire; 4],
-) -> Keccak {
+) -> Keccak256 {
 	let num_hashes = pk_hashes.len();
 	let message_len = domain_param_len + 1 + (num_hashes * 32); // +1 for tweak byte
 	assert_eq!(domain_param_wires.len(), domain_param_len.div_ceil(8));
@@ -90,9 +90,9 @@ pub fn build_public_key_hash(domain_param_bytes: &[u8], pk_hashes: &[[u8; 32]]) 
 /// * `domain_param` - Cryptographic domain parameter
 /// * `pk_hashes` - Array of 32-byte public key hashes
 pub fn hash_public_key_keccak(domain_param: &[u8], pk_hashes: &[[u8; 32]]) -> [u8; 32] {
-	use sha3::{Digest, Keccak256};
+	use sha3::Digest;
 	let tweaked_public_key = build_public_key_hash(domain_param, pk_hashes);
-	Keccak256::digest(tweaked_public_key).into()
+	sha3::Keccak256::digest(tweaked_public_key).into()
 }
 
 #[cfg(test)]
@@ -100,14 +100,14 @@ mod tests {
 	use binius_core::verify::verify_constraints;
 	use binius_frontend::{Circuit, CircuitBuilder, util::pack_bytes_into_wires_le};
 	use proptest::prelude::*;
-	use sha3::{Digest, Keccak256};
+	use sha3::Digest;
 
 	use super::*;
 
 	/// Helper struct for PublicKeyHash testing
 	struct PublicKeyTestCircuit {
 		circuit: Circuit,
-		keccak: Keccak,
+		keccak: Keccak256,
 		domain_param_wires: Vec<Wire>,
 		domain_param_len: usize,
 		pk_hashes: Vec<[Wire; 4]>,
@@ -201,7 +201,7 @@ mod tests {
 
 		let message = build_public_key_hash(domain_param_bytes, &pk_hashes);
 
-		let expected_digest = Keccak256::digest(&message);
+		let expected_digest = sha3::Keccak256::digest(&message);
 
 		test_circuit
 			.populate_and_verify(domain_param_bytes, &pk_hashes, &message, expected_digest.into())
@@ -221,7 +221,7 @@ mod tests {
 
 		let message = build_public_key_hash(domain_param_bytes, &pk_hashes);
 
-		let expected_digest = Keccak256::digest(&message);
+		let expected_digest = sha3::Keccak256::digest(&message);
 
 		test_circuit
 			.populate_and_verify(domain_param_bytes, &pk_hashes, &message, expected_digest.into())
@@ -237,7 +237,7 @@ mod tests {
 
 		let message = build_public_key_hash(domain_param_bytes, &pk_hashes);
 
-		let expected_digest = Keccak256::digest(&message);
+		let expected_digest = sha3::Keccak256::digest(&message);
 
 		test_circuit
 			.populate_and_verify(domain_param_bytes, &pk_hashes, &message, expected_digest.into())
@@ -266,7 +266,7 @@ mod tests {
 
 		let message = build_public_key_hash(domain_param_bytes, &pk_hashes);
 
-		let expected_digest = Keccak256::digest(&message);
+		let expected_digest = sha3::Keccak256::digest(&message);
 
 		test_circuit
 			.populate_and_verify(domain_param_bytes, &pk_hashes, &message, expected_digest.into())
@@ -312,7 +312,7 @@ mod tests {
 		assert_eq!(message[16], PUBLIC_KEY_TWEAK);
 		assert_eq!(message.len(), 16 + 1 + 32); // domain_param + tweak + one hash
 
-		let expected_digest = Keccak256::digest(&message);
+		let expected_digest = sha3::Keccak256::digest(&message);
 
 		test_circuit
 			.populate_and_verify(domain_param_bytes, &pk_hashes, &message, expected_digest.into())
@@ -352,7 +352,7 @@ mod tests {
 			prop_assert_eq!(message.len(), domain_param_len + 1 + (num_hashes * 32));
 			prop_assert_eq!(message[domain_param_len], PUBLIC_KEY_TWEAK);
 
-			let expected_digest: [u8; 32] = Keccak256::digest(&message).into();
+			let expected_digest: [u8; 32] = sha3::Keccak256::digest(&message).into();
 
 			// Verify circuit
 			test_circuit

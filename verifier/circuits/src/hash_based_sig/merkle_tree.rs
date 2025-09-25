@@ -2,7 +2,7 @@
 use binius_frontend::{CircuitBuilder, Wire};
 
 use super::hashing::circuit_tree_hash;
-use crate::{keccak::Keccak, multiplexer::multi_wire_multiplex};
+use crate::{keccak::Keccak256, multiplexer::multi_wire_multiplex};
 
 /// Verifies a Merkle tree authentication path.
 ///
@@ -32,7 +32,7 @@ pub fn circuit_merkle_path(
 	leaf_index: Wire,
 	auth_path: &[[Wire; 4]],
 	root_hash: &[Wire; 4],
-) -> Vec<Keccak> {
+) -> Vec<Keccak256> {
 	assert!(
 		domain_param_len <= domain_param.len() * 8,
 		"domain_param_len {} exceeds maximum capacity {} of domain_param wires",

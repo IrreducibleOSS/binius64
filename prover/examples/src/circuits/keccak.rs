@@ -1,16 +1,16 @@
 // Copyright 2025 Irreducible Inc.
 use anyhow::Result;
-use binius_circuits::keccak::{Keccak, N_WORDS_PER_DIGEST};
+use binius_circuits::keccak::{Keccak256, N_WORDS_PER_DIGEST};
 use binius_frontend::{CircuitBuilder, Wire, WitnessFiller};
 use clap::Args;
-use sha3::{Digest, Keccak256};
+use sha3::Digest;
 
 use super::utils;
 use crate::ExampleCircuit;
 
 /// Keccak-256 hash circuit example
 pub struct KeccakExample {
-	keccak_hash: Keccak,
+	keccak_hash: Keccak256,
 	max_len_bytes: usize,
 }
 
@@ -46,7 +46,7 @@ impl ExampleCircuit for KeccakExample {
 		let n_words = max_len_bytes.div_ceil(8);
 		let message = (0..n_words).map(|_| builder.add_inout()).collect();
 
-		let keccak = Keccak::new(builder, len_bytes, digest, message);
+		let keccak = Keccak256::new(builder, len_bytes, digest, message);
 
 		Ok(Self {
 			keccak_hash: keccak,
@@ -63,7 +63,7 @@ impl ExampleCircuit for KeccakExample {
 		let padded_message = utils::zero_pad_message(raw_message, self.max_len_bytes)?;
 
 		// Step 3: Compute digest using reference implementation
-		let mut hasher = Keccak256::new();
+		let mut hasher = sha3::Keccak256::new();
 		hasher.update(&padded_message);
 		let digest: [u8; 32] = hasher.finalize().into();
 

@@ -2,7 +2,7 @@
 use std::array;
 
 use anyhow::Result;
-use binius_circuits::{bignum::BigUint, ecdsa::ecrecover, keccak::Keccak};
+use binius_circuits::{bignum::BigUint, ecdsa::ecrecover, keccak::Keccak256};
 use binius_core::word::Word;
 use binius_frontend::{
 	CircuitBuilder, Wire, WitnessFiller,
@@ -20,8 +20,8 @@ struct Signature {
 	s: [Wire; 4],
 	recid_odd: Wire,
 	address: [Wire; 3],
-	msg_keccak: Keccak,
-	address_keccak: Keccak,
+	msg_keccak: Keccak256,
+	address_keccak: Keccak256,
 }
 
 /// Example circuit that proves validity of Ethereum-style ECDSA signatures.
@@ -61,7 +61,7 @@ impl ExampleCircuit for EthSignExample {
 				let address = array::from_fn(|_| builder.add_inout());
 
 				let msg_final_state = array::from_fn(|_| builder.add_witness());
-				let msg_keccak = Keccak::new(builder, msg_len, msg_final_state, message.clone());
+				let msg_keccak = Keccak256::new(builder, msg_len, msg_final_state, message.clone());
 
 				// The Keccak digest is little endian encoded into 4 words, while Ethereum expects
 				// big endian
@@ -97,7 +97,7 @@ impl ExampleCircuit for EthSignExample {
 					.collect::<Vec<_>>();
 
 				let address_final_state = array::from_fn(|_| builder.add_witness());
-				let address_keccak = Keccak::new(
+				let address_keccak = Keccak256::new(
 					builder,
 					builder.add_constant_64(64),
 					address_final_state,

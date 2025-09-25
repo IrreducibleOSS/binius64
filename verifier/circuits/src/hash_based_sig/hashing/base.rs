@@ -1,7 +1,7 @@
 // Copyright 2025 Irreducible Inc.
 use binius_frontend::{CircuitBuilder, Wire};
 
-use crate::{concat::Concat, fixed_byte_vec::ByteVec, keccak::Keccak};
+use crate::{concat::Concat, fixed_byte_vec::ByteVec, keccak::Keccak256};
 
 /// Verify a tweaked Keccak-256 circuit with custom terms.
 ///
@@ -28,7 +28,7 @@ pub fn circuit_tweaked_keccak(
 	additional_terms: Vec<ByteVec>,
 	total_message_len: usize,
 	digest: [Wire; 4],
-) -> Keccak {
+) -> Keccak256 {
 	// Create the message wires for Keccak (LE-packed)
 	let n_message_words = total_message_len.div_ceil(8);
 	let message_le: Vec<Wire> = (0..n_message_words)
@@ -36,7 +36,7 @@ pub fn circuit_tweaked_keccak(
 		.collect();
 	let len = builder.add_constant_64(total_message_len as u64);
 
-	let keccak = Keccak::new(builder, len, digest, message_le.clone());
+	let keccak = Keccak256::new(builder, len, digest, message_le.clone());
 
 	let mut terms = Vec::new();
 	let domain_param_term = ByteVec {

@@ -6,7 +6,7 @@ use super::{
 	merkle_tree::circuit_merkle_path,
 	winternitz_ots::{WinternitzOtsHashers, WinternitzSpec, circuit_winternitz_ots},
 };
-use crate::keccak::Keccak;
+use crate::keccak::Keccak256;
 
 /// An XMSS signature.
 ///
@@ -37,7 +37,7 @@ pub struct XmssHashers {
 	/// pk_hash[D-1])` Must be populated with:
 	/// - Message: The concatenated public key data (use `hashing::build_public_key_hash`)
 	/// - Digest: The resulting public key hash (which becomes a leaf in the Merkle tree)
-	pub public_key_hasher: Keccak,
+	pub public_key_hasher: Keccak256,
 
 	/// Vector of Keccak hashers for verifying the Merkle tree authentication path.
 	/// Contains one hasher per level of the tree that needs to be computed.
@@ -47,7 +47,7 @@ pub struct XmssHashers {
 	/// - Digest: The parent node hash at that level
 	///
 	/// The hashers are ordered from leaf level upward to the root.
-	pub merkle_path_hashers: Vec<Keccak>,
+	pub merkle_path_hashers: Vec<Keccak256>,
 }
 
 /// Verifies an XMSS (eXtended Merkle Signature Scheme) signature.
