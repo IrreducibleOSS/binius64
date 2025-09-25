@@ -4,6 +4,7 @@ use std::{array, collections::BTreeMap, iter::successors};
 
 use binius_field::{BinaryField128bGhash as B128, Field};
 use bytemuck::zeroed_vec;
+use itertools::chain;
 use smallvec::{SmallVec, smallvec};
 
 pub trait CircuitBuilder {
@@ -23,20 +24,34 @@ pub trait CircuitBuilder {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ConstraintWire(u32);
+pub enum WireKind {
+	Constant,
+	Public,
+	Private,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ConstraintWire {
+	kind: WireKind,
+	id: u32,
+}
 
 #[derive(Debug)]
 pub struct WireAllocator {
 	n_wires: u32,
+	kind: WireKind,
 }
 
 impl WireAllocator {
-	pub fn new() -> Self {
-		WireAllocator { n_wires: 0 }
+	pub fn new(kind: WireKind) -> Self {
+		WireAllocator { n_wires: 0, kind }
 	}
 
 	pub fn alloc(&mut self) -> ConstraintWire {
-		let wire = ConstraintWire(self.n_wires);
+		let wire = ConstraintWire {
+			kind: self.kind,
+			id: self.n_wires,
+		};
 		self.n_wires += 1;
 		wire
 	}
@@ -52,6 +67,7 @@ struct MulConstraint {
 
 pub struct ConstraintSystem {
 	witness_size: u32,
+	// TODO: This can just be a vec with binary search, BTreeMap not necessary.
 	index_map: BTreeMap<ConstraintWire, WitnessIndex>,
 	add_constraints: Vec<AddConstraint>,
 	mul_constraints: Vec<MulConstraint>,
@@ -61,25 +77,25 @@ impl ConstraintSystem {
 	pub fn validate(&self, witness: &[B128]) {
 		assert_eq!(witness.len(), self.witness_size as usize);
 
+		let wire_val = |wire| witness[self.index_map[wire].0 as usize];
+
 		for AddConstraint(term) in &self.add_constraints {
-			let sum = term
-				.iter()
-				.map(|wire| witness[wire.0 as usize])
-				.sum::<B128>();
+			let sum = term.iter().map(wire_val).sum::<B128>();
 			assert!(sum.is_zero());
 		}
 
 		for MulConstraint { a, b, c } in &self.mul_constraints {
-			let a_val = witness[a.0 as usize];
-			let b_val = witness[b.0 as usize];
-			let c_val = witness[c.0 as usize];
-			assert_eq!(a_val * b_val, c_val);
+			assert_eq!(wire_val(a) * wire_val(b), wire_val(c));
 		}
 	}
 }
 
+// Witness values are a permuted subset of the wire values.
+// Need a way to fingerprint a constraint system.
+
 pub struct ConstraintBuilder {
-	alloc: WireAllocator,
+	public_alloc: WireAllocator,
+	private_alloc: WireAllocator,
 	add_constraints: Vec<AddConstraint>,
 	mul_constraints: Vec<MulConstraint>,
 }
@@ -87,26 +103,44 @@ pub struct ConstraintBuilder {
 impl ConstraintBuilder {
 	pub fn new() -> Self {
 		ConstraintBuilder {
-			alloc: WireAllocator::new(),
+			public_alloc: WireAllocator::new(WireKind::Public),
+			private_alloc: WireAllocator::new(WireKind::Private),
 			add_constraints: Vec::new(),
 			mul_constraints: Vec::new(),
 		}
 	}
 
 	pub fn alloc_inout(&mut self) -> ConstraintWire {
-		self.alloc.alloc()
+		self.public_alloc.alloc()
 	}
 
 	pub fn build(self) -> ConstraintSystem {
 		let Self {
-			alloc,
+			public_alloc,
+			private_alloc,
 			add_constraints,
 			mul_constraints,
 		} = self;
-		let witness_size = alloc.n_wires;
-		let index_map = (0..witness_size)
-			.map(|i| (ConstraintWire(i), WitnessIndex(i)))
-			.collect();
+		let witness_size = public_alloc.n_wires + private_alloc.n_wires;
+		let private_offset = public_alloc.n_wires;
+
+		let index_map = chain!(
+			(0..public_alloc.n_wires).map(|i| {
+				let wire = ConstraintWire {
+					kind: WireKind::Public,
+					id: i,
+				};
+				(wire, WitnessIndex(i))
+			}),
+			(0..private_alloc.n_wires).map(|i| {
+				let wire = ConstraintWire {
+					kind: WireKind::Private,
+					id: i,
+				};
+				(wire, WitnessIndex(private_offset + i))
+			})
+		)
+		.collect();
 		ConstraintSystem {
 			witness_size,
 			index_map,
@@ -125,14 +159,14 @@ impl CircuitBuilder for ConstraintBuilder {
 	}
 
 	fn add(&mut self, lhs: Self::Wire, rhs: Self::Wire) -> Self::Wire {
-		let out = self.alloc.alloc();
+		let out = self.private_alloc.alloc();
 		self.add_constraints
 			.push(AddConstraint(smallvec![lhs, rhs, out]));
 		out
 	}
 
 	fn mul(&mut self, lhs: Self::Wire, rhs: Self::Wire) -> Self::Wire {
-		let out = self.alloc.alloc();
+		let out = self.private_alloc.alloc();
 		self.mul_constraints.push(MulConstraint {
 			a: lhs,
 			b: rhs,
@@ -146,7 +180,7 @@ impl CircuitBuilder for ConstraintBuilder {
 		_inputs: [Self::Wire; IN],
 		_f: F,
 	) -> [Self::Wire; OUT] {
-		array::from_fn(|_| self.alloc.alloc())
+		array::from_fn(|_| self.private_alloc.alloc())
 	}
 }
 
@@ -172,22 +206,27 @@ pub struct WitnessGenerator<'a> {
 impl<'a> WitnessGenerator<'a> {
 	pub fn new(witness_size: usize, index_map: &'a BTreeMap<ConstraintWire, WitnessIndex>) -> Self {
 		Self {
-			alloc: WireAllocator::new(),
+			alloc: WireAllocator::new(WireKind::Private),
 			value_vec: zeroed_vec(witness_size),
 			index_map,
 		}
 	}
 
-	fn write_value(&mut self, value: B128) -> WitnessWire {
+	fn alloc_value(&mut self, value: B128) -> WitnessWire {
 		let wire = self.alloc.alloc();
+		self.write_value(wire, value)
+	}
+
+	fn write_value(&mut self, wire: ConstraintWire, value: B128) -> WitnessWire {
 		if let Some(&index) = self.index_map.get(&wire) {
 			self.value_vec[index.0 as usize] = value;
 		}
 		WitnessWire(value)
 	}
 
-	pub fn write_inout(&mut self, value: B128) -> WitnessWire {
-		self.write_value(value)
+	pub fn write_inout(&mut self, wire: ConstraintWire, value: B128) -> WitnessWire {
+		assert_eq!(wire.kind, WireKind::Public);
+		self.write_value(wire, value)
 	}
 
 	pub fn build(self) -> Vec<B128> {
@@ -204,11 +243,11 @@ impl<'a> CircuitBuilder for WitnessGenerator<'a> {
 	}
 
 	fn add(&mut self, lhs: Self::Wire, rhs: Self::Wire) -> Self::Wire {
-		self.write_value(lhs.val() + rhs.val())
+		self.alloc_value(lhs.val() + rhs.val())
 	}
 
 	fn mul(&mut self, lhs: Self::Wire, rhs: Self::Wire) -> Self::Wire {
-		self.write_value(lhs.val() * rhs.val())
+		self.alloc_value(lhs.val() * rhs.val())
 	}
 
 	fn hint<F: Fn([B128; IN]) -> [B128; OUT], const IN: usize, const OUT: usize>(
@@ -216,7 +255,7 @@ impl<'a> CircuitBuilder for WitnessGenerator<'a> {
 		inputs: [Self::Wire; IN],
 		f: F,
 	) -> [Self::Wire; OUT] {
-		f(inputs.map(WitnessWire::val)).map(|value| self.write_value(value))
+		f(inputs.map(WitnessWire::val)).map(|value| self.alloc_value(value))
 	}
 }
 
@@ -260,9 +299,9 @@ mod tests {
 			constraint_system.witness_size as usize,
 			&constraint_system.index_map,
 		);
-		let x0 = witness_generator.write_inout(B128::ONE);
-		let x1 = witness_generator.write_inout(B128::MULTIPLICATIVE_GENERATOR);
-		let xn = witness_generator.write_inout(B128::MULTIPLICATIVE_GENERATOR.pow(6765));
+		let x0 = witness_generator.write_inout(x0, B128::ONE);
+		let x1 = witness_generator.write_inout(x1, B128::MULTIPLICATIVE_GENERATOR);
+		let xn = witness_generator.write_inout(xn, B128::MULTIPLICATIVE_GENERATOR.pow(6765));
 		let out = fibonacci(&mut witness_generator, x0, x1, 20);
 		witness_generator.assert_eq(out, xn);
 		let witness = witness_generator.build();
