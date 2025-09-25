@@ -69,12 +69,7 @@ where
 	// BitAnd and IntMul share the same `r_zhat_prime`.
 	let h_triplet = build_h_triplet(bitand_data.r_zhat_prime)?;
 
-	run_phase_1_sumcheck(
-		g_triplet,
-		h_triplet,
-		bitand_data.batched_eval() + intmul_data.batched_eval(),
-		transcript,
-	)
+	run_phase_1_sumcheck(g_triplet, h_triplet, transcript)
 }
 
 /// Runs the phase 1 sumcheck protocol for shift constraint verification.
@@ -106,18 +101,19 @@ where
 fn run_phase_1_sumcheck<F: Field, P: PackedField<Scalar = F>, C: Challenger>(
 	g_triplet: MultilinearTriplet<P>,
 	h_triplet: MultilinearTriplet<P>,
-	sum: F,
 	transcript: &mut ProverTranscript<C>,
 ) -> Result<SumcheckOutput<F>, Error> {
 	// Build `BivariateProductSumcheckProver` provers.
 	let mut provers = {
 		let sll_sum = inner_product_buffers(&g_triplet.sll, &h_triplet.sll);
 		let srl_sum = inner_product_buffers(&g_triplet.srl, &h_triplet.srl);
-		let sra_sum = sum - sll_sum - srl_sum;
+		let sra_sum = inner_product_buffers(&g_triplet.sra, &h_triplet.sra);
+		let rotr_sum = inner_product_buffers(&g_triplet.rotr, &h_triplet.rotr);
 		[
 			(g_triplet.sll, h_triplet.sll, sll_sum),
 			(g_triplet.srl, h_triplet.srl, srl_sum),
 			(g_triplet.sra, h_triplet.sra, sra_sum),
+			(g_triplet.rotr, h_triplet.rotr, rotr_sum),
 		]
 		.into_iter()
 		.map(|(left_buf, right_buf, sum)| {
