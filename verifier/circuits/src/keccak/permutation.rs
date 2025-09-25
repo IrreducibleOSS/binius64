@@ -4,8 +4,48 @@ use std::array;
 use binius_core::word::Word;
 use binius_frontend::{CircuitBuilder, Wire, WitnessFiller};
 
-use crate::keccak::reference::{R, RC, idx};
-pub const PADDING_BYTE: u8 = 0x01;
+// ι round constants
+pub const RC: [u64; 24] = [
+	0x0000_0000_0000_0001,
+	0x0000_0000_0000_8082,
+	0x8000_0000_0000_808A,
+	0x8000_0000_8000_8000,
+	0x0000_0000_0000_808B,
+	0x0000_0000_8000_0001,
+	0x8000_0000_8000_8081,
+	0x8000_0000_0000_8009,
+	0x0000_0000_0000_008A,
+	0x0000_0000_0000_0088,
+	0x0000_0000_8000_8009,
+	0x0000_0000_8000_000A,
+	0x0000_0000_8000_808B,
+	0x8000_0000_0000_008B,
+	0x8000_0000_0000_8089,
+	0x8000_0000_0000_8003,
+	0x8000_0000_0000_8002,
+	0x8000_0000_0000_0080,
+	0x0000_0000_0000_800A,
+	0x8000_0000_8000_000A,
+	0x8000_0000_8000_8081,
+	0x8000_0000_0000_8080,
+	0x0000_0000_8000_0001,
+	0x8000_0000_8000_8008,
+];
+
+// ρ rotation offsets r[x,y] in lane order (i = x + 5*y)
+#[rustfmt::skip]
+pub const R: [u32; 25] =  [
+	 0,  1, 62, 28, 27,
+	36, 44,  6, 55, 20,
+	 3, 10, 43, 25, 39,
+	41, 45, 15, 21,  8,
+	18,  2, 61, 56, 14,
+];
+
+#[inline(always)]
+pub const fn idx(x: usize, y: usize) -> usize {
+	x + 5 * y
+}
 
 #[derive(Clone, Copy)]
 pub struct State {
@@ -141,10 +181,77 @@ mod tests {
 	use rand::{Rng, SeedableRng, rngs::StdRng};
 
 	use super::*;
-	use crate::keccak::reference::{
-		chi_reference, iota_reference, keccak_f1600_reference, keccak_permutation_round_reference,
-		rho_pi_reference, theta_reference,
-	};
+
+	mod reference {
+		use super::{R, RC, idx};
+
+		pub fn theta(state: &mut [u64; 25]) {
+			let mut c = [0u64; 5];
+			for x in 0..5 {
+				c[x] =
+					state[idx(x, 0)]
+						^ state[idx(x, 1)] ^ state[idx(x, 2)]
+						^ state[idx(x, 3)] ^ state[idx(x, 4)];
+			}
+			let d = [
+				c[4] ^ c[1].rotate_left(1),
+				c[0] ^ c[2].rotate_left(1),
+				c[1] ^ c[3].rotate_left(1),
+				c[2] ^ c[4].rotate_left(1),
+				c[3] ^ c[0].rotate_left(1),
+			];
+
+			for y in 0..5 {
+				for x in 0..5 {
+					state[idx(x, y)] ^= d[x];
+				}
+			}
+		}
+
+		#[inline(always)]
+		pub fn rho_pi(state: &mut [u64; 25]) {
+			let mut temp = [state[0]; 25];
+			for y in 0..5 {
+				for x in 0..5 {
+					temp[idx(y, (2 * x + 3 * y) % 5)] = state[idx(x, y)].rotate_left(R[idx(x, y)]);
+				}
+			}
+			*state = temp;
+		}
+
+		pub fn iota(state: &mut [u64; 25], round: usize) {
+			state[0] ^= RC[round];
+		}
+
+		#[inline(always)]
+		pub fn chi(state: &mut [u64; 25]) {
+			for y in 0..5 {
+				let a0 = state[idx(0, y)];
+				let a1 = state[idx(1, y)];
+				let a2 = state[idx(2, y)];
+				let a3 = state[idx(3, y)];
+				let a4 = state[idx(4, y)];
+				state[idx(0, y)] = a0 ^ ((!a1) & a2);
+				state[idx(1, y)] = a1 ^ ((!a2) & a3);
+				state[idx(2, y)] = a2 ^ ((!a3) & a4);
+				state[idx(3, y)] = a3 ^ ((!a4) & a0);
+				state[idx(4, y)] = a4 ^ ((!a0) & a1);
+			}
+		}
+
+		pub fn keccak_permutation_round(state: &mut [u64; 25], round: usize) {
+			theta(state);
+			rho_pi(state);
+			chi(state);
+			iota(state, round);
+		}
+
+		pub fn keccak_f1600(state: &mut [u64; 25]) {
+			for round in 0..24 {
+				keccak_permutation_round(state, round);
+			}
+		}
+	}
 
 	#[test]
 	fn test_keccak_permutation() {
@@ -153,7 +260,7 @@ mod tests {
 		let builder = CircuitBuilder::new();
 
 		let input_words = State {
-			words: std::array::from_fn(|_| builder.add_inout()),
+			words: array::from_fn(|_| builder.add_inout()),
 		};
 
 		let permutation = Permutation::new(&builder, input_words);
@@ -168,7 +275,7 @@ mod tests {
 		circuit.populate_wire_witness(&mut w).unwrap();
 
 		let mut expected_output = initial_state;
-		keccak_f1600_reference(&mut expected_output);
+		reference::keccak_f1600(&mut expected_output);
 
 		for i in 0..25 {
 			assert_eq!(w[permutation.output_state.words[i]], Word(expected_output[i]));
@@ -220,7 +327,7 @@ mod tests {
 		let mut rng = StdRng::seed_from_u64(0);
 		let input_state = rng.random::<[u64; 25]>();
 
-		validate_circuit_component(Permutation::keccak_f1600, keccak_f1600_reference, input_state);
+		validate_circuit_component(Permutation::keccak_f1600, reference::keccak_f1600, input_state);
 	}
 
 	#[test]
@@ -230,7 +337,7 @@ mod tests {
 
 		validate_circuit_component(
 			|b, state| Permutation::keccak_permutation_round(b, state, 0),
-			|state| keccak_permutation_round_reference(state, 0),
+			|state| reference::keccak_permutation_round(state, 0),
 			input_state,
 		);
 	}
@@ -240,11 +347,7 @@ mod tests {
 		let mut rng = StdRng::seed_from_u64(0);
 		let input_state = rng.random::<[u64; 25]>();
 
-		validate_circuit_component(
-			Permutation::theta,
-			|state| theta_reference(state, 0),
-			input_state,
-		);
+		validate_circuit_component(Permutation::theta, reference::theta, input_state);
 	}
 
 	#[test]
@@ -252,11 +355,7 @@ mod tests {
 		let mut rng = StdRng::seed_from_u64(0);
 		let input_state = rng.random::<[u64; 25]>();
 
-		validate_circuit_component(
-			Permutation::rho_pi,
-			|state| rho_pi_reference(state, 0),
-			input_state,
-		);
+		validate_circuit_component(Permutation::rho_pi, reference::rho_pi, input_state);
 	}
 
 	#[test]
@@ -264,7 +363,7 @@ mod tests {
 		let mut rng = StdRng::seed_from_u64(0);
 		let input_state = rng.random::<[u64; 25]>();
 
-		validate_circuit_component(Permutation::chi, chi_reference, input_state);
+		validate_circuit_component(Permutation::chi, reference::chi, input_state);
 	}
 
 	#[test]
@@ -274,7 +373,7 @@ mod tests {
 
 		validate_circuit_component(
 			|b, state| Permutation::iota(b, state, 0),
-			|state| iota_reference(state, 0),
+			|state| reference::iota(state, 0),
 			input_state,
 		);
 	}

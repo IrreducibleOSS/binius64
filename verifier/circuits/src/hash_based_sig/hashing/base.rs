@@ -9,6 +9,7 @@ use crate::{concat::Concat, fixed_byte_vec::ByteVec, keccak::Keccak};
 /// which both follow the pattern: `Keccak256(domain_param || tweak_byte || additional_data)`
 ///
 /// # Arguments
+///
 /// * `builder` - Circuit builder for constructing constraints
 /// * `domain_param_wires` - The cryptographic domain parameter wires
 /// * `domain_param_len` - The actual domain parameter length in bytes
@@ -19,7 +20,7 @@ use crate::{concat::Concat, fixed_byte_vec::ByteVec, keccak::Keccak};
 ///
 /// # Returns
 /// A `Keccak` instance that computes the tweaked hash
-pub(super) fn circuit_tweaked_keccak(
+pub fn circuit_tweaked_keccak(
 	builder: &CircuitBuilder,
 	domain_param_wires: Vec<Wire>,
 	domain_param_len: usize,
