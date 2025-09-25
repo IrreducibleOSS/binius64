@@ -2,7 +2,7 @@
 
 use std::{array, collections::BTreeMap, iter::successors};
 
-use binius_field::BinaryField128bGhash as B128;
+use binius_field::{BinaryField128bGhash as B128, Field};
 use bytemuck::zeroed_vec;
 use smallvec::{SmallVec, smallvec};
 
@@ -53,6 +53,29 @@ struct MulConstraint {
 pub struct ConstraintSystem {
 	witness_size: u32,
 	index_map: BTreeMap<ConstraintWire, WitnessIndex>,
+	add_constraints: Vec<AddConstraint>,
+	mul_constraints: Vec<MulConstraint>,
+}
+
+impl ConstraintSystem {
+	pub fn validate(&self, witness: &[B128]) {
+		assert_eq!(witness.len(), self.witness_size as usize);
+
+		for AddConstraint(term) in &self.add_constraints {
+			let sum = term
+				.iter()
+				.map(|wire| witness[wire.0 as usize])
+				.sum::<B128>();
+			assert!(sum.is_zero());
+		}
+
+		for MulConstraint { a, b, c } in &self.mul_constraints {
+			let a_val = witness[a.0 as usize];
+			let b_val = witness[b.0 as usize];
+			let c_val = witness[c.0 as usize];
+			assert_eq!(a_val * b_val, c_val);
+		}
+	}
 }
 
 pub struct ConstraintBuilder {
@@ -75,13 +98,20 @@ impl ConstraintBuilder {
 	}
 
 	pub fn build(self) -> ConstraintSystem {
-		let witness_size = self.alloc.n_wires;
+		let Self {
+			alloc,
+			add_constraints,
+			mul_constraints,
+		} = self;
+		let witness_size = alloc.n_wires;
 		let index_map = (0..witness_size)
 			.map(|i| (ConstraintWire(i), WitnessIndex(i)))
 			.collect();
 		ConstraintSystem {
 			witness_size,
 			index_map,
+			add_constraints,
+			mul_constraints,
 		}
 	}
 }
@@ -159,6 +189,10 @@ impl<'a> WitnessGenerator<'a> {
 	pub fn write_inout(&mut self, value: B128) -> WitnessWire {
 		self.write_value(value)
 	}
+
+	pub fn build(self) -> Vec<B128> {
+		self.value_vec
+	}
 }
 
 impl<'a> CircuitBuilder for WitnessGenerator<'a> {
@@ -231,5 +265,8 @@ mod tests {
 		let xn = witness_generator.write_inout(B128::MULTIPLICATIVE_GENERATOR.pow(6765));
 		let out = fibonacci(&mut witness_generator, x0, x1, 20);
 		witness_generator.assert_eq(out, xn);
+		let witness = witness_generator.build();
+
+		constraint_system.validate(&witness);
 	}
 }
