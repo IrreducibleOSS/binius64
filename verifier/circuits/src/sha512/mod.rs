@@ -505,7 +505,7 @@ pub fn sha512_fixed(builder: &CircuitBuilder, message: &[Wire], len_bytes: usize
 
 	// Create padded message wires
 	let mut padded_message = Vec::with_capacity(n_padded_words);
-	if len_bytes % 8 == 0 {
+	if len_bytes.is_multiple_of(8) {
 		// Message ends at a word boundary - all words are complete
 		padded_message.extend_from_slice(message);
 		// Next word starts with 0x80 delimiter
