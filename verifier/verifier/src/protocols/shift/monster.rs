@@ -13,7 +13,7 @@ use crate::config::{LOG_WORD_SIZE_BITS, WORD_SIZE_BITS};
 /// Evaluates the three h multilinear polynomials (corresponding to SLL, SRL, SRA) at challenge
 /// points.
 ///
-/// This is the verifier's version of the h-triplet evaluation - instead of building
+/// This is the verifier's version of the h-parts evaluation - instead of building
 /// full multilinear polynomials, it directly computes their evaluations.
 pub fn evaluate_h_op<F: Field>(l_tilde: &[F], r_j: &[F], r_s: &[F]) -> [F; SHIFT_VARIANT_COUNT] {
 	assert_eq!(l_tilde.len(), WORD_SIZE_BITS);

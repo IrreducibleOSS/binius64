@@ -17,7 +17,6 @@ use super::{
 	SHIFT_VARIANT_COUNT,
 	error::Error,
 	key_collection::{KeyCollection, Operation},
-	phase_1::MultilinearTriplet,
 	prove::PreparedOperatorData,
 };
 
@@ -30,11 +29,11 @@ use super::{
 ///
 /// # Usage in Protocol
 ///
-/// Used in phase 1, thus returning a `MultilinearTriplet` defined in `super::phase_1`.
-#[instrument(skip_all, name = "build_h_triplet")]
-pub fn build_h_triplet<F, P: PackedField<Scalar = F>>(
+/// Used in phase 1, thus returning an array of multilinear evaluations.
+#[instrument(skip_all, name = "build_h_parts")]
+pub fn build_h_parts<F, P: PackedField<Scalar = F>>(
 	r_zhat_prime: F,
-) -> Result<MultilinearTriplet<P>, Error>
+) -> Result<[FieldBuffer<P>; SHIFT_VARIANT_COUNT], Error>
 where
 	F: BinaryField + From<AESTowerField8b>,
 {
@@ -75,12 +74,7 @@ where
 	let sra = FieldBuffer::from_values(&sra_data)?;
 	let rotr = FieldBuffer::from_values(&rotr_data)?;
 
-	Ok(MultilinearTriplet {
-		sll,
-		srl,
-		sra,
-		rotr,
-	})
+	Ok([sll, srl, sra, rotr])
 }
 
 /// Constructs the "monster multilinear" that combines all shift operations into a single
@@ -231,13 +225,11 @@ mod tests {
 			let l_tilde = lagrange_evals(&subspace, r_zhat_prime);
 			let succinct_evaluations = evaluate_h_op(&l_tilde, &r_j, &r_s);
 
-			// Method 2: Direct evaluation via multilinear triplet
-			let h_triplet = build_h_triplet(r_zhat_prime).unwrap();
+			// Method 2: Direct evaluation via multilinear part
+			let h_parts = build_h_parts(r_zhat_prime).unwrap();
 			let evaluation_point: Vec<F> = [r_j.clone(), r_s.clone()].concat();
 			let tensor = eq_ind_partial_eval::<P>(&evaluation_point);
-
-			let direct_evaluations = [h_triplet.sll, h_triplet.srl, h_triplet.sra, h_triplet.rotr]
-				.map(|buf| inner_product_buffers(&buf, &tensor));
+			let direct_evaluations = h_parts.map(|buf| inner_product_buffers(&buf, &tensor));
 
 			assert_eq!(
 				succinct_evaluations, direct_evaluations,
