@@ -157,26 +157,14 @@ impl Word {
 	/// Rotate Right by a given number of bits followed by masking with a 32-bit mask.
 	pub fn rotr_32(self, n: u32) -> Word {
 		let Word(value) = self;
-		let n = n % 32; // Ensure n is within 0-31 range
-		// Extract lower 32 bits for rotation
-		let value_32 = value & 0x00000000_FFFFFFFF;
-		if n == 0 {
-			return Word(value_32); // Avoid full-width shift
-		}
-		// Rotate right: (value >> n) | (value << (32 - n))
-		let result = ((value_32 >> n) | (value_32 << (32 - n))) & 0x00000000_FFFFFFFF;
-		Word(result)
+		let value_32 = (value as u32).rotate_right(n);
+		Word(value_32 as u64)
 	}
 
 	/// Rotate Right by a given number of bits.
 	pub fn rotr(self, n: u32) -> Word {
 		let Word(value) = self;
-		let n = n % 64; // Ensure n is within 0-63 range
-		if n == 0 {
-			return self; // Avoid full-width shift
-		}
-		let result = (value << (64 - n)) | (value >> n);
-		Word(result)
+		Word(value.rotate_right(n))
 	}
 
 	/// Unsigned integer multiplication.
@@ -189,7 +177,7 @@ impl Word {
 		let result = (lhs as u128) * (rhs as u128);
 
 		let hi = (result >> 64) as u64;
-		let lo = (result & 0x0000000000000000_FFFFFFFFFFFFFFFF) as u64;
+		let lo = result as u64;
 		(Word(hi), Word(lo))
 	}
 
