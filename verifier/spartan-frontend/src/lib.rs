@@ -1,5 +1,7 @@
 // Copyright 2025 Irreducible Inc.
 
+mod r1cs;
+
 use std::{
 	array,
 	collections::{BTreeMap, HashMap},
