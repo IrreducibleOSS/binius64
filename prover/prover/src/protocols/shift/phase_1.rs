@@ -1,6 +1,6 @@
 // Copyright 2025 Irreducible Inc.
 
-use std::ops::Range;
+use std::{iter, ops::Range};
 
 use binius_core::word::Word;
 use binius_field::{
@@ -26,29 +26,17 @@ use tracing::instrument;
 use super::{
 	error::Error,
 	key_collection::{KeyCollection, Operation},
-	monster::build_h_triplet,
+	monster::build_h_parts,
 	prove::PreparedOperatorData,
 };
 use crate::protocols::sumcheck::{
 	bivariate_product::BivariateProductSumcheckProver, common::SumcheckProver,
 };
 
-/// `MultilinearTriplet` holds three field buffers, corresponding to the
-/// three shift variants. Every field buffer implicitly has
-/// `log_len = 2 * LOG_WORD_SIZE_BITS`.
-#[derive(Debug, Clone)]
-#[allow(dead_code)] // todo: REMOVE THIS when you transition to rotr
-pub struct MultilinearTriplet<P: PackedField> {
-	pub sll: FieldBuffer<P>,
-	pub srl: FieldBuffer<P>,
-	pub sra: FieldBuffer<P>,
-	pub rotr: FieldBuffer<P>, // rename to quadruplet? or just tuple?
-}
-
 // This is the number of variables in the g (and h) multilinears of phase 1.
 const LOG_LEN: usize = LOG_WORD_SIZE_BITS + LOG_WORD_SIZE_BITS;
 
-/// Constructs the "g" multilinear triplets for both BITAND and INTMUL operations.
+/// Constructs the "g" multilinear parts for both BITAND and INTMUL operations.
 /// Proves the first phase of the shift reduction.
 /// Computes the g and h multilinears and performs the sumcheck.
 #[instrument(skip_all, name = "prover_phase_1")]
@@ -63,18 +51,17 @@ where
 	F: BinaryField + From<AESTowerField8b> + WithUnderlier<Underlier: UnderlierWithBitOps>,
 	P: PackedField<Scalar = F> + WithUnderlier<Underlier: UnderlierWithBitOps>,
 {
-	let g_triplet: MultilinearTriplet<P> =
-		build_g_triplet(words, key_collection, bitand_data, intmul_data)?;
+	let g_parts = build_g_parts::<_, P>(words, key_collection, bitand_data, intmul_data)?;
 
 	// BitAnd and IntMul share the same `r_zhat_prime`.
-	let h_triplet = build_h_triplet(bitand_data.r_zhat_prime)?;
+	let h_parts = build_h_parts(bitand_data.r_zhat_prime)?;
 
-	run_phase_1_sumcheck(g_triplet, h_triplet, transcript)
+	run_phase_1_sumcheck(g_parts, h_parts, transcript)
 }
 
 /// Runs the phase 1 sumcheck protocol for shift constraint verification.
 ///
-/// Executes a sumcheck over bivariate products of g and h multilinear triplets for each
+/// Executes a sumcheck over bivariate products of g and h multilinear parts for each
 /// operation (BITAND, INTMUL). The protocol proves that the sum of g·h products across
 /// all shift variants equals the claimed batched evaluation.
 ///
@@ -85,13 +72,13 @@ where
 /// - g_srl · h_srl with claim `srl_sum`
 /// - g_sra · h_sra with claim `sar_sum = total_sum - sll_sum - srl_sum`
 ///
-/// The g triplets incorporate batching randomness (lambda weighting), while h triplets
+/// The g parts incorporate batching randomness (lambda weighting), while h parts
 /// encode the shift operation behavior at the univariate challenge points.
 ///
 /// # Parameters
 ///
-/// - `g_triplets`: g multilinear triplets for each operation (witness-dependent)
-/// - `h_triplets`: h multilinear triplets for each operation (challenge-dependent)
+/// - `g_parts`: g multilinear parts for each operation (witness-dependent)
+/// - `h_parts`: h multilinear parts for each operation (challenge-dependent)
 /// - `sums`: Expected total sums for each operation from lambda-weighted evaluation claims
 ///
 /// # Returns
@@ -99,28 +86,17 @@ where
 /// `SumcheckOutput` containing the challenge vector and final evaluation `gamma`
 #[instrument(skip_all, name = "run_sumcheck")]
 fn run_phase_1_sumcheck<F: Field, P: PackedField<Scalar = F>, C: Challenger>(
-	g_triplet: MultilinearTriplet<P>,
-	h_triplet: MultilinearTriplet<P>,
+	g_parts: [FieldBuffer<P>; SHIFT_VARIANT_COUNT],
+	h_parts: [FieldBuffer<P>; SHIFT_VARIANT_COUNT],
 	transcript: &mut ProverTranscript<C>,
 ) -> Result<SumcheckOutput<F>, Error> {
 	// Build `BivariateProductSumcheckProver` provers.
-	let mut provers = {
-		let sll_sum = inner_product_buffers(&g_triplet.sll, &h_triplet.sll);
-		let srl_sum = inner_product_buffers(&g_triplet.srl, &h_triplet.srl);
-		let sra_sum = inner_product_buffers(&g_triplet.sra, &h_triplet.sra);
-		let rotr_sum = inner_product_buffers(&g_triplet.rotr, &h_triplet.rotr);
-		[
-			(g_triplet.sll, h_triplet.sll, sll_sum),
-			(g_triplet.srl, h_triplet.srl, srl_sum),
-			(g_triplet.sra, h_triplet.sra, sra_sum),
-			(g_triplet.rotr, h_triplet.rotr, rotr_sum),
-		]
-		.into_iter()
-		.map(|(left_buf, right_buf, sum)| {
-			BivariateProductSumcheckProver::new([left_buf, right_buf], sum)
+	let mut provers = iter::zip(g_parts, h_parts)
+		.map(|(g_part, h_part)| {
+			let sum = inner_product_buffers(&g_part, &h_part);
+			BivariateProductSumcheckProver::new([g_part, h_part], sum)
 		})
-		.collect::<Result<Vec<_>, _>>()?
-	};
+		.collect::<Result<Vec<_>, _>>()?;
 
 	// Perform the sumcheck rounds, collecting challenges.
 	let n_vars = 2 * LOG_WORD_SIZE_BITS;
@@ -172,7 +148,7 @@ fn run_phase_1_sumcheck<F: Field, P: PackedField<Scalar = F>, C: Challenger>(
 	})
 }
 
-/// Constructs the "g" multilinear triplets for both BITAND and INTMUL operations.
+/// Constructs the "g" multilinear parts for both BITAND and INTMUL operations.
 ///
 /// This function builds the g multilinear polynomials used in phase 1 of the shift protocol.
 /// For each operation (BITAND and INTMUL), it constructs three multilinear polynomials
@@ -189,15 +165,14 @@ fn run_phase_1_sumcheck<F: Field, P: PackedField<Scalar = F>, C: Challenger>(
 ///
 /// # Returns
 ///
-/// An array `[bitand_triplet, intmul_triplet]` where each triplet contains the three
-/// shift variant multilinears for that operation.
+/// An array of multilinear extensions of each shift variant part.
 ///
 /// # Usage
 ///
 /// Used in phase 1 to construct the constant size g multilinears
 /// that will participate in the phase 1 sumcheck protocol.
-#[instrument(skip_all, name = "build_g_triplet")]
-fn build_g_triplet<
+#[instrument(skip_all, name = "build_g_parts")]
+fn build_g_parts<
 	F: BinaryField + WithUnderlier<Underlier: UnderlierWithBitOps>,
 	P: PackedField<Scalar = F> + WithUnderlier<Underlier: UnderlierWithBitOps>,
 >(
@@ -205,7 +180,7 @@ fn build_g_triplet<
 	key_collection: &KeyCollection,
 	bitand_operator_data: &PreparedOperatorData<F>,
 	intmul_operator_data: &PreparedOperatorData<F>,
-) -> Result<MultilinearTriplet<P>, Error> {
+) -> Result<[FieldBuffer<P>; SHIFT_VARIANT_COUNT], Error> {
 	let acc_size: usize = SHIFT_VARIANT_COUNT << (LOG_LEN.saturating_sub(P::LOG_WIDTH));
 
 	assert!(
@@ -296,40 +271,30 @@ fn build_g_triplet<
 			},
 		);
 
-	let triplet = build_multilinear_triplet(&multilinears)?;
-
-	Ok(triplet)
+	let parts = build_multilinear_parts(&multilinears)?;
+	Ok(parts)
 }
 
-/// Builds a multilinear triplet for a single operation by combining its operand multilinears.
+/// Builds the multilinear parts for a single operation by combining its operand multilinears.
 ///
 /// Takes the raw multilinears for all operands and shift variants of an operation,
-/// applies lambda weighting to each operand, and combines them into a single triplet.
+/// applies lambda weighting to each operand, and combines them into parts.
 /// Each operand of index `i` gets weighted by λ^(i+1).
-#[instrument(skip_all, name = "build_multilinear_triplet")]
-fn build_multilinear_triplet<P: PackedField>(
+#[instrument(skip_all, name = "build_multilinear_parts")]
+fn build_multilinear_parts<P: PackedField>(
 	multilinears: &[P],
-) -> Result<MultilinearTriplet<P>, Error> {
+) -> Result<[FieldBuffer<P>; SHIFT_VARIANT_COUNT], Error> {
 	assert!(
 		P::LOG_WIDTH < LOG_LEN,
 		"P::WIDTH is not supposed to exceed 8, so this statement must hold"
 	);
 
-	let [sll_chunk, srl_chunk, sra_chunk, rotr_chunk] = multilinears
+	let parts = multilinears
 		.chunks(1 << (LOG_LEN - P::LOG_WIDTH))
-		.collect::<Vec<_>>()
+		.map(|chunk| FieldBuffer::new(LOG_LEN, chunk.to_vec().into_boxed_slice()))
+		.collect::<Result<Vec<_>, _>>()?
 		.try_into()
 		.expect("chunk has SHIFT_VARIANT_COUNT parts of size 1 << LOG_LEN");
 
-	let sll = FieldBuffer::new(LOG_LEN, sll_chunk.to_vec().into_boxed_slice())?;
-	let srl = FieldBuffer::new(LOG_LEN, srl_chunk.to_vec().into_boxed_slice())?;
-	let sra = FieldBuffer::new(LOG_LEN, sra_chunk.to_vec().into_boxed_slice())?;
-	let rotr = FieldBuffer::new(LOG_LEN, rotr_chunk.to_vec().into_boxed_slice())?;
-
-	Ok(MultilinearTriplet {
-		sll,
-		srl,
-		sra,
-		rotr,
-	})
+	Ok(parts)
 }
