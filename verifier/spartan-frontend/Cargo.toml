@@ -1,0 +1,12 @@
+[package]
+name = "binius-spartan-frontend"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+binius-field = { path = "../field" }
+smallvec.workspace = true
+
+[lints]
+workspace = true
