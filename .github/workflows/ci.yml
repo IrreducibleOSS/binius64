@@ -107,9 +107,9 @@ jobs:
         test:
           - name: "test-all-features"
             command: |
-              ALL_FEATURES_WO_BAIL_PANIC=$(.github/scripts/get-features-without-bail-panic.sh | tail -1)
-              echo "ALL_FEATURES_WO_BAIL_PANIC: $ALL_FEATURES_WO_BAIL_PANIC"
-              cargo nextest run --workspace --release --features "$ALL_FEATURES_WO_BAIL_PANIC" --no-fail-fast
+              ALL_FEATURES=$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[].features | to_entries | .[].key' | grep -v '^default$' | sort -u | paste -sd "," -)
+              echo "ALL_FEATURES: $ALL_FEATURES"
+              cargo nextest run --workspace --release --features "$ALL_FEATURES" --no-fail-fast
             rustflags: "-C debug-assertions -C target-cpu=native"
           # Build against wasm32-unknown-unknown target to that our libraries compile to wasm.
           - name: "vanilla-wasm32"
