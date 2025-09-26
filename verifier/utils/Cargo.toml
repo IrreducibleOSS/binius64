@@ -9,7 +9,6 @@ build = "build.rs"
 workspace = true
 
 [dependencies]
-auto_impl.workspace = true
 bytemuck = { workspace = true, features = ["extern_crate_alloc"] }
 bytes.workspace = true
 cfg-if.workspace = true
