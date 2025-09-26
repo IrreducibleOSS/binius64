@@ -10,6 +10,7 @@ use binius_field::{
 };
 use binius_math::{
 	FieldBuffer, inner_product::inner_product_subfield, multilinear::eq::eq_ind_partial_eval,
+	span::expand_subset_sums_array,
 };
 use binius_utils::{
 	checked_arithmetics::{checked_int_div, checked_log_2},
@@ -146,7 +147,7 @@ where
 		.map(|chunk| {
 			let chunk = <[B128; CHUNK_BITS]>::try_from(chunk)
 				.expect("vec.len() == 128; thus, chunks must be exact CHUNK_BITS in size");
-			expand_subset_sums::<_, CHUNK_BITS, { 1 << CHUNK_BITS }>(chunk)
+			expand_subset_sums_array::<_, CHUNK_BITS, { 1 << CHUNK_BITS }>(chunk)
 		})
 		.collect::<Vec<_>>();
 
@@ -229,7 +230,7 @@ where
 
 					// Build the lookup table of subset sums of the vector chunk elements.
 					let lookup =
-						expand_subset_sums::<_, CHUNK_BITS, { 1 << CHUNK_BITS }>(vec_scalars);
+						expand_subset_sums_array::<_, CHUNK_BITS, { 1 << CHUNK_BITS }>(vec_scalars);
 
 					square_transpose_const_size::<_, LOG_CHUNK_BITS, CHUNK_BITS>(
 						mat_scalars
@@ -261,55 +262,6 @@ where
 				lhs
 			},
 		)
-}
-
-/// Expands an array of field elements into all possible subset sums.
-///
-/// For an input array `[a, b, c]`, this computes all possible sums of subsets:
-/// `[0, a, b, a+b, c, a+c, b+c, a+b+c]`
-///
-/// This is used to create lookup tables for the Method of Four Russians optimization,
-/// where we precompute all possible combinations of a small set of values to avoid
-/// doing the additions at runtime.
-///
-/// ## Type Parameters
-///
-/// * `F` - The field element type
-/// * `N` - Size of the input array
-/// * `N_EXP2` - Size of the output array, must be 2^N
-///
-/// ## Arguments
-///
-/// * `elems` - Input array of N field elements
-///
-/// ## Returns
-///
-/// An array of size N_EXP2 containing all possible subset sums of the input elements
-///
-/// ## Preconditions
-///
-/// * N_EXP2 must equal 2^N
-///
-/// ## Example
-///
-/// ```ignore
-/// let input = [F::ONE, F::from(2)];
-/// let sums = expand_subset_sums(input);
-/// // sums = [F::ZERO, F::ONE, F::from(2), F::from(3)]
-/// ```
-fn expand_subset_sums<F: Field, const N: usize, const N_EXP2: usize>(elems: [F; N]) -> [F; N_EXP2] {
-	// TODO: deduplicate this code with `fold_words` and `create_partial_sums_lookup_tables`
-	assert_eq!(N_EXP2, 1 << N);
-
-	let mut expanded = [F::ZERO; N_EXP2];
-	for (i, elem_i) in elems.into_iter().enumerate() {
-		let span = &mut expanded[..1 << (i + 1)];
-		let (lo_half, hi_half) = span.split_at_mut(1 << i);
-		for (lo_half_i, hi_half_i) in iter::zip(lo_half, hi_half) {
-			*hi_half_i = *lo_half_i + elem_i;
-		}
-	}
-	expanded
 }
 
 /// Transpose square blocks of elements within packed field elements in place.
