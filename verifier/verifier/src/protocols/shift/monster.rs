@@ -1,9 +1,17 @@
 // Copyright 2025 Irreducible Inc.
 
-use binius_core::constraint_system::{Operand, ShiftedValueIndex};
-use binius_field::{AESTowerField8b, BinaryField, Field};
+use std::iter;
+
+use binius_core::{
+	ShiftVariant,
+	constraint_system::{Operand, ShiftedValueIndex},
+};
+use binius_field::{AESTowerField8b, BinaryField, Field, util::powers};
 use binius_math::{
-	BinarySubspace, multilinear::eq::eq_ind_partial_eval, univariate::lagrange_evals,
+	BinarySubspace, FieldBuffer,
+	inner_product::inner_product,
+	multilinear::{eq::eq_ind_partial_eval, evaluate::evaluate_inplace},
+	univariate::lagrange_evals,
 };
 use binius_utils::rayon::prelude::*;
 
@@ -78,49 +86,6 @@ pub fn evaluate_h_op<F: Field>(l_tilde: &[F], r_j: &[F], r_s: &[F]) -> [F; SHIFT
 	[sll, srl, sra, rotr]
 }
 
-/// Evaluates the term of the monster multilinear corresponding to an operand of an operation.
-///
-/// For each operand $m$ of an operation, there are multilinears $h_{\text{op}}$ and
-/// $M_{m,\text{op}}$ for $\text{op}$ in $\{\text{SLL, SRL, SRA}\}$. Together these make
-/// up the term of the monster multilinear corresponding to this operand as follows:
-/// $$
-///     \sum_{\text{op}} h_{\text{op}}(r_j, r_s) \cdot M_{m, \text{op}}(r_x', r_y, r_s)
-/// $$
-/// This function computes this term from the three evaluations $h_{\text{op}}(r_j, r_s)$,
-/// as well as $r_x'$, $r_y$, and $r_s$ (or rather their expanded tensors).
-///
-/// Note: This function uses multithreading (par_iter), which is an exception to the general
-/// rule that the verifier should be single-threaded. The monster multilinear evaluation
-/// takes time linear in the size of the constraint system, so we use parallelization here
-/// to make the verifier performant on large constraint systems.
-fn evaluate_monster_multilinear_term_for_operand<F: Field>(
-	operands: Vec<&Operand>,
-	h_op_r_s_product: &[[F; 64]; SHIFT_VARIANT_COUNT],
-	r_x_prime_tensor: &[F],
-	r_y_tensor: &[F],
-) -> F {
-	operands
-		.par_iter()
-		.zip(r_x_prime_tensor.par_iter())
-		.map(|(operand, &constraint_eval)| {
-			operand
-				.iter()
-				.map(
-					|ShiftedValueIndex {
-					     value_index,
-					     shift_variant,
-					     amount,
-					 }| {
-						constraint_eval
-							* h_op_r_s_product[*shift_variant as usize][*amount]
-							* r_y_tensor[value_index.0 as usize]
-					},
-				)
-				.sum::<F>()
-		})
-		.sum()
-}
-
 /// Evaluates the monster multilinear polynomial for a constraint operation.
 ///
 /// The monster multilinear encodes all constraints of a given type (AND or MUL) into
@@ -157,7 +122,7 @@ fn evaluate_monster_multilinear_term_for_operand<F: Field>(
 ///
 /// Returns an error if the binary subspace construction fails.
 pub fn evaluate_monster_multilinear_for_operation<F, const ARITY: usize>(
-	operand_vecs: Vec<Vec<&Operand>>,
+	operand_vecs: &[Vec<&Operand>],
 	operator_data: &OperatorData<F, ARITY>,
 	lambda: F,
 	r_j: &[F],
@@ -169,38 +134,101 @@ where
 {
 	let r_x_prime_tensor = eq_ind_partial_eval::<F>(&operator_data.r_x_prime);
 	let r_y_tensor = eq_ind_partial_eval::<F>(r_y);
-	let r_s_tensor = eq_ind_partial_eval::<F>(r_s);
 
+	// TODO: Pass this in instead of constructing subspace here.
 	let subspace = BinarySubspace::<AESTowerField8b>::with_dim(LOG_WORD_SIZE_BITS)?.isomorphic();
 	let l_tilde = lagrange_evals(&subspace, operator_data.r_zhat_prime);
 	let h_op_evals = evaluate_h_op(&l_tilde, r_j, r_s);
 
-	// Pre-expand tensor product of h_op_evals and r_s_tensor to reduce multiplications
-	let mut h_op_r_s_product = [[F::ZERO; 64]; SHIFT_VARIANT_COUNT];
-	for shift_variant in 0..SHIFT_VARIANT_COUNT {
-		for amount in 0..r_s_tensor.as_ref().len() {
-			h_op_r_s_product[shift_variant][amount] =
-				h_op_evals[shift_variant] * r_s_tensor.as_ref()[amount];
-		}
-	}
+	let lambda_powers = powers(lambda).skip(1).take(ARITY).collect::<Vec<_>>();
+	let evals = evaluate_matrices(operand_vecs, &lambda_powers, &r_x_prime_tensor, &r_y_tensor);
 
-	// Use parallelization for performance (see explanation in
-	// `evaluate_monster_multilinear_term_for_operand`)
-	let eval = operand_vecs
-		.into_par_iter()
-		.enumerate()
-		.map(|(i, operand_vec)| {
-			lambda.pow([i as u64 + 1])
-				* evaluate_monster_multilinear_term_for_operand(
-					operand_vec,
-					&h_op_r_s_product,
-					r_x_prime_tensor.as_ref(),
-					r_y_tensor.as_ref(),
-				)
-		})
-		.sum();
+	let eval = inner_product(
+		evals.map(|mut evals_op| {
+			let evals_op = FieldBuffer::new(LOG_WORD_SIZE_BITS, &mut evals_op[..])
+				.expect("evals_op is an array with length 2^LOG_WORD_SIZE_BITS");
+			evaluate_inplace(evals_op, r_s).expect("precondition: r_s length is LOG_WORD_SIZE_BITS")
+		}),
+		h_op_evals,
+	);
 
 	Ok(eval)
+}
+
+/// Calculate a batched sum of the M_{\text{op}}(r'_x, r_y, s) matrices.
+///
+/// Computes one evaluation per shift op, shift amount pair. The matrix evaluations are scaled by
+/// the operand coefficients (λ powers) and accumulated.
+///
+/// # Arguments
+///
+/// * `operands` - Three-dimensional array of operands where:
+///   - dim 1: operation arity
+///   - dim 2: constraints
+///   - dim 3: shifted indices per term
+/// * `operand_coeffs` - Coefficients (λ powers) for batching operand evaluations
+/// * `r_x_prime_tensor` - Multilinear challenge tensor for constraint variables
+/// * `r_y_tensor` - Challenge tensor for word index variables
+///
+/// Note: This function uses multithreading (par_iter), which is an exception to the general
+/// rule that the verifier should be single-threaded. The sparse matrix evaluation takes time
+/// linear in the size of the constraint system, so we use parallelization here to make the
+/// verifier performant on large constraint systems.
+fn evaluate_matrices<F: BinaryField>(
+	operands: &[Vec<&Operand>],
+	operand_coeffs: &[F],
+	r_x_prime_tensor: &FieldBuffer<F>,
+	r_y_tensor: &FieldBuffer<F>,
+) -> [[F; WORD_SIZE_BITS]; SHIFT_VARIANT_COUNT] {
+	assert_eq!(operands.len(), operand_coeffs.len());
+
+	// Use parallelization for performance (see docstring for rationale).
+	(operand_coeffs, operands)
+		.into_par_iter()
+		.map(|(&coeff, constraint_operands)| {
+			let mut evals = [[F::ZERO; WORD_SIZE_BITS]; SHIFT_VARIANT_COUNT];
+			for (&operand_terms, &constraint_eval) in
+				iter::zip(constraint_operands, r_x_prime_tensor.as_ref())
+			{
+				for ShiftedValueIndex {
+					value_index,
+					shift_variant,
+					amount,
+				} in operand_terms
+				{
+					let shift_id = match shift_variant {
+						ShiftVariant::Sll => 0,
+						ShiftVariant::Slr => 1,
+						ShiftVariant::Sar => 2,
+						ShiftVariant::Rotr => 3,
+					};
+					evals[shift_id][*amount] += constraint_eval
+						* r_y_tensor
+							.get(value_index.0 as usize)
+							.expect("constraint system value indices are in range");
+				}
+			}
+
+			// Scale all evaluations by the batching coefficient.
+			for evals_op in &mut evals {
+				for evals_op_s in &mut *evals_op {
+					*evals_op_s *= coeff;
+				}
+			}
+
+			evals
+		})
+		.reduce(
+			|| [[F::ZERO; WORD_SIZE_BITS]; SHIFT_VARIANT_COUNT],
+			|mut a, b| {
+				for (a_op, b_op) in iter::zip(&mut a, b) {
+					for (a_op_s, b_op_s) in iter::zip(&mut *a_op, b_op) {
+						*a_op_s += b_op_s;
+					}
+				}
+				a
+			},
+		)
 }
 
 #[cfg(test)]
