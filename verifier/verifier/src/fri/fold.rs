@@ -7,7 +7,7 @@ use binius_math::{
 	inner_product::inner_product_packed, line::extrapolate_line_packed, ntt::AdditiveNTT,
 };
 use binius_transcript::TranscriptReader;
-use binius_utils::{DeserializeBytes, bail};
+use binius_utils::DeserializeBytes;
 use bytes::Buf;
 
 use super::{FRIParams, error::Error};
@@ -189,7 +189,7 @@ where
 		transcript: &mut TranscriptReader<B>,
 	) -> Result<Option<Digest>, Error> {
 		if self.curr_round >= self.n_rounds() {
-			bail!(Error::InvalidArgs("FRI fold verifier: too many rounds".to_string()));
+			return Err(Error::InvalidArgs("FRI fold verifier: too many rounds".to_string()));
 		}
 
 		let needs_commitment = self.commit_rounds[self.curr_round];
@@ -222,7 +222,7 @@ where
 	/// The collected round commitments
 	pub fn finalize(self) -> Result<Vec<Digest>, Error> {
 		if !self.is_complete() {
-			bail!(Error::InvalidArgs(format!(
+			return Err(Error::InvalidArgs(format!(
 				"FRI fold verifier not complete: processed {} of {} rounds",
 				self.curr_round,
 				self.n_rounds()

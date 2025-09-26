@@ -4,7 +4,6 @@ use std::{fmt::Debug, mem::MaybeUninit};
 
 use binius_field::Field;
 use binius_utils::{
-	bail,
 	checked_arithmetics::log2_strict_usize,
 	mem::slice_assume_init_mut,
 	rayon::{prelude::*, slice::ParallelSlice},
@@ -38,13 +37,13 @@ where
 	C: ParallelPseudoCompression<Output<H::Digest>, 2>,
 {
 	if !elements.len().is_multiple_of(batch_size) {
-		bail!(Error::IncorrectBatchSize);
+		return Err(Error::IncorrectBatchSize);
 	}
 
 	let len = elements.len() / batch_size;
 
 	if !len.is_power_of_two() {
-		bail!(Error::PowerOfTwoLengthRequired);
+		return Err(Error::PowerOfTwoLengthRequired);
 	}
 
 	let log_len = log2_strict_usize(len);
@@ -129,7 +128,7 @@ impl<D: Clone> BinaryMerkleTree<D> {
 
 	pub fn layer(&self, layer_depth: usize) -> Result<&[D], Error> {
 		if layer_depth > self.log_len {
-			bail!(Error::IncorrectLayerDepth);
+			return Err(Error::IncorrectLayerDepth);
 		}
 		let range_start = self.inner_nodes.len() + 1 - (1 << (layer_depth + 1));
 

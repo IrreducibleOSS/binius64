@@ -4,10 +4,7 @@ use std::{array, fmt::Debug, marker::PhantomData};
 
 use binius_field::Field;
 use binius_transcript::{Buf, TranscriptReader};
-use binius_utils::{
-	bail,
-	checked_arithmetics::{log2_ceil_usize, log2_strict_usize},
-};
+use binius_utils::checked_arithmetics::{log2_ceil_usize, log2_strict_usize};
 use digest::{Digest, Output, core_api::BlockSizeUser};
 use getset::Getters;
 
@@ -51,13 +48,13 @@ where
 
 	fn proof_size(&self, len: usize, n_queries: usize, layer_depth: usize) -> Result<usize, Error> {
 		if !len.is_power_of_two() {
-			bail!(Error::PowerOfTwoLengthRequired)
+			return Err(Error::PowerOfTwoLengthRequired);
 		}
 
 		let log_len = log2_strict_usize(len);
 
 		if layer_depth > log_len {
-			bail!(Error::IncorrectLayerDepth)
+			return Err(Error::IncorrectLayerDepth);
 		}
 
 		Ok(((log_len - layer_depth - 1) * n_queries + (1 << layer_depth))
@@ -71,7 +68,7 @@ where
 		batch_size: usize,
 	) -> Result<(), Error> {
 		if !data.len().is_multiple_of(batch_size) {
-			bail!(Error::IncorrectBatchSize);
+			return Err(Error::IncorrectBatchSize);
 		}
 
 		let mut digests = data
@@ -84,7 +81,7 @@ where
 
 		fold_digests_vector_inplace(&self.compression, &mut digests)?;
 		if digests[0] != *root {
-			bail!(VerificationError::InvalidProof)
+			return Err(VerificationError::InvalidProof.into());
 		}
 		Ok(())
 	}
@@ -96,7 +93,7 @@ where
 		layer_digests: &[Self::Digest],
 	) -> Result<(), Error> {
 		if 1 << layer_depth != layer_digests.len() {
-			bail!(VerificationError::IncorrectVectorLength)
+			return Err(VerificationError::IncorrectVectorLength.into());
 		}
 
 		let mut digests = layer_digests.to_owned();
@@ -104,7 +101,7 @@ where
 		fold_digests_vector_inplace(&self.compression, &mut digests)?;
 
 		if digests[0] != *root {
-			bail!(VerificationError::InvalidProof)
+			return Err(VerificationError::InvalidProof.into());
 		}
 		Ok(())
 	}
@@ -119,12 +116,12 @@ where
 		proof: &mut TranscriptReader<B>,
 	) -> Result<(), Error> {
 		if (1 << layer_depth) != layer_digests.len() {
-			bail!(VerificationError::IncorrectVectorLength);
+			return Err(VerificationError::IncorrectVectorLength.into());
 		}
 
 		if index >= (1 << tree_depth) {
-			bail!(Error::IndexOutOfRange {
-				max: (1 << tree_depth) - 1
+			return Err(Error::IndexOutOfRange {
+				max: (1 << tree_depth) - 1,
 			});
 		}
 
@@ -152,7 +149,7 @@ where
 	D: Clone + Default + Send + Sync + Debug,
 {
 	if !digests.len().is_power_of_two() {
-		bail!(Error::PowerOfTwoLengthRequired);
+		return Err(Error::PowerOfTwoLengthRequired);
 	}
 
 	let mut len = digests.len() / 2;
