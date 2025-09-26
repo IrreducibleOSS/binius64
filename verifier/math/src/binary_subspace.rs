@@ -1,7 +1,7 @@
 // Copyright 2024-2025 Irreducible Inc.
 
 use binius_field::BinaryField;
-use binius_utils::{bail, iter::IterExtensions};
+use binius_utils::iter::IterExtensions;
 
 use super::error::Error;
 
@@ -46,7 +46,7 @@ impl<F: BinaryField> BinarySubspace<F> {
 	/// * `Error::DomainSizeTooLarge` if `dim` is greater than this subspace's dimension.
 	pub fn reduce_dim(&self, dim: usize) -> Result<Self, Error> {
 		if dim > self.dim() {
-			bail!(Error::DomainSizeTooLarge);
+			return Err(Error::DomainSizeTooLarge);
 		}
 		Ok(Self {
 			basis: self.basis[..dim].to_vec(),
@@ -89,7 +89,7 @@ impl<F: BinaryField> BinarySubspace<F> {
 
 	pub fn get_checked(&self, index: usize) -> Result<F, Error> {
 		if index >= 1 << self.basis.len() {
-			bail!(Error::ArgumentRangeError {
+			return Err(Error::ArgumentRangeError {
 				arg: "index".to_string(),
 				range: 0..1 << self.basis.len(),
 			});

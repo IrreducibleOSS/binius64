@@ -6,9 +6,7 @@ use binius_transcript::{
 	ProverTranscript,
 	fiat_shamir::{CanSampleBits, Challenger},
 };
-use binius_utils::{
-	SerializeBytes, bail, checked_arithmetics::log2_strict_usize, rayon::prelude::*,
-};
+use binius_utils::{SerializeBytes, checked_arithmetics::log2_strict_usize, rayon::prelude::*};
 use binius_verifier::{
 	fri::{
 		FRIParams,
@@ -65,7 +63,7 @@ where
 		committed: &'a MerkleProver::Committed,
 	) -> Result<Self, Error> {
 		if len_packed_slice(committed_codeword) < 1 << params.log_len() {
-			bail!(Error::InvalidArgs(
+			return Err(Error::InvalidArgs(
 				"Reed-Solomon code length must match interleaved codeword length".to_string(),
 			));
 		}
@@ -190,7 +188,7 @@ where
 		mut self,
 	) -> Result<(TerminateCodeword<F>, FRIQueryProver<'a, F, P, MerkleProver, VCS>), Error> {
 		if self.curr_round != self.n_rounds() {
-			bail!(Error::EarlyProverFinish);
+			return Err(Error::EarlyProverFinish);
 		}
 
 		let terminate_codeword = self
