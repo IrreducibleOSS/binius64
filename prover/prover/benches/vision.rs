@@ -7,7 +7,7 @@ use binius_prover::hash::{
 	parallel_digest::{MultiDigest, ParallelDigest, ParallelMultidigestImpl},
 	vision_4::{
 		digest::VisionHasherMultiDigest as VisionHasherMultiDigest_4,
-		permutation::batch_permutation as batch_permutation_4,
+		permutation::{batch_permutation as batch_permutation_4, batch_poseidon_permutation},
 	},
 	vision_6::{
 		digest::VisionHasherMultiDigest as VisionHasherMultiDigest_6,
@@ -76,11 +76,37 @@ fn bench_parallel_permutation_4(c: &mut Criterion) {
 		batch_permutation_4,
 		scratchpad,
 		M,
-		2,
-		4,
-		8,
-		16,
-		32,
+		// 2,
+		// 4,
+		// 8,
+		// 16,
+		// 32,
+		64,
+		128,
+		256
+	);
+
+	group.finish();
+}
+
+fn bench_parallel_poseidon_permutation_4(c: &mut Criterion) {
+	const M: usize = 4;
+	let mut group = c.benchmark_group("Parallel Poseidon Permutation 4");
+	let mut rng = rand::rng();
+
+	let scratchpad = &mut [Ghash::ZERO; 256 * M * 2];
+	bench_parallel_permutation_sizes_4!(
+		&mut group,
+		&mut rng,
+		// batch_permutation_4,
+		batch_poseidon_permutation,
+		scratchpad,
+		M,
+		// 2,
+		// 4,
+		// 8,
+		// 16,
+		// 32,
 		64,
 		128,
 		256
@@ -101,11 +127,11 @@ fn bench_parallel_permutation_6(c: &mut Criterion) {
 		batch_permutation_6,
 		scratchpad,
 		M,
-		2,
-		4,
-		8,
-		16,
-		32,
+		// 2,
+		// 4,
+		// 8,
+		// 16,
+		// 32,
 		64,
 		128,
 		256
@@ -223,7 +249,8 @@ fn bench_hash_vision_6(c: &mut Criterion) {
 criterion_group!(
 	parallel_permutation_bench,
 	bench_parallel_permutation_4,
-	bench_parallel_permutation_6
+	bench_parallel_poseidon_permutation_4,
+	// bench_parallel_permutation_6
 );
-criterion_group!(hash_vision_bench, bench_hash_vision_4, bench_hash_vision_6);
-criterion_main!(parallel_permutation_bench, hash_vision_bench);
+// criterion_group!(hash_vision_bench, bench_hash_vision_4, bench_hash_vision_6);
+criterion_main!(parallel_permutation_bench);
