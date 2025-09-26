@@ -24,6 +24,5 @@ rand = { workspace = true, features = ["std_rng"] }
 
 [features]
 default = []
-bail_panic = []
 rayon = ["dep:rayon"]
 platform-diagnostics = ["dep:regex"]
