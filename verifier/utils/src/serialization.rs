@@ -1,11 +1,10 @@
 // Copyright 2024-2025 Irreducible Inc.
 
-use auto_impl::auto_impl;
 use bytes::{Buf, BufMut};
+use generic_array::{ArrayLength, GenericArray};
 use thiserror::Error;
 
 /// Serialize data according to Mode param
-#[auto_impl(Box, &)]
 pub trait SerializeBytes {
 	fn serialize(&self, write_buf: impl BufMut) -> Result<(), SerializationError>;
 }
@@ -39,16 +38,9 @@ pub enum SerializationError {
 	UsizeTooLarge { size: usize },
 }
 
-// Copyright 2025 Irreducible Inc.
-
-use generic_array::{ArrayLength, GenericArray};
-
-impl<T: DeserializeBytes> DeserializeBytes for Box<T> {
-	fn deserialize(read_buf: impl Buf) -> Result<Self, SerializationError>
-	where
-		Self: Sized,
-	{
-		Ok(Self::new(T::deserialize(read_buf)?))
+impl<T: SerializeBytes + ?Sized> SerializeBytes for &T {
+	fn serialize(&self, write_buf: impl BufMut) -> Result<(), SerializationError> {
+		(**self).serialize(write_buf)
 	}
 }
 
