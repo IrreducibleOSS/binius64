@@ -1,7 +1,7 @@
 // Copyright 2025 Irreducible Inc.
 use binius_field::{BinaryField, PackedField};
 use binius_math::{FieldSlice, ntt::AdditiveNTT};
-use binius_utils::{bail, rayon::prelude::*};
+use binius_utils::rayon::prelude::*;
 use binius_verifier::{fri::FRIParams, merkle_tree::MerkleTreeScheme};
 
 use super::error::Error;
@@ -36,8 +36,8 @@ where
 	VCS: MerkleTreeScheme<F>,
 {
 	if message.log_len() != params.log_msg_len() {
-		bail!(Error::InvalidArgs(
-			"interleaved message length does not match code parameters".to_string()
+		return Err(Error::InvalidArgs(
+			"interleaved message length does not match code parameters".to_string(),
 		));
 	}
 

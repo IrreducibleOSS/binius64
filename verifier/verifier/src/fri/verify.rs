@@ -12,7 +12,7 @@ use binius_transcript::{
 	TranscriptReader, VerifierTranscript,
 	fiat_shamir::{CanSampleBits, Challenger},
 };
-use binius_utils::{DeserializeBytes, bail};
+use binius_utils::DeserializeBytes;
 use bytes::Buf;
 use itertools::izip;
 
@@ -61,19 +61,21 @@ where
 		challenges: &'a [F],
 	) -> Result<Self, Error> {
 		if round_commitments.len() != params.n_oracles() {
-			bail!(Error::InvalidArgs(format!(
+			return Err(Error::InvalidArgs(format!(
 				"got {} round commitments, expected {}",
 				round_commitments.len(),
 				params.n_oracles(),
-			)));
+			))
+			.into());
 		}
 
 		if challenges.len() != params.n_fold_rounds() {
-			bail!(Error::InvalidArgs(format!(
+			return Err(Error::InvalidArgs(format!(
 				"got {} folding challenges, expected {}",
 				challenges.len(),
 				params.n_fold_rounds(),
-			)));
+			))
+			.into());
 		}
 
 		let (interleave_challenges, fold_challenges) = challenges.split_at(params.log_batch_size());

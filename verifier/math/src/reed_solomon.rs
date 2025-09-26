@@ -7,12 +7,9 @@
 use std::mem::MaybeUninit;
 
 use binius_field::{BinaryField, ExtensionField, PackedExtension, PackedField};
-use binius_utils::{
-	bail,
-	rayon::{
-		iter::{IntoParallelRefMutIterator, ParallelBridge, ParallelIterator},
-		slice::ParallelSliceMut,
-	},
+use binius_utils::rayon::{
+	iter::{IntoParallelRefMutIterator, ParallelBridge, ParallelIterator},
+	slice::ParallelSliceMut,
 };
 use getset::{CopyGetters, Getters};
 
@@ -124,7 +121,7 @@ impl<F: BinaryField> ReedSolomonCode<F> {
 		log_batch_size: usize,
 	) -> Result<(), Error> {
 		if ntt.subspace(self.log_len()) != self.subspace {
-			bail!(Error::EncoderSubspaceMismatch);
+			return Err(Error::EncoderSubspaceMismatch);
 		}
 
 		let mut code = FieldSliceMut::from_slice(self.log_len() + log_batch_size, code)?;
@@ -198,7 +195,7 @@ impl<F: BinaryField> ReedSolomonCode<F> {
 		log_batch_size: usize,
 	) -> Result<(), Error> {
 		if ntt.subspace(self.log_len()) != self.subspace {
-			bail!(Error::EncoderSubspaceMismatch);
+			return Err(Error::EncoderSubspaceMismatch);
 		}
 
 		// Dimension checks
@@ -218,17 +215,19 @@ impl<F: BinaryField> ReedSolomonCode<F> {
 		};
 
 		if data.len() != expected_data_len {
-			bail!(Error::Math(MathError::IncorrectArgumentLength {
+			return Err(Error::Math(MathError::IncorrectArgumentLength {
 				arg: "data".to_string(),
 				expected: expected_data_len,
-			}));
+			})
+			.into());
 		}
 
 		if output.len() != expected_output_len {
-			bail!(Error::Math(MathError::IncorrectArgumentLength {
+			return Err(Error::Math(MathError::IncorrectArgumentLength {
 				arg: "output".to_string(),
 				expected: expected_output_len,
-			}));
+			})
+			.into());
 		}
 
 		let _scope = tracing::trace_span!(

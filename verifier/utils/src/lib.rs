@@ -6,7 +6,6 @@ pub mod array_2d;
 pub mod bitwise;
 pub mod checked_arithmetics;
 pub mod env;
-pub mod error_utils;
 pub mod iter;
 pub mod mem;
 #[cfg(feature = "platform-diagnostics")]
