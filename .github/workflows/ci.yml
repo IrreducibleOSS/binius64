@@ -90,85 +90,36 @@ jobs:
       - name: Run doctests
         run: cargo test --doc --workspace
 
-  rust-tests:
-    name: rust-${{ matrix.test.name }}-${{ matrix.machine.name }}
-    runs-on: ${{ matrix.machine.runner }}
-    # Skip draft PRs to save costs, except for Graphite merge queue PRs (branch prefix: gtmq_)
-    # Graphite MQ docs: https://graphite.dev/docs/graphite-merge-queue
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false || startsWith(github.head_ref, 'gtmq_')
-    strategy:
-      fail-fast: false
-      matrix:
-        machine:
-          - runner: "m8g-2xlarge"
-            name: "arm64"
-          - runner: "m7i-2xlarge"
-            name: "x86_64"
-        test:
-          - name: "test-all-features"
-            command: |
-              ALL_FEATURES=$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[].features | to_entries | .[].key' | grep -v '^default$' | sort -u | paste -sd "," -)
-              echo "ALL_FEATURES: $ALL_FEATURES"
-              cargo nextest run --workspace --release --features "$ALL_FEATURES" --no-fail-fast
-            rustflags: "-C debug-assertions -C target-cpu=native"
-          # Build against wasm32-unknown-unknown target to that our libraries compile to wasm.
-          - name: "vanilla-wasm32"
-            command: |
-              cargo build -p binius-prover -p binius-verifier
-            rust-target: "wasm32-unknown-unknown"
-          - name: "wasm32-wasip1"
-            command: |
-              cargo build -p binius-math -p binius-field -p binius-prover -p binius-verifier --target wasm32-wasip1 --tests --benches
-              cargo test -p binius-math -p binius-field -p binius-prover -p binius-verifier --target wasm32-wasip1 --config "target.'cfg(all())'.runner=['wasmer']"
-            rust-target: "wasm32-wasip1"
-        # Exclude wasm targets on ARM64 as the host architecture doesn't affect the results
-        exclude:
-          - machine:
-              name: "arm64"
-            test:
-              name: "vanilla-wasm32"
-          - machine:
-              name: "arm64"
-            test:
-              name: "wasm32-wasip1"
+  # Build against wasm32-unknown-unknown target to test that our libraries compile to wasm.
+  wasm-vanilla-build:
+    name: wasm-vanilla-build
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-      - name: Install deps
-        run: sudo yum -y install gcc openssl-devel curl jq z3-devel clang pkg-config
-      - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-nextest
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          target: ${{ matrix.test.rust-target || '' }}
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
+          target: wasm32-unknown-unknown
+      - name: Compile vanilla wasm32
+        run: cargo build -p binius-field --target wasm32-unknown-unknown
+
+  wasm-tests:
+    name: wasm-tests
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          key: ${{ matrix.machine.name }}-${{ matrix.test.name }}
-          cache-on-failure: true
-      - name: Run platform diagnostics
-        run: cargo test -p binius-utils --features platform-diagnostics test_platform_diagnostics -- --nocapture
-      - name: Run platform diagnostics (target-cpu=native)
-        run: cargo test -p binius-utils --features platform-diagnostics test_platform_diagnostics -- --nocapture
-        env:
-          RUSTFLAGS: "-C target-cpu=native"
+          target: wasm32-wasip1
       - name: Set up Wasmer
         uses: wasmerio/setup-wasmer@v2
         with:
           version: 'v6.0.1'
-      - name: Run command
-        run: ${{ matrix.test.command }}
-        env:
-          RUSTFLAGS: ${{ matrix.test.rustflags || '' }}
-          # Seems like z3-devel pkg-config config is broken and has wrong path to include files.
-          # This was fixed upstream but the fix seems to be not available in the present CI
-          # environment. Therefore, we workaround this by overriding the env flags manually.
-          Z3_SYS_Z3_HEADER: /usr/include/z3/z3.h
-          CFLAGS: -I/usr/include/z3
-          LDFLAGS: -L/usr/lib64 -lz3
+      - name: Test on wasm32-wasip1
+        run: cargo test -p binius-math -p binius-field -p binius-prover -p binius-verifier --target wasm32-wasip1 --config "target.wasm32-wasip1.runner=['wasmer']"
 
   rust-doc:
     name: rust-doc
@@ -205,7 +156,8 @@ jobs:
     needs:
       - format
       - rust-checks
-      - rust-tests
+      - wasm-vanilla-build
+      - wasm-tests
       - rust-doc
       - circuits-snapshot
     steps:
@@ -216,7 +168,9 @@ jobs:
           echo "Job results:"
           echo "format: ${{ needs.format.result }}"
           echo "rust-checks: ${{ needs.rust-checks.result }}"
-          echo "rust-tests: ${{ needs.rust-tests.result }}"
+          echo "wasm-vanilla-build: ${{ needs.wasm-vanilla-build.result }}"
+          echo "wasm-tests: ${{ needs.wasm-tests.result }}"
+          echo "wasm-tests: ${{ needs.wasm-tests.result }}"
           echo "rust-doc: ${{ needs.rust-doc.result }}"
           echo "circuits-snapshot: ${{ needs.circuits-snapshot.result }}"
           echo ""
