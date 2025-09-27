@@ -102,7 +102,7 @@ jobs:
         with:
           target: wasm32-unknown-unknown
       - name: Compile vanilla wasm32
-        run: cargo build -p binius-prover -p binius-verifier --target wasm32-unknown-unknown
+        run: cargo build -p binius-field --target wasm32-unknown-unknown
 
   wasm-tests:
     name: wasm-tests
