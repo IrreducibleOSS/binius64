@@ -269,7 +269,7 @@ where
 			.map(|AndConstraint { a, b, c }| (a, b, c))
 			.multiunzip();
 		evaluate_monster_multilinear_for_operation(
-			vec![a, b, c],
+			&[a, b, c],
 			bitand_data,
 			*bitand_lambda,
 			r_j,
@@ -284,7 +284,7 @@ where
 			.map(|MulConstraint { a, b, hi, lo }| (a, b, lo, hi))
 			.multiunzip();
 		evaluate_monster_multilinear_for_operation(
-			vec![a, b, lo, hi],
+			&[a, b, lo, hi],
 			intmul_data,
 			*intmul_lambda,
 			r_j,
