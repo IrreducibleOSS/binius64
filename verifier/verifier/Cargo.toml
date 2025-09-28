@@ -29,7 +29,7 @@ lazy_static.workspace = true
 assert_matches.workspace = true
 binius-math = { path = "../math", features = ["test-utils"] }
 proptest.workspace = true
-rand = { workspace = true, features = ["std_rng"] }
+rand.workspace = true
 itertools.workspace = true
 hex-literal.workspace = true
 
