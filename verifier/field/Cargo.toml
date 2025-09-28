@@ -15,9 +15,7 @@ derive_more.workspace = true
 rand.workspace = true
 seq-macro.workspace = true
 thiserror.workspace = true
-transpose.workspace = true
-tracing.workspace = true
-trait-set.workspace = true
+tracing = { workspace = true, optional = true }
 
 [dev-dependencies]
 criterion.workspace = true
@@ -32,7 +30,7 @@ getrandom = { workspace = true, features = ["wasm_js"] }
 [features]
 default = []
 benchmark_alternative_strategies = []
-trace_multiplications = []
+trace_multiplications = ["dep:tracing"]
 
 [lib]
 bench = false

@@ -10,11 +10,9 @@ workspace = true
 [dependencies]
 binius-core = { path = "../core" }
 binius-field = { path = "../field" }
-binius-frontend = { path = "../frontend" }
 binius-math = { path = "../math" }
 binius-transcript = { path = "../transcript" }
 binius-utils = { path = "../utils" }
-blake2.workspace = true
 bytemuck.workspace = true
 bytes.workspace = true
 digest.workspace = true
@@ -23,15 +21,11 @@ itertools.workspace = true
 sha2 = { workspace = true, features = ["compress"] }
 thiserror.workspace = true
 tracing.workspace = true
-lazy_static.workspace = true
 
 [dev-dependencies]
-assert_matches.workspace = true
 binius-math = { path = "../math", features = ["test-utils"] }
-proptest.workspace = true
 rand.workspace = true
 itertools.workspace = true
-hex-literal.workspace = true
 
 [features]
 default = ["rayon"]
