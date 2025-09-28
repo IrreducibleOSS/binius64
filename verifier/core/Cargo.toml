@@ -8,7 +8,6 @@ authors.workspace = true
 workspace = true
 
 [dependencies]
-binius-field = { path = "../field" }
 binius-utils = { path = "../utils" }
 bytemuck = { workspace = true }
 bytes = { workspace = true }
