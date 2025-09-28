@@ -20,7 +20,7 @@ thiserror.workspace = true
 trait-set.workspace = true
 
 [dev-dependencies]
-rand = { workspace = true, features = ["std_rng"] }
+rand.workspace = true
 
 [features]
 default = []

@@ -13,7 +13,7 @@ cranelift-entity = { workspace = true }
 hex-literal.workspace = true
 num-bigint = { workspace = true }
 num-integer = { workspace = true }
-rand = { workspace = true, features = ["std_rng", "thread_rng"] }
+rand.workspace = true
 petgraph.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -28,7 +28,7 @@ base64 = { workspace = true }
 blake2 = { workspace = true }
 hmac = { workspace = true }
 jwt-simple = { workspace = true }
-rand = { workspace = true, features = ["std_rng", "thread_rng"] }
+rand = { workspace = true, features = ["thread_rng"] }
 rsa = { workspace = true, features = ["sha2"] }
 hex-literal = { workspace = true }
 num-traits = { workspace = true }
