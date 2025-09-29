@@ -206,6 +206,10 @@ fn update_with_operand(
 				ShiftVariant::Slr => 1,
 				ShiftVariant::Sar => 2,
 				ShiftVariant::Rotr => 3,
+				ShiftVariant::Sll32 => 4,
+				ShiftVariant::Srl32 => 5,
+				ShiftVariant::Sra32 => 6,
+				ShiftVariant::Rotr32 => 7,
 			};
 			let id = (shift_variant_val << LOG_WORD_SIZE_BITS) + *amount as u16;
 

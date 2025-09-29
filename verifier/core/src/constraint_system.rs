@@ -61,6 +61,28 @@ pub enum ShiftVariant {
 	///
 	/// Rotates bits to the right, with bits shifted off the right end wrapping around to the left.
 	Rotr,
+	/// Shift logical left on 32-bit halves.
+	///
+	/// Performs independent logical left shifts on the upper and lower 32-bit halves of the word.
+	/// Only uses the lower 5 bits of the shift amount (0-31).
+	Sll32,
+	/// Shift logical right on 32-bit halves.
+	///
+	/// Performs independent logical right shifts on the upper and lower 32-bit halves of the word.
+	/// Only uses the lower 5 bits of the shift amount (0-31).
+	Srl32,
+	/// Shift arithmetic right on 32-bit halves.
+	///
+	/// Performs independent arithmetic right shifts on the upper and lower 32-bit halves of the
+	/// word. Sign extends each 32-bit half independently. Only uses the lower 5 bits of the shift
+	/// amount (0-31).
+	Sra32,
+	/// Rotate right on 32-bit halves.
+	///
+	/// Performs independent rotate right operations on the upper and lower 32-bit halves of the
+	/// word. Bits shifted off the right end wrap around to the left within each 32-bit half.
+	/// Only uses the lower 5 bits of the shift amount (0-31).
+	Rotr32,
 }
 
 impl SerializeBytes for ShiftVariant {
@@ -70,6 +92,10 @@ impl SerializeBytes for ShiftVariant {
 			ShiftVariant::Slr => 1u8,
 			ShiftVariant::Sar => 2u8,
 			ShiftVariant::Rotr => 3u8,
+			ShiftVariant::Sll32 => 4u8,
+			ShiftVariant::Srl32 => 5u8,
+			ShiftVariant::Sra32 => 6u8,
+			ShiftVariant::Rotr32 => 7u8,
 		};
 		index.serialize(write_buf)
 	}
@@ -86,6 +112,10 @@ impl DeserializeBytes for ShiftVariant {
 			1 => Ok(ShiftVariant::Slr),
 			2 => Ok(ShiftVariant::Sar),
 			3 => Ok(ShiftVariant::Rotr),
+			4 => Ok(ShiftVariant::Sll32),
+			5 => Ok(ShiftVariant::Srl32),
+			6 => Ok(ShiftVariant::Sra32),
+			7 => Ok(ShiftVariant::Rotr32),
 			_ => Err(SerializationError::UnknownEnumVariant {
 				name: "ShiftVariant",
 				index,
@@ -176,6 +206,72 @@ impl ShiftedValueIndex {
 		Self {
 			value_index,
 			shift_variant: ShiftVariant::Rotr,
+			amount,
+		}
+	}
+
+	/// Shift Left Logical on 32-bit halves by the given number of bits.
+	///
+	/// Performs independent logical left shifts on the upper and lower 32-bit halves.
+	/// Only uses the lower 5 bits of the shift amount (0-31).
+	///
+	/// # Panics
+	/// Panics if the shift amount is greater than or equal to 32.
+	pub fn sll32(value_index: ValueIndex, amount: usize) -> Self {
+		assert!(amount < 32, "shift amount n={amount} out of range for 32-bit shift");
+		Self {
+			value_index,
+			shift_variant: ShiftVariant::Sll32,
+			amount,
+		}
+	}
+
+	/// Shift Right Logical on 32-bit halves by the given number of bits.
+	///
+	/// Performs independent logical right shifts on the upper and lower 32-bit halves.
+	/// Only uses the lower 5 bits of the shift amount (0-31).
+	///
+	/// # Panics
+	/// Panics if the shift amount is greater than or equal to 32.
+	pub fn srl32(value_index: ValueIndex, amount: usize) -> Self {
+		assert!(amount < 32, "shift amount n={amount} out of range for 32-bit shift");
+		Self {
+			value_index,
+			shift_variant: ShiftVariant::Srl32,
+			amount,
+		}
+	}
+
+	/// Shift Right Arithmetic on 32-bit halves by the given number of bits.
+	///
+	/// Performs independent arithmetic right shifts on the upper and lower 32-bit halves.
+	/// Sign extends each 32-bit half independently. Only uses the lower 5 bits of the shift amount
+	/// (0-31).
+	///
+	/// # Panics
+	/// Panics if the shift amount is greater than or equal to 32.
+	pub fn sra32(value_index: ValueIndex, amount: usize) -> Self {
+		assert!(amount < 32, "shift amount n={amount} out of range for 32-bit shift");
+		Self {
+			value_index,
+			shift_variant: ShiftVariant::Sra32,
+			amount,
+		}
+	}
+
+	/// Rotate Right on 32-bit halves by the given number of bits.
+	///
+	/// Performs independent rotate right operations on the upper and lower 32-bit halves.
+	/// Bits shifted off the right end wrap around to the left within each 32-bit half.
+	/// Only uses the lower 5 bits of the shift amount (0-31).
+	///
+	/// # Panics
+	/// Panics if the shift amount is greater than or equal to 32.
+	pub fn rotr32(value_index: ValueIndex, amount: usize) -> Self {
+		assert!(amount < 32, "shift amount n={amount} out of range for 32-bit rotate");
+		Self {
+			value_index,
+			shift_variant: ShiftVariant::Rotr32,
 			amount,
 		}
 	}

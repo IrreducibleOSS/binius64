@@ -12,12 +12,16 @@ use crate::{
 
 /// Evaluates a shifted value from the witness
 fn eval_shifted(witness: &ValueVec, sv: &ShiftedValueIndex) -> Word {
-	let Word(val) = witness[sv.value_index];
+	let word = witness[sv.value_index];
 	match sv.shift_variant {
-		ShiftVariant::Sll => Word(val << sv.amount),
-		ShiftVariant::Slr => Word(val >> sv.amount),
-		ShiftVariant::Sar => Word(((val as i64) >> sv.amount) as u64),
-		ShiftVariant::Rotr => Word(val.rotate_right(sv.amount as u32)),
+		ShiftVariant::Sll => word << (sv.amount as u32),
+		ShiftVariant::Slr => word >> (sv.amount as u32),
+		ShiftVariant::Sar => word.sar(sv.amount as u32),
+		ShiftVariant::Rotr => word.rotr(sv.amount as u32),
+		ShiftVariant::Sll32 => word.sll32(sv.amount as u32),
+		ShiftVariant::Srl32 => word.srl32(sv.amount as u32),
+		ShiftVariant::Sra32 => word.sra32(sv.amount as u32),
+		ShiftVariant::Rotr32 => word.rotr32(sv.amount as u32),
 	}
 }
 

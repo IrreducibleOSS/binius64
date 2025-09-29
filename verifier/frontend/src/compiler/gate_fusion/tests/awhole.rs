@@ -72,6 +72,10 @@ fn format_operand(
 				ShiftVariant::Slr => "≫",
 				ShiftVariant::Sar => "a≫",
 				ShiftVariant::Rotr => "≫≫",
+				ShiftVariant::Sll32 => "≪32",
+				ShiftVariant::Srl32 => "≫32",
+				ShiftVariant::Sra32 => "a≫32",
+				ShiftVariant::Rotr32 => "≫≫32",
 			};
 			write!(output, "{}{}{}", value_name, shift_op, term.amount).unwrap();
 		}
