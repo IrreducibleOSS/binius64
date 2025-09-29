@@ -10,27 +10,28 @@ use crate::{
 	word::Word,
 };
 
-/// Evaluates a shifted value from the witness
-fn eval_shifted(witness: &ValueVec, sv: &ShiftedValueIndex) -> Word {
-	let word = witness[sv.value_index];
-	match sv.shift_variant {
-		ShiftVariant::Sll => word << (sv.amount as u32),
-		ShiftVariant::Slr => word >> (sv.amount as u32),
-		ShiftVariant::Sar => word.sar(sv.amount as u32),
-		ShiftVariant::Rotr => word.rotr(sv.amount as u32),
-		ShiftVariant::Sll32 => word.sll32(sv.amount as u32),
-		ShiftVariant::Srl32 => word.srl32(sv.amount as u32),
-		ShiftVariant::Sra32 => word.sra32(sv.amount as u32),
-		ShiftVariant::Rotr32 => word.rotr32(sv.amount as u32),
+/// Evaluates a shifted value given a word
+#[inline]
+pub fn eval_shifted_word(word: Word, shift_variant: ShiftVariant, amount: usize) -> Word {
+	match shift_variant {
+		ShiftVariant::Sll => word << (amount as u32),
+		ShiftVariant::Slr => word >> (amount as u32),
+		ShiftVariant::Sar => word.sar(amount as u32),
+		ShiftVariant::Rotr => word.rotr(amount as u32),
+		ShiftVariant::Sll32 => word.sll32(amount as u32),
+		ShiftVariant::Srl32 => word.srl32(amount as u32),
+		ShiftVariant::Sra32 => word.sra32(amount as u32),
+		ShiftVariant::Rotr32 => word.rotr32(amount as u32),
 	}
 }
 
-/// Evaluates an operand (XOR of shifted values)
+/// Evaluates an operand (XOR of shifted values) using a ValueVec
 pub fn eval_operand(witness: &ValueVec, operand: &[ShiftedValueIndex]) -> Word {
-	operand
-		.iter()
-		.map(|sv| eval_shifted(witness, sv))
-		.fold(Word(0), |acc, val| acc ^ val)
+	operand.iter().fold(Word::ZERO, |acc, sv| {
+		let word = witness[sv.value_index];
+		let shifted_word = eval_shifted_word(word, sv.shift_variant, sv.amount);
+		acc ^ shifted_word
+	})
 }
 
 /// Verifies that an AND constraint is satisfied: (A & B) ^ C = 0
