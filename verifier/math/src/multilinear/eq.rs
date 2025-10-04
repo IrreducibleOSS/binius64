@@ -125,9 +125,7 @@ pub fn eq_ind_partial_eval<P: PackedField>(point: &[P::Scalar]) -> FieldBuffer<P
 	// but since tensor_prod_eq_ind starts with log_n_values=0, we need the final size
 	let log_size = point.len();
 	let mut buffer = FieldBuffer::zeros_truncated(0, log_size).expect("log_size >= 0");
-	buffer
-		.set(0, P::Scalar::ONE)
-		.expect("buffer has length exactly 1");
+	buffer.set(0, P::Scalar::ONE);
 	tensor_prod_eq_ind(&mut buffer, point).expect("buffer is allocated with the correct length");
 	buffer
 }
@@ -222,7 +220,7 @@ mod tests {
 		let query = vec![v0, v1];
 		// log_len = 0, query.len() = 2, so total log_cap = 2
 		let mut result = FieldBuffer::zeros_truncated(0, query.len()).unwrap();
-		result.set(0, F::ONE).unwrap();
+		result.set_checked(0, F::ONE).unwrap();
 		tensor_prod_eq_ind(&mut result, &query).unwrap();
 		let result_vec: Vec<F> = P::iter_slice(result.as_ref()).collect();
 		assert_eq!(
@@ -244,7 +242,7 @@ mod tests {
 		let max_n_vars = exps * (exps + 1) / 2;
 		let mut coords = Vec::with_capacity(max_n_vars);
 		let mut eq_expansion = FieldBuffer::zeros_truncated(0, max_n_vars).unwrap();
-		eq_expansion.set(0, F::ONE).unwrap();
+		eq_expansion.set_checked(0, F::ONE).unwrap();
 
 		for extra_count in 1..=exps {
 			let extra = random_scalars(&mut rng, extra_count);
@@ -254,7 +252,7 @@ mod tests {
 
 			assert_eq!(eq_expansion.log_len(), coords.len());
 			for i in 0..eq_expansion.len() {
-				let v = eq_expansion.get(i).unwrap();
+				let v = eq_expansion.get_checked(i).unwrap();
 				let hypercube_point = index_to_hypercube_point(coords.len(), i);
 				assert_eq!(v, eq_ind(&hypercube_point, &coords));
 			}
@@ -268,7 +266,7 @@ mod tests {
 		assert_eq!(result.log_len(), 0);
 		assert_eq!(result.len(), 1);
 		let result_mut = result;
-		assert_eq!(result_mut.get(0).unwrap(), F::ONE);
+		assert_eq!(result_mut.get_checked(0).unwrap(), F::ONE);
 	}
 
 	#[test]
@@ -279,8 +277,8 @@ mod tests {
 		assert_eq!(result.log_len(), 1);
 		assert_eq!(result.len(), 2);
 		let result_mut = result;
-		assert_eq!(result_mut.get(0).unwrap(), F::ONE - r0);
-		assert_eq!(result_mut.get(1).unwrap(), r0);
+		assert_eq!(result_mut.get_checked(0).unwrap(), F::ONE - r0);
+		assert_eq!(result_mut.get_checked(1).unwrap(), r0);
 	}
 
 	#[test]
@@ -338,7 +336,7 @@ mod tests {
 
 		// Query the value at that index
 		let result_mut = result;
-		let partial_eval_value = result_mut.get(index).unwrap();
+		let partial_eval_value = result_mut.get_checked(index).unwrap();
 
 		let index_bits = index_to_hypercube_point(n_vars, index);
 		let eq_ind_value = eq_ind(&point, &index_bits);
@@ -364,7 +362,7 @@ mod tests {
 			let eq_ind_ref = eq_ind_partial_eval::<P>(&point[..truncated_log_n_values]);
 			assert_eq!(eq_ind_ref.len(), eq_ind.len());
 			for i in 0..eq_ind.len() {
-				assert_eq!(eq_ind.get(i).unwrap(), eq_ind_ref.get(i).unwrap());
+				assert_eq!(eq_ind.get_checked(i).unwrap(), eq_ind_ref.get_checked(i).unwrap());
 			}
 
 			log_n_values = truncated_log_n_values;
@@ -386,7 +384,7 @@ mod tests {
 
 		let mut prepend = FieldBuffer::<P>::zeros_truncated(0, n_vars).unwrap();
 		let (prefix, suffix) = point.split_at(n_vars - base_vars);
-		prepend.set(0, F::ONE).unwrap();
+		prepend.set_checked(0, F::ONE).unwrap();
 		tensor_prod_eq_ind(&mut prepend, suffix).unwrap();
 		tensor_prod_eq_ind_prepend(&mut prepend, prefix).unwrap();
 

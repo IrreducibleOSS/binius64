@@ -131,7 +131,8 @@ where
 						izip!(&mut packed_prime_evals, &self.gruen32s).enumerate()
 					{
 						let eq_chunk = gruen32.chunk_eq_expansion();
-						let eq_suffix_eval = gruen32.suffix_eq_expansion().get(chunk_index)?;
+						let eq_suffix_eval =
+							gruen32.suffix_eq_expansion().get_checked(chunk_index)?;
 
 						let selector_0_chunk = self.switchover.get_chunk(
 							&mut binary_chunk_0,
@@ -228,12 +229,16 @@ where
 
 		for selector in self.switchover.finalize()? {
 			debug_assert_eq!(selector.log_len(), 0);
-			let eval = selector.get(0).expect("selector.len() == 1");
+			let eval = selector.get_checked(0).expect("selector.len() == 1");
 			multilinear_evals.push(eval);
 		}
 
 		debug_assert_eq!(self.selected.log_len(), 0);
-		multilinear_evals.push(self.selected.get(0).expect("multilinear.len() == 1"));
+		multilinear_evals.push(
+			self.selected
+				.get_checked(0)
+				.expect("multilinear.len() == 1"),
+		);
 
 		Ok(multilinear_evals)
 	}

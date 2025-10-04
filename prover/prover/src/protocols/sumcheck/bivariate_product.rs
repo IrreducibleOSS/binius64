@@ -106,7 +106,7 @@ impl<F: Field, P: PackedField<Scalar = F>> SumcheckProver<F> for BivariateProduc
 			.multilinears
 			.into_iter()
 			.map(|multilinear| {
-				multilinear.get(0).expect(
+				multilinear.get_checked(0).expect(
 					"multilinear.log_len() == n_vars; \
 				 	n_vars == 0; \
 				 	multilinear.len() == 1",
