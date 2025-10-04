@@ -4,7 +4,7 @@ use binius_core::{constraint_system::ConstraintSystem, word::Word};
 use binius_field::{AESTowerField8b as B8, BinaryField};
 use binius_math::{
 	BinarySubspace, FieldBuffer,
-	inner_product::inner_product_subfield,
+	inner_product::{inner_product, inner_product_subfield},
 	multilinear::{eq::eq_ind_partial_eval, evaluate::evaluate_inplace},
 	ntt::{NeighborsLastSingleThread, domain_context::GenericOnTheFly},
 	univariate::lagrange_evals,
@@ -18,7 +18,7 @@ use binius_utils::{
 	checked_arithmetics::{checked_log_2, log2_ceil_usize},
 };
 use digest::{Digest, Output, core_api::BlockSizeUser};
-use itertools::{Itertools, chain, izip};
+use itertools::{Itertools, chain};
 
 use super::error::Error;
 use crate::{
@@ -207,7 +207,7 @@ where
 			let r_zhat_prime = bitand_claim.r_zhat_prime;
 			let subspace = BinarySubspace::<B8>::with_dim(LOG_WORD_SIZE_BITS)?.isomorphic();
 			let l_tilde = lagrange_evals(&subspace, r_zhat_prime);
-			let make_final_claim = |evals| izip!(evals, &l_tilde).map(|(x, y)| x * y).sum();
+			let make_final_claim = |evals| inner_product(evals, l_tilde.iter_scalars());
 			OperatorData::new(
 				r_zhat_prime,
 				eval_point,
