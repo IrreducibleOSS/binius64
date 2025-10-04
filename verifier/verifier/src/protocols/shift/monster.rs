@@ -201,6 +201,10 @@ fn evaluate_matrices<F: BinaryField>(
 						ShiftVariant::Slr => 1,
 						ShiftVariant::Sar => 2,
 						ShiftVariant::Rotr => 3,
+						ShiftVariant::Sll32 => 4,
+						ShiftVariant::Srl32 => 5,
+						ShiftVariant::Sra32 => 6,
+						ShiftVariant::Rotr32 => 7,
 					};
 					evals[shift_id][*amount] += constraint_eval
 						* r_y_tensor

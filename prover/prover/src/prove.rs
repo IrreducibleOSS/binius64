@@ -421,6 +421,10 @@ fn build_operand_value(operand: &Operand, witness: &[Word]) -> Word {
 				ShiftVariant::Slr => word >> (*amount as u32),
 				ShiftVariant::Sar => word.sar(*amount as u32),
 				ShiftVariant::Rotr => word.rotr(*amount as u32),
+				ShiftVariant::Sll32 => word.sll32(*amount as u32),
+				ShiftVariant::Srl32 => word.srl32(*amount as u32),
+				ShiftVariant::Sra32 => word.sra32(*amount as u32),
+				ShiftVariant::Rotr32 => word.rotr32(*amount as u32),
 			};
 			acc ^ shifted_word
 		},

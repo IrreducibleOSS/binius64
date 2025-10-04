@@ -167,6 +167,84 @@ impl Word {
 		Word(value.rotate_right(n))
 	}
 
+	/// Shift Left Logical on 32-bit halves.
+	///
+	/// Performs independent logical left shifts on the upper and lower 32-bit halves.
+	/// Only uses the lower 5 bits of the shift amount (0-31).
+	pub fn sll32(self, n: u32) -> Word {
+		let Word(value) = self;
+		let n = n & 0x1F; // Only use lower 5 bits
+
+		// Extract 32-bit halves
+		let lo = value as u32;
+		let hi = (value >> 32) as u32;
+
+		// Shift each half independently
+		let lo_shifted = (lo << n) as u64;
+		let hi_shifted = ((hi << n) as u64) << 32;
+
+		Word(lo_shifted | hi_shifted)
+	}
+
+	/// Shift Right Logical on 32-bit halves.
+	///
+	/// Performs independent logical right shifts on the upper and lower 32-bit halves.
+	/// Only uses the lower 5 bits of the shift amount (0-31).
+	pub fn srl32(self, n: u32) -> Word {
+		let Word(value) = self;
+		let n = n & 0x1F; // Only use lower 5 bits
+
+		// Extract 32-bit halves
+		let lo = value as u32;
+		let hi = (value >> 32) as u32;
+
+		// Shift each half independently
+		let lo_shifted = (lo >> n) as u64;
+		let hi_shifted = ((hi >> n) as u64) << 32;
+
+		Word(lo_shifted | hi_shifted)
+	}
+
+	/// Shift Right Arithmetic on 32-bit halves.
+	///
+	/// Performs independent arithmetic right shifts on the upper and lower 32-bit halves.
+	/// Sign extends each 32-bit half independently. Only uses the lower 5 bits of the shift amount
+	/// (0-31).
+	pub fn sra32(self, n: u32) -> Word {
+		let Word(value) = self;
+		let n = n & 0x1F; // Only use lower 5 bits
+
+		// Extract 32-bit halves as signed integers
+		let lo = value as u32 as i32;
+		let hi = (value >> 32) as u32 as i32;
+
+		// Arithmetic shift each half independently
+		let lo_shifted = ((lo >> n) as u32) as u64;
+		let hi_shifted = (((hi >> n) as u32) as u64) << 32;
+
+		Word(lo_shifted | hi_shifted)
+	}
+
+	/// Rotate Right on 32-bit halves.
+	///
+	/// Performs independent rotate right operations on the upper and lower 32-bit halves.
+	/// Bits shifted off the right end wrap around to the left within each 32-bit half.
+	/// Only uses the lower 5 bits of the shift amount (0-31).
+	pub fn rotr32(self, n: u32) -> Word {
+		let Word(value) = self;
+		let n = n & 0x1F; // Only use lower 5 bits
+
+		// Extract 32-bit halves
+		let lo = value as u32;
+		let hi = (value >> 32) as u32;
+
+		// Rotate each half independently
+		let lo_rotated = lo.rotate_right(n) as u64;
+		let hi_rotated = (hi.rotate_right(n) as u64) << 32;
+
+		Word(lo_rotated | hi_rotated)
+	}
+
 	/// Unsigned integer multiplication.
 	///
 	/// Multiplies two 64-bit unsigned integers and returns the 128-bit result split into high and
@@ -618,6 +696,135 @@ mod tests {
 		}
 
 		#[test]
+		fn prop_sll32(val in any::<u64>(), shift in 0u32..32) {
+			let w = Word(val);
+			let result = w.sll32(shift);
+
+			// Extract 32-bit halves
+			let lo = val as u32;
+			let hi = (val >> 32) as u32;
+
+			// Expected result: each half shifted independently
+			let expected_lo = ((lo << shift) as u64) & 0xFFFFFFFF;
+			let expected_hi = ((hi << shift) as u64) << 32;
+			let expected = expected_lo | expected_hi;
+
+			assert_eq!(result.0, expected);
+
+			// Shifting by 0 is identity
+			assert_eq!(w.sll32(0), w);
+
+			// Shifting by 31 should move MSB of each half to sign bit
+			let w_test = Word(0x40000001_40000001);
+			let result_31 = w_test.sll32(31);
+			assert_eq!(result_31.0, 0x80000000_80000000);
+
+			// Test that shift amount is masked to 5 bits
+			assert_eq!(w.sll32(shift), w.sll32(shift | 0x20));
+		}
+
+		#[test]
+		fn prop_srl32(val in any::<u64>(), shift in 0u32..32) {
+			let w = Word(val);
+			let result = w.srl32(shift);
+
+			// Extract 32-bit halves
+			let lo = val as u32;
+			let hi = (val >> 32) as u32;
+
+			// Expected result: each half shifted independently
+			let expected_lo = (lo >> shift) as u64;
+			let expected_hi = ((hi >> shift) as u64) << 32;
+			let expected = expected_lo | expected_hi;
+
+			assert_eq!(result.0, expected);
+
+			// Shifting by 0 is identity
+			assert_eq!(w.srl32(0), w);
+
+			// Shifting by 31 should move LSB to bit 0, clearing upper bits
+			let w_test = Word(0x80000000_80000000);
+			let result_31 = w_test.srl32(31);
+			assert_eq!(result_31.0, 0x00000001_00000001);
+
+			// Test that shift amount is masked to 5 bits
+			assert_eq!(w.srl32(shift), w.srl32(shift | 0x20));
+		}
+
+		#[test]
+		fn prop_sra32(val in any::<u64>(), shift in 0u32..32) {
+			let w = Word(val);
+			let result = w.sra32(shift);
+
+			// Extract 32-bit halves as signed
+			let lo = val as u32 as i32;
+			let hi = (val >> 32) as u32 as i32;
+
+			// Expected result: each half arithmetic shifted independently
+			let expected_lo = ((lo >> shift) as u32) as u64;
+			let expected_hi = (((hi >> shift) as u32) as u64) << 32;
+			let expected = expected_lo | expected_hi;
+
+			assert_eq!(result.0, expected);
+
+			// Shifting by 0 is identity
+			assert_eq!(w.sra32(0), w);
+
+			// Sign extension test: negative values extend sign bit
+			let w_neg = Word(0x80000000_80000000);
+			let result_1 = w_neg.sra32(1);
+			assert_eq!(result_1.0, 0xC0000000_C0000000);
+
+			// Sign extension test: positive values extend 0
+			let w_pos = Word(0x40000000_40000000);
+			let result_1_pos = w_pos.sra32(1);
+			assert_eq!(result_1_pos.0, 0x20000000_20000000);
+
+			// Shifting by 31 gives all 0s or all 1s in each half
+			let result_31 = w.sra32(31);
+			let expected_lo_31 = if lo < 0 { 0xFFFFFFFF } else { 0 };
+			let expected_hi_31 = if hi < 0 { 0xFFFFFFFF00000000 } else { 0 };
+			assert_eq!(result_31.0, expected_lo_31 | expected_hi_31);
+
+			// Test that shift amount is masked to 5 bits
+			assert_eq!(w.sra32(shift), w.sra32(shift | 0x20));
+		}
+
+		#[test]
+		fn prop_rotr32(val in any::<u64>(), rotate in 0u32..32) {
+			let w = Word(val);
+			let result = w.rotr32(rotate);
+
+			// Extract 32-bit halves
+			let lo = val as u32;
+			let hi = (val >> 32) as u32;
+
+			// Expected result: each half rotated independently
+			let expected_lo = lo.rotate_right(rotate) as u64;
+			let expected_hi = ((hi.rotate_right(rotate)) as u64) << 32;
+			let expected = expected_lo | expected_hi;
+
+			assert_eq!(result.0, expected);
+
+			// Rotating by 0 is identity
+			assert_eq!(w.rotr32(0), w);
+
+			// Rotating by 32 is identity (due to masking to 5 bits)
+			assert_eq!(w.rotr32(32), w.rotr32(0));
+
+			// Test that rotate amount is masked to 5 bits
+			assert_eq!(w.rotr32(rotate), w.rotr32(rotate | 0x20));
+
+			// Rotation is circular - rotating by n then 32-n gives identity
+			if rotate > 0 && rotate < 32 {
+				let w_test = Word(0x12345678_9ABCDEF0);
+				let rotated = w_test.rotr32(rotate);
+				let back = rotated.rotr32(32 - rotate);
+				assert_eq!(back, w_test);
+			}
+		}
+
+		#[test]
 		fn prop_smul(a in any::<u64>(), b in any::<u64>()) {
 			let wa = Word(a);
 			let wb = Word(b);
@@ -691,5 +898,70 @@ mod tests {
 			let expected = format!("Word({:#018x})", val);
 			assert_eq!(debug_str, expected);
 		}
+	}
+
+	#[test]
+	fn test_32bit_shift_edge_cases() {
+		// Test sll32 edge cases
+		let w1 = Word(0x12345678_9ABCDEF0);
+		assert_eq!(w1.sll32(4).0, 0x23456780_ABCDEF00);
+		assert_eq!(w1.sll32(16).0, 0x56780000_DEF00000);
+
+		// Test that upper bits don't affect lower half and vice versa
+		let w2 = Word(0xFFFFFFFF_00000000);
+		assert_eq!(w2.sll32(1).0, 0xFFFFFFFE_00000000);
+		let w3 = Word(0x00000000_FFFFFFFF);
+		assert_eq!(w3.sll32(1).0, 0x00000000_FFFFFFFE);
+
+		// Test srl32 edge cases
+		assert_eq!(w1.srl32(4).0, 0x01234567_09ABCDEF);
+		assert_eq!(w1.srl32(16).0, 0x00001234_00009ABC);
+
+		// Test sra32 with mixed sign bits
+		let w4 = Word(0x80000000_7FFFFFFF); // Negative upper, positive lower
+		assert_eq!(w4.sra32(1).0, 0xC0000000_3FFFFFFF);
+		assert_eq!(w4.sra32(31).0, 0xFFFFFFFF_00000000);
+
+		let w5 = Word(0x7FFFFFFF_80000000); // Positive upper, negative lower
+		assert_eq!(w5.sra32(1).0, 0x3FFFFFFF_C0000000);
+		assert_eq!(w5.sra32(31).0, 0x00000000_FFFFFFFF);
+
+		// Test boundary values
+		let all_ones = Word(0xFFFFFFFF_FFFFFFFF);
+		assert_eq!(all_ones.sll32(1).0, 0xFFFFFFFE_FFFFFFFE);
+		assert_eq!(all_ones.srl32(1).0, 0x7FFFFFFF_7FFFFFFF);
+		assert_eq!(all_ones.sra32(1).0, 0xFFFFFFFF_FFFFFFFF);
+
+		let alternating = Word(0xAAAAAAAA_55555555);
+		assert_eq!(alternating.sll32(1).0, 0x55555554_AAAAAAAA);
+		assert_eq!(alternating.srl32(1).0, 0x55555555_2AAAAAAA);
+		assert_eq!(alternating.sra32(1).0, 0xD5555555_2AAAAAAA);
+
+		// Test zero shifts
+		assert_eq!(w1.sll32(0), w1);
+		assert_eq!(w1.srl32(0), w1);
+		assert_eq!(w1.sra32(0), w1);
+
+		// Test that shifts are independent between halves
+		let w6 = Word(0x00000001_00000000);
+		assert_eq!(w6.sll32(31).0, 0x80000000_00000000);
+		assert_eq!(w6.srl32(1).0, 0x00000000_00000000);
+
+		// Test rotr32 edge cases
+		let w7 = Word(0x80000001_80000001);
+		assert_eq!(w7.rotr32(1).0, 0xC0000000_C0000000);
+		assert_eq!(w7.rotr32(31).0, 0x00000003_00000003);
+
+		// Test rotr32 rotation wrapping
+		let w8 = Word(0x12345678_9ABCDEF0);
+		assert_eq!(w8.rotr32(4).0, 0x81234567_09ABCDEF);
+		assert_eq!(w8.rotr32(16).0, 0x56781234_DEF09ABC);
+
+		// Test rotr32 with different values in each half
+		let w9 = Word(0xFFFF0000_0000FFFF);
+		assert_eq!(w9.rotr32(16).0, 0x0000FFFF_FFFF0000);
+
+		// Test rotr32 zero rotation
+		assert_eq!(w8.rotr32(0), w8);
 	}
 }

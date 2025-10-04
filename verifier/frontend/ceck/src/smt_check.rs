@@ -62,6 +62,10 @@ impl<'ctx> SmtChecker<'ctx> {
 			ShiftVariant::Slr => val.bvlshr(&ast::BV::from_u64(self.ctx, sv.amount as u64, 64)),
 			ShiftVariant::Sar => val.bvashr(&ast::BV::from_u64(self.ctx, sv.amount as u64, 64)),
 			ShiftVariant::Rotr => val.bvrotr(&ast::BV::from_u64(self.ctx, sv.amount as u64, 64)),
+			ShiftVariant::Sll32
+			| ShiftVariant::Srl32
+			| ShiftVariant::Sra32
+			| ShiftVariant::Rotr32 => unimplemented!("32-bit shifts not supported"),
 		}
 	}
 
