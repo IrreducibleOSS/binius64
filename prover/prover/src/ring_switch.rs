@@ -403,7 +403,7 @@ mod test {
 				row_batching_expanded_query.as_ref(),
 			);
 
-			assert_eq!(rs_eq.get(hypercube_point).unwrap(), evaluated_at_pt);
+			assert_eq!(rs_eq.get_checked(hypercube_point).unwrap(), evaluated_at_pt);
 		}
 	}
 

@@ -177,7 +177,7 @@ where
 			.into_iter()
 			.map(|multilinear| {
 				debug_assert_eq!(multilinear.log_len(), 0);
-				multilinear.get(0).expect("multilinear.len()==1")
+				multilinear.get_checked(0).expect("multilinear.len()==1")
 			})
 			.collect();
 
