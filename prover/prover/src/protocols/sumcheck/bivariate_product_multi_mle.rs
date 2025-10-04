@@ -165,7 +165,7 @@ where
 		let multilinear_evals = self
 			.multilinears
 			.into_iter()
-			.map(|multilinear| multilinear.get(0).expect("multilinear.len() == 1"))
+			.map(|multilinear| multilinear.get_checked(0).expect("multilinear.len() == 1"))
 			.collect();
 
 		Ok(multilinear_evals)

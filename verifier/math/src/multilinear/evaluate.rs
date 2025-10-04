@@ -102,7 +102,7 @@ where
 	}
 
 	assert_eq!(evals.len(), 1);
-	Ok(evals.get(0).expect("evals.len() == 1"))
+	Ok(evals.get(0))
 }
 
 #[cfg(test)]
@@ -180,7 +180,7 @@ mod tests {
 			let eval_result = evaluate(&buffer, &point).unwrap();
 
 			// Get the value directly from the buffer
-			let direct_value = buffer.get(index).unwrap();
+			let direct_value = buffer.get_checked(index).unwrap();
 
 			// They should be equal
 			assert_eq!(eval_result, direct_value);

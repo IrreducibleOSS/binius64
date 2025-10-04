@@ -208,7 +208,7 @@ fn evaluate_matrices<F: BinaryField>(
 					};
 					evals[shift_id][*amount] += constraint_eval
 						* r_y_tensor
-							.get(value_index.0 as usize)
+							.get_checked(value_index.0 as usize)
 							.expect("constraint system value indices are in range");
 				}
 			}

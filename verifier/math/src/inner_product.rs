@@ -115,7 +115,7 @@ mod tests {
 		let result_packed = inner_product_buffers(&buffer_a, &buffer_b);
 
 		// Compute expected result manually - only first element should be used
-		let expected = buffer_a.get(0).unwrap() * buffer_b.get(0).unwrap();
+		let expected = buffer_a.get_checked(0).unwrap() * buffer_b.get_checked(0).unwrap();
 
 		assert_eq!(result_par, expected, "inner_product_par failed for log_len=0");
 		assert_eq!(result_packed, expected, "inner_product_packed failed for log_len=0");

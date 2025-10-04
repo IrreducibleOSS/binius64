@@ -61,7 +61,7 @@ where
 		let switchover = switchover.min(n_vars).max(1);
 		let mut tensor =
 			FieldBuffer::zeros_truncated(0, switchover).expect("log_cap() can't be negative");
-		tensor.set(0, F::ONE).expect("len() >= 1");
+		tensor.set_checked(0, F::ONE).expect("len() >= 1");
 
 		Self {
 			n_multilinears,
