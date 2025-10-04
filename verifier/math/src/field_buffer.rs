@@ -222,6 +222,11 @@ impl<P: PackedField, Data: Deref<Target = [P]>> FieldBuffer<P, Data> {
 		Ok(val)
 	}
 
+	/// Returns an iterator over the scalar elements in the buffer.
+	pub fn iter_scalars(&self) -> impl Iterator<Item = P::Scalar> + Send + Clone + '_ {
+		P::iter_slice(self.as_ref()).take(self.len())
+	}
+
 	/// Get an aligned chunk of size `2^log_chunk_size`.
 	///
 	/// Chunk start offset divides chunk size; the result is essentially
@@ -1286,6 +1291,75 @@ mod tests {
 
 		buffer.resize(2).unwrap();
 		assert_eq!(buffer.log_len(), 2);
+	}
+
+	#[test]
+	fn test_iter_scalars() {
+		// Test with buffer size below packing width
+		// P::LOG_WIDTH = 2, so P::WIDTH = 4
+		let values = vec![F::new(10), F::new(20)]; // 2 elements < 4
+		let buffer = FieldBuffer::<P>::from_values(&values).unwrap();
+
+		let collected: Vec<F> = buffer.iter_scalars().collect();
+		assert_eq!(collected, values);
+
+		// Verify it matches individual get calls
+		for (i, &val) in collected.iter().enumerate() {
+			assert_eq!(val, buffer.get(i));
+		}
+
+		// Test with buffer size equal to packing width
+		let values = vec![F::new(1), F::new(2), F::new(3), F::new(4)]; // 4 elements = P::WIDTH
+		let buffer = FieldBuffer::<P>::from_values(&values).unwrap();
+
+		let collected: Vec<F> = buffer.iter_scalars().collect();
+		assert_eq!(collected, values);
+
+		// Test with buffer size above packing width
+		let values: Vec<F> = (0..16).map(F::new).collect(); // 16 elements > 4
+		let buffer = FieldBuffer::<P>::from_values(&values).unwrap();
+
+		let collected: Vec<F> = buffer.iter_scalars().collect();
+		assert_eq!(collected, values);
+
+		// Verify it matches individual get calls
+		for (i, &val) in collected.iter().enumerate() {
+			assert_eq!(val, buffer.get(i));
+		}
+
+		// Test with single element buffer
+		let values = vec![F::new(42)];
+		let buffer = FieldBuffer::<P>::from_values(&values).unwrap();
+
+		let collected: Vec<F> = buffer.iter_scalars().collect();
+		assert_eq!(collected, values);
+
+		// Test with large buffer
+		let values: Vec<F> = (0..256).map(F::new).collect();
+		let buffer = FieldBuffer::<P>::from_values(&values).unwrap();
+
+		let collected: Vec<F> = buffer.iter_scalars().collect();
+		assert_eq!(collected, values);
+
+		// Test that iterator is cloneable and can be used multiple times
+		let values: Vec<F> = (0..8).map(F::new).collect();
+		let buffer = FieldBuffer::<P>::from_values(&values).unwrap();
+
+		let iter1 = buffer.iter_scalars();
+		let iter2 = iter1.clone();
+
+		let collected1: Vec<F> = iter1.collect();
+		let collected2: Vec<F> = iter2.collect();
+		assert_eq!(collected1, collected2);
+		assert_eq!(collected1, values);
+
+		// Test with buffer that has extra capacity
+		let values: Vec<F> = (0..8).map(F::new).collect();
+		let buffer = FieldBuffer::<P>::from_values_truncated(&values, 5).unwrap(); // 8 elements, capacity for 32
+
+		let collected: Vec<F> = buffer.iter_scalars().collect();
+		assert_eq!(collected, values);
+		assert_eq!(collected.len(), 8); // Should only iterate over actual elements, not capacity
 	}
 
 	#[test]
