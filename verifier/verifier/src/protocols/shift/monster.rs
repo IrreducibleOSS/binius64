@@ -8,8 +8,8 @@ use binius_core::{
 };
 use binius_field::{AESTowerField8b, BinaryField, Field, util::powers};
 use binius_math::{
-	BinarySubspace, FieldBuffer,
-	inner_product::inner_product,
+	BinarySubspace, FieldBuffer, FieldSlice,
+	inner_product::{inner_product, inner_product_buffers},
 	multilinear::{eq::eq_ind_partial_eval, evaluate::evaluate_inplace},
 	univariate::lagrange_evals,
 };
@@ -23,18 +23,25 @@ use crate::config::{LOG_WORD_SIZE_BITS, WORD_SIZE_BITS};
 ///
 /// This is the verifier's version of the h-parts evaluation - instead of building
 /// full multilinear polynomials, it directly computes their evaluations.
-pub fn evaluate_h_op<F: Field>(l_tilde: &[F], r_j: &[F], r_s: &[F]) -> [F; SHIFT_VARIANT_COUNT] {
-	assert_eq!(l_tilde.len(), WORD_SIZE_BITS);
+pub fn evaluate_h_op<F: Field>(
+	l_tilde: FieldSlice<F>,
+	r_j: &[F],
+	r_s: &[F],
+) -> [F; SHIFT_VARIANT_COUNT] {
+	assert_eq!(l_tilde.log_len(), LOG_WORD_SIZE_BITS);
 	assert_eq!(r_j.len(), LOG_WORD_SIZE_BITS);
 	assert_eq!(r_s.len(), LOG_WORD_SIZE_BITS);
 
 	// Initialize arrays
-	let mut s = [F::ONE; WORD_SIZE_BITS];
-	let mut s_prime = [F::ZERO; WORD_SIZE_BITS];
-	let mut s_transpose = [F::ONE; WORD_SIZE_BITS];
-	let mut s_transpose_prime = [F::ZERO; WORD_SIZE_BITS];
-	let mut a = [F::ZERO; WORD_SIZE_BITS];
+	let mut s = FieldBuffer::zeros(LOG_WORD_SIZE_BITS);
+	let mut s_prime = FieldBuffer::<F>::zeros(LOG_WORD_SIZE_BITS);
+	let mut s_transpose = FieldBuffer::zeros(LOG_WORD_SIZE_BITS);
+	let mut s_transpose_prime = FieldBuffer::<F>::zeros(LOG_WORD_SIZE_BITS);
+	let mut a = FieldBuffer::<F>::zeros(LOG_WORD_SIZE_BITS);
+
 	let mut j_product = F::ONE;
+	s[0] = F::ONE;
+	s_transpose[0] = F::ONE;
 
 	// Process each bit position (6 iterations for 6-bit shift amounts)
 	for k in 0..LOG_WORD_SIZE_BITS {
@@ -71,17 +78,16 @@ pub fn evaluate_h_op<F: Field>(l_tilde: &[F], r_j: &[F], r_s: &[F]) -> [F; SHIFT
 	}
 
 	// Compute final results
-	let sll: F = (0..WORD_SIZE_BITS)
-		.map(|i| l_tilde[i] * s_transpose[i])
-		.sum();
-	let srl: F = (0..WORD_SIZE_BITS).map(|i| l_tilde[i] * s[i]).sum();
+	let sll = inner_product_buffers(&l_tilde, &s_transpose);
+	let srl = inner_product_buffers(&l_tilde, &s);
 	// sra == ∑ᵢ L̃(i) ⋅ (srlᵢ + ∏ₖ rⱼ[k] ⋅ aᵢ)
 	//     == ∑ᵢ L̃(i) ⋅ srlᵢ + ∏ₖ rⱼ[k] ⋅ [ ∑ᵢ L̃(i) ⋅ aᵢ ]
 	//     == srl + ∏ₖ rⱼ[k] ⋅ [ ∑ᵢ L̃(i) ⋅ aᵢ ]
-	let sra: F = srl + j_product * (0..WORD_SIZE_BITS).map(|i| l_tilde[i] * a[i]).sum::<F>();
-	let rotr = (0..WORD_SIZE_BITS)
-		.map(|i| l_tilde[i] * (s[i] + s_prime[i]))
-		.sum();
+	let sra = srl + j_product * inner_product_buffers(&l_tilde, &a);
+	let rotr = inner_product(
+		l_tilde.iter_scalars(),
+		iter::zip(s.as_ref(), s_prime.as_ref()).map(|(&s_i, &s_prime_i)| s_i + s_prime_i),
+	);
 
 	[sll, srl, sra, rotr]
 }
@@ -138,7 +144,7 @@ where
 	// TODO: Pass this in instead of constructing subspace here.
 	let subspace = BinarySubspace::<AESTowerField8b>::with_dim(LOG_WORD_SIZE_BITS)?.isomorphic();
 	let l_tilde = lagrange_evals(&subspace, operator_data.r_zhat_prime);
-	let h_op_evals = evaluate_h_op(&l_tilde, r_j, r_s);
+	let h_op_evals = evaluate_h_op(l_tilde.to_ref(), r_j, r_s);
 
 	let lambda_powers = powers(lambda).skip(1).take(ARITY).collect::<Vec<_>>();
 	let evals = evaluate_matrices(operand_vecs, &lambda_powers, &r_x_prime_tensor, &r_y_tensor);
@@ -272,7 +278,7 @@ mod tests {
 			let r_j = index_to_hypercube_point::<BinaryField128bGhash>(LOG_WORD_SIZE_BITS, j);
 			let r_s = index_to_hypercube_point::<BinaryField128bGhash>(LOG_WORD_SIZE_BITS, s);
 
-			let [sll, srl, sra, rotr] = evaluate_h_op(&l_tilde, &r_j, &r_s);
+			let [sll, srl, sra, rotr] = evaluate_h_op(l_tilde.to_ref(), &r_j, &r_s);
 
 			let expected_sll = j + s == i;
 			let expected_srl = i + s == j;
@@ -315,7 +321,7 @@ mod tests {
 			let mut r_j_at_1 = r_j.clone();
 			r_j_at_1[i] = BinaryField128bGhash::ONE;
 			let [result_0, result_1, result_y] = [&r_j_at_0, &r_j_at_1, &r_j]
-				.map(|r_j_variant| evaluate_h_op(&l_tilde, r_j_variant, &r_s));
+				.map(|r_j_variant| evaluate_h_op(l_tilde.to_ref(), r_j_variant, &r_s));
 			for variant in 0..SHIFT_VARIANT_COUNT {
 				let expected = result_0[variant] * (BinaryField128bGhash::ONE - r_j[i])
 					+ result_1[variant] * r_j[i];
@@ -328,7 +334,7 @@ mod tests {
 			let mut r_s_at_1 = r_s.clone();
 			r_s_at_1[i] = BinaryField128bGhash::ONE;
 			let [result_0, result_1, result_y] = [&r_s_at_0, &r_s_at_1, &r_s]
-				.map(|r_s_variant| evaluate_h_op(&l_tilde, &r_j, r_s_variant));
+				.map(|r_s_variant| evaluate_h_op(l_tilde.to_ref(), &r_j, r_s_variant));
 			for variant in 0..SHIFT_VARIANT_COUNT {
 				let expected = result_0[variant] * (BinaryField128bGhash::ONE - r_s[i])
 					+ result_1[variant] * r_s[i];
