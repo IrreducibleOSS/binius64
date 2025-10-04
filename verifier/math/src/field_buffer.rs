@@ -195,10 +195,20 @@ impl<P: PackedField, Data: Deref<Target = [P]>> FieldBuffer<P, Data> {
 
 	/// Get a field element at the given index.
 	///
+	/// # Preconditions
+	///
+	/// * the index is in the range `0..self.len()`
+	pub fn get(&self, index: usize) -> P::Scalar {
+		self.get_checked(index)
+			.expect("precondition: index is in range")
+	}
+
+	/// Get a field element at the given index.
+	///
 	/// # Throws
 	///
 	/// * `Error::ArgumentRangeError` if the index is out of bounds.
-	pub fn get(&self, index: usize) -> Result<P::Scalar, Error> {
+	pub fn get_checked(&self, index: usize) -> Result<P::Scalar, Error> {
 		if index >= self.len() {
 			return Err(Error::ArgumentRangeError {
 				arg: "index".to_string(),
@@ -379,10 +389,20 @@ impl<P: PackedField, Data: DerefMut<Target = [P]>> FieldBuffer<P, Data> {
 
 	/// Set a field element at the given index.
 	///
+	/// # Preconditions
+	///
+	/// * the index is in the range `0..self.len()`
+	pub fn set(&mut self, index: usize, value: P::Scalar) {
+		self.set_checked(index, value)
+			.expect("precondition: index is in range");
+	}
+
+	/// Set a field element at the given index.
+	///
 	/// # Throws
 	///
 	/// * `Error::ArgumentRangeError` if the index is out of bounds.
-	pub fn set(&mut self, index: usize, value: P::Scalar) -> Result<(), Error> {
+	pub fn set_checked(&mut self, index: usize, value: P::Scalar) -> Result<(), Error> {
 		if index >= self.len() {
 			return Err(Error::ArgumentRangeError {
 				arg: "index".to_string(),
@@ -791,7 +811,7 @@ mod tests {
 
 		// Check all elements are zero
 		for i in 0..64 {
-			assert_eq!(buffer.get(i).unwrap(), F::ZERO);
+			assert_eq!(buffer.get_checked(i).unwrap(), F::ZERO);
 		}
 
 		// Test with log_len < LOG_WIDTH
@@ -801,7 +821,7 @@ mod tests {
 
 		// Check all elements are zero
 		for i in 0..2 {
-			assert_eq!(buffer.get(i).unwrap(), F::ZERO);
+			assert_eq!(buffer.get_checked(i).unwrap(), F::ZERO);
 		}
 	}
 
@@ -817,8 +837,8 @@ mod tests {
 		assert_eq!(buffer.len(), 2);
 
 		// Verify the values
-		assert_eq!(buffer.get(0).unwrap(), F::new(1));
-		assert_eq!(buffer.get(1).unwrap(), F::new(2));
+		assert_eq!(buffer.get_checked(0).unwrap(), F::new(1));
+		assert_eq!(buffer.get_checked(1).unwrap(), F::new(2));
 	}
 
 	#[test]
@@ -834,7 +854,7 @@ mod tests {
 
 		// Verify all values
 		for i in 0..16 {
-			assert_eq!(buffer.get(i).unwrap(), F::new(i as u128));
+			assert_eq!(buffer.get_checked(i).unwrap(), F::new(i as u128));
 		}
 	}
 
@@ -866,10 +886,10 @@ mod tests {
 		assert_eq!(buffer.len(), 2);
 
 		// Set and verify values
-		buffer.set(0, F::new(10)).unwrap();
-		buffer.set(1, F::new(20)).unwrap();
-		assert_eq!(buffer.get(0).unwrap(), F::new(10));
-		assert_eq!(buffer.get(1).unwrap(), F::new(20));
+		buffer.set_checked(0, F::new(10)).unwrap();
+		buffer.set_checked(1, F::new(20)).unwrap();
+		assert_eq!(buffer.get_checked(0).unwrap(), F::new(10));
+		assert_eq!(buffer.get_checked(1).unwrap(), F::new(20));
 	}
 
 	#[test]
@@ -886,10 +906,10 @@ mod tests {
 
 		// Set and verify values
 		for i in 0..16 {
-			buffer.set(i, F::new(i as u128 * 10)).unwrap();
+			buffer.set_checked(i, F::new(i as u128 * 10)).unwrap();
 		}
 		for i in 0..16 {
-			assert_eq!(buffer.get(i).unwrap(), F::new(i as u128 * 10));
+			assert_eq!(buffer.get_checked(i).unwrap(), F::new(i as u128 * 10));
 		}
 	}
 
@@ -916,17 +936,17 @@ mod tests {
 
 		// Set some values
 		for i in 0..8 {
-			buffer.set(i, F::new(i as u128)).unwrap();
+			buffer.set_checked(i, F::new(i as u128)).unwrap();
 		}
 
 		// Get them back
 		for i in 0..8 {
-			assert_eq!(buffer.get(i).unwrap(), F::new(i as u128));
+			assert_eq!(buffer.get_checked(i).unwrap(), F::new(i as u128));
 		}
 
 		// Test out of bounds
-		assert!(buffer.get(8).is_err());
-		assert!(buffer.set(8, F::new(0)).is_err());
+		assert!(buffer.get_checked(8).is_err());
+		assert!(buffer.set_checked(8, F::new(0)).is_err());
 	}
 
 	#[test]
@@ -948,8 +968,10 @@ mod tests {
 				let chunk = buffer.chunk(log_chunk_size, chunk_index).unwrap();
 				for i in 0..1 << log_chunk_size {
 					assert_eq!(
-						chunk.get(i).unwrap(),
-						buffer.get(chunk_index << log_chunk_size | i).unwrap()
+						chunk.get_checked(i).unwrap(),
+						buffer
+							.get_checked(chunk_index << log_chunk_size | i)
+							.unwrap()
 					);
 				}
 			}
@@ -969,7 +991,7 @@ mod tests {
 			assert_eq!(chunk.len(), 4);
 			for i in 0..4 {
 				let expected = F::new((chunk_idx * 4 + i) as u128);
-				assert_eq!(chunk.get(i).unwrap(), expected);
+				assert_eq!(chunk.get_checked(i).unwrap(), expected);
 			}
 		}
 
@@ -995,7 +1017,7 @@ mod tests {
 			assert_eq!(chunk.len(), 4);
 			for i in 0..4 {
 				let expected = F::new((chunk_idx * 4 + i) as u128);
-				assert_eq!(chunk.get(i).unwrap(), expected);
+				assert_eq!(chunk.get_checked(i).unwrap(), expected);
 			}
 		}
 
@@ -1018,7 +1040,9 @@ mod tests {
 
 		for (chunk_idx, chunk) in chunks.iter_mut().enumerate() {
 			for i in 0..chunk.len() {
-				chunk.set(i, F::new((chunk_idx * 10 + i) as u128)).unwrap();
+				chunk
+					.set_checked(i, F::new((chunk_idx * 10 + i) as u128))
+					.unwrap();
 			}
 		}
 
@@ -1026,7 +1050,7 @@ mod tests {
 		for chunk_idx in 0..4 {
 			for i in 0..4 {
 				let expected = F::new((chunk_idx * 10 + i) as u128);
-				assert_eq!(buffer.get(chunk_idx * 4 + i).unwrap(), expected);
+				assert_eq!(buffer.get_checked(chunk_idx * 4 + i).unwrap(), expected);
 			}
 		}
 
@@ -1047,9 +1071,9 @@ mod tests {
 
 		// Test to_mut
 		let mut slice_mut = buffer.to_mut();
-		slice_mut.set(0, F::new(123)).unwrap();
+		slice_mut.set_checked(0, F::new(123)).unwrap();
 		assert_eq!(slice_mut.as_mut().len(), 1 << slice_mut.log_len().saturating_sub(P::LOG_WIDTH));
-		assert_eq!(buffer.get(0).unwrap(), F::new(123));
+		assert_eq!(buffer.get_checked(0).unwrap(), F::new(123));
 	}
 
 	#[test]
@@ -1065,8 +1089,8 @@ mod tests {
 
 		// Verify values
 		for i in 0..8 {
-			assert_eq!(first.get(i).unwrap(), F::new(i as u128));
-			assert_eq!(second.get(i).unwrap(), F::new((i + 8) as u128));
+			assert_eq!(first.get_checked(i).unwrap(), F::new(i as u128));
+			assert_eq!(second.get_checked(i).unwrap(), F::new((i + 8) as u128));
 		}
 
 		// Test with buffer size = P::WIDTH (single packed element)
@@ -1090,10 +1114,10 @@ mod tests {
 		}
 
 		// Verify values
-		assert_eq!(first.get(0).unwrap(), F::new(0));
-		assert_eq!(first.get(1).unwrap(), F::new(1));
-		assert_eq!(second.get(0).unwrap(), F::new(2));
-		assert_eq!(second.get(1).unwrap(), F::new(3));
+		assert_eq!(first.get_checked(0).unwrap(), F::new(0));
+		assert_eq!(first.get_checked(1).unwrap(), F::new(1));
+		assert_eq!(second.get_checked(0).unwrap(), F::new(2));
+		assert_eq!(second.get_checked(1).unwrap(), F::new(3));
 
 		// Test with buffer size = 2 (less than P::WIDTH)
 		let values: Vec<F> = vec![F::new(10), F::new(20)];
@@ -1113,8 +1137,8 @@ mod tests {
 			_ => panic!("Expected Single variant for second half"),
 		}
 
-		assert_eq!(first.get(0).unwrap(), F::new(10));
-		assert_eq!(second.get(0).unwrap(), F::new(20));
+		assert_eq!(first.get_checked(0).unwrap(), F::new(10));
+		assert_eq!(second.get_checked(0).unwrap(), F::new(20));
 
 		// Test error case: buffer of size 1
 		let values = vec![F::new(42)];
@@ -1131,7 +1155,7 @@ mod tests {
 
 		// Fill with test data
 		for i in 0..16 {
-			buffer.set(i, F::new(i as u128)).unwrap();
+			buffer.set_checked(i, F::new(i as u128)).unwrap();
 		}
 
 		buffer
@@ -1141,16 +1165,16 @@ mod tests {
 
 				// Modify through the split halves
 				for i in 0..8 {
-					first.set(i, F::new((i * 10) as u128)).unwrap();
-					second.set(i, F::new((i * 20) as u128)).unwrap();
+					first.set_checked(i, F::new((i * 10) as u128)).unwrap();
+					second.set_checked(i, F::new((i * 20) as u128)).unwrap();
 				}
 			})
 			.unwrap();
 
 		// Verify changes were made to original buffer
 		for i in 0..8 {
-			assert_eq!(buffer.get(i).unwrap(), F::new((i * 10) as u128));
-			assert_eq!(buffer.get(i + 8).unwrap(), F::new((i * 20) as u128));
+			assert_eq!(buffer.get_checked(i).unwrap(), F::new((i * 10) as u128));
+			assert_eq!(buffer.get_checked(i + 8).unwrap(), F::new((i * 20) as u128));
 		}
 
 		// Test with buffer size = P::WIDTH (single packed element)
@@ -1159,7 +1183,7 @@ mod tests {
 
 		// Fill with test data
 		for i in 0..4 {
-			buffer.set(i, F::new(i as u128)).unwrap();
+			buffer.set_checked(i, F::new(i as u128)).unwrap();
 		}
 
 		buffer
@@ -1168,24 +1192,24 @@ mod tests {
 				assert_eq!(second.len(), 2);
 
 				// Modify values
-				first.set(0, F::new(100)).unwrap();
-				first.set(1, F::new(101)).unwrap();
-				second.set(0, F::new(200)).unwrap();
-				second.set(1, F::new(201)).unwrap();
+				first.set_checked(0, F::new(100)).unwrap();
+				first.set_checked(1, F::new(101)).unwrap();
+				second.set_checked(0, F::new(200)).unwrap();
+				second.set_checked(1, F::new(201)).unwrap();
 			})
 			.unwrap();
 
 		// Verify changes were written back
-		assert_eq!(buffer.get(0).unwrap(), F::new(100));
-		assert_eq!(buffer.get(1).unwrap(), F::new(101));
-		assert_eq!(buffer.get(2).unwrap(), F::new(200));
-		assert_eq!(buffer.get(3).unwrap(), F::new(201));
+		assert_eq!(buffer.get_checked(0).unwrap(), F::new(100));
+		assert_eq!(buffer.get_checked(1).unwrap(), F::new(101));
+		assert_eq!(buffer.get_checked(2).unwrap(), F::new(200));
+		assert_eq!(buffer.get_checked(3).unwrap(), F::new(201));
 
 		// Test with buffer size = 2
 		let mut buffer = FieldBuffer::<P>::zeros_truncated(1, 4).unwrap(); // 2 elements, 16 element capacity
 
-		buffer.set(0, F::new(10)).unwrap();
-		buffer.set(1, F::new(20)).unwrap();
+		buffer.set_checked(0, F::new(10)).unwrap();
+		buffer.set_checked(1, F::new(20)).unwrap();
 
 		buffer
 			.split_half_mut(|first, second| {
@@ -1193,14 +1217,14 @@ mod tests {
 				assert_eq!(second.len(), 1);
 
 				// Modify values
-				first.set(0, F::new(30)).unwrap();
-				second.set(0, F::new(40)).unwrap();
+				first.set_checked(0, F::new(30)).unwrap();
+				second.set_checked(0, F::new(40)).unwrap();
 			})
 			.unwrap();
 
 		// Verify changes
-		assert_eq!(buffer.get(0).unwrap(), F::new(30));
-		assert_eq!(buffer.get(1).unwrap(), F::new(40));
+		assert_eq!(buffer.get_checked(0).unwrap(), F::new(30));
+		assert_eq!(buffer.get_checked(1).unwrap(), F::new(40));
 
 		// Test error case: buffer of size 1
 		let mut buffer = FieldBuffer::<P>::zeros(0); // 1 element
@@ -1220,7 +1244,7 @@ mod tests {
 			buffer.zero_extend(i + 1).unwrap();
 
 			for j in 1 << i..1 << (i + 1) {
-				assert!(buffer.get(j).unwrap().is_zero());
+				assert!(buffer.get_checked(j).unwrap().is_zero());
 			}
 		}
 	}
@@ -1231,16 +1255,16 @@ mod tests {
 
 		// Fill with test data
 		for i in 0..16 {
-			buffer.set(i, F::new(i as u128)).unwrap();
+			buffer.set_checked(i, F::new(i as u128)).unwrap();
 		}
 
 		buffer.resize(3).unwrap();
 		assert_eq!(buffer.log_len(), 3);
-		assert_eq!(buffer.get(7).unwrap(), F::new(7));
+		assert_eq!(buffer.get_checked(7).unwrap(), F::new(7));
 
 		buffer.resize(4).unwrap();
 		assert_eq!(buffer.log_len(), 4);
-		assert_eq!(buffer.get(15).unwrap(), F::new(15));
+		assert_eq!(buffer.get_checked(15).unwrap(), F::new(15));
 
 		assert!(
 			matches!(buffer.resize(5), Err(Error::IncorrectArgumentLength { arg, expected }) if arg == "new_log_len" && expected == 4)
@@ -1257,7 +1281,7 @@ mod tests {
 
 		// Fill with test data
 		for i in 0..16 {
-			buffer.set(i, F::new(i as u128)).unwrap();
+			buffer.set_checked(i, F::new(i as u128)).unwrap();
 		}
 
 		{
@@ -1269,16 +1293,16 @@ mod tests {
 
 			// Modify through the split halves
 			for i in 0..8 {
-				first.set(i, F::new((i * 10) as u128)).unwrap();
-				second.set(i, F::new((i * 20) as u128)).unwrap();
+				first.set_checked(i, F::new((i * 10) as u128)).unwrap();
+				second.set_checked(i, F::new((i * 20) as u128)).unwrap();
 			}
 			// split drops here and writes back the changes
 		}
 
 		// Verify changes were made to original buffer
 		for i in 0..8 {
-			assert_eq!(buffer.get(i).unwrap(), F::new((i * 10) as u128));
-			assert_eq!(buffer.get(i + 8).unwrap(), F::new((i * 20) as u128));
+			assert_eq!(buffer.get_checked(i).unwrap(), F::new((i * 10) as u128));
+			assert_eq!(buffer.get_checked(i + 8).unwrap(), F::new((i * 20) as u128));
 		}
 
 		// Test with buffer size = P::WIDTH (single packed element)
@@ -1287,7 +1311,7 @@ mod tests {
 
 		// Fill with test data
 		for i in 0..4 {
-			buffer.set(i, F::new(i as u128)).unwrap();
+			buffer.set_checked(i, F::new(i as u128)).unwrap();
 		}
 
 		{
@@ -1298,24 +1322,24 @@ mod tests {
 			assert_eq!(second.len(), 2);
 
 			// Modify values
-			first.set(0, F::new(100)).unwrap();
-			first.set(1, F::new(101)).unwrap();
-			second.set(0, F::new(200)).unwrap();
-			second.set(1, F::new(201)).unwrap();
+			first.set_checked(0, F::new(100)).unwrap();
+			first.set_checked(1, F::new(101)).unwrap();
+			second.set_checked(0, F::new(200)).unwrap();
+			second.set_checked(1, F::new(201)).unwrap();
 			// split drops here and writes back the changes using interleave
 		}
 
 		// Verify changes were written back
-		assert_eq!(buffer.get(0).unwrap(), F::new(100));
-		assert_eq!(buffer.get(1).unwrap(), F::new(101));
-		assert_eq!(buffer.get(2).unwrap(), F::new(200));
-		assert_eq!(buffer.get(3).unwrap(), F::new(201));
+		assert_eq!(buffer.get_checked(0).unwrap(), F::new(100));
+		assert_eq!(buffer.get_checked(1).unwrap(), F::new(101));
+		assert_eq!(buffer.get_checked(2).unwrap(), F::new(200));
+		assert_eq!(buffer.get_checked(3).unwrap(), F::new(201));
 
 		// Test with buffer size = 2
 		let mut buffer = FieldBuffer::<P>::zeros(1); // 2 elements
 
-		buffer.set(0, F::new(10)).unwrap();
-		buffer.set(1, F::new(20)).unwrap();
+		buffer.set_checked(0, F::new(10)).unwrap();
+		buffer.set_checked(1, F::new(20)).unwrap();
 
 		{
 			let mut split = buffer.split_half_mut_no_closure().unwrap();
@@ -1325,14 +1349,14 @@ mod tests {
 			assert_eq!(second.len(), 1);
 
 			// Modify values
-			first.set(0, F::new(30)).unwrap();
-			second.set(0, F::new(40)).unwrap();
+			first.set_checked(0, F::new(30)).unwrap();
+			second.set_checked(0, F::new(40)).unwrap();
 			// split drops here and writes back the changes using interleave
 		}
 
 		// Verify changes
-		assert_eq!(buffer.get(0).unwrap(), F::new(30));
-		assert_eq!(buffer.get(1).unwrap(), F::new(40));
+		assert_eq!(buffer.get_checked(0).unwrap(), F::new(30));
+		assert_eq!(buffer.get_checked(1).unwrap(), F::new(40));
 
 		// Test error case: buffer of size 1
 		let mut buffer = FieldBuffer::<P>::zeros(0); // 1 element

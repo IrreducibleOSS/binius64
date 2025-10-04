@@ -268,10 +268,10 @@ mod tests {
 
 		// Extract values from both results for comparison
 		let fold_cols_values: Vec<B128> = (0..fold_cols_result.len())
-			.map(|i| fold_cols_result.to_ref().get(i).unwrap())
+			.map(|i| fold_cols_result.to_ref().get_checked(i).unwrap())
 			.collect();
 		let fold_rows_values: Vec<B128> = (0..fold_rows_result.len())
-			.map(|i| fold_rows_result.to_ref().get(i).unwrap())
+			.map(|i| fold_rows_result.to_ref().get_checked(i).unwrap())
 			.collect();
 
 		// Compare results
