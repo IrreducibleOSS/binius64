@@ -2,9 +2,8 @@
 use std::marker::PhantomData;
 
 use binius_core::{
-	constraint_system::{
-		AndConstraint, MulConstraint, Operand, ShiftVariant, ShiftedValueIndex, ValueVec,
-	},
+	constraint_system::{AndConstraint, MulConstraint, ValueVec},
+	verify::eval_operand,
 	word::Word,
 };
 use binius_field::{
@@ -187,7 +186,7 @@ where
 			n_constraints = cs.mul_constraints.len()
 		)
 		.entered();
-		let mul_witness = build_intmul_witness(&cs.mul_constraints, witness.combined_witness());
+		let mul_witness = build_intmul_witness(&cs.mul_constraints, &witness);
 		let intmul_output = prove_intmul_reduction::<_, P, _>(mul_witness, transcript)?;
 		drop(intmul_guard);
 
@@ -200,8 +199,7 @@ where
 		)
 		.entered();
 		let bitand_claim = {
-			let bitand_witness =
-				build_bitand_witness(&cs.and_constraints, witness.combined_witness());
+			let bitand_witness = build_bitand_witness(&cs.and_constraints, &witness);
 			let AndCheckOutput {
 				a_eval,
 				b_eval,
@@ -405,34 +403,8 @@ struct MulCheckWitness {
 	hi: Vec<Word>,
 }
 
-#[inline]
-fn build_operand_value(operand: &Operand, witness: &[Word]) -> Word {
-	operand.iter().fold(
-		Word::ZERO,
-		|acc,
-		 ShiftedValueIndex {
-		     value_index,
-		     shift_variant,
-		     amount,
-		 }| {
-			let word = witness[value_index.0 as usize];
-			let shifted_word = match shift_variant {
-				ShiftVariant::Sll => word << (*amount as u32),
-				ShiftVariant::Slr => word >> (*amount as u32),
-				ShiftVariant::Sar => word.sar(*amount as u32),
-				ShiftVariant::Rotr => word.rotr(*amount as u32),
-				ShiftVariant::Sll32 => word.sll32(*amount as u32),
-				ShiftVariant::Srl32 => word.srl32(*amount as u32),
-				ShiftVariant::Sra32 => word.sra32(*amount as u32),
-				ShiftVariant::Rotr32 => word.rotr32(*amount as u32),
-			};
-			acc ^ shifted_word
-		},
-	)
-}
-
 #[tracing::instrument(skip_all, "Build BitAnd witness", level = "debug")]
-fn build_bitand_witness(and_constraints: &[AndConstraint], witness: &[Word]) -> AndCheckWitness {
+fn build_bitand_witness(and_constraints: &[AndConstraint], witness: &ValueVec) -> AndCheckWitness {
 	let n_constraints = and_constraints.len();
 
 	let mut a = Vec::with_capacity(n_constraints);
@@ -442,9 +414,9 @@ fn build_bitand_witness(and_constraints: &[AndConstraint], witness: &[Word]) -> 
 	(and_constraints, a.spare_capacity_mut(), b.spare_capacity_mut(), c.spare_capacity_mut())
 		.into_par_iter()
 		.for_each(|(constraint, a_i, b_i, c_i)| {
-			a_i.write(build_operand_value(&constraint.a, witness));
-			b_i.write(build_operand_value(&constraint.b, witness));
-			c_i.write(build_operand_value(&constraint.c, witness));
+			a_i.write(eval_operand(witness, &constraint.a));
+			b_i.write(eval_operand(witness, &constraint.b));
+			c_i.write(eval_operand(witness, &constraint.c));
 		});
 
 	// Safety: all entries in a, b, c are initialized in the parallel loop above.
@@ -458,7 +430,7 @@ fn build_bitand_witness(and_constraints: &[AndConstraint], witness: &[Word]) -> 
 }
 
 #[tracing::instrument(skip_all, "Build IntMul witness", level = "debug")]
-fn build_intmul_witness(mul_constraints: &[MulConstraint], witness: &[Word]) -> MulCheckWitness {
+fn build_intmul_witness(mul_constraints: &[MulConstraint], witness: &ValueVec) -> MulCheckWitness {
 	let n_constraints = mul_constraints.len();
 
 	let mut a = Vec::with_capacity(n_constraints);
@@ -475,10 +447,10 @@ fn build_intmul_witness(mul_constraints: &[MulConstraint], witness: &[Word]) -> 
 	)
 		.into_par_iter()
 		.for_each(|(constraint, a_i, b_i, lo_i, hi_i)| {
-			a_i.write(build_operand_value(&constraint.a, witness));
-			b_i.write(build_operand_value(&constraint.b, witness));
-			lo_i.write(build_operand_value(&constraint.lo, witness));
-			hi_i.write(build_operand_value(&constraint.hi, witness));
+			a_i.write(eval_operand(witness, &constraint.a));
+			b_i.write(eval_operand(witness, &constraint.b));
+			lo_i.write(eval_operand(witness, &constraint.lo));
+			hi_i.write(eval_operand(witness, &constraint.hi));
 		});
 
 	// Safety: all entries in a, b, lo, hi are initialized in the parallel loop above.
