@@ -12,6 +12,7 @@ use binius_field::{
 };
 use binius_math::{
 	BinarySubspace, FieldBuffer,
+	inner_product::inner_product,
 	ntt::{NeighborsLastMultiThread, domain_context::GenericPreExpanded},
 	univariate::lagrange_evals,
 };
@@ -29,7 +30,6 @@ use binius_verifier::{
 	protocols::{intmul::IntMulOutput, sumcheck::SumcheckOutput},
 };
 use digest::{Digest, FixedOutputReset, Output, core_api::BlockSizeUser};
-use itertools::izip;
 
 use super::error::Error;
 use crate::{
@@ -230,7 +230,7 @@ where
 			let r_zhat_prime = bitand_claim.r_zhat_prime;
 			let subspace = BinarySubspace::<B8>::with_dim(LOG_WORD_SIZE_BITS)?.isomorphic();
 			let l_tilde = lagrange_evals(&subspace, r_zhat_prime);
-			let make_final_claim = |evals| izip!(evals, &l_tilde).map(|(x, y)| x * y).sum();
+			let make_final_claim = |evals| inner_product(evals, l_tilde.iter_scalars());
 			OperatorData {
 				evals: vec![
 					make_final_claim(a_evals),
