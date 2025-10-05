@@ -15,7 +15,12 @@ use binius_math::{
 };
 use binius_utils::rayon::prelude::*;
 
-use super::{SHIFT_VARIANT_COUNT, error::Error, verify::OperatorData};
+use super::{
+	SHIFT_VARIANT_COUNT,
+	error::Error,
+	shift_ind::{partial_eval_phi, partial_eval_sigmas, partial_eval_sigmas_transpose},
+	verify::OperatorData,
+};
 use crate::config::{LOG_WORD_SIZE_BITS, WORD_SIZE_BITS};
 
 /// Evaluates the three h multilinear polynomials (corresponding to SLL, SRL, SRA) at challenge
@@ -32,61 +37,22 @@ pub fn evaluate_h_op<F: Field>(
 	assert_eq!(r_j.len(), LOG_WORD_SIZE_BITS);
 	assert_eq!(r_s.len(), LOG_WORD_SIZE_BITS);
 
-	// Initialize arrays
-	let mut s = FieldBuffer::zeros(LOG_WORD_SIZE_BITS);
-	let mut s_prime = FieldBuffer::<F>::zeros(LOG_WORD_SIZE_BITS);
-	let mut s_transpose = FieldBuffer::zeros(LOG_WORD_SIZE_BITS);
-	let mut s_transpose_prime = FieldBuffer::<F>::zeros(LOG_WORD_SIZE_BITS);
-	let mut a = FieldBuffer::<F>::zeros(LOG_WORD_SIZE_BITS);
-
-	let mut j_product = F::ONE;
-	s[0] = F::ONE;
-	s_transpose[0] = F::ONE;
-
-	// Process each bit position (6 iterations for 6-bit shift amounts)
-	for k in 0..LOG_WORD_SIZE_BITS {
-		// Precompute boolean combinations for this bit
-		let both = r_j[k] * r_s[k]; // jₖ ⋅ sₖ
-		let r_j_one_rs = r_j[k] - both; // jₖ ⋅ (1 - sₖ)
-		let one_r_j_rs = r_s[k] - both; // (1 - jₖ) ⋅ sₖ
-		let xor = r_j[k] + r_s[k]; // jₖ + sₖ
-		let eq = F::ONE + xor; // 1 + jₖ + sₖ
-		let zero = eq + both; // 1 + jₖ + sₖ + jₖ ⋅ sₖ
-
-		// Update arrays for this bit position
-		for i in 0..(1 << k) {
-			// Update s arrays
-			s[(1 << k) | i] = r_j_one_rs * s[i]; // write upper halves first
-			s_prime[(1 << k) | i] = one_r_j_rs * s[i] + eq * s_prime[i]; // Iₖ = 1
-			s[i] = eq * s[i] + r_j_one_rs * s_prime[i];
-			s_prime[i] *= one_r_j_rs;
-
-			// Update s_transpose arrays
-			s_transpose[(1 << k) | i] = xor * s_transpose[i] + zero * s_transpose_prime[i];
-			s_transpose_prime[(1 << k) | i] = both * s_transpose_prime[i];
-			s_transpose_prime[i] = both * s_transpose[i] + xor * s_transpose_prime[i];
-			// note: in last iteration k = 5, computation of `s_transpose_prime` COULD be skipped.
-			// never gets read from. keep it here just to minimize special case logic, but note it
-			s_transpose[i] *= zero;
-
-			// Update a array
-			a[(1 << k) | i] = r_s[k] + (F::ONE + r_s[k]) * a[i];
-			let temp = a[(1 << k) | i] - r_s[k];
-			a[i] += temp;
-		}
-		j_product *= r_j[k];
-	}
+	// Use helper functions to compute sigma, sigma_prime, phi, and sigma_transpose
+	let (sigma, sigma_prime) = partial_eval_sigmas(r_j, r_s);
+	let sigma_transpose = partial_eval_sigmas_transpose(r_j, r_s);
+	let phi = partial_eval_phi(r_s);
+	let j_product = r_j.iter().product::<F>();
 
 	// Compute final results
-	let sll = inner_product_buffers(&l_tilde, &s_transpose);
-	let srl = inner_product_buffers(&l_tilde, &s);
-	// sra == ∑ᵢ L̃(i) ⋅ (srlᵢ + ∏ₖ rⱼ[k] ⋅ aᵢ)
-	//     == ∑ᵢ L̃(i) ⋅ srlᵢ + ∏ₖ rⱼ[k] ⋅ [ ∑ᵢ L̃(i) ⋅ aᵢ ]
-	//     == srl + ∏ₖ rⱼ[k] ⋅ [ ∑ᵢ L̃(i) ⋅ aᵢ ]
-	let sra = srl + j_product * inner_product_buffers(&l_tilde, &a);
+	let sll = inner_product_buffers(&l_tilde, &sigma_transpose);
+	let srl = inner_product_buffers(&l_tilde, &sigma);
+	// sra == ∑ᵢ L̃(i) ⋅ (srlᵢ + ∏ₖ rⱼ[k] ⋅ φᵢ)
+	//     == ∑ᵢ L̃(i) ⋅ srlᵢ + ∏ₖ rⱼ[k] ⋅ [ ∑ᵢ L̃(i) ⋅ φᵢ ]
+	//     == srl + ∏ₖ rⱼ[k] ⋅ [ ∑ᵢ L̃(i) ⋅ φᵢ ]
+	let sra = srl + j_product * inner_product_buffers(&l_tilde, &phi);
 	let rotr = inner_product(
 		l_tilde.iter_scalars(),
-		iter::zip(s.as_ref(), s_prime.as_ref()).map(|(&s_i, &s_prime_i)| s_i + s_prime_i),
+		iter::zip(sigma.as_ref(), sigma_prime.as_ref()).map(|(&s_i, &s_prime_i)| s_i + s_prime_i),
 	);
 
 	[sll, srl, sra, rotr]
