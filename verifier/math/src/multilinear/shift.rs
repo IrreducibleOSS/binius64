@@ -1,6 +1,7 @@
 // Copyright 2025 Irreducible Inc.
 
 use binius_field::Field;
+use itertools::izip;
 
 /// Computes the multilinear extension of the logical left shift indicator at a point.
 ///
@@ -23,7 +24,8 @@ pub fn sll_ind<F: Field>(i: &[F], j: &[F], s: &[F]) -> F {
 	assert_eq!(i.len(), j.len(), "i and j must have the same length");
 	assert_eq!(i.len(), s.len(), "i and s must have the same length");
 
-	todo!("Implement sll_ind")
+	// sll_ind(i, j, s) = srl_ind(j, i, s) by transposition
+	srl_ind(j, i, s)
 }
 
 /// Computes the multilinear extension of the logical right shift indicator at a point.
@@ -47,7 +49,8 @@ pub fn srl_ind<F: Field>(i: &[F], j: &[F], s: &[F]) -> F {
 	assert_eq!(i.len(), j.len(), "i and j must have the same length");
 	assert_eq!(i.len(), s.len(), "i and s must have the same length");
 
-	todo!("Implement srl_ind")
+	let (sigma, _sigma_prime) = eval_sigmas(i.len(), i, j, s);
+	sigma
 }
 
 /// Computes the multilinear extension of the arithmetic right shift indicator at a point.
@@ -72,7 +75,10 @@ pub fn sra_ind<F: Field>(i: &[F], j: &[F], s: &[F]) -> F {
 	assert_eq!(i.len(), j.len(), "i and j must have the same length");
 	assert_eq!(i.len(), s.len(), "i and s must have the same length");
 
-	todo!("Implement sra_ind")
+	let (sigma, _sigma_prime) = eval_sigmas(i.len(), i, j, s);
+	let phi = eval_phi(i.len(), i, s);
+	let j_prod = j.iter().product::<F>();
+	sigma + phi * j_prod
 }
 
 /// Computes the multilinear extension of the rotate right indicator at a point.
@@ -97,7 +103,36 @@ pub fn rotr_ind<F: Field>(i: &[F], j: &[F], s: &[F]) -> F {
 	assert_eq!(i.len(), j.len(), "i and j must have the same length");
 	assert_eq!(i.len(), s.len(), "i and s must have the same length");
 
-	todo!("Implement rotr_ind")
+	let (sigma, sigma_prime) = eval_sigmas(i.len(), i, j, s);
+	sigma + sigma_prime
+}
+
+/// Evaluate the shift indicator helper polynomials, $\sigma, \sigma'$.
+///
+/// See section 4.6 of the writeup.
+fn eval_sigmas<F: Field>(n: usize, i: &[F], j: &[F], s: &[F]) -> (F, F) {
+	debug_assert_eq!(i.len(), n);
+	debug_assert_eq!(j.len(), n);
+	debug_assert_eq!(s.len(), n);
+
+	izip!(i, j, s).fold((F::ONE, F::ZERO), |(sigma, sigma_prime), (&i_k, &j_k, &s_k)| {
+		let next_sigma = (F::ONE + j_k + s_k + i_k * (F::ONE + s_k * (F::ONE + j_k))) * sigma
+			+ (F::ONE - i_k) * j_k * (F::ONE - s_k) * sigma_prime;
+		let next_sigma_prime = i_k * (F::ONE - j_k) * s_k * sigma
+			+ (i_k + s_k + j_k * (i_k + s_k * (F::ONE + i_k))) * sigma_prime;
+
+		(next_sigma, next_sigma_prime)
+	})
+}
+
+/// Evaluate the shift indicator helper polynomial $\phi$.
+///
+/// See section 4.6 of the writeup.
+fn eval_phi<F: Field>(n: usize, i: &[F], s: &[F]) -> F {
+	debug_assert_eq!(i.len(), n);
+	debug_assert_eq!(s.len(), n);
+
+	izip!(i, s).fold(F::ZERO, |phi, (&i_k, &s_k)| i_k * s_k + (i_k + s_k) * phi)
 }
 
 #[cfg(test)]
@@ -182,7 +217,7 @@ mod tests {
 			test_hypercube_evaluation(
 				srl_ind::<B128>,
 				i_idx, j_idx, s_idx,
-				j_idx == i_idx + s_idx && j_idx < 64
+				j_idx == i_idx + s_idx
 			);
 		}
 	}
@@ -195,14 +230,10 @@ mod tests {
 			j_idx in 0usize..64,
 			s_idx in 0usize..64,
 		) {
-			// sra has two conditions: normal shift or sign extension
-			let normal_shift = j_idx == i_idx + s_idx && j_idx < 64;
-			let sign_extension = j_idx == 63 && s_idx > 0 && i_idx >= 64 - s_idx;
-
 			test_hypercube_evaluation(
 				sra_ind::<B128>,
 				i_idx, j_idx, s_idx,
-				normal_shift || sign_extension
+				j_idx == (i_idx + s_idx).min(63)
 			);
 		}
 	}
@@ -226,7 +257,8 @@ mod tests {
 	// Test multilinearity of all shift indicators
 	#[test]
 	fn test_shift_indicators_multilinearity() {
-		let shift_inds: [ShiftIndicatorFn<B128>; 4] = [sll_ind, srl_ind, sra_ind, rotr_ind];
+		// Test only implemented functions for now
+		let shift_inds: [ShiftIndicatorFn<B128>; _] = [sll_ind, srl_ind, sra_ind, rotr_ind];
 		for shift_fn in shift_inds {
 			test_multilinearity(
 				|v| {
