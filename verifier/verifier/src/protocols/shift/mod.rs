@@ -5,6 +5,7 @@ pub const BITAND_ARITY: usize = 3;
 pub const INTMUL_ARITY: usize = 4;
 
 mod monster;
+mod shift_ind;
 
 pub use monster::*;
 mod error;
