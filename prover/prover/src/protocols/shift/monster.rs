@@ -39,6 +39,7 @@ where
 {
 	let subspace = BinarySubspace::<AESTowerField8b>::with_dim(LOG_WORD_SIZE_BITS)?.isomorphic();
 	let l_tilde = lagrange_evals(&subspace, r_zhat_prime);
+	let l_tilde = l_tilde.as_ref();
 
 	fn build_part<F: Field, P: PackedField<Scalar = F>>(
 		fill: impl Fn(usize, &mut [F; WORD_SIZE_BITS]),
@@ -70,18 +71,21 @@ where
 	});
 
 	let sll32 = build_part(|s, sll32_s| {
+		let s = s % 32;
 		for (l_tilde_i, sll_s_i) in iter::zip(l_tilde.chunks(32), sll32_s.chunks_mut(32)) {
 			sll_s_i[..32 - s].copy_from_slice(&l_tilde_i[s..]);
 		}
 	});
 
 	let srl32 = build_part(|s, srl32_s| {
+		let s = s % 32;
 		for (l_tilde_i, srl32_s_i) in iter::zip(l_tilde.chunks(32), srl32_s.chunks_mut(32)) {
 			srl32_s_i[s..].copy_from_slice(&l_tilde_i[..32 - s]);
 		}
 	});
 
 	let sra32 = build_part(|s, sra32_s| {
+		let s = s % 32;
 		for (l_tilde_i, sra32_s_i) in iter::zip(l_tilde.chunks(32), sra32_s.chunks_mut(32)) {
 			sra32_s_i[s..].copy_from_slice(&l_tilde_i[..32 - s]);
 			sra32_s_i[32 - 1] += l_tilde_i[32 - s..].iter().sum::<F>();
@@ -89,6 +93,7 @@ where
 	});
 
 	let rotr32 = build_part(|s, rotr32_s| {
+		let s = s % 32;
 		for (l_tilde_i, rotr32_s_i) in iter::zip(l_tilde.chunks(32), rotr32_s.chunks_mut(32)) {
 			rotr32_s_i[..s].copy_from_slice(&l_tilde_i[32 - s..]);
 			rotr32_s_i[s..].copy_from_slice(&l_tilde_i[..32 - s]);

@@ -282,7 +282,7 @@ impl<P: PackedField, Data: Deref<Target = [P]>> FieldBuffer<P, Data> {
 	pub fn chunks(
 		&self,
 		log_chunk_size: usize,
-	) -> Result<impl Iterator<Item = FieldSlice<'_, P>>, Error> {
+	) -> Result<impl Iterator<Item = FieldSlice<'_, P>> + Clone, Error> {
 		if log_chunk_size < P::LOG_WIDTH || log_chunk_size > self.log_len {
 			return Err(Error::ArgumentRangeError {
 				arg: "log_chunk_size".to_string(),
