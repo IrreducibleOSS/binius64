@@ -250,7 +250,7 @@ where
 		}
 
 		// Return only the witness evaluation
-		let witness_eval = self.witness.get(0).expect("witness.len() == 1");
+		let witness_eval = self.witness.get_checked(0).expect("witness.len() == 1");
 		Ok(vec![witness_eval])
 	}
 }

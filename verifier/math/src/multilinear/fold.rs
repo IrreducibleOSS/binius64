@@ -117,7 +117,7 @@ mod tests {
 			fold_highest_var_inplace(&mut multilinear, scalar).unwrap();
 		}
 
-		assert_eq!(multilinear.get(0).unwrap(), eval);
+		assert_eq!(multilinear.get_checked(0).unwrap(), eval);
 	}
 
 	fn test_binary_fold_high_conforms_to_regular_fold_high_helper(

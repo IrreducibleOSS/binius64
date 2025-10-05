@@ -61,8 +61,12 @@ where
 	let out = (0..(1 << new_log_len))
 		.into_par_iter()
 		.map(|i| {
-			let even = multilinear_extension.get(2 * i).expect("out of bounds");
-			let odd = multilinear_extension.get(2 * i + 1).expect("out of bounds");
+			let even = multilinear_extension
+				.get_checked(2 * i)
+				.expect("out of bounds");
+			let odd = multilinear_extension
+				.get_checked(2 * i + 1)
+				.expect("out of bounds");
 			extrapolate_line_packed(even, odd, challenge)
 		})
 		.collect::<Vec<_>>();
@@ -92,11 +96,11 @@ where
 		let (g_of_zero, g_of_one, g_leading) = (0..n_half)
 			.into_par_iter()
 			.map(|i| {
-				let a_even = a.get(2 * i).expect("a even index out of bounds");
-				let a_odd = a.get(2 * i + 1).expect("a odd index out of bounds");
+				let a_even = a.get_checked(2 * i).expect("a even index out of bounds");
+				let a_odd = a.get_checked(2 * i + 1).expect("a odd index out of bounds");
 
-				let b_even = b.get(2 * i).expect("b even index out of bounds");
-				let b_odd = b.get(2 * i + 1).expect("b odd index out of bounds");
+				let b_even = b.get_checked(2 * i).expect("b even index out of bounds");
+				let b_odd = b.get_checked(2 * i + 1).expect("b odd index out of bounds");
 
 				let even = a_even * b_even;
 				let odd = a_odd * b_odd;
@@ -130,7 +134,10 @@ where
 	}
 
 	fn finish(self) -> Result<Vec<F>, Error> {
-		Ok(vec![self.multilinears[0].get(0)?, self.multilinears[1].get(0)?])
+		Ok(vec![
+			self.multilinears[0].get_checked(0)?,
+			self.multilinears[1].get_checked(0)?,
+		])
 	}
 }
 
@@ -151,7 +158,7 @@ pub mod test {
 		P: PackedField<Scalar = F>,
 	{
 		Ok((0..a.len())
-			.map(|i| Ok(a.get(i)? * b.get(i)?))
+			.map(|i| Ok(a.get_checked(i)? * b.get_checked(i)?))
 			.collect::<Result<Vec<_>, Error>>()?
 			.into_iter()
 			.sum())
@@ -271,7 +278,7 @@ pub mod test {
 		let mut g_of_zero = F::ZERO;
 		let mut g_of_one = F::ZERO;
 		for i in 0..n {
-			let prod = multilinear.get(i)? * eq_r.get(i)?;
+			let prod = multilinear.get_checked(i)? * eq_r.get_checked(i)?;
 			if i.is_multiple_of(2) {
 				g_of_zero += prod;
 			} else {
