@@ -370,7 +370,7 @@ mod test {
 		let verify_output = verify_with_transcript(
 			&all_zerocheck_challenges,
 			&mut verifier_challenger,
-			verifier_message_domain.clone(),
+			&verifier_message_domain,
 		)
 		.unwrap();
 

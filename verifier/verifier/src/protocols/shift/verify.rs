@@ -1,8 +1,8 @@
 // Copyright 2025 Irreducible Inc.
 
 use binius_core::constraint_system::{AndConstraint, ConstraintSystem, MulConstraint};
-use binius_field::{AESTowerField8b, BinaryField, Field};
-use binius_math::{multilinear::eq::eq_ind, univariate::evaluate_univariate};
+use binius_field::{BinaryField, Field};
+use binius_math::{BinarySubspace, multilinear::eq::eq_ind, univariate::evaluate_univariate};
 use binius_transcript::{
 	VerifierTranscript,
 	fiat_shamir::{CanSample, Challenger},
@@ -239,16 +239,14 @@ pub fn verify<F: BinaryField, C: Challenger>(
 ///
 /// - `Error::VerificationFailure` if the evaluation equation doesn't hold
 /// - Propagates errors from monster multilinear evaluation
-pub fn check_eval<F>(
+pub fn check_eval<F: BinaryField>(
 	constraint_system: &ConstraintSystem,
 	bitand_data: &OperatorData<F, BITAND_ARITY>,
 	intmul_data: &OperatorData<F, INTMUL_ARITY>,
+	subspace: &BinarySubspace<F>,
 	output: &VerifyOutput<F>,
 	public_eval: F,
-) -> Result<(), Error>
-where
-	F: BinaryField + From<AESTowerField8b>,
-{
+) -> Result<(), Error> {
 	let VerifyOutput {
 		bitand_lambda,
 		intmul_lambda,
@@ -271,6 +269,7 @@ where
 		evaluate_monster_multilinear_for_operation(
 			&[a, b, c],
 			bitand_data,
+			subspace,
 			*bitand_lambda,
 			r_j,
 			r_s,
@@ -286,6 +285,7 @@ where
 		evaluate_monster_multilinear_for_operation(
 			&[a, b, lo, hi],
 			intmul_data,
+			subspace,
 			*intmul_lambda,
 			r_j,
 			r_s,

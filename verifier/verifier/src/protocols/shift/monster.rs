@@ -6,7 +6,7 @@ use binius_core::{
 	ShiftVariant,
 	constraint_system::{Operand, ShiftedValueIndex},
 };
-use binius_field::{AESTowerField8b, BinaryField, Field, util::powers};
+use binius_field::{BinaryField, Field, util::powers};
 use binius_math::{
 	BinarySubspace, FieldBuffer, FieldSlice,
 	inner_product::{inner_product, inner_product_buffers},
@@ -135,23 +135,21 @@ pub fn evaluate_h_op<F: Field>(
 /// # Errors
 ///
 /// Returns an error if the binary subspace construction fails.
-pub fn evaluate_monster_multilinear_for_operation<F, const ARITY: usize>(
+pub fn evaluate_monster_multilinear_for_operation<F: BinaryField, const ARITY: usize>(
 	operand_vecs: &[Vec<&Operand>],
 	operator_data: &OperatorData<F, ARITY>,
+	subspace: &BinarySubspace<F>,
 	lambda: F,
 	r_j: &[F],
 	r_s: &[F],
 	r_y: &[F],
-) -> Result<F, Error>
-where
-	F: BinaryField + From<AESTowerField8b>,
-{
+) -> Result<F, Error> {
+	assert_eq!(subspace.dim(), LOG_WORD_SIZE_BITS); // precondition
+
 	let r_x_prime_tensor = eq_ind_partial_eval::<F>(&operator_data.r_x_prime);
 	let r_y_tensor = eq_ind_partial_eval::<F>(r_y);
 
-	// TODO: Pass this in instead of constructing subspace here.
-	let subspace = BinarySubspace::<AESTowerField8b>::with_dim(LOG_WORD_SIZE_BITS)?.isomorphic();
-	let l_tilde = lagrange_evals(&subspace, operator_data.r_zhat_prime);
+	let l_tilde = lagrange_evals(subspace, operator_data.r_zhat_prime);
 	let h_op_evals = evaluate_h_op(l_tilde.to_ref(), r_j, r_s);
 
 	let lambda_powers = powers(lambda).skip(1).take(ARITY).collect::<Vec<_>>();

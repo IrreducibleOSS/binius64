@@ -155,6 +155,14 @@ where
 			});
 		}
 
+		let subfield_subspace = BinarySubspace::<B8>::default().isomorphic();
+		let extended_subspace = subfield_subspace
+			.reduce_dim(LOG_WORD_SIZE_BITS + 1)
+			.expect("extended_subspace has dimension 8; LOG_WORD_SIZE_BITS + 1 < 8");
+		let domain_subspace = extended_subspace
+			.reduce_dim(LOG_WORD_SIZE_BITS)
+			.expect("extended_subspace has dimension 8; LOG_WORD_SIZE_BITS < 8");
+
 		// Receive the trace commitment.
 		let trace_commitment = transcript.message().read::<Output<MerkleHash>>()?;
 
@@ -187,7 +195,8 @@ where
 				c_eval,
 				z_challenge,
 				eval_point,
-			}: AndCheckOutput<B128> = verify_bitand_reduction(log_n_constraints, transcript)?;
+			}: AndCheckOutput<B128> =
+				verify_bitand_reduction(log_n_constraints, &extended_subspace, transcript)?;
 			OperatorData::new(z_challenge, eval_point, [a_eval, b_eval, c_eval])
 		};
 		drop(bitand_guard);
@@ -205,8 +214,7 @@ where
 			} = intmul_output;
 
 			let r_zhat_prime = bitand_claim.r_zhat_prime;
-			let subspace = BinarySubspace::<B8>::with_dim(LOG_WORD_SIZE_BITS)?.isomorphic();
-			let l_tilde = lagrange_evals(&subspace, r_zhat_prime);
+			let l_tilde = lagrange_evals(&domain_subspace, r_zhat_prime);
 			let make_final_claim = |evals| inner_product(evals, l_tilde.iter_scalars());
 			OperatorData::new(
 				r_zhat_prime,
@@ -247,6 +255,7 @@ where
 			self.constraint_system(),
 			&bitand_claim,
 			&intmul_claim,
+			&domain_subspace,
 			&shift_output,
 			public_eval,
 		)?;
@@ -306,6 +315,7 @@ pub fn evaluate_public_mle<F: BinaryField>(public: &[Word], z_coords: &[F], y_co
 
 fn verify_bitand_reduction<F: BinaryField + From<B8>, Challenger_: Challenger>(
 	log_constraint_count: usize,
+	eval_domain: &BinarySubspace<F>,
 	transcript: &mut VerifierTranscript<Challenger_>,
 ) -> Result<AndCheckOutput<F>, Error> {
 	// The structure of the AND reduction requires that it verifies at least 2^3 word-level
@@ -319,12 +329,8 @@ fn verify_bitand_reduction<F: BinaryField + From<B8>, Challenger_: Challenger>(
 		.map(F::from)
 		.collect_vec();
 
-	let verifier_message_domain = BinarySubspace::<B8>::with_dim(LOG_WORD_SIZE_BITS + 1)
-		.expect("dim is positive and less than field dim")
-		.isomorphic();
-
 	let zerocheck_challenges =
 		chain!(small_field_zerocheck_challenges, big_field_zerocheck_challenges)
 			.collect::<Vec<_>>();
-	verify_with_transcript(&zerocheck_challenges, transcript, verifier_message_domain)
+	verify_with_transcript(&zerocheck_challenges, transcript, eval_domain)
 }

@@ -191,14 +191,13 @@ fn compute_intmul_images(constraints: &[MulConstraint], witness: &ValueVec) -> [
 
 // Evaluate the image of the witness applied to the AND or MUL constraints
 // Univariate point is `r_zhat_prime`, multilinear point tensor-expanded is `r_x_prime_tensor`
-fn evaluate_image<F>(image: &[Word], r_zhat_prime: F, r_x_prime_tensor: &[F]) -> F
-where
-	F: BinaryField + From<AESTowerField8b>,
-{
-	let subspace = BinarySubspace::<AESTowerField8b>::with_dim(LOG_WORD_SIZE_BITS)
-		.unwrap()
-		.isomorphic();
-	let l_tilde = lagrange_evals(&subspace, r_zhat_prime);
+fn evaluate_image<F: BinaryField>(
+	subspace: &BinarySubspace<F>,
+	image: &[Word],
+	r_zhat_prime: F,
+	r_x_prime_tensor: &[F],
+) -> F {
+	let l_tilde = lagrange_evals(subspace, r_zhat_prime);
 	let univariate = image
 		.iter()
 		.map(|&word| {
@@ -261,8 +260,13 @@ fn test_shift_prove_and_verify() {
 		let r_zhat_prime_bitand = F::random(&mut rng);
 		let r_zhat_prime_intmul = F::random(&mut rng);
 
+		let subspace = BinarySubspace::<AESTowerField8b>::with_dim(LOG_WORD_SIZE_BITS)
+			.unwrap()
+			.isomorphic();
+
 		let bitand_evals = compute_bitand_images(&cs.and_constraints, &value_vec).map(|image| {
 			evaluate_image(
+				&subspace,
 				&image,
 				r_zhat_prime_bitand,
 				eq_ind_partial_eval(&r_x_prime_bitand).as_ref(),
@@ -271,6 +275,7 @@ fn test_shift_prove_and_verify() {
 
 		let intmul_evals = compute_intmul_images(&cs.mul_constraints, &value_vec).map(|image| {
 			evaluate_image(
+				&subspace,
 				&image,
 				r_zhat_prime_intmul,
 				eq_ind_partial_eval(&r_x_prime_intmul).as_ref(),
@@ -329,6 +334,7 @@ fn test_shift_prove_and_verify() {
 			&cs,
 			&verifier_bitand_data,
 			&verifier_intmul_data,
+			&subspace,
 			&verifier_output,
 			expected_public_eval,
 		)
