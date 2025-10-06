@@ -1,5 +1,6 @@
 // Copyright 2025 Irreducible Inc.
-use binius_field::{BinaryField, Field};
+
+use binius_field::BinaryField;
 use binius_math::BinarySubspace;
 use binius_transcript::{
 	VerifierTranscript,
@@ -95,11 +96,11 @@ pub struct AndCheckOutput<F> {
 pub fn verify_with_transcript<F, TranscriptChallenger>(
 	all_zerocheck_challenges: &[F],
 	transcript: &mut VerifierTranscript<TranscriptChallenger>,
-	round_message_univariate_domain: BinarySubspace<F>,
+	round_message_univariate_domain: &BinarySubspace<F>,
 ) -> Result<AndCheckOutput<F>, Error>
 where
+	F: BinaryField,
 	TranscriptChallenger: Challenger,
-	F: Field + BinaryField + From<F>,
 {
 	let univariate_message_coeffs_ext_domain: Vec<F> = transcript
 		.message()
