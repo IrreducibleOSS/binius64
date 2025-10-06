@@ -1,8 +1,8 @@
 // Copyright 2025 Irreducible Inc.
 
-use std::{array, ops::Range};
+use std::{iter, ops::Range};
 
-use binius_field::{AESTowerField8b, BinaryField, PackedField};
+use binius_field::{AESTowerField8b, BinaryField, Field, PackedField};
 use binius_math::{
 	BinarySubspace, FieldBuffer, multilinear::eq::eq_ind_partial_eval, univariate::lagrange_evals,
 };
@@ -11,6 +11,7 @@ use binius_verifier::{
 	config::{LOG_WORD_SIZE_BITS, WORD_SIZE_BITS},
 	protocols::shift::{BITAND_ARITY, INTMUL_ARITY, evaluate_h_op},
 };
+use bytemuck::zeroed_vec;
 use tracing::instrument;
 
 use super::{
@@ -23,9 +24,8 @@ use super::{
 /// Constructs the three "h" multilinear polynomials for shift operations at a
 /// univariate challenge point. See the paper for definition of h polynomials.
 ///
-/// There is one h multilinear for each shift variant (SLL, SRL, SRA). For each
-/// operation there is one univariate challenge `r_zhat_prime` at which to
-/// construct the three h multilinears.
+/// There is one h multilinear for each shift variant. For each operation, there is one univariate
+/// challenge `r_zhat_prime` at which to construct the h parts.
 ///
 /// # Usage in Protocol
 ///
@@ -39,42 +39,68 @@ where
 {
 	let subspace = BinarySubspace::<AESTowerField8b>::with_dim(LOG_WORD_SIZE_BITS)?.isomorphic();
 	let l_tilde = lagrange_evals(&subspace, r_zhat_prime);
+	let l_tilde = l_tilde.as_ref();
 
-	let [mut sll_data, mut srl_data, mut sra_data, mut rotr_data] =
-		array::from_fn(|_| Vec::with_capacity(WORD_SIZE_BITS * WORD_SIZE_BITS));
-
-	for s in 0..WORD_SIZE_BITS {
-		for j in 0..WORD_SIZE_BITS {
-			sll_data.push(if j + s < l_tilde.len() {
-				l_tilde[j + s]
-			} else {
-				F::ZERO
-			});
-
-			let val = if j >= s { l_tilde[j - s] } else { F::ZERO };
-			srl_data.push(val);
-			sra_data.push(val);
-
-			rotr_data.push(l_tilde[(j + WORD_SIZE_BITS - s) % WORD_SIZE_BITS]);
-			// what we want is the element equivalent to j – s modulo WORD_SIZE_BITS,
-			// which moreover lives in {0, ... , WORD_SIZE_BITS - 1}.
-			// it would have been nice to be able to do (j – s) % WORD_SIZE_BITS,
-			// but in rust this would give negative results in the case s > j (cf. python).
+	fn build_part<F: Field, P: PackedField<Scalar = F>>(
+		fill: impl Fn(usize, &mut [F; WORD_SIZE_BITS]),
+	) -> FieldBuffer<P> {
+		let mut data = zeroed_vec::<[F; WORD_SIZE_BITS]>(WORD_SIZE_BITS);
+		for (s, chunk) in data.iter_mut().enumerate() {
+			fill(s, chunk);
 		}
+		FieldBuffer::from_values(&data.into_flattened())
+			.expect("data length is 2 * WORD_SIZE_BITS; WORD_SIZE_BITS is a power of 2")
 	}
 
-	for s in 1..WORD_SIZE_BITS {
-		let msb_idx = s * WORD_SIZE_BITS + WORD_SIZE_BITS - 1;
-		let prev_val = sra_data[msb_idx - WORD_SIZE_BITS];
-		sra_data[msb_idx] += prev_val;
-	}
+	let sll = build_part(|s, sll_s| {
+		sll_s[..WORD_SIZE_BITS - s].copy_from_slice(&l_tilde[s..]);
+	});
 
-	let sll = FieldBuffer::from_values(&sll_data)?;
-	let srl = FieldBuffer::from_values(&srl_data)?;
-	let sra = FieldBuffer::from_values(&sra_data)?;
-	let rotr = FieldBuffer::from_values(&rotr_data)?;
+	let srl = build_part(|s, srl_s| {
+		srl_s[s..].copy_from_slice(&l_tilde[..WORD_SIZE_BITS - s]);
+	});
 
-	Ok([sll, srl, sra, rotr])
+	let sra = build_part(|s, sra_s| {
+		sra_s[s..].copy_from_slice(&l_tilde[..WORD_SIZE_BITS - s]);
+		sra_s[WORD_SIZE_BITS - 1] += l_tilde[WORD_SIZE_BITS - s..].iter().sum::<F>();
+	});
+
+	let rotr = build_part(|s, rotr_s| {
+		rotr_s[..s].copy_from_slice(&l_tilde[WORD_SIZE_BITS - s..]);
+		rotr_s[s..].copy_from_slice(&l_tilde[..WORD_SIZE_BITS - s]);
+	});
+
+	let sll32 = build_part(|s, sll32_s| {
+		let s = s % 32;
+		for (l_tilde_i, sll_s_i) in iter::zip(l_tilde.chunks(32), sll32_s.chunks_mut(32)) {
+			sll_s_i[..32 - s].copy_from_slice(&l_tilde_i[s..]);
+		}
+	});
+
+	let srl32 = build_part(|s, srl32_s| {
+		let s = s % 32;
+		for (l_tilde_i, srl32_s_i) in iter::zip(l_tilde.chunks(32), srl32_s.chunks_mut(32)) {
+			srl32_s_i[s..].copy_from_slice(&l_tilde_i[..32 - s]);
+		}
+	});
+
+	let sra32 = build_part(|s, sra32_s| {
+		let s = s % 32;
+		for (l_tilde_i, sra32_s_i) in iter::zip(l_tilde.chunks(32), sra32_s.chunks_mut(32)) {
+			sra32_s_i[s..].copy_from_slice(&l_tilde_i[..32 - s]);
+			sra32_s_i[32 - 1] += l_tilde_i[32 - s..].iter().sum::<F>();
+		}
+	});
+
+	let rotr32 = build_part(|s, rotr32_s| {
+		let s = s % 32;
+		for (l_tilde_i, rotr32_s_i) in iter::zip(l_tilde.chunks(32), rotr32_s.chunks_mut(32)) {
+			rotr32_s_i[..s].copy_from_slice(&l_tilde_i[32 - s..]);
+			rotr32_s_i[s..].copy_from_slice(&l_tilde_i[..32 - s]);
+		}
+	});
+
+	Ok([sll, srl, sra, rotr, sll32, srl32, sra32, rotr32])
 }
 
 /// Constructs the "monster multilinear" that combines all shift operations into a single

@@ -37,11 +37,17 @@ pub fn evaluate_h_op<F: Field>(
 	assert_eq!(r_j.len(), LOG_WORD_SIZE_BITS);
 	assert_eq!(r_s.len(), LOG_WORD_SIZE_BITS);
 
-	// Use helper functions to compute sigma, sigma_prime, phi, and sigma_transpose
+	// Use helper functions to compute shift indicator helpers for 64-bit shifts
 	let (sigma, sigma_prime) = partial_eval_sigmas(r_j, r_s);
 	let sigma_transpose = partial_eval_sigmas_transpose(r_j, r_s);
 	let phi = partial_eval_phi(r_s);
 	let j_product = r_j.iter().product::<F>();
+
+	// Use helper functions to compute shift indicator helpers for 32-bit shifts
+	let (sigma32, sigma32_prime) = partial_eval_sigmas(&r_j[..5], &r_s[..5]);
+	let sigma32_transpose = partial_eval_sigmas_transpose(&r_j[..5], &r_s[..5]);
+	let phi32 = partial_eval_phi(&r_s[..5]);
+	let j_product32 = r_j[..5].iter().product::<F>();
 
 	// Compute final results
 	let sll = inner_product_buffers(&l_tilde, &sigma_transpose);
@@ -55,7 +61,43 @@ pub fn evaluate_h_op<F: Field>(
 		iter::zip(sigma.as_ref(), sigma_prime.as_ref()).map(|(&s_i, &s_prime_i)| s_i + s_prime_i),
 	);
 
-	[sll, srl, sra, rotr]
+	// TODO: This is really gross, need to clean it up after other shift reduction modifications.
+	let r_j_rest_tensor = eq_ind_partial_eval::<F>(&r_j[5..]);
+	let l_tilde_chunks = l_tilde
+		.chunks(5)
+		.expect("l_tilde.log_len() == 6; F::LOG_WIDTH == 0");
+
+	let sll32 = inner_product(
+		l_tilde_chunks
+			.clone()
+			.map(|l_tilde_i| inner_product_buffers(&l_tilde_i, &sigma32_transpose)),
+		r_j_rest_tensor.iter_scalars(),
+	);
+	let srl32 = inner_product(
+		l_tilde_chunks
+			.clone()
+			.map(|l_tilde_i| inner_product_buffers(&l_tilde_i, &sigma32)),
+		r_j_rest_tensor.iter_scalars(),
+	);
+	let sra32 = srl32
+		+ inner_product(
+			l_tilde_chunks
+				.clone()
+				.map(|l_tilde_i| j_product32 * inner_product_buffers(&l_tilde_i, &phi32)),
+			r_j_rest_tensor.iter_scalars(),
+		);
+	let rotr32 = inner_product(
+		l_tilde_chunks.clone().map(|l_tilde_i| {
+			inner_product(
+				l_tilde_i.iter_scalars(),
+				iter::zip(sigma32.as_ref(), sigma32_prime.as_ref())
+					.map(|(&s_i, &s_prime_i)| s_i + s_prime_i),
+			)
+		}),
+		r_j_rest_tensor.iter_scalars(),
+	);
+
+	[sll, srl, sra, rotr, sll32, srl32, sra32, rotr32]
 }
 
 /// Evaluates the monster multilinear polynomial for a constraint operation.
@@ -234,9 +276,9 @@ mod tests {
 
 		// Run a reasonable number of random trials
 		for _trial in 0..1024 {
-			let i: usize = (rng.random::<u8>() as usize) & 63;
-			let j: usize = (rng.random::<u8>() as usize) & 63;
-			let s: usize = (rng.random::<u8>() as usize) & 63;
+			let i = rng.random_range(0..64);
+			let j = rng.random_range(0..64);
+			let s = rng.random_range(0..64);
 
 			let challenge = subspace.get(i);
 			let l_tilde = lagrange_evals(&subspace, challenge);
@@ -244,12 +286,24 @@ mod tests {
 			let r_j = index_to_hypercube_point::<BinaryField128bGhash>(LOG_WORD_SIZE_BITS, j);
 			let r_s = index_to_hypercube_point::<BinaryField128bGhash>(LOG_WORD_SIZE_BITS, s);
 
-			let [sll, srl, sra, rotr] = evaluate_h_op(l_tilde.to_ref(), &r_j, &r_s);
+			let [sll, srl, sra, rotr, sll32, srl32, sra32, rotr32] =
+				evaluate_h_op(l_tilde.to_ref(), &r_j, &r_s);
 
 			let expected_sll = j + s == i;
 			let expected_srl = i + s == j;
-			let expected_sra = i + s == j || i + s >= 64 && j == 63;
-			let expected_rotr = (i + s) & 63 == j;
+			let expected_sra = (i + s).min(63) == j;
+			let expected_rotr = (i + s) % 64 == j;
+
+			let i_hi = i / 32;
+			let i_lo = i % 32;
+			let j_hi = j / 32;
+			let j_lo = j % 32;
+			let s_lo = s % 32;
+
+			let expected_sll32 = i_hi == j_hi && j_lo + s_lo == i_lo;
+			let expected_srl32 = i_hi == j_hi && i_lo + s_lo == j_lo;
+			let expected_sra32 = i_hi == j_hi && (i_lo + s_lo).min(31) == j_lo;
+			let expected_rotr32 = i_hi == j_hi && (i_lo + s_lo) % 32 == j_lo;
 
 			let to_field = |b: bool| {
 				if b {
@@ -263,6 +317,10 @@ mod tests {
 			assert_eq!(srl, to_field(expected_srl), "srl failed for i={i}, j={j}, s={s}");
 			assert_eq!(sra, to_field(expected_sra), "sra failed for i={i}, j={j}, s={s}");
 			assert_eq!(rotr, to_field(expected_rotr), "rotr failed for i={i}, j={j}, s={s}");
+			assert_eq!(sll32, to_field(expected_sll32), "sll32 failed for i={i}, j={j}, s={s}");
+			assert_eq!(srl32, to_field(expected_srl32), "srl32 failed for i={i}, j={j}, s={s}");
+			assert_eq!(sra32, to_field(expected_sra32), "sra32 failed for i={i}, j={j}, s={s}");
+			assert_eq!(rotr32, to_field(expected_rotr32), "rotr32 failed for i={i}, j={j}, s={s}");
 		}
 	}
 
