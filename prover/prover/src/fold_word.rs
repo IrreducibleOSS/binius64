@@ -6,6 +6,60 @@ use binius_math::{FieldBuffer, span::expand_subset_sums_array};
 use binius_utils::{checked_arithmetics::log2_strict_usize, rayon::prelude::*};
 use binius_verifier::config::WORD_SIZE_BITS;
 
+const CHUNK_BITS: usize = u8::BITS as usize;
+
+/// A struct that performs a linear transformation on the bits of a word (as a bit-vector).
+///
+/// The transformation is computed as an inner product between the bits of the word
+/// (mapping bit 0 to [`Field::ZERO`] and bit 1 to [`Field::ONE`]) and a vector of
+/// field elements.
+///
+/// This implementation uses the [Method of Four Russians] to optimize the computation by
+/// precomputing lookup tables for each byte position and using bitwise chunks of the words.
+///
+/// [Method of Four Russians]: <https://en.wikipedia.org/wiki/Method_of_Four_Russians>
+pub struct WordTransform<F: Field> {
+	/// Lookup tables for each byte position.
+	lookup_tables: Vec<[F; 1 << CHUNK_BITS]>,
+}
+
+impl<F: Field> WordTransform<F> {
+	/// Creates a new `WordTransform` that performs a linear transformation defined by `vec`.
+	///
+	/// ## Preconditions
+	/// * `vec` contains exactly [`WORD_SIZE_BITS`] elements
+	pub fn new(vec: &[F]) -> Self {
+		assert_eq!(vec.len(), WORD_SIZE_BITS); // precondition
+
+		// Create a lookup table of the expanded subset sums of all 256 combinations per byte
+		//
+		// The lookup table size is (64 / 8) * 256 * 16 = 32 KiB when the word size is 64 bits and
+		// field size is 128 bits.
+		let lookup_tables = vec
+			.chunks(CHUNK_BITS)
+			.map(|chunk| {
+				let chunk = <[F; CHUNK_BITS]>::try_from(chunk)
+					.expect("vec.len() == 64; thus, chunks must be exact CHUNK_BITS in size");
+				expand_subset_sums_array::<_, CHUNK_BITS, { 1 << CHUNK_BITS }>(chunk)
+			})
+			.collect::<Vec<_>>();
+
+		Self { lookup_tables }
+	}
+
+	/// Transforms a word by computing the inner product of its bits with the vector
+	/// used to construct this `WordTransform`.
+	pub fn transform(&self, word: Word) -> F {
+		// Split the word into bytes and perform one lookup per byte
+		let word_bytes = word.as_u64().to_le_bytes();
+		word_bytes
+			.iter()
+			.enumerate()
+			.map(|(i_byte, &byte)| self.lookup_tables[i_byte][byte as usize])
+			.sum()
+	}
+}
+
 /// Computes a [`FieldBuffer`] where each element is the inner product of the bits of a word and a
 /// vector of field elements.
 ///
@@ -25,41 +79,16 @@ where
 	F: Field,
 	P: PackedField<Scalar = F>,
 {
-	assert_eq!(vec.len(), WORD_SIZE_BITS); // precondition
 	assert!(words.len().is_power_of_two()); // precondition
 
-	// Create lookup tables for 8-bit chunks
-	const CHUNK_BITS: usize = u8::BITS as usize;
-
-	// Create a lookup table of the expanded subset sums of all 256 combinations per byte
-	//
-	// The lookup table size is (64 / 8) * 256 * 16 = 32 KiB when the word size is 64 bits and
-	// field size is 128 bits.
-	let lookup_table = vec
-		.chunks(u8::BITS as usize)
-		.map(|chunk| {
-			let chunk = <[F; CHUNK_BITS]>::try_from(chunk)
-				.expect("vec.len() == 64; thus, chunks must be exact CHUNK_BITS in size");
-			expand_subset_sums_array::<_, CHUNK_BITS, { 1 << CHUNK_BITS }>(chunk)
-		})
-		.collect::<Vec<_>>();
+	let transform = WordTransform::new(vec);
 
 	let log_n = log2_strict_usize(words.len());
 
-	// Collect the folded results by aggregating table lookups.
+	// Collect the folded results using the WordTransform
 	let values = words
 		.par_chunks(P::WIDTH)
-		.map(|word_chunk| {
-			P::from_scalars(word_chunk.iter().map(|&word| {
-				// Split the word into bytes and perform one lookup per byte
-				let word_bytes = word.as_u64().to_le_bytes();
-				word_bytes
-					.iter()
-					.enumerate()
-					.map(|(i_byte, &byte)| lookup_table[i_byte][byte as usize])
-					.sum()
-			}))
-		})
+		.map(|word_chunk| P::from_scalars(word_chunk.iter().map(|&word| transform.transform(word))))
 		.collect::<Vec<_>>();
 
 	FieldBuffer::new(log_n, values.into_boxed_slice())
