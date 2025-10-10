@@ -1,9 +1,8 @@
 // Copyright 2025 Irreducible Inc.
-use std::array;
 
 use binius_core::word::Word;
 use binius_field::{Field, PackedField};
-use binius_math::FieldBuffer;
+use binius_math::{FieldBuffer, span::expand_subset_sums_array};
 use binius_utils::{checked_arithmetics::log2_strict_usize, rayon::prelude::*};
 use binius_verifier::config::WORD_SIZE_BITS;
 
@@ -29,13 +28,20 @@ where
 	assert_eq!(vec.len(), WORD_SIZE_BITS); // precondition
 	assert!(words.len().is_power_of_two()); // precondition
 
+	// Create lookup tables for 8-bit chunks
+	const CHUNK_BITS: usize = u8::BITS as usize;
+
 	// Create a lookup table of the expanded subset sums of all 256 combinations per byte
 	//
 	// The lookup table size is (64 / 8) * 256 * 16 = 32 KiB when the word size is 64 bits and
 	// field size is 128 bits.
 	let lookup_table = vec
 		.chunks(u8::BITS as usize)
-		.map(|chunk| array::from_fn::<_, { 1 << u8::BITS }, _>(|j| subset_sum(chunk, j)))
+		.map(|chunk| {
+			let chunk = <[F; CHUNK_BITS]>::try_from(chunk)
+				.expect("vec.len() == 64; thus, chunks must be exact CHUNK_BITS in size");
+			expand_subset_sums_array::<_, CHUNK_BITS, { 1 << CHUNK_BITS }>(chunk)
+		})
 		.collect::<Vec<_>>();
 
 	let log_n = log2_strict_usize(words.len());
@@ -58,20 +64,6 @@ where
 
 	FieldBuffer::new(log_n, values.into_boxed_slice())
 		.expect("log_n is calculated from words.len() and values is constructed from words")
-}
-
-fn subset_sum<F: Field>(set: &[F], subset_idx: usize) -> F {
-	assert!(subset_idx < 1 << set.len()); // precondition
-	set.iter()
-		.enumerate()
-		.map(|(i, &elem)| {
-			if (subset_idx >> i) & 1 == 1 {
-				elem
-			} else {
-				F::ZERO
-			}
-		})
-		.sum()
 }
 
 #[cfg(test)]
