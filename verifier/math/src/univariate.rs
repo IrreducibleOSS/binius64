@@ -1,6 +1,7 @@
 // Copyright 2024-2025 Irreducible Inc.
 
 use binius_field::{BinaryField, Field};
+use itertools::izip;
 
 use super::{BinarySubspace, FieldBuffer};
 
@@ -77,13 +78,123 @@ pub fn lagrange_evals<F: BinaryField>(subspace: &BinarySubspace<F>, z: F) -> Fie
 		.expect("result.len() == 2^subspace.dim()")
 }
 
+/// A domain that univariate polynomials may be evaluated on.
+///
+/// An evaluation domain of size d + 1 together with polynomial values on that domain uniquely
+/// defines a degree <= d polynomial.
+#[derive(Debug, Clone)]
+pub struct EvaluationDomain<F: Field> {
+	points: Vec<F>,
+	weights: Vec<F>,
+}
+
+impl<F: Field> EvaluationDomain<F> {
+	/// Create a new evaluation domain from a set of points.
+	///
+	/// # Arguments
+	/// * `points` - The points that define the domain
+	///
+	/// # Panics
+	/// * If any points are repeated (not distinct)
+	pub fn from_points(points: Vec<F>) -> Self {
+		let weights = compute_barycentric_weights(&points);
+		Self { points, weights }
+	}
+
+	pub fn size(&self) -> usize {
+		self.points.len()
+	}
+
+	pub fn points(&self) -> &[F] {
+		self.points.as_slice()
+	}
+
+	/// Compute a vector of Lagrange polynomial evaluations in $O(N)$ at a given point `x`.
+	///
+	/// For an evaluation domain consisting of points $x_i$ Lagrange polynomials $L_i(x)$
+	/// are defined by
+	///
+	/// $$L_i(x) = \prod_{j \neq i}\frac{x - \pi_j}{\pi_i - \pi_j}$$
+	pub fn lagrange_evals(&self, x: F) -> Vec<F> {
+		let n = self.size();
+
+		let mut result = vec![F::ONE; n];
+
+		// Multiply the product suffixes
+		for i in (1..n).rev() {
+			result[i - 1] = result[i] * (x - self.points[i]);
+		}
+
+		let mut prefix = F::ONE;
+
+		// Multiply the product prefixes and weights
+		for (result_i, &point, &weight) in izip!(&mut result, &self.points, &self.weights) {
+			*result_i *= prefix * weight;
+			prefix *= x - point;
+		}
+
+		result
+	}
+
+	/// Evaluate the unique interpolated polynomial at any point `x`.
+	///
+	/// Computational complexity is $O(n)$, for a domain of size $n$.
+	pub fn extrapolate(&self, values: &[F], x: F) -> F {
+		assert_eq!(values.len(), self.size()); // precondition
+
+		let (ret, _) = izip!(values, &self.points, &self.weights).fold(
+			(F::ZERO, F::ONE),
+			|(acc, prod), (&value, &point, &weight)| {
+				let term = x - point;
+				let next_acc = acc * term + prod * value * weight;
+				(next_acc, prod * term)
+			},
+		);
+
+		ret
+	}
+}
+
+/// Compute the Barycentric weights for a sequence of unique points.
+///
+/// The [Barycentric] weight $w_i$ for point $x_i$ is calculated as:
+/// $$w_i = \prod_{j \neq i} \frac{1}{x_i - x_j}$$
+///
+/// These weights are used in the Lagrange interpolation formula:
+/// $$L(x) = \sum_{i=0}^{n-1} f(x_i) \cdot \frac{w_i}{x - x_i} \cdot \prod_{j=0}^{n-1} (x - x_j)$$
+///
+/// # Preconditions
+/// * All points in the input slice must be distinct, otherwise this function panics.
+///
+/// [Barycentric]: <https://en.wikipedia.org/wiki/Lagrange_polynomial#Barycentric_form>
+fn compute_barycentric_weights<F: Field>(points: &[F]) -> Vec<F> {
+	let n = points.len();
+	(0..n)
+		.map(|i| {
+			// TODO: We could use batch inversion here, but it's not a bottleneck
+			let product = (0..n)
+				.filter(|&j| j != i)
+				.map(|j| points[i] - points[j])
+				.product::<F>();
+			product
+				.invert()
+				.expect("precondition: all points are distinct; invert only fails on 0")
+		})
+		.collect()
+}
+
 #[cfg(test)]
 mod tests {
 	use binius_field::{BinaryField128bGhash, Field, Random, util::powers};
 	use rand::prelude::*;
 
 	use super::*;
-	use crate::{BinarySubspace, inner_product::inner_product, test_utils::random_scalars};
+	use crate::{
+		BinarySubspace,
+		inner_product::inner_product,
+		line::extrapolate_line_packed,
+		test_utils::{B128, random_scalars},
+	};
 
 	fn evaluate_univariate_with_powers<F: Field>(coeffs: &[F], x: F) -> F {
 		inner_product(coeffs.iter().copied(), powers(x).take(coeffs.len()))
@@ -159,5 +270,61 @@ mod tests {
 		let direct = evaluate_univariate(&coeffs, test_point);
 
 		assert_eq!(interpolated, direct, "Polynomial interpolation accuracy failed");
+	}
+
+	#[test]
+	fn test_random_extrapolate() {
+		let mut rng = StdRng::seed_from_u64(0);
+		let degree = 6;
+
+		let domain = EvaluationDomain::from_points(random_scalars(&mut rng, degree + 1));
+
+		let coeffs = random_scalars(&mut rng, degree + 1);
+
+		let values = domain
+			.points()
+			.iter()
+			.map(|&x| evaluate_univariate(&coeffs, x))
+			.collect::<Vec<_>>();
+
+		let x = B128::random(&mut rng);
+		let expected_y = evaluate_univariate(&coeffs, x);
+		assert_eq!(domain.extrapolate(&values, x), expected_y);
+	}
+
+	#[test]
+	fn test_extrapolate_line() {
+		let mut rng = StdRng::seed_from_u64(0);
+		for _ in 0..10 {
+			let x0 = B128::random(&mut rng);
+			let x1 = B128::random(&mut rng);
+			// Use a smaller field element for z to test the subfield scalar multiplication
+			let z = B128::from(rng.next_u64() as u128);
+			assert_eq!(extrapolate_line_packed(x0, x1, z), x0 + (x1 - x0) * z);
+		}
+	}
+
+	#[test]
+	fn test_evaluation_domain_lagrange_evals() {
+		let mut rng = StdRng::seed_from_u64(0);
+
+		// Create a small domain
+		let domain_points: Vec<B128> = (0..10).map(|_| B128::random(&mut rng)).collect();
+		let evaluation_domain = EvaluationDomain::from_points(domain_points.clone());
+
+		// Create random values for interpolation
+		let values: Vec<B128> = (0..10).map(|_| B128::random(&mut rng)).collect();
+
+		// Test point
+		let z = B128::random(&mut rng);
+
+		// Compute extrapolation
+		let extrapolated = evaluation_domain.extrapolate(values.as_slice(), z);
+
+		// Compute using Lagrange coefficients
+		let lagrange_coeffs = evaluation_domain.lagrange_evals(z);
+		let lagrange_eval = inner_product(lagrange_coeffs, values);
+
+		assert_eq!(lagrange_eval, extrapolated);
 	}
 }
