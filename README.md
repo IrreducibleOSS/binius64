@@ -87,30 +87,48 @@ Binius64 is developed by [Irreducible](https://www.irreducible.com).
 
 ## Licensing
 
-This project is split into the Prover components and the Verifier components, which are published with different licensing terms.
+```
+SPDX-License-Identifier: Apache-2.0 OR MIT
+```
 
-The Prover encompasses the entire project and is open-source under the [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html) license.
+This project is dual-licensed under either [Apache-2.0](LICENSE-Apache-2.0.txt) or [MIT](LICENSE-MIT.txt), at your
+option. Any contribution intentionally submitted for inclusion in the project shall be dual-licensed under the
+Apache-2.0 and MIT licenses, without any additional terms or conditions.
 
-The Verifier constitutes a subset of the prover, which is entirely contained in the `verifier/` directory. The Verifier is dually licensed under [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html) and the permissive [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0) license. **Projects using only the Verifier may use it under the Apache 2.0 terms, without regard for AGPL-3.0.**
+### Apache-2.0 Notice
 
-See [Licensing](https://www.binius.xyz/basics/licensing) for a simple explanation of these licensing terms.
+  Copyright 2025 Irreducible, Inc.
 
-Irreducible offers commercial licenses for teams who would like to build products on top of the Binius64 Prover without the AGPL-3.0 limitations. [Contact Irreducible](https://www.irreducible.com/contact) for more details.
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
 
-### License
+      http://www.apache.org/licenses/LICENSE-2.0
 
-   Binius64, the binary proof system \
-   Copyright (C) 2025 Irreducible, Inc.
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
 
-   This program is free software: you can redistribute it and/or modify
-   it under the terms of the GNU Affero General Public License as published by
-   the Free Software Foundation, either version 3 of the License, or
-   (at your option) any later version.
+### MIT Notice
 
-   This program is distributed in the hope that it will be useful,
-   but WITHOUT ANY WARRANTY; without even the implied warranty of
-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-   GNU Affero General Public License for more details.
+  Copyright (c) 2025 Irreducible, Inc.
 
-   You should have received a copy of the GNU Affero General Public License
-   along with this program.  If not, see <https://www.gnu.org/licenses/>.
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
