@@ -2,101 +2,12 @@
 
 #![allow(dead_code)]
 
-use std::{cmp::Ordering, mem};
+use std::mem;
 
-use binius_field::BinaryField128bGhash as B128;
-use smallvec::{SmallVec, smallvec};
-
-use crate::{AddConstraint, ConstraintWire, MulConstraint, WireKind};
-
-struct OperandMulConstraint {
-	a: Operand,
-	b: Operand,
-	c: Operand,
-}
-
-#[derive(Debug, Default, Clone)]
-struct Operand(SmallVec<[ConstraintWire; 4]>);
-
-impl Operand {
-	// TODO: unit test this
-	pub fn new(mut term: SmallVec<[ConstraintWire; 4]>) -> Self {
-		term.sort_unstable();
-
-		let has_duplicate_wire = term.windows(2).any(|w| w[0] == w[1]);
-		let term = if has_duplicate_wire {
-			term.chunk_by(|a, b| a == b)
-				.flat_map(|group| {
-					// Group is a slice of wires that are all equal. We want to return an empty
-					// iterator if the group is even length and a singleton iterator otherwise.
-					let last_even_idx = group.len() / 2 * 2;
-					group[last_even_idx..].iter().copied()
-				})
-				.collect()
-		} else {
-			term
-		};
-
-		Self(term)
-	}
-
-	pub fn len(&self) -> usize {
-		self.0.len()
-	}
-
-	pub fn is_empty(&self) -> bool {
-		self.0.is_empty()
-	}
-
-	fn merge(&mut self, rhs: &Self) -> (Operand, Operand) {
-		// Classic merge algorithm for sorted vectors, but where duplicate items cancel out.
-		let lhs = mem::take(&mut self.0);
-		let dst = &mut self.0;
-
-		let mut lhs_iter = lhs.into_iter().peekable();
-		let mut rhs_iter = rhs.0.iter().copied().peekable();
-
-		let mut additions = Operand::default();
-		let mut removals = Operand::default();
-
-		loop {
-			match (lhs_iter.peek(), rhs_iter.peek()) {
-				(Some(next_lhs), Some(next_rhs)) => {
-					match next_lhs.cmp(next_rhs) {
-						Ordering::Equal => {
-							// Advance both iterators, but don't push the wires because they cancel.
-							let wire = lhs_iter.next().expect("peek returned Some");
-							let _ = rhs_iter.next().expect("peek returned Some");
-
-							removals.0.push(wire);
-						}
-						Ordering::Less => dst.push(lhs_iter.next().expect("peek returned Some")),
-						Ordering::Greater => {
-							let wire = rhs_iter.next().expect("peek returned Some");
-							additions.0.push(wire);
-							dst.push(wire);
-						}
-					}
-				}
-				(Some(_), None) => dst.push(lhs_iter.next().expect("peek returned Some")),
-				(None, Some(_)) => {
-					let wire = rhs_iter.next().expect("peek returned Some");
-					additions.0.push(wire);
-					dst.push(wire);
-				}
-				(None, None) => break,
-			}
-		}
-
-		(additions, removals)
-	}
-}
-
-impl From<ConstraintWire> for Operand {
-	fn from(value: ConstraintWire) -> Self {
-		Operand(smallvec![value])
-	}
-}
+use super::constraint_system::{
+	AddConstraint, ConstraintSystem, ConstraintWire, MulConstraint as OperandMulConstraint,
+	MulConstraint, Operand, WireKind,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MulPosition {
@@ -128,8 +39,7 @@ impl Default for WireStatus {
 }
 
 pub struct WireEliminationStageOut {
-	constants: Vec<B128>,
-	mul_constraints: Vec<OperandMulConstraint>,
+	cs: ConstraintSystem,
 	private_wires_alive: Vec<bool>,
 }
 
@@ -173,81 +83,64 @@ impl Default for CostModel {
 /// The purpose of this is to do the wire-elimination transform. Rename appropriately.
 ///
 /// Before: constants, private, public and AND constraints
-pub struct R1CS {
+pub struct WireEliminationPass {
 	cost_model: CostModel,
-	constants: Vec<B128>,
-	add_constraints: Vec<Operand>,
-	mul_constraints: Vec<OperandMulConstraint>,
+	cs: ConstraintSystem,
 	one_wire: ConstraintWire,
 	// Values are indices with WireKind::Private
 	private_wires: Vec<WireStatus>,
 }
 
-impl R1CS {
+impl WireEliminationPass {
 	#[allow(clippy::too_many_arguments)]
-	pub fn new(
-		_n_constant: usize,
-		_n_public: usize,
-		n_private: usize,
-		cost_model: CostModel,
-		constants: Vec<B128>, //HashMap<B128, u32>,
-		add_constraints: Vec<AddConstraint>,
-		mul_constraints: Vec<MulConstraint>,
-		one_wire: ConstraintWire,
-	) -> Self {
+	pub fn new(cost_model: CostModel, cs: ConstraintSystem, one_wire: ConstraintWire) -> Self {
 		assert_eq!(one_wire.kind, WireKind::Constant);
 
-		let mut private_wires = vec![WireStatus::default(); n_private];
+		let mut private_wires = vec![WireStatus::default(); cs.n_private() as usize];
 
-		let mut r1cs_add_constraints = Vec::with_capacity(add_constraints.len());
-		for (i, AddConstraint(term)) in add_constraints.into_iter().enumerate() {
-			for wire in &term {
+		// TODO: Refactor the two loops below
+		for (i, AddConstraint(term)) in cs.zero_constraints.iter().enumerate() {
+			for wire in term.wires() {
 				if matches!(wire.kind, WireKind::Private)
 					&& let WireStatus::Unknown { ref mut uses } = private_wires[wire.id as usize]
 				{
 					uses.push(UseSite::Add { index: i as u32 });
 				}
 			}
-			r1cs_add_constraints.push(Operand::new(term));
 		}
 
-		let mut r1cs_mul_constraints = Vec::with_capacity(mul_constraints.len());
-		for (i, MulConstraint { a, b, c }) in mul_constraints.into_iter().enumerate() {
-			for (position, wire) in [
+		for (i, MulConstraint { a, b, c }) in cs.mul_constraints.iter().enumerate() {
+			for (position, operand) in [
 				(MulPosition::A, a),
 				(MulPosition::B, b),
 				(MulPosition::C, c),
 			] {
-				if matches!(wire.kind, WireKind::Private)
-					&& let WireStatus::Unknown { ref mut uses } = private_wires[wire.id as usize]
-				{
-					uses.push(UseSite::Mul {
-						index: i as u32,
-						position,
-					});
+				for wire in operand.wires() {
+					if matches!(wire.kind, WireKind::Private)
+						&& let WireStatus::Unknown { ref mut uses } =
+							private_wires[wire.id as usize]
+					{
+						uses.push(UseSite::Mul {
+							index: i as u32,
+							position,
+						});
+					}
 				}
 			}
-			r1cs_mul_constraints.push(OperandMulConstraint {
-				a: a.into(),
-				b: b.into(),
-				c: c.into(),
-			});
 		}
 
 		Self {
 			cost_model,
-			constants,
-			add_constraints: r1cs_add_constraints,
-			mul_constraints: r1cs_mul_constraints,
+			cs,
 			one_wire,
 			private_wires,
 		}
 	}
 
-	fn optimize_pass(&mut self) {
+	fn run(&mut self) {
 		// Go over each ADD constraint, in order, and find its best candidate. Eliminate it if
 		// there's a candidate.
-		for constraint_idx in 0..self.add_constraints.len() {
+		for constraint_idx in 0..self.cs.zero_constraints.len() {
 			if let Some(idx) = self.pruning_candidate(constraint_idx) {
 				self.eliminate(constraint_idx, idx);
 			}
@@ -255,11 +148,11 @@ impl R1CS {
 	}
 
 	fn pruning_candidate(&self, constraint_idx: usize) -> Option<usize> {
-		let operand = &self.add_constraints[constraint_idx];
+		let operand = &self.cs.zero_constraints[constraint_idx].0;
 
 		let (idx, n_uses) = (0..operand.len())
 			.filter_map(|idx| {
-				let wire_idx = operand.0[idx].id as usize;
+				let wire_idx = operand.wires()[idx].id as usize;
 				if let WireStatus::Unknown { uses } = &self.private_wires[wire_idx] {
 					Some((idx, uses.len()))
 				} else {
@@ -285,9 +178,9 @@ impl R1CS {
 
 	fn eliminate(&mut self, constraint_idx: usize, idx: usize) {
 		// Remove the constraint with `take`. Empty ADD constraints are dropped in `finish()`.
-		let operand = mem::take(&mut self.add_constraints[constraint_idx]);
+		let operand = mem::take(&mut self.cs.zero_constraints[constraint_idx].0);
 
-		let wire_idx = operand.0[idx].id as usize;
+		let wire_idx = operand.wires()[idx].id as usize;
 		let WireStatus::Unknown { uses } =
 			mem::replace(&mut self.private_wires[wire_idx], WireStatus::Pruned)
 		else {
@@ -296,9 +189,9 @@ impl R1CS {
 
 		for use_site in uses {
 			let dst_operand = match use_site {
-				UseSite::Add { index } => &mut self.add_constraints[index as usize],
+				UseSite::Add { index } => &mut self.cs.zero_constraints[index as usize].0,
 				UseSite::Mul { index, position } => {
-					let constraint = &mut self.mul_constraints[index as usize];
+					let constraint = &mut self.cs.mul_constraints[index as usize];
 					match position {
 						MulPosition::A => &mut constraint.a,
 						MulPosition::B => &mut constraint.b,
@@ -308,14 +201,14 @@ impl R1CS {
 			};
 
 			let (additions, removals) = dst_operand.merge(&operand);
-			for wire in additions.0 {
+			for wire in additions.wires() {
 				if matches!(wire.kind, WireKind::Private)
 					&& let WireStatus::Unknown { uses } = &mut self.private_wires[wire.id as usize]
 				{
 					uses.push(use_site.clone());
 				}
 			}
-			for wire in removals.0 {
+			for wire in removals.wires() {
 				if matches!(wire.kind, WireKind::Private)
 					&& let WireStatus::Unknown { uses } = &mut self.private_wires[wire.id as usize]
 				{
@@ -352,22 +245,22 @@ impl R1CS {
 	fn finish(self) -> WireEliminationStageOut {
 		let Self {
 			cost_model: _,
-			constants,
-			add_constraints,
-			mut mul_constraints,
+			mut cs,
 			one_wire,
 			private_wires,
 		} = self;
 
+		// Replace all zero constraints with mul constraints
 		let one_operand = Operand::from(one_wire);
 		let zero_operand = Operand::default();
-
-		for operand in add_constraints {
-			mul_constraints.push(OperandMulConstraint {
-				a: operand,
-				b: one_operand.clone(),
-				c: zero_operand.clone(),
-			});
+		for AddConstraint(operand) in mem::take(&mut cs.zero_constraints) {
+			if !operand.is_empty() {
+				cs.mul_constraints.push(OperandMulConstraint {
+					a: operand,
+					b: one_operand.clone(),
+					c: zero_operand.clone(),
+				});
+			}
 		}
 
 		let private_wires_alive = private_wires
@@ -376,8 +269,7 @@ impl R1CS {
 			.collect::<Vec<_>>();
 
 		WireEliminationStageOut {
-			constants,
-			mul_constraints,
+			cs,
 			private_wires_alive,
 		}
 	}

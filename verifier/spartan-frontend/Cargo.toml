@@ -8,6 +8,7 @@ authors.workspace = true
 binius-field = { path = "../field" }
 binius-utils = { path = "../utils" }
 bytemuck.workspace = true
+getset.workspace = true
 itertools.workspace = true
 smallvec.workspace = true
 

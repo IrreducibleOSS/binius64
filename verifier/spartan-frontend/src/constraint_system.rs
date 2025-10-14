@@ -1,0 +1,284 @@
+// Copyright 2025 Irreducible Inc.
+
+use std::{cmp::Ordering, collections::HashMap, mem};
+
+use binius_field::{BinaryField128bGhash as B128, Field};
+use binius_utils::checked_arithmetics::log2_ceil_usize;
+use getset::CopyGetters;
+use smallvec::{SmallVec, smallvec};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum WireKind {
+	Constant,
+	InOut,
+	Private,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ConstraintWire {
+	pub(crate) kind: WireKind,
+	pub(crate) id: u32,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct Operand(SmallVec<[ConstraintWire; 4]>);
+
+impl Operand {
+	// TODO: unit test this
+	pub fn new(mut term: SmallVec<[ConstraintWire; 4]>) -> Self {
+		term.sort_unstable();
+
+		let has_duplicate_wire = term.windows(2).any(|w| w[0] == w[1]);
+		let term = if has_duplicate_wire {
+			term.chunk_by(|a, b| a == b)
+				.flat_map(|group| {
+					// Group is a slice of wires that are all equal. We want to return an empty
+					// iterator if the group is even length and a singleton iterator otherwise.
+					let last_even_idx = group.len() / 2 * 2;
+					group[last_even_idx..].iter().copied()
+				})
+				.collect()
+		} else {
+			term
+		};
+
+		Self(term)
+	}
+
+	pub fn len(&self) -> usize {
+		self.0.len()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.0.is_empty()
+	}
+
+	pub fn wires(&self) -> &[ConstraintWire] {
+		&self.0
+	}
+
+	pub fn merge(&mut self, rhs: &Self) -> (Operand, Operand) {
+		// Classic merge algorithm for sorted vectors, but where duplicate items cancel out.
+		let lhs = mem::take(&mut self.0);
+		let dst = &mut self.0;
+
+		let mut lhs_iter = lhs.into_iter().peekable();
+		let mut rhs_iter = rhs.0.iter().copied().peekable();
+
+		let mut additions = Operand::default();
+		let mut removals = Operand::default();
+
+		loop {
+			match (lhs_iter.peek(), rhs_iter.peek()) {
+				(Some(next_lhs), Some(next_rhs)) => {
+					match next_lhs.cmp(next_rhs) {
+						Ordering::Equal => {
+							// Advance both iterators, but don't push the wires because they cancel.
+							let wire = lhs_iter.next().expect("peek returned Some");
+							let _ = rhs_iter.next().expect("peek returned Some");
+
+							removals.0.push(wire);
+						}
+						Ordering::Less => dst.push(lhs_iter.next().expect("peek returned Some")),
+						Ordering::Greater => {
+							let wire = rhs_iter.next().expect("peek returned Some");
+							additions.0.push(wire);
+							dst.push(wire);
+						}
+					}
+				}
+				(Some(_), None) => dst.push(lhs_iter.next().expect("peek returned Some")),
+				(None, Some(_)) => {
+					let wire = rhs_iter.next().expect("peek returned Some");
+					additions.0.push(wire);
+					dst.push(wire);
+				}
+				(None, None) => break,
+			}
+		}
+
+		(additions, removals)
+	}
+}
+
+impl From<ConstraintWire> for Operand {
+	fn from(value: ConstraintWire) -> Self {
+		Operand(smallvec![value])
+	}
+}
+
+#[derive(Debug)]
+pub struct AddConstraint(pub Operand);
+
+#[derive(Debug)]
+pub struct MulConstraint {
+	pub a: Operand,
+	pub b: Operand,
+	pub c: Operand,
+}
+
+#[derive(Debug, CopyGetters)]
+pub struct ConstraintSystem {
+	pub(crate) constants: Vec<B128>,
+	#[getset(get_copy = "pub")]
+	n_inout: u32,
+	#[getset(get_copy = "pub")]
+	n_private: u32,
+	pub(crate) zero_constraints: Vec<AddConstraint>,
+	pub(crate) mul_constraints: Vec<MulConstraint>,
+}
+
+impl ConstraintSystem {
+	pub fn new(
+		constants: Vec<B128>,
+		n_inout: u32,
+		n_private: u32,
+		zero_constraints: Vec<AddConstraint>,
+		mul_constraints: Vec<MulConstraint>,
+	) -> Self {
+		// TODO: document unchecked preconditions on references
+		Self {
+			constants,
+			n_inout,
+			n_private,
+			zero_constraints,
+			mul_constraints,
+		}
+	}
+
+	pub fn zero_constraints(&self) -> &[AddConstraint] {
+		&self.zero_constraints
+	}
+
+	pub fn mul_constraints(&self) -> &[MulConstraint] {
+		&self.mul_constraints
+	}
+
+	pub fn validate(&self, layout: &WitnessLayout, witness: &[B128]) {
+		assert_eq!(witness.len(), layout.size());
+
+		let operand_val = |operand: &Operand| {
+			operand
+				.wires()
+				.iter()
+				.map(|wire| {
+					let Some(idx) = layout.get(wire) else {
+						panic!("wire {wire:?} not found");
+					};
+					witness[idx.0 as usize]
+				})
+				.sum::<B128>()
+		};
+
+		for AddConstraint(term) in &self.zero_constraints {
+			assert!(operand_val(term).is_zero());
+		}
+
+		for MulConstraint { a, b, c } in &self.mul_constraints {
+			assert_eq!(operand_val(a) * operand_val(b), operand_val(c));
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct WitnessIndex(pub u32);
+
+#[derive(Debug)]
+pub struct WitnessLayout {
+	n_constants: u32,
+	n_inout: u32,
+	n_private: u32,
+	log_public: u32,
+	log_size: u32,
+	private_index_map: HashMap<u32, u32>,
+}
+
+impl WitnessLayout {
+	pub fn dense(n_constants: u32, n_inout: u32, n_private: u32) -> Self {
+		let n_public = n_constants + n_inout;
+		let log_public = log2_ceil_usize(n_public as usize) as u32;
+
+		let private_offset = 1 << log_public;
+		let log_size = log2_ceil_usize((private_offset + n_private) as usize) as u32;
+
+		let private_index_map = (0..n_private).map(|i| (i, private_offset + i)).collect();
+		Self {
+			n_constants,
+			n_inout,
+			n_private,
+			log_public,
+			log_size,
+			private_index_map,
+		}
+	}
+
+	pub fn dense_from_cs(cs: &ConstraintSystem) -> Self {
+		Self::dense(cs.constants.len() as u32, cs.n_inout, cs.n_private)
+	}
+
+	pub fn sparse(n_constants: u32, n_inout: u32, private_alive: &[bool]) -> Self {
+		let n_public = n_constants + n_inout;
+		let log_public = log2_ceil_usize(n_public as usize) as u32;
+
+		let private_offset = 1 << log_public;
+		let private_index_map = private_alive
+			.iter()
+			.enumerate()
+			.filter_map(|(i, &alive)| alive.then_some((i as u32, private_offset + i as u32)))
+			.collect::<HashMap<_, _>>();
+
+		let n_private = private_index_map.len() as u32;
+		let log_size = log2_ceil_usize((private_offset + n_private) as usize) as u32;
+
+		Self {
+			n_constants,
+			n_inout,
+			n_private,
+			log_public,
+			log_size,
+			private_index_map,
+		}
+	}
+
+	pub fn size(&self) -> usize {
+		1 << self.log_size as usize
+	}
+
+	pub fn n_constants(&self) -> usize {
+		self.n_constants as usize
+	}
+
+	pub fn n_inout(&self) -> usize {
+		self.n_inout as usize
+	}
+
+	pub fn n_private(&self) -> usize {
+		self.n_private as usize
+	}
+
+	/// Returns the first index of the inout
+	pub fn inout_offset(&self) -> WitnessIndex {
+		WitnessIndex(self.n_constants)
+	}
+
+	pub fn private_offset(&self) -> WitnessIndex {
+		WitnessIndex(1 << self.log_public)
+	}
+
+	pub fn get(&self, wire: &ConstraintWire) -> Option<WitnessIndex> {
+		match wire.kind {
+			WireKind::Constant => {
+				assert!(wire.id < self.n_constants);
+				Some(WitnessIndex(wire.id))
+			}
+			WireKind::InOut => {
+				assert!(wire.id < self.n_inout);
+				Some(WitnessIndex(self.inout_offset().0 + wire.id))
+			}
+			WireKind::Private => self
+				.private_index_map
+				.get(&wire.id)
+				.map(|&id| WitnessIndex(id)),
+		}
+	}
+}
