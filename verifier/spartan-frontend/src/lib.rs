@@ -2,15 +2,11 @@
 
 mod r1cs;
 
-use std::{
-	array,
-	collections::{BTreeMap, HashMap},
-	iter::successors,
-};
+use std::{array, collections::HashMap, iter::successors};
 
 use binius_field::{BinaryField128bGhash as B128, Field};
+use binius_utils::checked_arithmetics::log2_ceil_usize;
 use bytemuck::zeroed_vec;
-use itertools::chain;
 use smallvec::{SmallVec, smallvec};
 
 pub trait CircuitBuilder {
@@ -34,7 +30,7 @@ pub trait CircuitBuilder {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum WireKind {
 	Constant,
-	Public,
+	InOut,
 	Private,
 }
 
@@ -65,6 +61,7 @@ impl WireAllocator {
 	}
 }
 
+// TODO: Add string labels for constraints to make validation easier.
 struct AddConstraint(SmallVec<[ConstraintWire; 4]>);
 
 struct MulConstraint {
@@ -74,19 +71,23 @@ struct MulConstraint {
 }
 
 pub struct ConstraintSystem {
-	witness_size: u32,
 	constants: Vec<B128>,
-	// TODO: This can just be a vec with binary search, BTreeMap not necessary.
-	index_map: BTreeMap<ConstraintWire, WitnessIndex>,
+	n_inout: u32,
+	n_private: u32,
 	add_constraints: Vec<AddConstraint>,
 	mul_constraints: Vec<MulConstraint>,
 }
 
 impl ConstraintSystem {
-	pub fn validate(&self, witness: &[B128]) {
-		assert_eq!(witness.len(), self.witness_size as usize);
+	pub fn validate(&self, layout: &WitnessLayout, witness: &[B128]) {
+		assert_eq!(witness.len(), layout.size());
 
-		let wire_val = |wire| witness[self.index_map[wire].0 as usize];
+		let wire_val = |wire| {
+			let Some(idx) = layout.get(wire) else {
+				panic!("wire {wire:?} not found");
+			};
+			witness[idx.0 as usize]
+		};
 
 		for AddConstraint(term) in &self.add_constraints {
 			let sum = term.iter().map(wire_val).sum::<B128>();
@@ -116,7 +117,7 @@ impl ConstraintBuilder {
 	pub fn new() -> Self {
 		ConstraintBuilder {
 			constant_alloc: WireAllocator::new(WireKind::Constant),
-			public_alloc: WireAllocator::new(WireKind::Public),
+			public_alloc: WireAllocator::new(WireKind::InOut),
 			private_alloc: WireAllocator::new(WireKind::Private),
 			constants: HashMap::new(),
 			add_constraints: Vec::new(),
@@ -138,37 +139,15 @@ impl ConstraintBuilder {
 			mul_constraints,
 		} = self;
 
-		let public_offset = constant_alloc.n_wires;
-		let private_offset = public_offset + public_alloc.n_wires;
-		let witness_size = private_offset + private_alloc.n_wires;
-
-		let index_map = chain!(
-			(0..public_alloc.n_wires).map(|i| {
-				let wire = ConstraintWire {
-					kind: WireKind::Public,
-					id: i,
-				};
-				(wire, WitnessIndex(public_offset + i))
-			}),
-			(0..private_alloc.n_wires).map(|i| {
-				let wire = ConstraintWire {
-					kind: WireKind::Private,
-					id: i,
-				};
-				(wire, WitnessIndex(private_offset + i))
-			})
-		)
-		.collect();
-
 		let mut constants = zeroed_vec(constant_alloc.n_wires as usize);
 		for (val, id) in constants_map {
 			constants[id as usize] = val;
 		}
 
 		ConstraintSystem {
-			witness_size,
-			index_map,
 			constants,
+			n_inout: public_alloc.n_wires,
+			n_private: private_alloc.n_wires,
 			add_constraints,
 			mul_constraints,
 		}
@@ -220,6 +199,106 @@ impl CircuitBuilder for ConstraintBuilder {
 	}
 }
 
+#[derive(Debug)]
+pub struct WitnessLayout {
+	n_constants: u32,
+	n_inout: u32,
+	n_private: u32,
+	log_public: u32,
+	log_size: u32,
+	private_index_map: HashMap<u32, u32>,
+}
+
+impl WitnessLayout {
+	pub fn dense(n_constants: u32, n_inout: u32, n_private: u32) -> Self {
+		let n_public = n_constants + n_inout;
+		let log_public = log2_ceil_usize(n_public as usize) as u32;
+
+		let private_offset = 1 << log_public;
+		let log_size = log2_ceil_usize((private_offset + n_private) as usize) as u32;
+
+		let private_index_map = (0..n_private).map(|i| (i, private_offset + i)).collect();
+		Self {
+			n_constants,
+			n_inout,
+			n_private,
+			log_public,
+			log_size,
+			private_index_map,
+		}
+	}
+
+	pub fn dense_from_cs(cs: &ConstraintSystem) -> Self {
+		Self::dense(cs.constants.len() as u32, cs.n_inout, cs.n_private)
+	}
+
+	pub fn sparse(n_constants: u32, n_inout: u32, private_alive: &[bool]) -> Self {
+		let n_public = n_constants + n_inout;
+		let log_public = log2_ceil_usize(n_public as usize) as u32;
+
+		let private_offset = 1 << log_public;
+		let private_index_map = private_alive
+			.iter()
+			.enumerate()
+			.filter_map(|(i, &alive)| alive.then_some((i as u32, private_offset + i as u32)))
+			.collect::<HashMap<_, _>>();
+
+		let n_private = private_index_map.len() as u32;
+		let log_size = log2_ceil_usize((private_offset + n_private) as usize) as u32;
+
+		Self {
+			n_constants,
+			n_inout,
+			n_private,
+			log_public,
+			log_size,
+			private_index_map,
+		}
+	}
+
+	pub fn size(&self) -> usize {
+		1 << self.log_size as usize
+	}
+
+	pub fn n_constants(&self) -> usize {
+		self.n_constants as usize
+	}
+
+	pub fn n_inout(&self) -> usize {
+		self.n_inout as usize
+	}
+
+	pub fn n_private(&self) -> usize {
+		self.n_private as usize
+	}
+
+	/// Returns the first index of the inout
+	pub fn inout_offset(&self) -> WitnessIndex {
+		WitnessIndex(self.n_constants)
+	}
+
+	pub fn private_offset(&self) -> WitnessIndex {
+		WitnessIndex(1 << self.log_public)
+	}
+
+	pub fn get(&self, wire: &ConstraintWire) -> Option<WitnessIndex> {
+		match wire.kind {
+			WireKind::Constant => {
+				assert!(wire.id < self.n_constants);
+				Some(WitnessIndex(wire.id))
+			}
+			WireKind::InOut => {
+				assert!(wire.id < self.n_inout);
+				Some(WitnessIndex(self.inout_offset().0 + wire.id))
+			}
+			WireKind::Private => self
+				.private_index_map
+				.get(&wire.id)
+				.map(|&id| WitnessIndex(id)),
+		}
+	}
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct WitnessIndex(u32);
 
@@ -235,21 +314,23 @@ impl WitnessWire {
 
 pub struct WitnessGenerator<'a> {
 	alloc: WireAllocator,
-	value_vec: Vec<B128>,
-	index_map: &'a BTreeMap<ConstraintWire, WitnessIndex>,
+	witness: Vec<B128>,
+	layout: &'a WitnessLayout,
 }
 
 impl<'a> WitnessGenerator<'a> {
-	pub fn new(cs: &'a ConstraintSystem) -> Self {
-		let witness_size = cs.witness_size;
+	pub fn new(cs: &'a ConstraintSystem, layout: &'a WitnessLayout) -> Self {
+		let witness_size = layout.size();
 
-		let mut value_vec = zeroed_vec(witness_size as usize);
-		value_vec[..cs.constants.len()].copy_from_slice(&cs.constants);
+		assert_eq!(cs.constants.len(), layout.n_constants());
+
+		let mut witness = zeroed_vec(witness_size);
+		witness[..cs.constants.len()].copy_from_slice(&cs.constants);
 
 		Self {
 			alloc: WireAllocator::new(WireKind::Private),
-			value_vec,
-			index_map: &cs.index_map,
+			witness,
+			layout,
 		}
 	}
 
@@ -259,19 +340,19 @@ impl<'a> WitnessGenerator<'a> {
 	}
 
 	fn write_value(&mut self, wire: ConstraintWire, value: B128) -> WitnessWire {
-		if let Some(&index) = self.index_map.get(&wire) {
-			self.value_vec[index.0 as usize] = value;
+		if let Some(index) = self.layout.get(&wire) {
+			self.witness[index.0 as usize] = value;
 		}
 		WitnessWire(value)
 	}
 
 	pub fn write_inout(&mut self, wire: ConstraintWire, value: B128) -> WitnessWire {
-		assert_eq!(wire.kind, WireKind::Public);
+		assert_eq!(wire.kind, WireKind::InOut);
 		self.write_value(wire, value)
 	}
 
 	pub fn build(self) -> Vec<B128> {
-		self.value_vec
+		self.witness
 	}
 }
 
@@ -340,7 +421,8 @@ mod tests {
 		constraint_builder.assert_eq(out, xn);
 		let constraint_system = constraint_builder.build();
 
-		let mut witness_generator = WitnessGenerator::new(&constraint_system);
+		let layout = WitnessLayout::dense_from_cs(&constraint_system);
+		let mut witness_generator = WitnessGenerator::new(&constraint_system, &layout);
 		let x0 = witness_generator.write_inout(x0, B128::ONE);
 		let x1 = witness_generator.write_inout(x1, B128::MULTIPLICATIVE_GENERATOR);
 		let xn = witness_generator.write_inout(xn, B128::MULTIPLICATIVE_GENERATOR.pow(6765));
@@ -348,6 +430,6 @@ mod tests {
 		witness_generator.assert_eq(out, xn);
 		let witness = witness_generator.build();
 
-		constraint_system.validate(&witness);
+		constraint_system.validate(&layout, &witness);
 	}
 }

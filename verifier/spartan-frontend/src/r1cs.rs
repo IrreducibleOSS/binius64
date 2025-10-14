@@ -129,18 +129,25 @@ impl Default for WireStatus {
 
 pub struct WireEliminationStageOut {
 	constants: Vec<B128>,
-	// // TODO: This can just be a vec with binary search, BTreeMap not necessary.
-	// index_map: BTreeMap<ConstraintWire, WitnessIndex>,
-	add_constraints: Vec<Operand>,
 	mul_constraints: Vec<OperandMulConstraint>,
-	// Values are indices with WireKind::Private
-	private_wires: Vec<WireStatus>,
+	private_wires_alive: Vec<bool>,
 }
 
+#[derive(Debug, Clone)]
 pub struct CostModel {
 	pub wire_cost: u64,
 	pub mul_cost: u64,
 	pub ref_cost: u64,
+}
+
+impl Default for CostModel {
+	fn default() -> Self {
+		CostModel {
+			wire_cost: 16,
+			mul_cost: 2,
+			ref_cost: 1,
+		}
+	}
 }
 
 // Passes:
@@ -148,6 +155,19 @@ pub struct CostModel {
 // - Wire elimination
 //   - inputs: Add constraints, mul constraints, wires
 //   - outputs: mul constraints, wires
+//
+// ConstraintSystem IR over wires
+//
+// WitnessLayout (Separate)
+// - map from subset of ConstraintWire to WitnessIndex
+// - witness_size
+//
+// R1CS System
+// - constants
+// - log_public_size
+// - log_witness_size
+//
+//
 // - Wire mapping
 
 /// The purpose of this is to do the wire-elimination transform. Rename appropriately.
@@ -156,15 +176,15 @@ pub struct CostModel {
 pub struct R1CS {
 	cost_model: CostModel,
 	constants: Vec<B128>,
-	// // TODO: This can just be a vec with binary search, BTreeMap not necessary.
-	// index_map: BTreeMap<ConstraintWire, WitnessIndex>,
 	add_constraints: Vec<Operand>,
 	mul_constraints: Vec<OperandMulConstraint>,
+	one_wire: ConstraintWire,
 	// Values are indices with WireKind::Private
 	private_wires: Vec<WireStatus>,
 }
 
 impl R1CS {
+	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		_n_constant: usize,
 		_n_public: usize,
@@ -173,7 +193,10 @@ impl R1CS {
 		constants: Vec<B128>, //HashMap<B128, u32>,
 		add_constraints: Vec<AddConstraint>,
 		mul_constraints: Vec<MulConstraint>,
+		one_wire: ConstraintWire,
 	) -> Self {
+		assert_eq!(one_wire.kind, WireKind::Constant);
+
 		let mut private_wires = vec![WireStatus::default(); n_private];
 
 		let mut r1cs_add_constraints = Vec::with_capacity(add_constraints.len());
@@ -216,6 +239,7 @@ impl R1CS {
 			constants,
 			add_constraints: r1cs_add_constraints,
 			mul_constraints: r1cs_mul_constraints,
+			one_wire,
 			private_wires,
 		}
 	}
@@ -326,6 +350,35 @@ impl R1CS {
 	 */
 
 	fn finish(self) -> WireEliminationStageOut {
-		todo!()
+		let Self {
+			cost_model: _,
+			constants,
+			add_constraints,
+			mut mul_constraints,
+			one_wire,
+			private_wires,
+		} = self;
+
+		let one_operand = Operand::from(one_wire);
+		let zero_operand = Operand::default();
+
+		for operand in add_constraints {
+			mul_constraints.push(OperandMulConstraint {
+				a: operand,
+				b: one_operand.clone(),
+				c: zero_operand.clone(),
+			});
+		}
+
+		let private_wires_alive = private_wires
+			.into_iter()
+			.map(|status| !matches!(status, WireStatus::Pruned))
+			.collect::<Vec<_>>();
+
+		WireEliminationStageOut {
+			constants,
+			mul_constraints,
+			private_wires_alive,
+		}
 	}
 }
