@@ -112,6 +112,7 @@ pub struct ConstraintBuilder {
 }
 
 impl ConstraintBuilder {
+	#[allow(clippy::new_without_default)]
 	pub fn new() -> Self {
 		ConstraintBuilder {
 			constant_alloc: WireAllocator::new(WireKind::Constant),
