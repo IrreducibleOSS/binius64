@@ -104,6 +104,44 @@ fn run_mul_benchmark<T, R>(
 	});
 }
 
+/// Generic benchmark helper for squaring operations.
+///
+/// Similar to run_mul_benchmark but optimized for squaring where we only need one operand.
+fn run_square_benchmark<T, R>(
+	group: &mut BenchmarkGroup<'_, criterion::measurement::WallTime>,
+	name: &str,
+	square_fn: impl Fn(T) -> T,
+	mut rng: R,
+	element_bits: usize,
+) where
+	T: Underlier,
+	R: Rng,
+{
+	/// The size of the field element array to process. Values too small limit pipelined
+	/// parallelism.
+	const BATCH_SIZE: usize = 16;
+	/// The number of squarings per element in the batch. Larger values increase the density
+	/// of squarings per iteration.
+	const N_PASSES: usize = 64;
+
+	// Generate random elements that are to be squared.
+	let mut batch: [T; BATCH_SIZE] = array::from_fn(|_| T::random(&mut rng));
+
+	// Calculate throughput based on elements per underlier
+	let elements_per_underlier = T::BITS / element_bits;
+	group.throughput(Throughput::Elements((BATCH_SIZE * N_PASSES * elements_per_underlier) as u64));
+
+	group.bench_function(name, |b| {
+		b.iter(|| {
+			for _ in 0..N_PASSES {
+				for i in 0..BATCH_SIZE {
+					batch[i] = square_fn(batch[i]);
+				}
+			}
+		})
+	});
+}
+
 /// Benchmark GF(2^8) multiplication using GFNI instructions
 #[allow(unused_variables, unused_mut)]
 fn bench_rijndael(c: &mut Criterion) {
@@ -177,7 +215,7 @@ fn bench_polyval(c: &mut Criterion) {
 /// Benchmark GF(2^128) GHASH multiplication using CLMUL instructions
 #[allow(unused_imports, unused_variables, unused_mut)]
 fn bench_ghash(c: &mut Criterion) {
-	use binius_arith_bench::ghash::mul_clmul;
+	use binius_arith_bench::ghash::{mul_clmul, square_clmul};
 
 	let mut rng = rand::rng();
 
@@ -266,6 +304,51 @@ fn bench_ghash(c: &mut Criterion) {
 		&mut rng,
 		128,
 	);
+
+	// Benchmark squaring operations
+	// Benchmark __m128i squaring
+	#[cfg(all(target_feature = "pclmulqdq", target_feature = "sse2"))]
+	{
+		run_square_benchmark(
+			&mut group,
+			"square_clmul::<__m128i>",
+			square_clmul::<__m128i>,
+			&mut rng,
+			128,
+		);
+	}
+
+	// Benchmark __m256i squaring
+	#[cfg(all(
+		target_feature = "vpclmulqdq",
+		target_feature = "avx2",
+		target_feature = "sse2"
+	))]
+	{
+		run_square_benchmark(
+			&mut group,
+			"square_clmul::<__m256i>",
+			square_clmul::<__m256i>,
+			&mut rng,
+			128,
+		);
+	}
+
+	// Benchmark uint64x2_t squaring (AARCH64 NEON)
+	#[cfg(all(
+		target_arch = "aarch64",
+		target_feature = "neon",
+		target_feature = "aes"
+	))]
+	{
+		run_square_benchmark(
+			&mut group,
+			"square_clmul::uint64x2_t",
+			square_clmul::<uint64x2_t>,
+			&mut rng,
+			128,
+		);
+	}
 
 	group.finish();
 
