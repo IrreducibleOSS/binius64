@@ -24,7 +24,6 @@ pub struct ConstraintWire {
 pub struct Operand(SmallVec<[ConstraintWire; 4]>);
 
 impl Operand {
-	// TODO: unit test this
 	pub fn new(mut term: SmallVec<[ConstraintWire; 4]>) -> Self {
 		term.sort_unstable();
 
@@ -286,5 +285,74 @@ impl WitnessLayout {
 				.get(&wire.id)
 				.map(|&id| WitnessIndex(id)),
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use smallvec::smallvec;
+
+	use super::*;
+
+	#[test]
+	fn test_wires_added_mod2() {
+		// Create 4 wires with different kinds to ensure proper sorting
+		let w = [
+			ConstraintWire {
+				kind: WireKind::Constant,
+				id: 0,
+			},
+			ConstraintWire {
+				kind: WireKind::InOut,
+				id: 0,
+			},
+			ConstraintWire {
+				kind: WireKind::Private,
+				id: 0,
+			},
+			ConstraintWire {
+				kind: WireKind::Private,
+				id: 1,
+			},
+		];
+
+		// Input sequence: w[0], w[2], w[2], w[3], w[3], w[1], w[2], w[1], w[3], w[3]
+		// Counts: w[0]=1, w[1]=2, w[2]=3, w[3]=4
+		// After mod 2: w[0]=1, w[1]=0, w[2]=1, w[3]=0
+		let input = smallvec![w[0], w[2], w[2], w[3], w[3], w[1], w[2], w[1], w[3], w[3]];
+		let operand = Operand::new(input);
+
+		// Expected result: w[0], w[2] (sorted)
+		assert_eq!(operand.wires(), &[w[0], w[2]]);
+	}
+
+	#[test]
+	fn test_sorting_when_no_duplicates() {
+		// Create 4 wires with different kinds to ensure proper sorting
+		let w = [
+			ConstraintWire {
+				kind: WireKind::Constant,
+				id: 0,
+			},
+			ConstraintWire {
+				kind: WireKind::InOut,
+				id: 0,
+			},
+			ConstraintWire {
+				kind: WireKind::Private,
+				id: 0,
+			},
+			ConstraintWire {
+				kind: WireKind::Private,
+				id: 1,
+			},
+		];
+
+		// Input sequence: w[2], w[3], w[0], w[1]
+		let input = smallvec![w[2], w[3], w[0], w[1]];
+		let operand = Operand::new(input);
+
+		// Expected result: w[0], w[1], w[2], w[3] (sorted by WireKind then ID)
+		assert_eq!(operand.wires(), &[w[0], w[1], w[2], w[3]]);
 	}
 }
