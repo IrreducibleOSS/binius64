@@ -1,6 +1,6 @@
 // Copyright 2025 Irreducible Inc.
 
-use std::{array, collections::HashMap, iter::successors};
+use std::{array, collections::HashMap};
 
 use binius_field::BinaryField128bGhash as B128;
 use bytemuck::zeroed_vec;
@@ -257,6 +257,8 @@ impl<'a> CircuitBuilder for WitnessGenerator<'a> {
 
 #[cfg(test)]
 mod tests {
+	use std::iter::successors;
+
 	use binius_field::{BinaryField, Field, PackedField};
 
 	use super::*;
