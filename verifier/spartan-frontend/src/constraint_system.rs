@@ -355,4 +355,83 @@ mod tests {
 		// Expected result: w[0], w[1], w[2], w[3] (sorted by WireKind then ID)
 		assert_eq!(operand.wires(), &[w[0], w[1], w[2], w[3]]);
 	}
+
+	#[test]
+	fn test_merge() {
+		// Create 4 wires with different kinds to ensure proper sorting
+		let w = [
+			ConstraintWire {
+				kind: WireKind::Constant,
+				id: 0,
+			},
+			ConstraintWire {
+				kind: WireKind::InOut,
+				id: 0,
+			},
+			ConstraintWire {
+				kind: WireKind::Private,
+				id: 0,
+			},
+			ConstraintWire {
+				kind: WireKind::Private,
+				id: 1,
+			},
+		];
+
+		// Test case 1: merge([w[0]], [])
+		let mut lhs = Operand(smallvec![w[0]]);
+		let rhs = Operand(smallvec![]);
+		let (additions, removals) = lhs.merge(&rhs);
+		assert_eq!(lhs.wires(), &[w[0]]);
+		assert_eq!(additions.wires(), &[]);
+		assert_eq!(removals.wires(), &[]);
+
+		// Test case 2: merge([], [w[0]])
+		let mut lhs = Operand(smallvec![]);
+		let rhs = Operand(smallvec![w[0]]);
+		let (additions, removals) = lhs.merge(&rhs);
+		assert_eq!(lhs.wires(), &[w[0]]);
+		assert_eq!(additions.wires(), &[w[0]]);
+		assert_eq!(removals.wires(), &[]);
+
+		// Test case 3: merge([w[0]], [w[0]])
+		let mut lhs = Operand(smallvec![w[0]]);
+		let rhs = Operand(smallvec![w[0]]);
+		let (additions, removals) = lhs.merge(&rhs);
+		assert_eq!(lhs.wires(), &[]);
+		assert_eq!(additions.wires(), &[]);
+		assert_eq!(removals.wires(), &[w[0]]);
+
+		// Test case 4: merge([w[0]], [w[1]])
+		let mut lhs = Operand(smallvec![w[0]]);
+		let rhs = Operand(smallvec![w[1]]);
+		let (additions, removals) = lhs.merge(&rhs);
+		assert_eq!(lhs.wires(), &[w[0], w[1]]);
+		assert_eq!(additions.wires(), &[w[1]]);
+		assert_eq!(removals.wires(), &[]);
+
+		// Test case 5: merge([w[0]], [w[0], w[1]])
+		let mut lhs = Operand(smallvec![w[0]]);
+		let rhs = Operand(smallvec![w[0], w[1]]);
+		let (additions, removals) = lhs.merge(&rhs);
+		assert_eq!(lhs.wires(), &[w[1]]);
+		assert_eq!(additions.wires(), &[w[1]]);
+		assert_eq!(removals.wires(), &[w[0]]);
+
+		// Test case 6: merge([w[0], w[2]], [w[1], w[3]])
+		let mut lhs = Operand(smallvec![w[0], w[2]]);
+		let rhs = Operand(smallvec![w[1], w[3]]);
+		let (additions, removals) = lhs.merge(&rhs);
+		assert_eq!(lhs.wires(), &[w[0], w[1], w[2], w[3]]);
+		assert_eq!(additions.wires(), &[w[1], w[3]]);
+		assert_eq!(removals.wires(), &[]);
+
+		// Test case 7: merge([w[0], w[2]], [w[0], w[1], w[2], w[3]])
+		let mut lhs = Operand(smallvec![w[0], w[2]]);
+		let rhs = Operand(smallvec![w[0], w[1], w[2], w[3]]);
+		let (additions, removals) = lhs.merge(&rhs);
+		assert_eq!(lhs.wires(), &[w[1], w[3]]);
+		assert_eq!(additions.wires(), &[w[1], w[3]]);
+		assert_eq!(removals.wires(), &[w[0], w[2]]);
+	}
 }
