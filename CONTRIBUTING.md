@@ -75,6 +75,53 @@ that expose a `prove` and `verify` method. Because they are namespaced within th
 option of referring to these functions as `sumcheck::prove` / `sumcheck::verify` or renaming the imported symbol, like
 `use sumcheck::prove as sumcheck_prove`.
 
+### Functional programming style
+
+Prefer functional style over imperative style with mutable variables. Use iterator combinators (`map`, `filter`, `fold`,
+etc.) instead of loops with mutable state. Exceptions are allowed when algorithms have substantial mutable state that
+would be awkward to express functionally.
+
+Good examples:
+```rust
+// Use fold instead of mutable accumulator
+let result = items.iter().fold(initial, |acc, &item| {
+    compute_next(acc, item)
+});
+
+// Use iter::zip instead of .iter().zip()
+let pairs: Vec<_> = iter::zip(&vec_a, &vec_b)
+    .map(|(&a, &b)| process(a, b))
+    .collect();
+
+// Use successors for generating sequences
+let powers = iter::successors(Some(x), |&prev| Some(prev * x))
+    .take(n)
+    .collect();
+```
+
+Poor examples:
+```rust
+// Avoid mutable state when fold is clearer
+let mut result = initial;
+for &item in items.iter() {
+    result = compute_next(result, item);
+}
+
+// Avoid .iter().zip() - use iter::zip() instead
+let pairs: Vec<_> = vec_a.iter()
+    .zip(&vec_b)
+    .map(|(&a, &b)| process(a, b))
+    .collect();
+
+// Avoid imperative loops for sequence generation
+let mut powers = Vec::new();
+let mut current = x;
+for _ in 0..n {
+    powers.push(current);
+    current = current * x;
+}
+```
+
 ### Unwrap
 
 Don't call `unwrap` in library code. Either throw or propagate an `Err` or call `expect`, leaving an explanation of why

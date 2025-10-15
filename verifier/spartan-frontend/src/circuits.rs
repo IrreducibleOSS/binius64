@@ -1,5 +1,7 @@
 // Copyright 2025 Irreducible Inc.
 
+use std::iter::successors;
+
 use crate::circuit_builder::CircuitBuilder;
 
 pub fn extrapolate_line<Builder: CircuitBuilder>(
@@ -28,12 +30,13 @@ pub fn evaluate_univariate<Builder: CircuitBuilder>(
 		return builder.constant(B128::ZERO);
 	}
 
-	let mut result = coeffs[coeffs.len() - 1];
-	for &coeff in coeffs[..coeffs.len() - 1].iter().rev() {
-		result = builder.mul(result, z);
-		result = builder.add(result, coeff);
-	}
-	result
+	coeffs[..coeffs.len() - 1]
+		.iter()
+		.rev()
+		.fold(coeffs[coeffs.len() - 1], |acc, &coeff| {
+			let temp = builder.mul(acc, z);
+			builder.add(temp, coeff)
+		})
 }
 
 pub fn evaluate_multilinear<Builder: CircuitBuilder>(
@@ -44,26 +47,22 @@ pub fn evaluate_multilinear<Builder: CircuitBuilder>(
 	// coords has length n, coeffs has length 2^n
 	// Evaluation algorithm: fold over each coordinate in reverse order
 	// For each coordinate, interpolate between pairs: lo + coord * (hi - lo)
-	let mut current = coeffs.to_vec();
-
-	for &coord in coords.iter().rev() {
-		let half_len = current.len() / 2;
-		let mut next = Vec::with_capacity(half_len);
-
-		for i in 0..half_len {
-			let lo = current[i];
-			let hi = current[half_len + i];
-			// Compute lo + coord * (hi - lo) = lo + coord * (hi + lo) in binary field
-			let diff = builder.add(hi, lo);
-			let scaled = builder.mul(coord, diff);
-			let result = builder.add(lo, scaled);
-			next.push(result);
-		}
-
-		current = next;
-	}
-
-	current
+	coords
+		.iter()
+		.rev()
+		.fold(coeffs.to_vec(), |current, &coord| {
+			let half_len = current.len() / 2;
+			(0..half_len)
+				.map(|i| {
+					let lo = current[i];
+					let hi = current[half_len + i];
+					// Compute lo + coord * (hi - lo) = lo + coord * (hi + lo) in binary field
+					let diff = builder.add(hi, lo);
+					let scaled = builder.mul(coord, diff);
+					builder.add(lo, scaled)
+				})
+				.collect()
+		})
 }
 
 pub fn powers<Builder: CircuitBuilder>(
@@ -72,18 +71,9 @@ pub fn powers<Builder: CircuitBuilder>(
 	n: usize,
 ) -> Vec<Builder::Wire> {
 	// return a vector of n wires containing the values of x^i for i in [1, n]
-	let mut result = Vec::with_capacity(n);
-	if n == 0 {
-		return result;
-	}
-
-	result.push(x);
-	for _ in 1..n {
-		let prev = *result.last().unwrap();
-		let next = builder.mul(prev, x);
-		result.push(next);
-	}
-	result
+	successors(Some(x), |&prev| Some(builder.mul(prev, x)))
+		.take(n)
+		.collect()
 }
 
 pub fn square<Builder: CircuitBuilder>(builder: &mut Builder, x: Builder::Wire) -> Builder::Wire {
@@ -97,6 +87,8 @@ pub fn assert_is_bit<Builder: CircuitBuilder>(builder: &mut Builder, val: Builde
 
 #[cfg(test)]
 mod tests {
+	use std::iter;
+
 	use binius_field::{BinaryField128bGhash as B128, Field};
 
 	use super::*;
@@ -281,9 +273,7 @@ mod tests {
 		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
 
 		let mut witness_gen = WitnessGenerator::new(&optimized_cs, &layout);
-		let coeffs_w: Vec<_> = coeffs
-			.iter()
-			.zip(&coeffs_vals)
+		let coeffs_w: Vec<_> = iter::zip(&coeffs, &coeffs_vals)
 			.map(|(&wire, &val)| witness_gen.write_inout(wire, val))
 			.collect();
 		let z_w = witness_gen.write_inout(z, z_val);
@@ -337,14 +327,10 @@ mod tests {
 		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
 
 		let mut witness_gen = WitnessGenerator::new(&optimized_cs, &layout);
-		let coeffs_w: Vec<_> = coeffs
-			.iter()
-			.zip(&coeffs_vals)
+		let coeffs_w: Vec<_> = iter::zip(&coeffs, &coeffs_vals)
 			.map(|(&wire, &val)| witness_gen.write_inout(wire, val))
 			.collect();
-		let coords_w: Vec<_> = coords
-			.iter()
-			.zip(&coords_vals)
+		let coords_w: Vec<_> = iter::zip(&coords, &coords_vals)
 			.map(|(&wire, &val)| witness_gen.write_inout(wire, val))
 			.collect();
 		let expected_w = witness_gen.write_inout(expected_out, expected);
@@ -372,7 +358,7 @@ mod tests {
 		) {
 			let result = powers(builder, x, 4);
 			assert_eq!(result.len(), expected.len());
-			for (r, &e) in result.iter().zip(expected) {
+			for (r, &e) in iter::zip(&result, expected) {
 				builder.assert_eq(*r, e);
 			}
 		}
@@ -392,9 +378,7 @@ mod tests {
 
 		let mut witness_gen = WitnessGenerator::new(&optimized_cs, &layout);
 		let x_w = witness_gen.write_inout(x, x_val);
-		let expected_w: Vec<_> = expected_wires
-			.iter()
-			.zip(&expected_vals)
+		let expected_w: Vec<_> = iter::zip(&expected_wires, &expected_vals)
 			.map(|(&wire, &val)| witness_gen.write_inout(wire, val))
 			.collect();
 		build_powers_circuit(&mut witness_gen, x_w, &expected_w);
