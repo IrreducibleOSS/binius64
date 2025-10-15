@@ -32,6 +32,13 @@ enum WireStatus {
 	},
 }
 
+fn remove_use(uses: &mut Vec<UseSite>, use_site: &UseSite) -> Option<UseSite> {
+	let use_site_idx = uses
+		.iter()
+		.position(|use_site_rhs| use_site_rhs == use_site)?;
+	Some(uses.swap_remove(use_site_idx))
+}
+
 impl Default for WireStatus {
 	fn default() -> Self {
 		WireStatus::Unknown { uses: Vec::new() }
@@ -39,8 +46,9 @@ impl Default for WireStatus {
 }
 
 pub struct WireEliminationStageOut {
-	cs: ConstraintSystem,
-	private_wires_alive: Vec<bool>,
+	pub cs: ConstraintSystem,
+	// Index mapping private wire IDs to whether they are alive.
+	pub private_wires_alive: Vec<bool>,
 }
 
 #[derive(Debug, Clone)]
@@ -152,8 +160,10 @@ impl WireEliminationPass {
 
 		let (idx, n_uses) = (0..operand.len())
 			.filter_map(|idx| {
-				let wire_idx = operand.wires()[idx].id as usize;
-				if let WireStatus::Unknown { uses } = &self.private_wires[wire_idx] {
+				let wire = operand.wires()[idx];
+				if matches!(wire.kind, WireKind::Private)
+					&& let WireStatus::Unknown { uses } = &self.private_wires[wire.id as usize]
+				{
 					Some((idx, uses.len()))
 				} else {
 					None
@@ -180,6 +190,20 @@ impl WireEliminationPass {
 		// Remove the constraint with `take`. Empty ADD constraints are dropped in `finish()`.
 		let operand = mem::take(&mut self.cs.zero_constraints[constraint_idx].0);
 
+		// Remove the eliminated constraint from all uses.
+		let eliminated_use_site = UseSite::Add {
+			index: constraint_idx as u32,
+		};
+		for wire in operand.wires() {
+			if matches!(wire.kind, WireKind::Private)
+				&& let WireStatus::Unknown { uses } = &mut self.private_wires[wire.id as usize]
+			{
+				remove_use(uses, &eliminated_use_site)
+					.expect("invariant: uses are kept in sync by algorithm invariant");
+			}
+		}
+
+		// Prune the wire and get its remaining uses.
 		let wire_idx = operand.wires()[idx].id as usize;
 		let WireStatus::Unknown { uses } =
 			mem::replace(&mut self.private_wires[wire_idx], WireStatus::Pruned)
@@ -187,6 +211,7 @@ impl WireEliminationPass {
 			unreachable!("precondition: the referenced wire in the constraint must be prunable");
 		};
 
+		// Replace the eliminated wire in all use sites.
 		for use_site in uses {
 			let dst_operand = match use_site {
 				UseSite::Add { index } => &mut self.cs.zero_constraints[index as usize].0,
@@ -212,35 +237,12 @@ impl WireEliminationPass {
 				if matches!(wire.kind, WireKind::Private)
 					&& let WireStatus::Unknown { uses } = &mut self.private_wires[wire.id as usize]
 				{
-					let use_site_idx = uses
-						.iter()
-						.position(|use_site_rhs| use_site_rhs == &use_site)
+					remove_use(uses, &use_site)
 						.expect("invariant: uses are kept in sync by algorithm invariant");
-					uses.remove(use_site_idx);
 				}
 			}
 		}
 	}
-
-	/*
-	fn cost_of_replacement(&self, constraint_idx: usize, wire_idx: usize) -> Option<(u64, u64)> {
-		let operand = &self.add_constraints[constraint_idx];
-		let WireStatus::Unknown { uses } = &self.private_wires[wire_idx] else {
-			return None;
-		};
-
-		let decrement = self.cost_model.wire_cost
-			+ self.cost_model.mul_cost
-			+ operand.0.len() as u64 * self.cost_model.ref_cost;
-
-		// For each other wire in the ADD constraint operand, we must add one reference for each
-		// constraint that the eliminated wire was used in.
-		let increment =
-			(uses.len() as u64) * (operand.0.len() as u64 - 1) * self.cost_model.ref_cost;
-
-		Some((decrement, increment))
-	}
-	 */
 
 	fn finish(self) -> WireEliminationStageOut {
 		let Self {
@@ -272,5 +274,93 @@ impl WireEliminationPass {
 			cs,
 			private_wires_alive,
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use std::iter::successors;
+
+	use binius_field::{BinaryField, BinaryField128bGhash as B128, Field, PackedField};
+
+	use super::*;
+	use crate::{
+		circuit_builder::{CircuitBuilder, ConstraintBuilder, WitnessGenerator},
+		constraint_system::WitnessLayout,
+	};
+
+	fn fibonacci<Builder: CircuitBuilder>(
+		builder: &mut Builder,
+		x0: Builder::Wire,
+		x1: Builder::Wire,
+		n: usize,
+	) -> Builder::Wire {
+		if n == 0 {
+			return x0;
+		}
+
+		let (_xnsub1, xn) = successors(Some((x0, x1)), |&(a, b)| {
+			let next = builder.mul(a, b);
+			Some((b, next))
+		})
+		.nth(n - 1)
+		.expect("closure always returns Some");
+
+		xn
+	}
+
+	#[test]
+	fn test_wire_elimination_fibonacci() {
+		// Build constraint system for fibonacci(20)
+		let mut constraint_builder = ConstraintBuilder::new();
+		let one_wire = constraint_builder.constant(B128::ONE);
+		let x0 = constraint_builder.alloc_inout();
+		let x1 = constraint_builder.alloc_inout();
+		let xn = constraint_builder.alloc_inout();
+		let out = fibonacci(&mut constraint_builder, x0, x1, 20);
+		constraint_builder.assert_eq(out, xn);
+		let original_cs = constraint_builder.build();
+
+		// Run wire elimination pass
+		let mut pass = WireEliminationPass::new(CostModel::default(), original_cs, one_wire);
+		pass.run();
+		let WireEliminationStageOut {
+			cs: optimized_cs,
+			private_wires_alive,
+		} = pass.finish();
+
+		// Create sparse layout for optimized constraint system
+		let sparse_layout = WitnessLayout::sparse(
+			optimized_cs.constants.len() as u32,
+			optimized_cs.n_inout(),
+			&private_wires_alive,
+		);
+
+		// Generate witness for optimized constraint system
+		let mut witness_generator = WitnessGenerator::new(&optimized_cs, &sparse_layout);
+		let x0_val = witness_generator.write_inout(x0, B128::ONE);
+		let x1_val = witness_generator.write_inout(x1, B128::MULTIPLICATIVE_GENERATOR);
+		let xn_val = witness_generator.write_inout(xn, B128::MULTIPLICATIVE_GENERATOR.pow(6765));
+		let out_val = fibonacci(&mut witness_generator, x0_val, x1_val, 20);
+		witness_generator.assert_eq(out_val, xn_val);
+		let witness = witness_generator.build();
+
+		// Validate witness against optimized constraint system
+		optimized_cs.validate(&sparse_layout, &witness);
+
+		// Verify that some optimization occurred
+		let n_alive = private_wires_alive.iter().filter(|&&alive| alive).count();
+		assert!(
+			n_alive < private_wires_alive.len(),
+			"Expected some private wires to be eliminated, but all {} are still alive",
+			private_wires_alive.len()
+		);
+
+		// Verify all ADD constraints were converted to MUL constraints
+		assert_eq!(
+			optimized_cs.zero_constraints().len(),
+			0,
+			"Expected all ADD constraints to be converted to MUL form"
+		);
 	}
 }

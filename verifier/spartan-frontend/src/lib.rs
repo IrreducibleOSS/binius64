@@ -2,4 +2,4 @@
 
 pub mod circuit_builder;
 pub mod constraint_system;
-pub mod r1cs;
+pub mod wire_elimination;
