@@ -99,6 +99,16 @@ pub struct WireEliminationPass {
 	private_wires: Vec<WireStatus>,
 }
 
+pub fn run_wire_elimination(
+	cost_model: CostModel,
+	cs: ConstraintSystem,
+	one_wire: ConstraintWire,
+) -> WireEliminationStageOut {
+	let mut pass = WireEliminationPass::new(cost_model, cs, one_wire);
+	pass.run();
+	pass.finish()
+}
+
 impl WireEliminationPass {
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(cost_model: CostModel, cs: ConstraintSystem, one_wire: ConstraintWire) -> Self {
@@ -321,23 +331,14 @@ mod tests {
 		constraint_builder.assert_eq(out, xn);
 		let original_cs = constraint_builder.build();
 
-		// Run wire elimination pass
-		let mut pass = WireEliminationPass::new(CostModel::default(), original_cs, one_wire);
-		pass.run();
 		let WireEliminationStageOut {
 			cs: optimized_cs,
 			private_wires_alive,
-		} = pass.finish();
-
-		// Create sparse layout for optimized constraint system
-		let sparse_layout = WitnessLayout::sparse(
-			optimized_cs.constants.len() as u32,
-			optimized_cs.n_inout(),
-			&private_wires_alive,
-		);
+		} = run_wire_elimination(CostModel::default(), original_cs, one_wire);
+		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
 
 		// Generate witness for optimized constraint system
-		let mut witness_generator = WitnessGenerator::new(&optimized_cs, &sparse_layout);
+		let mut witness_generator = WitnessGenerator::new(&optimized_cs, &layout);
 		let x0_val = witness_generator.write_inout(x0, B128::ONE);
 		let x1_val = witness_generator.write_inout(x1, B128::MULTIPLICATIVE_GENERATOR);
 		let xn_val = witness_generator.write_inout(xn, B128::MULTIPLICATIVE_GENERATOR.pow(6765));
@@ -346,7 +347,7 @@ mod tests {
 		let witness = witness_generator.build();
 
 		// Validate witness against optimized constraint system
-		optimized_cs.validate(&sparse_layout, &witness);
+		optimized_cs.validate(&layout, &witness);
 
 		// Verify that some optimization occurred
 		let n_alive = private_wires_alive.iter().filter(|&&alive| alive).count();

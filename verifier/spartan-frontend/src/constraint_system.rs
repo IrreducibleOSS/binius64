@@ -240,6 +240,10 @@ impl WitnessLayout {
 		}
 	}
 
+	pub fn sparse_from_cs(cs: &ConstraintSystem, private_alive: &[bool]) -> Self {
+		Self::sparse(cs.constants.len() as u32, cs.n_inout, private_alive)
+	}
+
 	pub fn size(&self) -> usize {
 		1 << self.log_size as usize
 	}
