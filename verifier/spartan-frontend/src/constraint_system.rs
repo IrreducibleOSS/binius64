@@ -224,7 +224,9 @@ impl WitnessLayout {
 		let private_index_map = private_alive
 			.iter()
 			.enumerate()
-			.filter_map(|(i, &alive)| alive.then_some((i as u32, private_offset + i as u32)))
+			.filter(|(_, alive)| **alive)
+			.enumerate()
+			.map(|(new_idx, (id, _))| (id as u32, private_offset + new_idx as u32))
 			.collect::<HashMap<_, _>>();
 
 		let n_private = private_index_map.len() as u32;
