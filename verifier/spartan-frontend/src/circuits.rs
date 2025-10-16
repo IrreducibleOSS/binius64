@@ -93,7 +93,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		circuit_builder::{ConstraintBuilder, WitnessGenerator},
+		circuit_builder::{ConstraintBuilder, WireStatus, WitnessGenerator},
 		constraint_system::WitnessLayout,
 		wire_elimination::{CostModel, run_wire_elimination},
 	};
@@ -120,7 +120,11 @@ mod tests {
 		let ir = constraint_builder.build();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
-		let private_wires_alive = ir.private_wires_alive.clone();
+		let private_wires_alive: Vec<bool> = ir
+			.private_wires_status
+			.iter()
+			.map(|&status| !matches!(status, WireStatus::Pruned))
+			.collect();
 		let optimized_cs = ir.finalize();
 		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
 
@@ -148,7 +152,11 @@ mod tests {
 		let ir = constraint_builder.build();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
-		let private_wires_alive = ir.private_wires_alive.clone();
+		let private_wires_alive: Vec<bool> = ir
+			.private_wires_status
+			.iter()
+			.map(|&status| !matches!(status, WireStatus::Pruned))
+			.collect();
 		let optimized_cs = ir.finalize();
 		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
 
@@ -175,7 +183,11 @@ mod tests {
 		let ir = constraint_builder.build();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
-		let private_wires_alive = ir.private_wires_alive.clone();
+		let private_wires_alive: Vec<bool> = ir
+			.private_wires_status
+			.iter()
+			.map(|&status| !matches!(status, WireStatus::Pruned))
+			.collect();
 		let optimized_cs = ir.finalize();
 		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
 
@@ -216,7 +228,11 @@ mod tests {
 		let ir = constraint_builder.build();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
-		let private_wires_alive = ir.private_wires_alive.clone();
+		let private_wires_alive: Vec<bool> = ir
+			.private_wires_status
+			.iter()
+			.map(|&status| !matches!(status, WireStatus::Pruned))
+			.collect();
 		let optimized_cs = ir.finalize();
 		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
 
@@ -258,7 +274,11 @@ mod tests {
 		let ir = constraint_builder.build();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
-		let private_wires_alive = ir.private_wires_alive.clone();
+		let private_wires_alive: Vec<bool> = ir
+			.private_wires_status
+			.iter()
+			.map(|&status| !matches!(status, WireStatus::Pruned))
+			.collect();
 		let optimized_cs = ir.finalize();
 		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
 
@@ -310,7 +330,11 @@ mod tests {
 		let ir = constraint_builder.build();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
-		let private_wires_alive = ir.private_wires_alive.clone();
+		let private_wires_alive: Vec<bool> = ir
+			.private_wires_status
+			.iter()
+			.map(|&status| !matches!(status, WireStatus::Pruned))
+			.collect();
 		let optimized_cs = ir.finalize();
 		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
 
@@ -358,7 +382,11 @@ mod tests {
 		let ir = constraint_builder.build();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
-		let private_wires_alive = ir.private_wires_alive.clone();
+		let private_wires_alive: Vec<bool> = ir
+			.private_wires_status
+			.iter()
+			.map(|&status| !matches!(status, WireStatus::Pruned))
+			.collect();
 		let optimized_cs = ir.finalize();
 		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
 

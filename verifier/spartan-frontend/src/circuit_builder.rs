@@ -54,6 +54,17 @@ impl WireAllocator {
 // Witness values are a permuted subset of the wire values.
 // Need a way to fingerprint a constraint system.
 
+/// Status of a private wire during optimization.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WireStatus {
+	/// Wire is unknown - not yet analyzed for elimination
+	Unknown,
+	/// Wire is pinned - explicitly kept alive
+	Pinned,
+	/// Wire has been pruned (eliminated)
+	Pruned,
+}
+
 /// Intermediate representation of a constraint system that can be manipulated and optimized.
 ///
 /// This IR is used during circuit construction and optimization passes like wire elimination.
@@ -66,9 +77,9 @@ pub struct ConstraintSystemIR {
 	pub(crate) constants: HashMap<B128, u32>,
 	pub(crate) zero_constraints: Vec<Operand>,
 	pub(crate) mul_constraints: Vec<MulConstraint>,
-	/// Tracks which private wires are still alive (not eliminated).
-	/// Index corresponds to private wire ID. Initially all wires are alive.
-	pub(crate) private_wires_alive: Vec<bool>,
+	/// Tracks the status of private wires (Unknown, Pinned, or Pruned).
+	/// Index corresponds to private wire ID. Initially all wires are Unknown.
+	pub(crate) private_wires_status: Vec<WireStatus>,
 }
 
 impl ConstraintSystemIR {
@@ -107,11 +118,11 @@ impl ConstraintSystemIR {
 			}
 		}
 
-		// Calculate final n_private from alive wires
+		// Calculate final n_private from non-pruned wires
 		let n_private = self
-			.private_wires_alive
+			.private_wires_status
 			.iter()
-			.filter(|&&alive| alive)
+			.filter(|&&status| !matches!(status, WireStatus::Pruned))
 			.count() as u32;
 
 		ConstraintSystem::new(constants, self.public_alloc.n_wires, n_private, self.mul_constraints)
@@ -133,7 +144,7 @@ impl ConstraintBuilder {
 				constants: HashMap::new(),
 				zero_constraints: Vec::new(),
 				mul_constraints: Vec::new(),
-				private_wires_alive: Vec::new(),
+				private_wires_status: Vec::new(),
 			},
 		}
 	}
@@ -170,7 +181,7 @@ impl CircuitBuilder for ConstraintBuilder {
 
 	fn add(&mut self, lhs: Self::Wire, rhs: Self::Wire) -> Self::Wire {
 		let out = self.ir.private_alloc.alloc();
-		self.ir.private_wires_alive.push(true);
+		self.ir.private_wires_status.push(WireStatus::Unknown);
 		self.ir
 			.zero_constraints
 			.push(Operand::new(smallvec![lhs, rhs, out]));
@@ -179,7 +190,7 @@ impl CircuitBuilder for ConstraintBuilder {
 
 	fn mul(&mut self, lhs: Self::Wire, rhs: Self::Wire) -> Self::Wire {
 		let out = self.ir.private_alloc.alloc();
-		self.ir.private_wires_alive.push(true);
+		self.ir.private_wires_status.push(WireStatus::Unknown);
 		self.ir.mul_constraints.push(MulConstraint {
 			a: lhs.into(),
 			b: rhs.into(),
@@ -195,7 +206,7 @@ impl CircuitBuilder for ConstraintBuilder {
 	) -> [Self::Wire; OUT] {
 		array::from_fn(|_| {
 			let wire = self.ir.private_alloc.alloc();
-			self.ir.private_wires_alive.push(true);
+			self.ir.private_wires_status.push(WireStatus::Unknown);
 			wire
 		})
 	}

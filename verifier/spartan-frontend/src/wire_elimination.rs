@@ -5,7 +5,7 @@
 use std::mem;
 
 use super::{
-	circuit_builder::ConstraintSystemIR,
+	circuit_builder::{ConstraintSystemIR, WireStatus},
 	constraint_system::{MulConstraint, WireKind},
 };
 
@@ -22,27 +22,11 @@ enum UseSite {
 	Mul { index: u32, position: MulPosition },
 }
 
-#[derive(Debug, Clone)]
-enum WireStatus {
-	Pinned,
-	Pruned,
-	Unknown {
-		/// Vector of constraints where this wire is used.
-		uses: Vec<UseSite>,
-	},
-}
-
 fn remove_use(uses: &mut Vec<UseSite>, use_site: &UseSite) -> Option<UseSite> {
 	let use_site_idx = uses
 		.iter()
 		.position(|use_site_rhs| use_site_rhs == use_site)?;
 	Some(uses.swap_remove(use_site_idx))
-}
-
-impl Default for WireStatus {
-	fn default() -> Self {
-		WireStatus::Unknown { uses: Vec::new() }
-	}
 }
 
 #[derive(Debug, Clone)]
@@ -86,11 +70,14 @@ impl Default for CostModel {
 ///
 /// Eliminates private wires from zero constraints by substitution, reducing the size
 /// of the witness while maintaining constraint system validity.
+///
+/// Maintains invariant: private_wire_uses[i] is empty if status is not Unknown.
+/// For Unknown wires, use sites must exactly match constraints referencing that wire.
 pub struct WireEliminationPass {
 	cost_model: CostModel,
 	ir: ConstraintSystemIR,
-	// Values are indices with WireKind::Private
-	private_wires: Vec<WireStatus>,
+	/// Vector of use sites for each private wire. Empty if wire status is not Unknown.
+	private_wire_uses: Vec<Vec<UseSite>>,
 }
 
 pub fn run_wire_elimination(cost_model: CostModel, ir: ConstraintSystemIR) -> ConstraintSystemIR {
@@ -101,15 +88,15 @@ pub fn run_wire_elimination(cost_model: CostModel, ir: ConstraintSystemIR) -> Co
 
 impl WireEliminationPass {
 	pub fn new(cost_model: CostModel, ir: ConstraintSystemIR) -> Self {
-		let mut private_wires = vec![WireStatus::default(); ir.private_wires_alive.len()];
+		let mut private_wire_uses = vec![Vec::new(); ir.private_wires_status.len()];
 
-		// TODO: Refactor the two loops below
+		// Populate use sites for all private wires with Unknown status
 		for (i, operand) in ir.zero_constraints.iter().enumerate() {
 			for wire in operand.wires() {
 				if matches!(wire.kind, WireKind::Private)
-					&& let WireStatus::Unknown { ref mut uses } = private_wires[wire.id as usize]
+					&& matches!(ir.private_wires_status[wire.id as usize], WireStatus::Unknown)
 				{
-					uses.push(UseSite::Add { index: i as u32 });
+					private_wire_uses[wire.id as usize].push(UseSite::Add { index: i as u32 });
 				}
 			}
 		}
@@ -122,10 +109,9 @@ impl WireEliminationPass {
 			] {
 				for wire in operand.wires() {
 					if matches!(wire.kind, WireKind::Private)
-						&& let WireStatus::Unknown { ref mut uses } =
-							private_wires[wire.id as usize]
+						&& matches!(ir.private_wires_status[wire.id as usize], WireStatus::Unknown)
 					{
-						uses.push(UseSite::Mul {
+						private_wire_uses[wire.id as usize].push(UseSite::Mul {
 							index: i as u32,
 							position,
 						});
@@ -137,7 +123,7 @@ impl WireEliminationPass {
 		Self {
 			cost_model,
 			ir,
-			private_wires,
+			private_wire_uses,
 		}
 	}
 
@@ -158,9 +144,9 @@ impl WireEliminationPass {
 			.filter_map(|idx| {
 				let wire = operand.wires()[idx];
 				if matches!(wire.kind, WireKind::Private)
-					&& let WireStatus::Unknown { uses } = &self.private_wires[wire.id as usize]
+					&& matches!(self.ir.private_wires_status[wire.id as usize], WireStatus::Unknown)
 				{
-					Some((idx, uses.len()))
+					Some((idx, self.private_wire_uses[wire.id as usize].len()))
 				} else {
 					None
 				}
@@ -192,20 +178,21 @@ impl WireEliminationPass {
 		};
 		for wire in operand.wires() {
 			if matches!(wire.kind, WireKind::Private)
-				&& let WireStatus::Unknown { uses } = &mut self.private_wires[wire.id as usize]
+				&& matches!(self.ir.private_wires_status[wire.id as usize], WireStatus::Unknown)
 			{
-				remove_use(uses, &eliminated_use_site)
+				remove_use(&mut self.private_wire_uses[wire.id as usize], &eliminated_use_site)
 					.expect("invariant: uses are kept in sync by algorithm invariant");
 			}
 		}
 
 		// Prune the wire and get its remaining uses.
 		let wire_idx = operand.wires()[idx].id as usize;
-		let WireStatus::Unknown { uses } =
-			mem::replace(&mut self.private_wires[wire_idx], WireStatus::Pruned)
-		else {
-			unreachable!("precondition: the referenced wire in the constraint must be prunable");
-		};
+		assert!(
+			matches!(self.ir.private_wires_status[wire_idx], WireStatus::Unknown),
+			"precondition: the referenced wire in the constraint must be prunable"
+		);
+		self.ir.private_wires_status[wire_idx] = WireStatus::Pruned;
+		let uses = mem::take(&mut self.private_wire_uses[wire_idx]);
 
 		// Replace the eliminated wire in all use sites.
 		for use_site in uses {
@@ -224,30 +211,24 @@ impl WireEliminationPass {
 			let (additions, removals) = dst_operand.merge(&operand);
 			for wire in additions.wires() {
 				if matches!(wire.kind, WireKind::Private)
-					&& let WireStatus::Unknown { uses } = &mut self.private_wires[wire.id as usize]
+					&& matches!(self.ir.private_wires_status[wire.id as usize], WireStatus::Unknown)
 				{
-					uses.push(use_site.clone());
+					self.private_wire_uses[wire.id as usize].push(use_site.clone());
 				}
 			}
 			for wire in removals.wires() {
 				if matches!(wire.kind, WireKind::Private)
-					&& let WireStatus::Unknown { uses } = &mut self.private_wires[wire.id as usize]
+					&& matches!(self.ir.private_wires_status[wire.id as usize], WireStatus::Unknown)
 				{
-					remove_use(uses, &use_site)
+					remove_use(&mut self.private_wire_uses[wire.id as usize], &use_site)
 						.expect("invariant: uses are kept in sync by algorithm invariant");
 				}
 			}
 		}
 	}
 
-	fn finish(mut self) -> ConstraintSystemIR {
-		// Update private_wires_alive in the IR based on pruned status
-		for (idx, status) in self.private_wires.iter().enumerate() {
-			if matches!(status, WireStatus::Pruned) {
-				self.ir.private_wires_alive[idx] = false;
-			}
-		}
-
+	fn finish(self) -> ConstraintSystemIR {
+		// Status is already maintained in self.ir.private_wires_status
 		self.ir
 	}
 }
@@ -296,7 +277,11 @@ mod tests {
 		let ir = constraint_builder.build();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
-		let private_wires_alive = ir.private_wires_alive.clone();
+		let private_wires_alive: Vec<bool> = ir
+			.private_wires_status
+			.iter()
+			.map(|&status| !matches!(status, WireStatus::Pruned))
+			.collect();
 		let optimized_cs = ir.finalize();
 		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
 
@@ -346,7 +331,11 @@ mod tests {
 		let ir = constraint_builder.build();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
-		let private_wires_alive = ir.private_wires_alive.clone();
+		let private_wires_alive: Vec<bool> = ir
+			.private_wires_status
+			.iter()
+			.map(|&status| !matches!(status, WireStatus::Pruned))
+			.collect();
 		let optimized_cs = ir.finalize();
 		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
 
@@ -406,7 +395,11 @@ mod tests {
 		let original_mul_constraint_count = ir.mul_constraints.len();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
-		let private_wires_alive = ir.private_wires_alive.clone();
+		let private_wires_alive: Vec<bool> = ir
+			.private_wires_status
+			.iter()
+			.map(|&status| !matches!(status, WireStatus::Pruned))
+			.collect();
 		let optimized_cs = ir.finalize();
 		let optimized_mul_constraint_count = optimized_cs.mul_constraints().len();
 
@@ -479,7 +472,11 @@ mod tests {
 		let ir = constraint_builder.build();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
-		let private_wires_alive = ir.private_wires_alive.clone();
+		let private_wires_alive: Vec<bool> = ir
+			.private_wires_status
+			.iter()
+			.map(|&status| !matches!(status, WireStatus::Pruned))
+			.collect();
 		let optimized_cs = ir.finalize();
 		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
 
@@ -531,7 +528,11 @@ mod tests {
 		let ir = constraint_builder.build();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
-		let private_wires_alive = ir.private_wires_alive.clone();
+		let private_wires_alive: Vec<bool> = ir
+			.private_wires_status
+			.iter()
+			.map(|&status| !matches!(status, WireStatus::Pruned))
+			.collect();
 		let optimized_cs = ir.finalize();
 		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
 
