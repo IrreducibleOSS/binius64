@@ -10,6 +10,11 @@ use crate::constraint_system::{
 	ConstraintSystem, ConstraintWire, MulConstraint, Operand, WireKind, WitnessLayout,
 };
 
+/// Common interface for circuit construction and witness generation.
+///
+/// This trait enables writing circuit logic once that works for both abstract circuit
+/// expression ([`ConstraintBuilder`]) and concrete witness generation ([`WitnessGenerator`]).
+/// The same function can build constraints symbolically or evaluate them with concrete values.
 pub trait CircuitBuilder {
 	type Wire: Copy;
 
@@ -144,6 +149,10 @@ impl ConstraintSystemIR {
 	}
 }
 
+/// Builds constraint systems symbolically by recording operations as constraints.
+///
+/// Implements [`CircuitBuilder`] with [`ConstraintWire`] as the wire type. Operations like
+/// `add` and `mul` allocate new wires and record constraints without evaluating values.
 #[derive(Debug)]
 pub struct ConstraintBuilder {
 	ir: ConstraintSystemIR,
@@ -247,6 +256,11 @@ impl WitnessWire {
 	}
 }
 
+/// Generates witness values by evaluating circuit operations with concrete field elements.
+///
+/// Implements [`CircuitBuilder`] with [`WitnessWire`] as the wire type. Operations like
+/// `add` and `mul` compute actual field values and populate the witness array. Captures
+/// the first constraint violation as an error for debugging.
 #[derive(Debug)]
 pub struct WitnessGenerator<'a> {
 	alloc: WireAllocator,
