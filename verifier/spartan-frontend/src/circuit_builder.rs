@@ -1,6 +1,6 @@
 // Copyright 2025 Irreducible Inc.
 
-use std::{array, collections::HashMap, mem};
+use std::{array, backtrace::Backtrace, collections::HashMap, mem};
 
 use binius_field::{BinaryField128bGhash as B128, Field};
 use bytemuck::zeroed_vec;
@@ -252,10 +252,12 @@ impl WitnessWire {
 	}
 }
 
+#[derive(Debug)]
 pub struct WitnessGenerator<'a> {
 	alloc: WireAllocator,
 	witness: Vec<B128>,
 	layout: &'a WitnessLayout,
+	first_error: Option<Backtrace>,
 }
 
 impl<'a> WitnessGenerator<'a> {
@@ -271,6 +273,7 @@ impl<'a> WitnessGenerator<'a> {
 			alloc: WireAllocator::new(WireKind::Private),
 			witness,
 			layout,
+			first_error: None,
 		}
 	}
 
@@ -294,19 +297,31 @@ impl<'a> WitnessGenerator<'a> {
 	pub fn build(self) -> Vec<B128> {
 		self.witness
 	}
+
+	pub fn error(&self) -> Option<&Backtrace> {
+		self.first_error.as_ref()
+	}
+
+	fn record_error(&mut self) {
+		if self.first_error.is_none() {
+			self.first_error = Some(Backtrace::capture());
+		}
+	}
 }
 
 impl<'a> CircuitBuilder for WitnessGenerator<'a> {
 	type Wire = WitnessWire;
 
 	fn assert_zero(&mut self, wire: Self::Wire) {
-		// TODO: This should set a flag instead of panicking
-		assert_eq!(wire.val(), B128::ZERO);
+		if wire.val() != B128::ZERO {
+			self.record_error();
+		}
 	}
 
 	fn assert_eq(&mut self, lhs: Self::Wire, rhs: Self::Wire) {
-		// This should set a flag instead of panicking
-		assert_eq!(lhs, rhs);
+		if lhs != rhs {
+			self.record_error();
+		}
 	}
 
 	fn constant(&mut self, val: B128) -> Self::Wire {
@@ -379,5 +394,31 @@ mod tests {
 		let witness = witness_generator.build();
 
 		constraint_system.validate(&layout, &witness);
+	}
+
+	#[test]
+	fn test_assertion_failure_captured() {
+		let mut constraint_builder = ConstraintBuilder::new();
+		let x = constraint_builder.alloc_inout();
+		let y = constraint_builder.alloc_inout();
+		let sum = constraint_builder.add(x, y);
+		let expected = constraint_builder.alloc_inout();
+		constraint_builder.assert_eq(sum, expected);
+		let ir = constraint_builder.build();
+		let constraint_system = ir.finalize();
+
+		let layout = WitnessLayout::dense_from_cs(&constraint_system);
+		let mut witness_generator = WitnessGenerator::new(&constraint_system, &layout);
+		let x_val = B128::new(5);
+		let y_val = B128::new(7);
+		let wrong_expected = B128::new(99); // Incorrect: should be 5 + 7 = 2 in binary field
+
+		let x_wire = witness_generator.write_inout(x, x_val);
+		let y_wire = witness_generator.write_inout(y, y_val);
+		let sum_wire = witness_generator.add(x_wire, y_wire);
+		let expected_wire = witness_generator.write_inout(expected, wrong_expected);
+		witness_generator.assert_eq(sum_wire, expected_wire);
+
+		assert!(witness_generator.error().is_some());
 	}
 }
