@@ -7,8 +7,8 @@ use bytemuck::zeroed_vec;
 use smallvec::{SmallVec, smallvec};
 
 use crate::constraint_system::{
-	AddConstraint, ConstraintSystem, ConstraintWire, MulConstraint, Operand, WireKind,
-	WitnessLayout,
+	ConstraintSystem, ConstraintWire, MulConstraint, Operand, WireKind, WitnessLayout,
+	ZeroConstraint,
 };
 
 pub trait CircuitBuilder {
@@ -105,7 +105,7 @@ impl ConstraintBuilder {
 
 		let add_constraints = add_constraints
 			.into_iter()
-			.map(|BuilderAddConstraint(term)| AddConstraint(Operand::new(term)))
+			.map(|BuilderAddConstraint(term)| ZeroConstraint(Operand::new(term)))
 			.collect();
 
 		let mul_constraints = mul_constraints

@@ -5,8 +5,8 @@
 use std::mem;
 
 use super::constraint_system::{
-	AddConstraint, ConstraintSystem, ConstraintWire, MulConstraint as OperandMulConstraint,
-	MulConstraint, Operand, WireKind,
+	ConstraintSystem, ConstraintWire, MulConstraint as OperandMulConstraint, MulConstraint,
+	Operand, WireKind, ZeroConstraint,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -117,7 +117,7 @@ impl WireEliminationPass {
 		let mut private_wires = vec![WireStatus::default(); cs.n_private() as usize];
 
 		// TODO: Refactor the two loops below
-		for (i, AddConstraint(term)) in cs.zero_constraints.iter().enumerate() {
+		for (i, ZeroConstraint(term)) in cs.zero_constraints.iter().enumerate() {
 			for wire in term.wires() {
 				if matches!(wire.kind, WireKind::Private)
 					&& let WireStatus::Unknown { ref mut uses } = private_wires[wire.id as usize]
@@ -265,7 +265,7 @@ impl WireEliminationPass {
 		// Replace all zero constraints with mul constraints
 		let one_operand = Operand::from(one_wire);
 		let zero_operand = Operand::default();
-		for AddConstraint(operand) in mem::take(&mut cs.zero_constraints) {
+		for ZeroConstraint(operand) in mem::take(&mut cs.zero_constraints) {
 			if !operand.is_empty() {
 				cs.mul_constraints.push(OperandMulConstraint {
 					a: operand,

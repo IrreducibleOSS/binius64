@@ -107,7 +107,7 @@ impl From<ConstraintWire> for Operand {
 }
 
 #[derive(Debug)]
-pub struct AddConstraint(pub Operand);
+pub struct ZeroConstraint(pub Operand);
 
 #[derive(Debug)]
 pub struct MulConstraint {
@@ -123,7 +123,7 @@ pub struct ConstraintSystem {
 	n_inout: u32,
 	#[getset(get_copy = "pub")]
 	n_private: u32,
-	pub(crate) zero_constraints: Vec<AddConstraint>,
+	pub(crate) zero_constraints: Vec<ZeroConstraint>,
 	pub(crate) mul_constraints: Vec<MulConstraint>,
 }
 
@@ -132,7 +132,7 @@ impl ConstraintSystem {
 		constants: Vec<B128>,
 		n_inout: u32,
 		n_private: u32,
-		zero_constraints: Vec<AddConstraint>,
+		zero_constraints: Vec<ZeroConstraint>,
 		mul_constraints: Vec<MulConstraint>,
 	) -> Self {
 		// TODO: document unchecked preconditions on references
@@ -145,7 +145,7 @@ impl ConstraintSystem {
 		}
 	}
 
-	pub fn zero_constraints(&self) -> &[AddConstraint] {
+	pub fn zero_constraints(&self) -> &[ZeroConstraint] {
 		&self.zero_constraints
 	}
 
@@ -169,7 +169,7 @@ impl ConstraintSystem {
 				.sum::<B128>()
 		};
 
-		for AddConstraint(term) in &self.zero_constraints {
+		for ZeroConstraint(term) in &self.zero_constraints {
 			assert!(operand_val(term).is_zero());
 		}
 
