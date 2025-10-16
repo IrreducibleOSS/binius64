@@ -13,14 +13,25 @@ use crate::constraint_system::{
 pub trait CircuitBuilder {
 	type Wire: Copy;
 
-	fn assert_eq(&mut self, lhs: Self::Wire, rhs: Self::Wire);
+	fn assert_zero(&mut self, wire: Self::Wire);
+
+	fn assert_eq(&mut self, lhs: Self::Wire, rhs: Self::Wire) {
+		let diff = self.add(lhs, rhs);
+		self.assert_zero(diff);
+	}
 
 	fn constant(&mut self, val: B128) -> Self::Wire;
 
 	fn add(&mut self, lhs: Self::Wire, rhs: Self::Wire) -> Self::Wire;
 
+	// Addition is subtraction in characteristic 2.
+	fn sub(&mut self, lhs: Self::Wire, rhs: Self::Wire) -> Self::Wire {
+		self.add(lhs, rhs)
+	}
+
 	fn mul(&mut self, lhs: Self::Wire, rhs: Self::Wire) -> Self::Wire;
 
+	// TODO: the hint function should be able to return an error
 	fn hint<F: Fn([B128; IN]) -> [B128; OUT], const IN: usize, const OUT: usize>(
 		&mut self,
 		inputs: [Self::Wire; IN],
@@ -176,6 +187,10 @@ impl ConstraintBuilder {
 impl CircuitBuilder for ConstraintBuilder {
 	type Wire = ConstraintWire;
 
+	fn assert_zero(&mut self, wire: Self::Wire) {
+		self.ir.zero_constraints.push(wire.into())
+	}
+
 	fn assert_eq(&mut self, lhs: Self::Wire, rhs: Self::Wire) {
 		self.ir
 			.zero_constraints
@@ -283,6 +298,11 @@ impl<'a> WitnessGenerator<'a> {
 
 impl<'a> CircuitBuilder for WitnessGenerator<'a> {
 	type Wire = WitnessWire;
+
+	fn assert_zero(&mut self, wire: Self::Wire) {
+		// TODO: This should set a flag instead of panicking
+		assert_eq!(wire.val(), B128::ZERO);
+	}
 
 	fn assert_eq(&mut self, lhs: Self::Wire, rhs: Self::Wire) {
 		// This should set a flag instead of panicking

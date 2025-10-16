@@ -2,6 +2,8 @@
 
 use std::{iter, iter::successors};
 
+use binius_field::{BinaryField128bGhash as B128, Field, PackedField};
+
 use crate::circuit_builder::CircuitBuilder;
 
 pub fn extrapolate_line<Builder: CircuitBuilder>(
@@ -73,6 +75,41 @@ pub fn square<Builder: CircuitBuilder>(builder: &mut Builder, x: Builder::Wire) 
 	builder.mul(x, x)
 }
 
+pub fn invert<Builder: CircuitBuilder>(builder: &mut Builder, x: Builder::Wire) -> Builder::Wire {
+	let [inv] = builder.hint([x], |vals| {
+		let [x_val] = vals;
+		[x_val.invert_or_zero()]
+	});
+
+	let one = builder.constant(B128::ONE);
+	let prod = builder.mul(x, inv);
+	builder.assert_eq(prod, one);
+
+	inv
+}
+
+pub fn invert_or_zero<Builder: CircuitBuilder>(
+	builder: &mut Builder,
+	x: Builder::Wire,
+) -> Builder::Wire {
+	let [inv] = builder.hint([x], |vals| {
+		let [x_val] = vals;
+		[x_val.invert_or_zero()]
+	});
+
+	let one = builder.constant(B128::ONE);
+	let prod = builder.mul(x, inv);
+	let prod_sub_one = builder.sub(prod, one);
+
+	let prod_sub_one_or_x = builder.mul(prod_sub_one, x);
+	builder.assert_zero(prod_sub_one_or_x);
+
+	let prod_sub_one_or_inv = builder.mul(prod_sub_one, inv);
+	builder.assert_zero(prod_sub_one_or_inv);
+
+	inv
+}
+
 pub fn assert_is_bit<Builder: CircuitBuilder>(builder: &mut Builder, val: Builder::Wire) {
 	let val_sq = square(builder, val);
 	builder.assert_eq(val_sq, val);
@@ -136,7 +173,7 @@ mod tests {
 
 		let mut rng = StdRng::seed_from_u64(0);
 		let x_val = B128::random(&mut rng);
-		let expected = x_val.square();
+		let expected = Square::square(x_val);
 
 		test_helper::<SquareCircuit, 2>([x_val, expected]);
 	}
@@ -285,5 +322,58 @@ mod tests {
 			expected_vals[2],
 			expected_vals[3],
 		]);
+	}
+
+	#[test]
+	fn test_invert() {
+		struct InvertCircuit;
+
+		impl TestCircuit<2> for InvertCircuit {
+			fn build<Builder: CircuitBuilder>(builder: &mut Builder, inout: [Builder::Wire; 2]) {
+				let [x, expected] = inout;
+				let result = invert(builder, x);
+				builder.assert_eq(result, expected);
+			}
+		}
+
+		let mut rng = StdRng::seed_from_u64(0);
+		let x_val = B128::random(&mut rng);
+		let expected = x_val.invert_or_zero();
+
+		test_helper::<InvertCircuit, 2>([x_val, expected]);
+	}
+
+	#[test]
+	fn test_invert_or_zero_nonzero() {
+		struct InvertOrZeroCircuit;
+
+		impl TestCircuit<2> for InvertOrZeroCircuit {
+			fn build<Builder: CircuitBuilder>(builder: &mut Builder, inout: [Builder::Wire; 2]) {
+				let [x, expected] = inout;
+				let result = invert_or_zero(builder, x);
+				builder.assert_eq(result, expected);
+			}
+		}
+
+		let mut rng = StdRng::seed_from_u64(0);
+		let x_val = B128::random(&mut rng);
+		let expected = x_val.invert_or_zero();
+
+		test_helper::<InvertOrZeroCircuit, 2>([x_val, expected]);
+	}
+
+	#[test]
+	fn test_invert_or_zero_zero() {
+		struct InvertOrZeroCircuit;
+
+		impl TestCircuit<2> for InvertOrZeroCircuit {
+			fn build<Builder: CircuitBuilder>(builder: &mut Builder, inout: [Builder::Wire; 2]) {
+				let [x, expected] = inout;
+				let result = invert_or_zero(builder, x);
+				builder.assert_eq(result, expected);
+			}
+		}
+
+		test_helper::<InvertOrZeroCircuit, 2>([B128::ZERO, B128::ZERO]);
 	}
 }
