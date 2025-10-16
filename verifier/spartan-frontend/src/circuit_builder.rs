@@ -36,7 +36,6 @@ pub trait CircuitBuilder {
 
 	fn mul(&mut self, lhs: Self::Wire, rhs: Self::Wire) -> Self::Wire;
 
-	// TODO: the hint function should be able to return an error
 	fn hint<F: Fn([B128; IN]) -> [B128; OUT], const IN: usize, const OUT: usize>(
 		&mut self,
 		inputs: [Self::Wire; IN],
@@ -92,8 +91,8 @@ pub struct ConstraintSystemIR {
 	pub(crate) public_alloc: WireAllocator,
 	pub(crate) private_alloc: WireAllocator,
 	pub(crate) constants: HashMap<B128, u32>,
-	pub(crate) zero_constraints: Vec<Operand>,
-	pub(crate) mul_constraints: Vec<MulConstraint>,
+	pub(crate) zero_constraints: Vec<Operand<ConstraintWire>>,
+	pub(crate) mul_constraints: Vec<MulConstraint<ConstraintWire>>,
 	/// Tracks the status of private wires (Unknown, Pinned, or Pruned).
 	/// Index corresponds to private wire ID. Initially all wires are Unknown.
 	pub(crate) private_wires_status: Vec<WireStatus>,

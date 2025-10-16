@@ -19,11 +19,17 @@ pub struct ConstraintWire {
 	pub(crate) id: u32,
 }
 
-#[derive(Debug, Default, Clone)]
-pub struct Operand(SmallVec<[ConstraintWire; 4]>);
+#[derive(Debug, Clone)]
+pub struct Operand<W>(SmallVec<[W; 4]>);
 
-impl Operand {
-	pub fn new(mut term: SmallVec<[ConstraintWire; 4]>) -> Self {
+impl<W> Default for Operand<W> {
+	fn default() -> Self {
+		Operand(SmallVec::new())
+	}
+}
+
+impl<W: Copy + Ord> Operand<W> {
+	pub fn new(mut term: SmallVec<[W; 4]>) -> Self {
 		term.sort_unstable();
 
 		let has_duplicate_wire = term.windows(2).any(|w| w[0] == w[1]);
@@ -51,11 +57,11 @@ impl Operand {
 		self.0.is_empty()
 	}
 
-	pub fn wires(&self) -> &[ConstraintWire] {
+	pub fn wires(&self) -> &[W] {
 		&self.0
 	}
 
-	pub fn merge(&mut self, rhs: &Self) -> (Operand, Operand) {
+	pub fn merge(&mut self, rhs: &Self) -> (Operand<W>, Operand<W>) {
 		// Classic merge algorithm for sorted vectors, but where duplicate items cancel out.
 		let lhs = mem::take(&mut self.0);
 		let dst = &mut self.0;
@@ -99,27 +105,27 @@ impl Operand {
 	}
 }
 
-impl From<ConstraintWire> for Operand {
-	fn from(value: ConstraintWire) -> Self {
+impl<W> From<W> for Operand<W> {
+	fn from(value: W) -> Self {
 		Operand(smallvec![value])
 	}
 }
 
 #[derive(Debug)]
-pub struct MulConstraint {
-	pub a: Operand,
-	pub b: Operand,
-	pub c: Operand,
+pub struct MulConstraint<W> {
+	pub a: Operand<W>,
+	pub b: Operand<W>,
+	pub c: Operand<W>,
 }
 
 #[derive(Debug)]
 pub struct ConstraintSystem {
 	layout: WitnessLayout,
-	mul_constraints: Vec<MulConstraint>,
+	mul_constraints: Vec<MulConstraint<ConstraintWire>>,
 }
 
 impl ConstraintSystem {
-	pub fn new(layout: WitnessLayout, mul_constraints: Vec<MulConstraint>) -> Self {
+	pub fn new(layout: WitnessLayout, mul_constraints: Vec<MulConstraint<ConstraintWire>>) -> Self {
 		// TODO: document unchecked preconditions on references
 		Self {
 			layout,
@@ -139,14 +145,14 @@ impl ConstraintSystem {
 		self.layout.n_private
 	}
 
-	pub fn mul_constraints(&self) -> &[MulConstraint] {
+	pub fn mul_constraints(&self) -> &[MulConstraint<ConstraintWire>] {
 		&self.mul_constraints
 	}
 
 	pub fn validate(&self, witness: &[B128]) {
 		assert_eq!(witness.len(), self.layout.size());
 
-		let operand_val = |operand: &Operand| {
+		let operand_val = |operand: &Operand<ConstraintWire>| {
 			operand
 				.wires()
 				.iter()

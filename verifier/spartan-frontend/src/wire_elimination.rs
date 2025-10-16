@@ -71,7 +71,7 @@ impl Default for CostModel {
 /// Eliminates private wires from zero constraints by substitution, reducing the size
 /// of the witness while maintaining constraint system validity.
 ///
-/// Maintains invariant: private_wire_uses[i] is empty if status is not Unknown.
+/// Maintains invariant: `private_wire_uses[i]` is empty if status is not Unknown.
 /// For Unknown wires, use sites must exactly match constraints referencing that wire.
 pub struct WireEliminationPass {
 	cost_model: CostModel,
