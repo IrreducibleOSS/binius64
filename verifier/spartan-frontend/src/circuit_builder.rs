@@ -70,6 +70,7 @@ pub enum WireStatus {
 /// This IR is used during circuit construction and optimization passes like wire elimination.
 /// It tracks wire allocators, constants, and constraints, along with metadata about which
 /// private wires are still alive (not eliminated by optimization).
+#[derive(Debug)]
 pub struct ConstraintSystemIR {
 	pub(crate) constant_alloc: WireAllocator,
 	pub(crate) public_alloc: WireAllocator,
@@ -125,10 +126,24 @@ impl ConstraintSystemIR {
 			.filter(|&&status| !matches!(status, WireStatus::Pruned))
 			.count() as u32;
 
-		ConstraintSystem::new(constants, self.public_alloc.n_wires, n_private, self.mul_constraints)
+		// Create pruned vector from status
+		let pruned: Vec<bool> = self
+			.private_wires_status
+			.iter()
+			.map(|&status| matches!(status, WireStatus::Pruned))
+			.collect();
+
+		ConstraintSystem::new(
+			constants,
+			self.public_alloc.n_wires,
+			n_private,
+			self.mul_constraints,
+			pruned,
+		)
 	}
 }
 
+#[derive(Debug)]
 pub struct ConstraintBuilder {
 	ir: ConstraintSystemIR,
 }

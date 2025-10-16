@@ -121,6 +121,9 @@ pub struct ConstraintSystem {
 	#[getset(get_copy = "pub")]
 	n_private: u32,
 	pub(crate) mul_constraints: Vec<MulConstraint>,
+	/// Maps private wire IDs to whether they are pruned (eliminated during optimization).
+	/// Index corresponds to the original private wire ID before optimization.
+	pub(crate) pruned: Vec<bool>,
 }
 
 impl ConstraintSystem {
@@ -129,6 +132,7 @@ impl ConstraintSystem {
 		n_inout: u32,
 		n_private: u32,
 		mul_constraints: Vec<MulConstraint>,
+		pruned: Vec<bool>,
 	) -> Self {
 		// TODO: document unchecked preconditions on references
 		Self {
@@ -136,6 +140,7 @@ impl ConstraintSystem {
 			n_inout,
 			n_private,
 			mul_constraints,
+			pruned,
 		}
 	}
 
@@ -227,8 +232,10 @@ impl WitnessLayout {
 		}
 	}
 
-	pub fn sparse_from_cs(cs: &ConstraintSystem, private_alive: &[bool]) -> Self {
-		Self::sparse(cs.constants.len() as u32, cs.n_inout, private_alive)
+	pub fn sparse_from_cs(cs: &ConstraintSystem) -> Self {
+		// Invert pruned to get alive status
+		let private_alive: Vec<bool> = cs.pruned.iter().map(|&pruned| !pruned).collect();
+		Self::sparse(cs.constants.len() as u32, cs.n_inout, &private_alive)
 	}
 
 	pub fn size(&self) -> usize {

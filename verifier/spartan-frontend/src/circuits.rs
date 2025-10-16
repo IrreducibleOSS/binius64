@@ -93,7 +93,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		circuit_builder::{ConstraintBuilder, WireStatus, WitnessGenerator},
+		circuit_builder::{ConstraintBuilder, WitnessGenerator},
 		constraint_system::WitnessLayout,
 		wire_elimination::{CostModel, run_wire_elimination},
 	};
@@ -120,13 +120,8 @@ mod tests {
 		let ir = constraint_builder.build();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
-		let private_wires_alive: Vec<bool> = ir
-			.private_wires_status
-			.iter()
-			.map(|&status| !matches!(status, WireStatus::Pruned))
-			.collect();
 		let optimized_cs = ir.finalize();
-		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
+		let layout = WitnessLayout::sparse_from_cs(&optimized_cs);
 
 		let mut witness_gen = WitnessGenerator::new(&optimized_cs, &layout);
 		let x_w = witness_gen.write_inout(x, x_val);
@@ -152,13 +147,8 @@ mod tests {
 		let ir = constraint_builder.build();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
-		let private_wires_alive: Vec<bool> = ir
-			.private_wires_status
-			.iter()
-			.map(|&status| !matches!(status, WireStatus::Pruned))
-			.collect();
 		let optimized_cs = ir.finalize();
-		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
+		let layout = WitnessLayout::sparse_from_cs(&optimized_cs);
 
 		let mut witness_gen = WitnessGenerator::new(&optimized_cs, &layout);
 		let val_w = witness_gen.write_inout(val_wire, val);
@@ -183,13 +173,8 @@ mod tests {
 		let ir = constraint_builder.build();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
-		let private_wires_alive: Vec<bool> = ir
-			.private_wires_status
-			.iter()
-			.map(|&status| !matches!(status, WireStatus::Pruned))
-			.collect();
 		let optimized_cs = ir.finalize();
-		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
+		let layout = WitnessLayout::sparse_from_cs(&optimized_cs);
 
 		let mut witness_gen = WitnessGenerator::new(&optimized_cs, &layout);
 		let val_w = witness_gen.write_inout(val_wire, val);
@@ -228,13 +213,8 @@ mod tests {
 		let ir = constraint_builder.build();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
-		let private_wires_alive: Vec<bool> = ir
-			.private_wires_status
-			.iter()
-			.map(|&status| !matches!(status, WireStatus::Pruned))
-			.collect();
 		let optimized_cs = ir.finalize();
-		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
+		let layout = WitnessLayout::sparse_from_cs(&optimized_cs);
 
 		let mut witness_gen = WitnessGenerator::new(&optimized_cs, &layout);
 		let y0_w = witness_gen.write_inout(y0, y0_val);
@@ -274,13 +254,8 @@ mod tests {
 		let ir = constraint_builder.build();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
-		let private_wires_alive: Vec<bool> = ir
-			.private_wires_status
-			.iter()
-			.map(|&status| !matches!(status, WireStatus::Pruned))
-			.collect();
 		let optimized_cs = ir.finalize();
-		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
+		let layout = WitnessLayout::sparse_from_cs(&optimized_cs);
 
 		let mut witness_gen = WitnessGenerator::new(&optimized_cs, &layout);
 		let coeffs_w: Vec<_> = iter::zip(&coeffs, &coeffs_vals)
@@ -330,13 +305,8 @@ mod tests {
 		let ir = constraint_builder.build();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
-		let private_wires_alive: Vec<bool> = ir
-			.private_wires_status
-			.iter()
-			.map(|&status| !matches!(status, WireStatus::Pruned))
-			.collect();
 		let optimized_cs = ir.finalize();
-		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
+		let layout = WitnessLayout::sparse_from_cs(&optimized_cs);
 
 		let mut witness_gen = WitnessGenerator::new(&optimized_cs, &layout);
 		let coeffs_w: Vec<_> = iter::zip(&coeffs, &coeffs_vals)
@@ -382,13 +352,8 @@ mod tests {
 		let ir = constraint_builder.build();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
-		let private_wires_alive: Vec<bool> = ir
-			.private_wires_status
-			.iter()
-			.map(|&status| !matches!(status, WireStatus::Pruned))
-			.collect();
 		let optimized_cs = ir.finalize();
-		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
+		let layout = WitnessLayout::sparse_from_cs(&optimized_cs);
 
 		let mut witness_gen = WitnessGenerator::new(&optimized_cs, &layout);
 		let x_w = witness_gen.write_inout(x, x_val);

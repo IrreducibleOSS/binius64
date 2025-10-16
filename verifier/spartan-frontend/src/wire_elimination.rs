@@ -277,13 +277,8 @@ mod tests {
 		let ir = constraint_builder.build();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
-		let private_wires_alive: Vec<bool> = ir
-			.private_wires_status
-			.iter()
-			.map(|&status| !matches!(status, WireStatus::Pruned))
-			.collect();
 		let optimized_cs = ir.finalize();
-		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
+		let layout = WitnessLayout::sparse_from_cs(&optimized_cs);
 
 		// Generate witness for optimized constraint system
 		let mut witness_generator = WitnessGenerator::new(&optimized_cs, &layout);
@@ -298,11 +293,11 @@ mod tests {
 		optimized_cs.validate(&layout, &witness);
 
 		// Verify that some optimization occurred
-		let n_alive = private_wires_alive.iter().filter(|&&alive| alive).count();
+		let n_pruned = optimized_cs.pruned.iter().filter(|&&pruned| pruned).count();
 		assert!(
-			n_alive < private_wires_alive.len(),
-			"Expected some private wires to be eliminated, but all {} are still alive",
-			private_wires_alive.len()
+			n_pruned > 0,
+			"Expected some private wires to be eliminated, but none were pruned out of {}",
+			optimized_cs.pruned.len()
 		);
 	}
 
@@ -331,13 +326,8 @@ mod tests {
 		let ir = constraint_builder.build();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
-		let private_wires_alive: Vec<bool> = ir
-			.private_wires_status
-			.iter()
-			.map(|&status| !matches!(status, WireStatus::Pruned))
-			.collect();
 		let optimized_cs = ir.finalize();
-		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
+		let layout = WitnessLayout::sparse_from_cs(&optimized_cs);
 
 		// Generate test values
 		let input_values: Vec<_> = (0..8).map(|i| B128::new(1u128 << i)).collect();
@@ -357,11 +347,11 @@ mod tests {
 		optimized_cs.validate(&layout, &witness);
 
 		// Verify optimization occurred
-		let n_alive = private_wires_alive.iter().filter(|&&alive| alive).count();
+		let n_pruned = optimized_cs.pruned.iter().filter(|&&pruned| pruned).count();
 		assert!(
-			n_alive < private_wires_alive.len(),
-			"Expected some private wires to be eliminated, but all {} are still alive",
-			private_wires_alive.len()
+			n_pruned > 0,
+			"Expected some private wires to be eliminated, but none were pruned out of {}",
+			optimized_cs.pruned.len()
 		);
 	}
 
@@ -395,11 +385,6 @@ mod tests {
 		let original_mul_constraint_count = ir.mul_constraints.len();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
-		let private_wires_alive: Vec<bool> = ir
-			.private_wires_status
-			.iter()
-			.map(|&status| !matches!(status, WireStatus::Pruned))
-			.collect();
 		let optimized_cs = ir.finalize();
 		let optimized_mul_constraint_count = optimized_cs.mul_constraints().len();
 
@@ -407,7 +392,7 @@ mod tests {
 		// This is a strict inequality because not all zero constraints should get eliminated.
 		assert!(optimized_mul_constraint_count > original_mul_constraint_count);
 
-		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
+		let layout = WitnessLayout::sparse_from_cs(&optimized_cs);
 
 		// Generate test values
 		let input_values: Vec<_> = (0..40).map(|i| B128::new(1u128 << i)).collect();
@@ -444,11 +429,11 @@ mod tests {
 		assert_eq!(max_mul_operand_len, 12);
 
 		// Verify optimization occurred
-		let n_alive = private_wires_alive.iter().filter(|&&alive| alive).count();
+		let n_pruned = optimized_cs.pruned.iter().filter(|&&pruned| pruned).count();
 		assert!(
-			n_alive < private_wires_alive.len(),
-			"Expected some private wires to be eliminated, but all {} are still alive",
-			private_wires_alive.len()
+			n_pruned > 0,
+			"Expected some private wires to be eliminated, but none were pruned out of {}",
+			optimized_cs.pruned.len()
 		);
 	}
 
@@ -472,13 +457,8 @@ mod tests {
 		let ir = constraint_builder.build();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
-		let private_wires_alive: Vec<bool> = ir
-			.private_wires_status
-			.iter()
-			.map(|&status| !matches!(status, WireStatus::Pruned))
-			.collect();
 		let optimized_cs = ir.finalize();
-		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
+		let layout = WitnessLayout::sparse_from_cs(&optimized_cs);
 
 		// Generate witness
 		let value = B128::new(42);
@@ -491,7 +471,7 @@ mod tests {
 		optimized_cs.validate(&layout, &witness);
 
 		// Verify no private wires were created
-		assert_eq!(private_wires_alive.len(), 0, "Expected no private wires");
+		assert_eq!(optimized_cs.pruned.len(), 0, "Expected no private wires");
 	}
 
 	#[test]
@@ -528,13 +508,8 @@ mod tests {
 		let ir = constraint_builder.build();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
-		let private_wires_alive: Vec<bool> = ir
-			.private_wires_status
-			.iter()
-			.map(|&status| !matches!(status, WireStatus::Pruned))
-			.collect();
 		let optimized_cs = ir.finalize();
-		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
+		let layout = WitnessLayout::sparse_from_cs(&optimized_cs);
 
 		// Generate test values: a = 2, b = 3, c = 6
 		// In binary field: 2 * 3 = 6
@@ -563,11 +538,11 @@ mod tests {
 		optimized_cs.validate(&layout, &witness);
 
 		// Verify optimization occurred
-		let n_alive = private_wires_alive.iter().filter(|&&alive| alive).count();
+		let n_pruned = optimized_cs.pruned.iter().filter(|&&pruned| pruned).count();
 		assert!(
-			n_alive < private_wires_alive.len(),
-			"Expected some private wires to be eliminated, but all {} are still alive",
-			private_wires_alive.len()
+			n_pruned > 0,
+			"Expected some private wires to be eliminated, but none were pruned out of {}",
+			optimized_cs.pruned.len()
 		);
 	}
 }
