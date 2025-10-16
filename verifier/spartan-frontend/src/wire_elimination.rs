@@ -287,7 +287,7 @@ mod tests {
 		let xn_val = witness_generator.write_inout(xn, B128::MULTIPLICATIVE_GENERATOR.pow(6765));
 		let out_val = fibonacci(&mut witness_generator, x0_val, x1_val, 20);
 		witness_generator.assert_eq(out_val, xn_val);
-		let witness = witness_generator.build();
+		let witness = witness_generator.build().unwrap();
 
 		// Validate witness against optimized constraint system
 		optimized_cs.validate(&layout, &witness);
@@ -342,7 +342,7 @@ mod tests {
 		let result = chain_adds(&mut witness_generator, &input_wires);
 		let sum = witness_generator.write_inout(sum_wire, sum_value);
 		witness_generator.assert_eq(result, sum);
-		let witness = witness_generator.build();
+		let witness = witness_generator.build().unwrap();
 
 		optimized_cs.validate(&layout, &witness);
 
@@ -414,7 +414,7 @@ mod tests {
 		let result = chain_add_muls(&mut witness_generator, &input_wires);
 		let sum = witness_generator.write_inout(output, output_value);
 		witness_generator.assert_eq(result, sum);
-		let witness = witness_generator.build();
+		let witness = witness_generator.build().unwrap();
 
 		optimized_cs.validate(&layout, &witness);
 
@@ -466,7 +466,7 @@ mod tests {
 		let w0_val = witness_generator.write_inout(w0, value);
 		let w1_val = witness_generator.write_inout(w1, value);
 		assert_equality(&mut witness_generator, w0_val, w1_val);
-		let witness = witness_generator.build();
+		let witness = witness_generator.build().unwrap();
 
 		optimized_cs.validate(&layout, &witness);
 
@@ -533,7 +533,7 @@ mod tests {
 
 		let input_wires_array: [_; 9] = input_wires.try_into().unwrap();
 		grouped_adds_mul(&mut witness_generator, &input_wires_array);
-		let witness = witness_generator.build();
+		let witness = witness_generator.build().unwrap();
 
 		optimized_cs.validate(&layout, &witness);
 

@@ -242,6 +242,11 @@ impl CircuitBuilder for ConstraintBuilder {
 	}
 }
 
+#[derive(Debug)]
+pub struct WitnessError {
+	pub backtrace: Backtrace,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WitnessWire(B128);
 
@@ -294,8 +299,12 @@ impl<'a> WitnessGenerator<'a> {
 		self.write_value(wire, value)
 	}
 
-	pub fn build(self) -> Vec<B128> {
-		self.witness
+	pub fn build(self) -> Result<Vec<B128>, WitnessError> {
+		if let Some(backtrace) = self.first_error {
+			Err(WitnessError { backtrace })
+		} else {
+			Ok(self.witness)
+		}
 	}
 
 	pub fn error(&self) -> Option<&Backtrace> {
@@ -391,7 +400,7 @@ mod tests {
 		let xn = witness_generator.write_inout(xn, B128::MULTIPLICATIVE_GENERATOR.pow(6765));
 		let out = fibonacci(&mut witness_generator, x0, x1, 20);
 		witness_generator.assert_eq(out, xn);
-		let witness = witness_generator.build();
+		let witness = witness_generator.build().unwrap();
 
 		constraint_system.validate(&layout, &witness);
 	}
@@ -419,6 +428,6 @@ mod tests {
 		let expected_wire = witness_generator.write_inout(expected, wrong_expected);
 		witness_generator.assert_eq(sum_wire, expected_wire);
 
-		assert!(witness_generator.error().is_some());
+		assert!(witness_generator.build().is_err());
 	}
 }

@@ -130,7 +130,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		circuit_builder::{ConstraintBuilder, WitnessGenerator},
+		circuit_builder::{ConstraintBuilder, WitnessError, WitnessGenerator},
 		constraint_system::WitnessLayout,
 		wire_elimination::{CostModel, run_wire_elimination},
 	};
@@ -139,7 +139,9 @@ mod tests {
 		fn build<Builder: CircuitBuilder>(builder: &mut Builder, inout: [Builder::Wire; N_INOUT]);
 	}
 
-	fn test_helper<C: TestCircuit<N_INOUT>, const N_INOUT: usize>(inout_vals: [B128; N_INOUT]) {
+	fn test_helper<C: TestCircuit<N_INOUT>, const N_INOUT: usize>(
+		inout_vals: [B128; N_INOUT],
+	) -> Result<(), WitnessError> {
 		let mut constraint_builder = ConstraintBuilder::new();
 		let inout_wires = array::from_fn(|_| constraint_builder.alloc_inout());
 		C::build(&mut constraint_builder, inout_wires);
@@ -153,10 +155,10 @@ mod tests {
 		let inout_assigned =
 			array::from_fn(|i| witness_gen.write_inout(inout_wires[i], inout_vals[i]));
 		C::build(&mut witness_gen, inout_assigned);
-		let witness = witness_gen.build();
+		let witness = witness_gen.build()?;
 
-		// TODO: Make this return a Result or bool
 		optimized_cs.validate(&layout, &witness);
+		Ok(())
 	}
 
 	#[test]
@@ -175,7 +177,7 @@ mod tests {
 		let x_val = B128::random(&mut rng);
 		let expected = Square::square(x_val);
 
-		test_helper::<SquareCircuit, 2>([x_val, expected]);
+		test_helper::<SquareCircuit, 2>([x_val, expected]).unwrap();
 	}
 
 	#[test]
@@ -189,7 +191,7 @@ mod tests {
 		}
 
 		// Test that 0 is a valid bit
-		test_helper::<BitCheckCircuit, 1>([B128::ZERO]);
+		test_helper::<BitCheckCircuit, 1>([B128::ZERO]).unwrap();
 	}
 
 	#[test]
@@ -203,7 +205,7 @@ mod tests {
 		}
 
 		// Test that 1 is a valid bit
-		test_helper::<BitCheckCircuit, 1>([B128::ONE]);
+		test_helper::<BitCheckCircuit, 1>([B128::ONE]).unwrap();
 	}
 
 	#[test]
@@ -224,7 +226,7 @@ mod tests {
 		let z_val = B128::random(&mut rng);
 		let expected = extrapolate_line_packed(y0_val, y1_val, z_val);
 
-		test_helper::<ExtrapolateLineCircuit, 4>([y0_val, y1_val, z_val, expected]);
+		test_helper::<ExtrapolateLineCircuit, 4>([y0_val, y1_val, z_val, expected]).unwrap();
 	}
 
 	#[test]
@@ -255,7 +257,8 @@ mod tests {
 			coeffs_vals[2],
 			z_val,
 			expected,
-		]);
+		])
+		.unwrap();
 	}
 
 	#[test]
@@ -286,7 +289,8 @@ mod tests {
 			coords_vals[0],
 			coords_vals[1],
 			expected,
-		]);
+		])
+		.unwrap();
 	}
 
 	#[test]
@@ -321,7 +325,8 @@ mod tests {
 			expected_vals[1],
 			expected_vals[2],
 			expected_vals[3],
-		]);
+		])
+		.unwrap();
 	}
 
 	#[test]
@@ -340,7 +345,8 @@ mod tests {
 		let x_val = B128::random(&mut rng);
 		let expected = x_val.invert_or_zero();
 
-		test_helper::<InvertCircuit, 2>([x_val, expected]);
+		test_helper::<InvertCircuit, 2>([x_val, expected]).unwrap();
+		assert!(test_helper::<InvertCircuit, 2>([B128::ZERO, B128::ZERO]).is_err());
 	}
 
 	#[test]
@@ -359,7 +365,7 @@ mod tests {
 		let x_val = B128::random(&mut rng);
 		let expected = x_val.invert_or_zero();
 
-		test_helper::<InvertOrZeroCircuit, 2>([x_val, expected]);
+		test_helper::<InvertOrZeroCircuit, 2>([x_val, expected]).unwrap();
 	}
 
 	#[test]
@@ -374,6 +380,6 @@ mod tests {
 			}
 		}
 
-		test_helper::<InvertOrZeroCircuit, 2>([B128::ZERO, B128::ZERO]);
+		test_helper::<InvertOrZeroCircuit, 2>([B128::ZERO, B128::ZERO]).unwrap();
 	}
 }
