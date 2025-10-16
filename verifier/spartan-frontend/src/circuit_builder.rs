@@ -4,7 +4,7 @@ use std::{array, collections::HashMap};
 
 use binius_field::BinaryField128bGhash as B128;
 use bytemuck::zeroed_vec;
-use smallvec::{SmallVec, smallvec};
+use smallvec::smallvec;
 
 use crate::constraint_system::{
 	ConstraintSystem, ConstraintWire, MulConstraint, Operand, WireKind, WitnessLayout,
@@ -51,13 +51,6 @@ impl WireAllocator {
 }
 
 // TODO: Add string labels for constraints to make validation easier.
-struct BuilderAddConstraint(SmallVec<[ConstraintWire; 4]>);
-
-struct BuilderMulConstraint {
-	a: ConstraintWire,
-	b: ConstraintWire,
-	c: ConstraintWire,
-}
 
 // Witness values are a permuted subset of the wire values.
 // Need a way to fingerprint a constraint system.
@@ -67,8 +60,8 @@ pub struct ConstraintBuilder {
 	public_alloc: WireAllocator,
 	private_alloc: WireAllocator,
 	constants: HashMap<B128, u32>,
-	add_constraints: Vec<BuilderAddConstraint>,
-	mul_constraints: Vec<BuilderMulConstraint>,
+	zero_constraints: Vec<ZeroConstraint>,
+	mul_constraints: Vec<MulConstraint>,
 }
 
 impl ConstraintBuilder {
@@ -79,7 +72,7 @@ impl ConstraintBuilder {
 			public_alloc: WireAllocator::new(WireKind::InOut),
 			private_alloc: WireAllocator::new(WireKind::Private),
 			constants: HashMap::new(),
-			add_constraints: Vec::new(),
+			zero_constraints: Vec::new(),
 			mul_constraints: Vec::new(),
 		}
 	}
@@ -94,7 +87,7 @@ impl ConstraintBuilder {
 			public_alloc,
 			private_alloc,
 			constants: constants_map,
-			add_constraints,
+			zero_constraints,
 			mul_constraints,
 		} = self;
 
@@ -103,25 +96,11 @@ impl ConstraintBuilder {
 			constants[id as usize] = val;
 		}
 
-		let add_constraints = add_constraints
-			.into_iter()
-			.map(|BuilderAddConstraint(term)| ZeroConstraint(Operand::new(term)))
-			.collect();
-
-		let mul_constraints = mul_constraints
-			.into_iter()
-			.map(|BuilderMulConstraint { a, b, c }| MulConstraint {
-				a: a.into(),
-				b: b.into(),
-				c: c.into(),
-			})
-			.collect();
-
 		ConstraintSystem::new(
 			constants,
 			public_alloc.n_wires,
 			private_alloc.n_wires,
-			add_constraints,
+			zero_constraints,
 			mul_constraints,
 		)
 	}
@@ -131,8 +110,8 @@ impl CircuitBuilder for ConstraintBuilder {
 	type Wire = ConstraintWire;
 
 	fn assert_eq(&mut self, lhs: Self::Wire, rhs: Self::Wire) {
-		self.add_constraints
-			.push(BuilderAddConstraint(smallvec![lhs, rhs]));
+		self.zero_constraints
+			.push(ZeroConstraint(Operand::new(smallvec![lhs, rhs])));
 	}
 
 	fn constant(&mut self, val: B128) -> Self::Wire {
@@ -148,17 +127,17 @@ impl CircuitBuilder for ConstraintBuilder {
 
 	fn add(&mut self, lhs: Self::Wire, rhs: Self::Wire) -> Self::Wire {
 		let out = self.private_alloc.alloc();
-		self.add_constraints
-			.push(BuilderAddConstraint(smallvec![lhs, rhs, out]));
+		self.zero_constraints
+			.push(ZeroConstraint(Operand::new(smallvec![lhs, rhs, out])));
 		out
 	}
 
 	fn mul(&mut self, lhs: Self::Wire, rhs: Self::Wire) -> Self::Wire {
 		let out = self.private_alloc.alloc();
-		self.mul_constraints.push(BuilderMulConstraint {
-			a: lhs,
-			b: rhs,
-			c: out,
+		self.mul_constraints.push(MulConstraint {
+			a: lhs.into(),
+			b: rhs.into(),
+			c: out.into(),
 		});
 		out
 	}
