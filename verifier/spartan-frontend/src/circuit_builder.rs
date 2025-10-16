@@ -130,27 +130,17 @@ impl ConstraintSystemIR {
 			}
 		}
 
-		// Calculate final n_private from non-pruned wires
-		let n_private = self
+		// Create private_alive array from wire status (invert pruned logic)
+		let private_alive: Vec<bool> = self
 			.private_wires_status
 			.iter()
-			.filter(|&&status| !matches!(status, WireStatus::Pruned))
-			.count() as u32;
-
-		// Create pruned vector from status
-		let pruned: Vec<bool> = self
-			.private_wires_status
-			.iter()
-			.map(|&status| matches!(status, WireStatus::Pruned))
+			.map(|&status| !matches!(status, WireStatus::Pruned))
 			.collect();
 
-		ConstraintSystem::new(
-			constants,
-			self.public_alloc.n_wires,
-			n_private,
-			self.mul_constraints,
-			pruned,
-		)
+		// Create WitnessLayout
+		let layout = WitnessLayout::sparse(constants, self.public_alloc.n_wires, &private_alive);
+
+		ConstraintSystem::new(layout, self.mul_constraints)
 	}
 }
 
@@ -266,13 +256,12 @@ pub struct WitnessGenerator<'a> {
 }
 
 impl<'a> WitnessGenerator<'a> {
-	pub fn new(cs: &'a ConstraintSystem, layout: &'a WitnessLayout) -> Self {
+	pub fn new(cs: &'a ConstraintSystem) -> Self {
+		let layout = cs.layout();
 		let witness_size = layout.size();
 
-		assert_eq!(cs.constants.len(), layout.n_constants());
-
 		let mut witness = zeroed_vec(witness_size);
-		witness[..cs.constants.len()].copy_from_slice(&cs.constants);
+		witness[..layout.constants.len()].copy_from_slice(&layout.constants);
 
 		Self {
 			alloc: WireAllocator::new(WireKind::Private),
@@ -393,8 +382,7 @@ mod tests {
 		let ir = constraint_builder.build();
 		let constraint_system = ir.finalize();
 
-		let layout = WitnessLayout::dense_from_cs(&constraint_system);
-		let mut witness_generator = WitnessGenerator::new(&constraint_system, &layout);
+		let mut witness_generator = WitnessGenerator::new(&constraint_system);
 		let x0 = witness_generator.write_inout(x0, B128::ONE);
 		let x1 = witness_generator.write_inout(x1, B128::MULTIPLICATIVE_GENERATOR);
 		let xn = witness_generator.write_inout(xn, B128::MULTIPLICATIVE_GENERATOR.pow(6765));
@@ -402,7 +390,7 @@ mod tests {
 		witness_generator.assert_eq(out, xn);
 		let witness = witness_generator.build().unwrap();
 
-		constraint_system.validate(&layout, &witness);
+		constraint_system.validate(&witness);
 	}
 
 	#[test]
@@ -416,8 +404,7 @@ mod tests {
 		let ir = constraint_builder.build();
 		let constraint_system = ir.finalize();
 
-		let layout = WitnessLayout::dense_from_cs(&constraint_system);
-		let mut witness_generator = WitnessGenerator::new(&constraint_system, &layout);
+		let mut witness_generator = WitnessGenerator::new(&constraint_system);
 		let x_val = B128::new(5);
 		let y_val = B128::new(7);
 		let wrong_expected = B128::new(99); // Incorrect: should be 5 + 7 = 2 in binary field

@@ -131,7 +131,6 @@ mod tests {
 	use super::*;
 	use crate::{
 		circuit_builder::{ConstraintBuilder, WitnessError, WitnessGenerator},
-		constraint_system::WitnessLayout,
 		wire_elimination::{CostModel, run_wire_elimination},
 	};
 
@@ -149,15 +148,14 @@ mod tests {
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
 		let optimized_cs = ir.finalize();
-		let layout = WitnessLayout::sparse_from_cs(&optimized_cs);
 
-		let mut witness_gen = WitnessGenerator::new(&optimized_cs, &layout);
+		let mut witness_gen = WitnessGenerator::new(&optimized_cs);
 		let inout_assigned =
 			array::from_fn(|i| witness_gen.write_inout(inout_wires[i], inout_vals[i]));
 		C::build(&mut witness_gen, inout_assigned);
 		let witness = witness_gen.build()?;
 
-		optimized_cs.validate(&layout, &witness);
+		optimized_cs.validate(&witness);
 		Ok(())
 	}
 

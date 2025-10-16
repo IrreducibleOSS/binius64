@@ -4,7 +4,6 @@ use std::{cmp::Ordering, collections::HashMap, mem};
 
 use binius_field::BinaryField128bGhash as B128;
 use binius_utils::checked_arithmetics::log2_ceil_usize;
-use getset::CopyGetters;
 use smallvec::{SmallVec, smallvec};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -113,50 +112,46 @@ pub struct MulConstraint {
 	pub c: Operand,
 }
 
-#[derive(Debug, CopyGetters)]
+#[derive(Debug)]
 pub struct ConstraintSystem {
-	pub(crate) constants: Vec<B128>,
-	#[getset(get_copy = "pub")]
-	n_inout: u32,
-	#[getset(get_copy = "pub")]
-	n_private: u32,
-	pub(crate) mul_constraints: Vec<MulConstraint>,
-	/// Maps private wire IDs to whether they are pruned (eliminated during optimization).
-	/// Index corresponds to the original private wire ID before optimization.
-	pub(crate) pruned: Vec<bool>,
+	layout: WitnessLayout,
+	mul_constraints: Vec<MulConstraint>,
 }
 
 impl ConstraintSystem {
-	pub fn new(
-		constants: Vec<B128>,
-		n_inout: u32,
-		n_private: u32,
-		mul_constraints: Vec<MulConstraint>,
-		pruned: Vec<bool>,
-	) -> Self {
+	pub fn new(layout: WitnessLayout, mul_constraints: Vec<MulConstraint>) -> Self {
 		// TODO: document unchecked preconditions on references
 		Self {
-			constants,
-			n_inout,
-			n_private,
+			layout,
 			mul_constraints,
-			pruned,
 		}
+	}
+
+	pub fn layout(&self) -> &WitnessLayout {
+		&self.layout
+	}
+
+	pub fn n_inout(&self) -> u32 {
+		self.layout.n_inout
+	}
+
+	pub fn n_private(&self) -> u32 {
+		self.layout.n_private
 	}
 
 	pub fn mul_constraints(&self) -> &[MulConstraint] {
 		&self.mul_constraints
 	}
 
-	pub fn validate(&self, layout: &WitnessLayout, witness: &[B128]) {
-		assert_eq!(witness.len(), layout.size());
+	pub fn validate(&self, witness: &[B128]) {
+		assert_eq!(witness.len(), self.layout.size());
 
 		let operand_val = |operand: &Operand| {
 			operand
 				.wires()
 				.iter()
 				.map(|wire| {
-					let Some(idx) = layout.get(wire) else {
+					let Some(idx) = self.layout.get(wire) else {
 						panic!("wire {wire:?} not found");
 					};
 					witness[idx.0 as usize]
@@ -175,7 +170,7 @@ pub struct WitnessIndex(pub u32);
 
 #[derive(Debug)]
 pub struct WitnessLayout {
-	n_constants: u32,
+	pub(crate) constants: Vec<B128>,
 	n_inout: u32,
 	n_private: u32,
 	log_public: u32,
@@ -184,29 +179,8 @@ pub struct WitnessLayout {
 }
 
 impl WitnessLayout {
-	pub fn dense(n_constants: u32, n_inout: u32, n_private: u32) -> Self {
-		let n_public = n_constants + n_inout;
-		let log_public = log2_ceil_usize(n_public as usize) as u32;
-
-		let private_offset = 1 << log_public;
-		let log_size = log2_ceil_usize((private_offset + n_private) as usize) as u32;
-
-		let private_index_map = (0..n_private).map(|i| (i, private_offset + i)).collect();
-		Self {
-			n_constants,
-			n_inout,
-			n_private,
-			log_public,
-			log_size,
-			private_index_map,
-		}
-	}
-
-	pub fn dense_from_cs(cs: &ConstraintSystem) -> Self {
-		Self::dense(cs.constants.len() as u32, cs.n_inout, cs.n_private)
-	}
-
-	pub fn sparse(n_constants: u32, n_inout: u32, private_alive: &[bool]) -> Self {
+	pub fn sparse(constants: Vec<B128>, n_inout: u32, private_alive: &[bool]) -> Self {
+		let n_constants = constants.len() as u32;
 		let n_public = n_constants + n_inout;
 		let log_public = log2_ceil_usize(n_public as usize) as u32;
 
@@ -223,7 +197,7 @@ impl WitnessLayout {
 		let log_size = log2_ceil_usize((private_offset + n_private) as usize) as u32;
 
 		Self {
-			n_constants,
+			constants,
 			n_inout,
 			n_private,
 			log_public,
@@ -232,18 +206,12 @@ impl WitnessLayout {
 		}
 	}
 
-	pub fn sparse_from_cs(cs: &ConstraintSystem) -> Self {
-		// Invert pruned to get alive status
-		let private_alive: Vec<bool> = cs.pruned.iter().map(|&pruned| !pruned).collect();
-		Self::sparse(cs.constants.len() as u32, cs.n_inout, &private_alive)
-	}
-
 	pub fn size(&self) -> usize {
 		1 << self.log_size as usize
 	}
 
 	pub fn n_constants(&self) -> usize {
-		self.n_constants as usize
+		self.constants.len()
 	}
 
 	pub fn n_inout(&self) -> usize {
@@ -256,7 +224,7 @@ impl WitnessLayout {
 
 	/// Returns the first index of the inout
 	pub fn inout_offset(&self) -> WitnessIndex {
-		WitnessIndex(self.n_constants)
+		WitnessIndex(self.constants.len() as u32)
 	}
 
 	pub fn private_offset(&self) -> WitnessIndex {
@@ -266,7 +234,7 @@ impl WitnessLayout {
 	pub fn get(&self, wire: &ConstraintWire) -> Option<WitnessIndex> {
 		match wire.kind {
 			WireKind::Constant => {
-				assert!(wire.id < self.n_constants);
+				assert!((wire.id as usize) < self.constants.len());
 				Some(WitnessIndex(wire.id))
 			}
 			WireKind::InOut => {

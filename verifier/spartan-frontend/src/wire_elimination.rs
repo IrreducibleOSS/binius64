@@ -240,10 +240,7 @@ mod tests {
 	use binius_field::{BinaryField, BinaryField128bGhash as B128, Field, PackedField};
 
 	use super::*;
-	use crate::{
-		circuit_builder::{CircuitBuilder, ConstraintBuilder, WitnessGenerator},
-		constraint_system::WitnessLayout,
-	};
+	use crate::circuit_builder::{CircuitBuilder, ConstraintBuilder, WitnessGenerator};
 
 	fn fibonacci<Builder: CircuitBuilder>(
 		builder: &mut Builder,
@@ -278,10 +275,9 @@ mod tests {
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
 		let optimized_cs = ir.finalize();
-		let layout = WitnessLayout::sparse_from_cs(&optimized_cs);
 
 		// Generate witness for optimized constraint system
-		let mut witness_generator = WitnessGenerator::new(&optimized_cs, &layout);
+		let mut witness_generator = WitnessGenerator::new(&optimized_cs);
 		let x0_val = witness_generator.write_inout(x0, B128::ONE);
 		let x1_val = witness_generator.write_inout(x1, B128::MULTIPLICATIVE_GENERATOR);
 		let xn_val = witness_generator.write_inout(xn, B128::MULTIPLICATIVE_GENERATOR.pow(6765));
@@ -290,14 +286,18 @@ mod tests {
 		let witness = witness_generator.build().unwrap();
 
 		// Validate witness against optimized constraint system
-		optimized_cs.validate(&layout, &witness);
+		optimized_cs.validate(&witness);
 
 		// Verify that some optimization occurred
-		let n_pruned = optimized_cs.pruned.iter().filter(|&&pruned| pruned).count();
+		// fibonacci(20) creates 20 mul outputs, plus 1 add output from assert_eq
+		// After optimization, some should be eliminated
+		let n_private_after = optimized_cs.n_private();
+		let n_private_before = 21;
 		assert!(
-			n_pruned > 0,
-			"Expected some private wires to be eliminated, but none were pruned out of {}",
-			optimized_cs.pruned.len()
+			n_private_after < n_private_before,
+			"Expected some private wires to be eliminated, got {} out of {}",
+			n_private_after,
+			n_private_before
 		);
 	}
 
@@ -327,14 +327,13 @@ mod tests {
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
 		let optimized_cs = ir.finalize();
-		let layout = WitnessLayout::sparse_from_cs(&optimized_cs);
 
 		// Generate test values
 		let input_values: Vec<_> = (0..8).map(|i| B128::new(1u128 << i)).collect();
 		let sum_value: B128 = input_values.iter().copied().sum();
 
 		// Generate witness
-		let mut witness_generator = WitnessGenerator::new(&optimized_cs, &layout);
+		let mut witness_generator = WitnessGenerator::new(&optimized_cs);
 		let input_wires: Vec<_> = iter::zip(&inputs, &input_values)
 			.map(|(&wire, &value)| witness_generator.write_inout(wire, value))
 			.collect();
@@ -344,14 +343,18 @@ mod tests {
 		witness_generator.assert_eq(result, sum);
 		let witness = witness_generator.build().unwrap();
 
-		optimized_cs.validate(&layout, &witness);
+		optimized_cs.validate(&witness);
 
 		// Verify optimization occurred
-		let n_pruned = optimized_cs.pruned.iter().filter(|&&pruned| pruned).count();
+		// 7 add operations create 7 private wires, plus 1 from assert_eq = 8 total
+		// After optimization, some should be eliminated
+		let n_private_after = optimized_cs.n_private();
+		let n_private_before = 8;
 		assert!(
-			n_pruned > 0,
-			"Expected some private wires to be eliminated, but none were pruned out of {}",
-			optimized_cs.pruned.len()
+			n_private_after < n_private_before,
+			"Expected some private wires to be eliminated, got {} out of {}",
+			n_private_after,
+			n_private_before
 		);
 	}
 
@@ -392,8 +395,6 @@ mod tests {
 		// This is a strict inequality because not all zero constraints should get eliminated.
 		assert!(optimized_mul_constraint_count > original_mul_constraint_count);
 
-		let layout = WitnessLayout::sparse_from_cs(&optimized_cs);
-
 		// Generate test values
 		let input_values: Vec<_> = (0..40).map(|i| B128::new(1u128 << i)).collect();
 		let (_, output_value) =
@@ -406,7 +407,7 @@ mod tests {
 				});
 
 		// Generate witness
-		let mut witness_generator = WitnessGenerator::new(&optimized_cs, &layout);
+		let mut witness_generator = WitnessGenerator::new(&optimized_cs);
 		let input_wires: Vec<_> = iter::zip(&inputs, &input_values)
 			.map(|(&wire, &value)| witness_generator.write_inout(wire, value))
 			.collect();
@@ -416,7 +417,7 @@ mod tests {
 		witness_generator.assert_eq(result, sum);
 		let witness = witness_generator.build().unwrap();
 
-		optimized_cs.validate(&layout, &witness);
+		optimized_cs.validate(&witness);
 
 		let max_mul_operand_len = optimized_cs
 			.mul_constraints
@@ -429,11 +430,15 @@ mod tests {
 		assert_eq!(max_mul_operand_len, 12);
 
 		// Verify optimization occurred
-		let n_pruned = optimized_cs.pruned.iter().filter(|&&pruned| pruned).count();
+		// 39 add operations + 39 mul operations + 1 from assert_eq = 79 private wires before
+		// After optimization, many should be eliminated
+		let n_private_after = optimized_cs.n_private();
+		let n_private_before = 79;
 		assert!(
-			n_pruned > 0,
-			"Expected some private wires to be eliminated, but none were pruned out of {}",
-			optimized_cs.pruned.len()
+			n_private_after < n_private_before,
+			"Expected some private wires to be eliminated, got {} out of {}",
+			n_private_after,
+			n_private_before
 		);
 	}
 
@@ -458,20 +463,19 @@ mod tests {
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
 		let optimized_cs = ir.finalize();
-		let layout = WitnessLayout::sparse_from_cs(&optimized_cs);
 
 		// Generate witness
 		let value = B128::new(42);
-		let mut witness_generator = WitnessGenerator::new(&optimized_cs, &layout);
+		let mut witness_generator = WitnessGenerator::new(&optimized_cs);
 		let w0_val = witness_generator.write_inout(w0, value);
 		let w1_val = witness_generator.write_inout(w1, value);
 		assert_equality(&mut witness_generator, w0_val, w1_val);
 		let witness = witness_generator.build().unwrap();
 
-		optimized_cs.validate(&layout, &witness);
+		optimized_cs.validate(&witness);
 
 		// Verify no private wires were created
-		assert_eq!(optimized_cs.pruned.len(), 0, "Expected no private wires");
+		assert_eq!(optimized_cs.n_private(), 0, "Expected no private wires");
 	}
 
 	#[test]
@@ -509,7 +513,6 @@ mod tests {
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
 		let optimized_cs = ir.finalize();
-		let layout = WitnessLayout::sparse_from_cs(&optimized_cs);
 
 		// Generate test values: a = 2, b = 3, c = 6
 		// In binary field: 2 * 3 = 6
@@ -526,7 +529,7 @@ mod tests {
 		];
 
 		// Generate witness
-		let mut witness_generator = WitnessGenerator::new(&optimized_cs, &layout);
+		let mut witness_generator = WitnessGenerator::new(&optimized_cs);
 		let input_wires: Vec<_> = iter::zip(&inputs, &input_values)
 			.map(|(&wire, &value)| witness_generator.write_inout(wire, value))
 			.collect();
@@ -535,14 +538,18 @@ mod tests {
 		grouped_adds_mul(&mut witness_generator, &input_wires_array);
 		let witness = witness_generator.build().unwrap();
 
-		optimized_cs.validate(&layout, &witness);
+		optimized_cs.validate(&witness);
 
 		// Verify optimization occurred
-		let n_pruned = optimized_cs.pruned.iter().filter(|&&pruned| pruned).count();
+		// 6 add operations + 1 mul operation = 7 private wires before
+		// After optimization, some should be eliminated
+		let n_private_after = optimized_cs.n_private();
+		let n_private_before = 7;
 		assert!(
-			n_pruned > 0,
-			"Expected some private wires to be eliminated, but none were pruned out of {}",
-			optimized_cs.pruned.len()
+			n_private_after < n_private_before,
+			"Expected some private wires to be eliminated, got {} out of {}",
+			n_private_after,
+			n_private_before
 		);
 	}
 }
