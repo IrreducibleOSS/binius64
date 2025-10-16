@@ -131,7 +131,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		circuit_builder::{ConstraintBuilder, WitnessError, WitnessGenerator},
-		wire_elimination::{CostModel, run_wire_elimination},
+		compiler::compile,
 	};
 
 	trait TestCircuit<const N_INOUT: usize> {
@@ -144,18 +144,15 @@ mod tests {
 		let mut constraint_builder = ConstraintBuilder::new();
 		let inout_wires = array::from_fn(|_| constraint_builder.alloc_inout());
 		C::build(&mut constraint_builder, inout_wires);
-		let ir = constraint_builder.build();
+		let cs = compile(constraint_builder);
 
-		let ir = run_wire_elimination(CostModel::default(), ir);
-		let optimized_cs = ir.finalize();
-
-		let mut witness_gen = WitnessGenerator::new(&optimized_cs);
+		let mut witness_gen = WitnessGenerator::new(&cs);
 		let inout_assigned =
 			array::from_fn(|i| witness_gen.write_inout(inout_wires[i], inout_vals[i]));
 		C::build(&mut witness_gen, inout_assigned);
 		let witness = witness_gen.build()?;
 
-		optimized_cs.validate(&witness);
+		cs.validate(&witness);
 		Ok(())
 	}
 

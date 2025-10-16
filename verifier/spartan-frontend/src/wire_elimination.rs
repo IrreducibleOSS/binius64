@@ -420,7 +420,7 @@ mod tests {
 		optimized_cs.validate(&witness);
 
 		let max_mul_operand_len = optimized_cs
-			.mul_constraints
+			.mul_constraints()
 			.iter()
 			.map(|c| c.a.len())
 			.max()
