@@ -55,54 +55,90 @@ impl WireAllocator {
 // Witness values are a permuted subset of the wire values.
 // Need a way to fingerprint a constraint system.
 
+/// Intermediate representation of a constraint system that can be manipulated and optimized.
+///
+/// This IR is used during circuit construction and optimization passes like wire elimination.
+/// It tracks wire allocators, constants, and constraints, along with metadata about which
+/// private wires are still alive (not eliminated by optimization).
+pub struct ConstraintSystemIR {
+	pub(crate) constant_alloc: WireAllocator,
+	pub(crate) public_alloc: WireAllocator,
+	pub(crate) private_alloc: WireAllocator,
+	pub(crate) constants: HashMap<B128, u32>,
+	pub(crate) zero_constraints: Vec<ZeroConstraint>,
+	pub(crate) mul_constraints: Vec<MulConstraint>,
+	/// Tracks which private wires are still alive (not eliminated).
+	/// Index corresponds to private wire ID. Initially all wires are alive.
+	pub(crate) private_wires_alive: Vec<bool>,
+}
+
+impl ConstraintSystemIR {
+	/// Finalize the IR into a ConstraintSystem by converting remaining ZeroConstraints
+	/// to MulConstraints and computing the final witness layout.
+	///
+	/// The `one_wire` parameter specifies a constant wire with value 1, used to convert
+	/// ZeroConstraints of the form `A = 0` into MulConstraints `A * 1 = 0`.
+	pub fn finalize(mut self, one_wire: ConstraintWire) -> ConstraintSystem {
+		use std::mem;
+
+		assert_eq!(one_wire.kind, WireKind::Constant);
+
+		// Convert constants HashMap to Vec
+		let mut constants = zeroed_vec(self.constant_alloc.n_wires as usize);
+		for (val, id) in self.constants {
+			constants[id as usize] = val;
+		}
+
+		// Replace all remaining zero constraints with mul constraints
+		let one_operand = Operand::from(one_wire);
+		let zero_operand = Operand::default();
+		for ZeroConstraint(operand) in mem::take(&mut self.zero_constraints) {
+			if !operand.is_empty() {
+				self.mul_constraints.push(MulConstraint {
+					a: operand,
+					b: one_operand.clone(),
+					c: zero_operand.clone(),
+				});
+			}
+		}
+
+		// Calculate final n_private from alive wires
+		let n_private = self
+			.private_wires_alive
+			.iter()
+			.filter(|&&alive| alive)
+			.count() as u32;
+
+		ConstraintSystem::new(constants, self.public_alloc.n_wires, n_private, self.mul_constraints)
+	}
+}
+
 pub struct ConstraintBuilder {
-	constant_alloc: WireAllocator,
-	public_alloc: WireAllocator,
-	private_alloc: WireAllocator,
-	constants: HashMap<B128, u32>,
-	zero_constraints: Vec<ZeroConstraint>,
-	mul_constraints: Vec<MulConstraint>,
+	ir: ConstraintSystemIR,
 }
 
 impl ConstraintBuilder {
 	#[allow(clippy::new_without_default)]
 	pub fn new() -> Self {
 		ConstraintBuilder {
-			constant_alloc: WireAllocator::new(WireKind::Constant),
-			public_alloc: WireAllocator::new(WireKind::InOut),
-			private_alloc: WireAllocator::new(WireKind::Private),
-			constants: HashMap::new(),
-			zero_constraints: Vec::new(),
-			mul_constraints: Vec::new(),
+			ir: ConstraintSystemIR {
+				constant_alloc: WireAllocator::new(WireKind::Constant),
+				public_alloc: WireAllocator::new(WireKind::InOut),
+				private_alloc: WireAllocator::new(WireKind::Private),
+				constants: HashMap::new(),
+				zero_constraints: Vec::new(),
+				mul_constraints: Vec::new(),
+				private_wires_alive: Vec::new(),
+			},
 		}
 	}
 
 	pub fn alloc_inout(&mut self) -> ConstraintWire {
-		self.public_alloc.alloc()
+		self.ir.public_alloc.alloc()
 	}
 
-	pub fn build(self) -> ConstraintSystem {
-		let Self {
-			constant_alloc,
-			public_alloc,
-			private_alloc,
-			constants: constants_map,
-			zero_constraints,
-			mul_constraints,
-		} = self;
-
-		let mut constants = zeroed_vec(constant_alloc.n_wires as usize);
-		for (val, id) in constants_map {
-			constants[id as usize] = val;
-		}
-
-		ConstraintSystem::new(
-			constants,
-			public_alloc.n_wires,
-			private_alloc.n_wires,
-			zero_constraints,
-			mul_constraints,
-		)
+	pub fn build(self) -> ConstraintSystemIR {
+		self.ir
 	}
 }
 
@@ -110,15 +146,17 @@ impl CircuitBuilder for ConstraintBuilder {
 	type Wire = ConstraintWire;
 
 	fn assert_eq(&mut self, lhs: Self::Wire, rhs: Self::Wire) {
-		self.zero_constraints
+		self.ir
+			.zero_constraints
 			.push(ZeroConstraint(Operand::new(smallvec![lhs, rhs])));
 	}
 
 	fn constant(&mut self, val: B128) -> Self::Wire {
 		let id = self
+			.ir
 			.constants
 			.entry(val)
-			.or_insert_with(|| self.constant_alloc.alloc().id);
+			.or_insert_with(|| self.ir.constant_alloc.alloc().id);
 		ConstraintWire {
 			kind: WireKind::Constant,
 			id: *id,
@@ -126,15 +164,18 @@ impl CircuitBuilder for ConstraintBuilder {
 	}
 
 	fn add(&mut self, lhs: Self::Wire, rhs: Self::Wire) -> Self::Wire {
-		let out = self.private_alloc.alloc();
-		self.zero_constraints
+		let out = self.ir.private_alloc.alloc();
+		self.ir.private_wires_alive.push(true);
+		self.ir
+			.zero_constraints
 			.push(ZeroConstraint(Operand::new(smallvec![lhs, rhs, out])));
 		out
 	}
 
 	fn mul(&mut self, lhs: Self::Wire, rhs: Self::Wire) -> Self::Wire {
-		let out = self.private_alloc.alloc();
-		self.mul_constraints.push(MulConstraint {
+		let out = self.ir.private_alloc.alloc();
+		self.ir.private_wires_alive.push(true);
+		self.ir.mul_constraints.push(MulConstraint {
 			a: lhs.into(),
 			b: rhs.into(),
 			c: out.into(),
@@ -147,7 +188,11 @@ impl CircuitBuilder for ConstraintBuilder {
 		_inputs: [Self::Wire; IN],
 		_f: F,
 	) -> [Self::Wire; OUT] {
-		array::from_fn(|_| self.private_alloc.alloc())
+		array::from_fn(|_| {
+			let wire = self.ir.private_alloc.alloc();
+			self.ir.private_wires_alive.push(true);
+			wire
+		})
 	}
 }
 
@@ -265,12 +310,14 @@ mod tests {
 	#[test]
 	fn test_fibonacci() {
 		let mut constraint_builder = ConstraintBuilder::new();
+		let one_wire = constraint_builder.constant(B128::ONE);
 		let x0 = constraint_builder.alloc_inout();
 		let x1 = constraint_builder.alloc_inout();
 		let xn = constraint_builder.alloc_inout();
 		let out = fibonacci(&mut constraint_builder, x0, x1, 20);
 		constraint_builder.assert_eq(out, xn);
-		let constraint_system = constraint_builder.build();
+		let ir = constraint_builder.build();
+		let constraint_system = ir.finalize(one_wire);
 
 		let layout = WitnessLayout::dense_from_cs(&constraint_system);
 		let mut witness_generator = WitnessGenerator::new(&constraint_system, &layout);

@@ -2,7 +2,7 @@
 
 use std::{cmp::Ordering, collections::HashMap, mem};
 
-use binius_field::{BinaryField128bGhash as B128, Field};
+use binius_field::BinaryField128bGhash as B128;
 use binius_utils::checked_arithmetics::log2_ceil_usize;
 use getset::CopyGetters;
 use smallvec::{SmallVec, smallvec};
@@ -123,7 +123,6 @@ pub struct ConstraintSystem {
 	n_inout: u32,
 	#[getset(get_copy = "pub")]
 	n_private: u32,
-	pub(crate) zero_constraints: Vec<ZeroConstraint>,
 	pub(crate) mul_constraints: Vec<MulConstraint>,
 }
 
@@ -132,7 +131,6 @@ impl ConstraintSystem {
 		constants: Vec<B128>,
 		n_inout: u32,
 		n_private: u32,
-		zero_constraints: Vec<ZeroConstraint>,
 		mul_constraints: Vec<MulConstraint>,
 	) -> Self {
 		// TODO: document unchecked preconditions on references
@@ -140,13 +138,8 @@ impl ConstraintSystem {
 			constants,
 			n_inout,
 			n_private,
-			zero_constraints,
 			mul_constraints,
 		}
-	}
-
-	pub fn zero_constraints(&self) -> &[ZeroConstraint] {
-		&self.zero_constraints
 	}
 
 	pub fn mul_constraints(&self) -> &[MulConstraint] {
@@ -168,10 +161,6 @@ impl ConstraintSystem {
 				})
 				.sum::<B128>()
 		};
-
-		for ZeroConstraint(term) in &self.zero_constraints {
-			assert!(operand_val(term).is_zero());
-		}
 
 		for MulConstraint { a, b, c } in &self.mul_constraints {
 			assert_eq!(operand_val(a) * operand_val(b), operand_val(c));

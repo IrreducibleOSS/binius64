@@ -4,9 +4,9 @@
 
 use std::mem;
 
-use super::constraint_system::{
-	ConstraintSystem, ConstraintWire, MulConstraint as OperandMulConstraint, MulConstraint,
-	Operand, WireKind, ZeroConstraint,
+use super::{
+	circuit_builder::ConstraintSystemIR,
+	constraint_system::{MulConstraint, WireKind, ZeroConstraint},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,12 +43,6 @@ impl Default for WireStatus {
 	fn default() -> Self {
 		WireStatus::Unknown { uses: Vec::new() }
 	}
-}
-
-pub struct WireEliminationStageOut {
-	pub cs: ConstraintSystem,
-	// Index mapping private wire IDs to whether they are alive.
-	pub private_wires_alive: Vec<bool>,
 }
 
 #[derive(Debug, Clone)]
@@ -88,36 +82,29 @@ impl Default for CostModel {
 //
 // - Wire mapping
 
-/// The purpose of this is to do the wire-elimination transform. Rename appropriately.
+/// Wire elimination optimization pass on ConstraintSystemIR.
 ///
-/// Before: constants, private, public and AND constraints
+/// Eliminates private wires from zero constraints by substitution, reducing the size
+/// of the witness while maintaining constraint system validity.
 pub struct WireEliminationPass {
 	cost_model: CostModel,
-	cs: ConstraintSystem,
-	one_wire: ConstraintWire,
+	ir: ConstraintSystemIR,
 	// Values are indices with WireKind::Private
 	private_wires: Vec<WireStatus>,
 }
 
-pub fn run_wire_elimination(
-	cost_model: CostModel,
-	cs: ConstraintSystem,
-	one_wire: ConstraintWire,
-) -> WireEliminationStageOut {
-	let mut pass = WireEliminationPass::new(cost_model, cs, one_wire);
+pub fn run_wire_elimination(cost_model: CostModel, ir: ConstraintSystemIR) -> ConstraintSystemIR {
+	let mut pass = WireEliminationPass::new(cost_model, ir);
 	pass.run();
 	pass.finish()
 }
 
 impl WireEliminationPass {
-	#[allow(clippy::too_many_arguments)]
-	pub fn new(cost_model: CostModel, cs: ConstraintSystem, one_wire: ConstraintWire) -> Self {
-		assert_eq!(one_wire.kind, WireKind::Constant);
-
-		let mut private_wires = vec![WireStatus::default(); cs.n_private() as usize];
+	pub fn new(cost_model: CostModel, ir: ConstraintSystemIR) -> Self {
+		let mut private_wires = vec![WireStatus::default(); ir.private_wires_alive.len()];
 
 		// TODO: Refactor the two loops below
-		for (i, ZeroConstraint(term)) in cs.zero_constraints.iter().enumerate() {
+		for (i, ZeroConstraint(term)) in ir.zero_constraints.iter().enumerate() {
 			for wire in term.wires() {
 				if matches!(wire.kind, WireKind::Private)
 					&& let WireStatus::Unknown { ref mut uses } = private_wires[wire.id as usize]
@@ -127,7 +114,7 @@ impl WireEliminationPass {
 			}
 		}
 
-		for (i, MulConstraint { a, b, c }) in cs.mul_constraints.iter().enumerate() {
+		for (i, MulConstraint { a, b, c }) in ir.mul_constraints.iter().enumerate() {
 			for (position, operand) in [
 				(MulPosition::A, a),
 				(MulPosition::B, b),
@@ -149,8 +136,7 @@ impl WireEliminationPass {
 
 		Self {
 			cost_model,
-			cs,
-			one_wire,
+			ir,
 			private_wires,
 		}
 	}
@@ -158,7 +144,7 @@ impl WireEliminationPass {
 	fn run(&mut self) {
 		// Go over each ADD constraint, in order, and find its best candidate. Eliminate it if
 		// there's a candidate.
-		for constraint_idx in 0..self.cs.zero_constraints.len() {
+		for constraint_idx in 0..self.ir.zero_constraints.len() {
 			if let Some(idx) = self.pruning_candidate(constraint_idx) {
 				self.eliminate(constraint_idx, idx);
 			}
@@ -166,7 +152,7 @@ impl WireEliminationPass {
 	}
 
 	fn pruning_candidate(&self, constraint_idx: usize) -> Option<usize> {
-		let operand = &self.cs.zero_constraints[constraint_idx].0;
+		let operand = &self.ir.zero_constraints[constraint_idx].0;
 
 		let (idx, n_uses) = (0..operand.len())
 			.filter_map(|idx| {
@@ -198,7 +184,7 @@ impl WireEliminationPass {
 
 	fn eliminate(&mut self, constraint_idx: usize, idx: usize) {
 		// Remove the constraint with `take`. Empty ADD constraints are dropped in `finish()`.
-		let operand = mem::take(&mut self.cs.zero_constraints[constraint_idx].0);
+		let operand = mem::take(&mut self.ir.zero_constraints[constraint_idx].0);
 
 		// Remove the eliminated constraint from all uses.
 		let eliminated_use_site = UseSite::Add {
@@ -224,9 +210,9 @@ impl WireEliminationPass {
 		// Replace the eliminated wire in all use sites.
 		for use_site in uses {
 			let dst_operand = match use_site {
-				UseSite::Add { index } => &mut self.cs.zero_constraints[index as usize].0,
+				UseSite::Add { index } => &mut self.ir.zero_constraints[index as usize].0,
 				UseSite::Mul { index, position } => {
-					let constraint = &mut self.cs.mul_constraints[index as usize];
+					let constraint = &mut self.ir.mul_constraints[index as usize];
 					match position {
 						MulPosition::A => &mut constraint.a,
 						MulPosition::B => &mut constraint.b,
@@ -254,36 +240,15 @@ impl WireEliminationPass {
 		}
 	}
 
-	fn finish(self) -> WireEliminationStageOut {
-		let Self {
-			cost_model: _,
-			mut cs,
-			one_wire,
-			private_wires,
-		} = self;
-
-		// Replace all zero constraints with mul constraints
-		let one_operand = Operand::from(one_wire);
-		let zero_operand = Operand::default();
-		for ZeroConstraint(operand) in mem::take(&mut cs.zero_constraints) {
-			if !operand.is_empty() {
-				cs.mul_constraints.push(OperandMulConstraint {
-					a: operand,
-					b: one_operand.clone(),
-					c: zero_operand.clone(),
-				});
+	fn finish(mut self) -> ConstraintSystemIR {
+		// Update private_wires_alive in the IR based on pruned status
+		for (idx, status) in self.private_wires.iter().enumerate() {
+			if matches!(status, WireStatus::Pruned) {
+				self.ir.private_wires_alive[idx] = false;
 			}
 		}
 
-		let private_wires_alive = private_wires
-			.into_iter()
-			.map(|status| !matches!(status, WireStatus::Pruned))
-			.collect::<Vec<_>>();
-
-		WireEliminationStageOut {
-			cs,
-			private_wires_alive,
-		}
+		self.ir
 	}
 }
 
@@ -329,12 +294,11 @@ mod tests {
 		let xn = constraint_builder.alloc_inout();
 		let out = fibonacci(&mut constraint_builder, x0, x1, 20);
 		constraint_builder.assert_eq(out, xn);
-		let original_cs = constraint_builder.build();
+		let ir = constraint_builder.build();
 
-		let WireEliminationStageOut {
-			cs: optimized_cs,
-			private_wires_alive,
-		} = run_wire_elimination(CostModel::default(), original_cs, one_wire);
+		let ir = run_wire_elimination(CostModel::default(), ir);
+		let private_wires_alive = ir.private_wires_alive.clone();
+		let optimized_cs = ir.finalize(one_wire);
 		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
 
 		// Generate witness for optimized constraint system
@@ -355,13 +319,6 @@ mod tests {
 			n_alive < private_wires_alive.len(),
 			"Expected some private wires to be eliminated, but all {} are still alive",
 			private_wires_alive.len()
-		);
-
-		// Verify all ADD constraints were converted to MUL constraints
-		assert_eq!(
-			optimized_cs.zero_constraints().len(),
-			0,
-			"Expected all ADD constraints to be converted to MUL form"
 		);
 	}
 
@@ -388,12 +345,11 @@ mod tests {
 		// Build constraint system
 		let result = chain_adds(&mut constraint_builder, &inputs);
 		constraint_builder.assert_eq(result, sum_wire);
-		let original_cs = constraint_builder.build();
+		let ir = constraint_builder.build();
 
-		let WireEliminationStageOut {
-			cs: optimized_cs,
-			private_wires_alive,
-		} = run_wire_elimination(CostModel::default(), original_cs, one_wire);
+		let ir = run_wire_elimination(CostModel::default(), ir);
+		let private_wires_alive = ir.private_wires_alive.clone();
+		let optimized_cs = ir.finalize(one_wire);
 		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
 
 		// Generate test values
@@ -420,9 +376,6 @@ mod tests {
 			"Expected some private wires to be eliminated, but all {} are still alive",
 			private_wires_alive.len()
 		);
-
-		// Verify all ADD constraints converted
-		assert_eq!(optimized_cs.zero_constraints().len(), 0);
 	}
 
 	#[test]
@@ -452,14 +405,13 @@ mod tests {
 		// Build constraint system
 		let result = chain_add_muls(&mut constraint_builder, &inputs);
 		constraint_builder.assert_eq(result, output);
-		let original_cs = constraint_builder.build();
-		let original_mul_constraint_count = original_cs.mul_constraints.len();
+		let ir = constraint_builder.build();
+		let original_mul_constraint_count = ir.mul_constraints.len();
 
-		let WireEliminationStageOut {
-			cs: optimized_cs,
-			private_wires_alive,
-		} = run_wire_elimination(CostModel::default(), original_cs, one_wire);
-		let optimized_mul_constraint_count = optimized_cs.mul_constraints.len();
+		let ir = run_wire_elimination(CostModel::default(), ir);
+		let private_wires_alive = ir.private_wires_alive.clone();
+		let optimized_cs = ir.finalize(one_wire);
+		let optimized_mul_constraint_count = optimized_cs.mul_constraints().len();
 
 		// Assert some multiplication constraints were added in place of zero constraints.
 		// This is a strict inequality because not all zero constraints should get eliminated.
@@ -508,9 +460,6 @@ mod tests {
 			"Expected some private wires to be eliminated, but all {} are still alive",
 			private_wires_alive.len()
 		);
-
-		// Verify all ADD constraints converted
-		assert_eq!(optimized_cs.zero_constraints().len(), 0);
 	}
 
 	#[test]
@@ -531,12 +480,11 @@ mod tests {
 
 		// Build constraint system
 		assert_equality(&mut constraint_builder, w0, w1);
-		let original_cs = constraint_builder.build();
+		let ir = constraint_builder.build();
 
-		let WireEliminationStageOut {
-			cs: optimized_cs,
-			private_wires_alive,
-		} = run_wire_elimination(CostModel::default(), original_cs, one_wire);
+		let ir = run_wire_elimination(CostModel::default(), ir);
+		let private_wires_alive = ir.private_wires_alive.clone();
+		let optimized_cs = ir.finalize(one_wire);
 		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
 
 		// Generate witness
@@ -551,9 +499,6 @@ mod tests {
 
 		// Verify no private wires were created
 		assert_eq!(private_wires_alive.len(), 0, "Expected no private wires");
-
-		// Verify all ADD constraints converted to MUL
-		assert_eq!(optimized_cs.zero_constraints().len(), 0);
 	}
 
 	#[test]
@@ -588,12 +533,11 @@ mod tests {
 		// Build constraint system: assert a * b = c where a, b, c are sums of 3 inputs each
 		let inputs_array: [_; 9] = inputs.clone().try_into().unwrap();
 		grouped_adds_mul(&mut constraint_builder, &inputs_array);
-		let original_cs = constraint_builder.build();
+		let ir = constraint_builder.build();
 
-		let WireEliminationStageOut {
-			cs: optimized_cs,
-			private_wires_alive,
-		} = run_wire_elimination(CostModel::default(), original_cs, one_wire);
+		let ir = run_wire_elimination(CostModel::default(), ir);
+		let private_wires_alive = ir.private_wires_alive.clone();
+		let optimized_cs = ir.finalize(one_wire);
 		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
 
 		// Generate test values: a = 2, b = 3, c = 6
@@ -629,8 +573,5 @@ mod tests {
 			"Expected some private wires to be eliminated, but all {} are still alive",
 			private_wires_alive.len()
 		);
-
-		// Verify all ADD constraints converted
-		assert_eq!(optimized_cs.zero_constraints().len(), 0);
 	}
 }
