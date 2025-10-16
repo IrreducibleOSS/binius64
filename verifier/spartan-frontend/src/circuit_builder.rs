@@ -1,8 +1,8 @@
 // Copyright 2025 Irreducible Inc.
 
-use std::{array, collections::HashMap};
+use std::{array, collections::HashMap, mem};
 
-use binius_field::BinaryField128bGhash as B128;
+use binius_field::{BinaryField128bGhash as B128, Field};
 use bytemuck::zeroed_vec;
 use smallvec::smallvec;
 
@@ -75,12 +75,18 @@ impl ConstraintSystemIR {
 	/// Finalize the IR into a ConstraintSystem by converting remaining zero constraints
 	/// to MulConstraints and computing the final witness layout.
 	///
-	/// The `one_wire` parameter specifies a constant wire with value 1, used to convert
+	/// Internally looks up or allocates a constant wire with value 1, used to convert
 	/// zero constraints of the form `A = 0` into MulConstraints `A * 1 = 0`.
-	pub fn finalize(mut self, one_wire: ConstraintWire) -> ConstraintSystem {
-		use std::mem;
-
-		assert_eq!(one_wire.kind, WireKind::Constant);
+	pub fn finalize(mut self) -> ConstraintSystem {
+		// Look up or allocate a constant wire for ONE
+		let one_id = self
+			.constants
+			.entry(B128::ONE)
+			.or_insert_with(|| self.constant_alloc.alloc().id);
+		let one_wire = ConstraintWire {
+			kind: WireKind::Constant,
+			id: *one_id,
+		};
 
 		// Convert constants HashMap to Vec
 		let mut constants = zeroed_vec(self.constant_alloc.n_wires as usize);
@@ -309,14 +315,13 @@ mod tests {
 	#[test]
 	fn test_fibonacci() {
 		let mut constraint_builder = ConstraintBuilder::new();
-		let one_wire = constraint_builder.constant(B128::ONE);
 		let x0 = constraint_builder.alloc_inout();
 		let x1 = constraint_builder.alloc_inout();
 		let xn = constraint_builder.alloc_inout();
 		let out = fibonacci(&mut constraint_builder, x0, x1, 20);
 		constraint_builder.assert_eq(out, xn);
 		let ir = constraint_builder.build();
-		let constraint_system = ir.finalize(one_wire);
+		let constraint_system = ir.finalize();
 
 		let layout = WitnessLayout::dense_from_cs(&constraint_system);
 		let mut witness_generator = WitnessGenerator::new(&constraint_system, &layout);

@@ -114,7 +114,6 @@ mod tests {
 		}
 
 		let mut constraint_builder = ConstraintBuilder::new();
-		let one_wire = constraint_builder.constant(B128::ONE);
 		let x = constraint_builder.alloc_inout();
 		let expected_out = constraint_builder.alloc_inout();
 		build_square_circuit(&mut constraint_builder, x, expected_out);
@@ -122,7 +121,7 @@ mod tests {
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
 		let private_wires_alive = ir.private_wires_alive.clone();
-		let optimized_cs = ir.finalize(one_wire);
+		let optimized_cs = ir.finalize();
 		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
 
 		let mut witness_gen = WitnessGenerator::new(&optimized_cs, &layout);
@@ -144,14 +143,13 @@ mod tests {
 		}
 
 		let mut constraint_builder = ConstraintBuilder::new();
-		let one_wire = constraint_builder.constant(B128::ONE);
 		let val_wire = constraint_builder.alloc_inout();
 		build_bit_circuit(&mut constraint_builder, val_wire);
 		let ir = constraint_builder.build();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
 		let private_wires_alive = ir.private_wires_alive.clone();
-		let optimized_cs = ir.finalize(one_wire);
+		let optimized_cs = ir.finalize();
 		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
 
 		let mut witness_gen = WitnessGenerator::new(&optimized_cs, &layout);
@@ -172,14 +170,13 @@ mod tests {
 		}
 
 		let mut constraint_builder = ConstraintBuilder::new();
-		let one_wire = constraint_builder.constant(B128::ONE);
 		let val_wire = constraint_builder.alloc_inout();
 		build_bit_circuit(&mut constraint_builder, val_wire);
 		let ir = constraint_builder.build();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
 		let private_wires_alive = ir.private_wires_alive.clone();
-		let optimized_cs = ir.finalize(one_wire);
+		let optimized_cs = ir.finalize();
 		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
 
 		let mut witness_gen = WitnessGenerator::new(&optimized_cs, &layout);
@@ -211,7 +208,6 @@ mod tests {
 		}
 
 		let mut constraint_builder = ConstraintBuilder::new();
-		let one_wire = constraint_builder.constant(B128::ONE);
 		let y0 = constraint_builder.alloc_inout();
 		let y1 = constraint_builder.alloc_inout();
 		let z = constraint_builder.alloc_inout();
@@ -221,7 +217,7 @@ mod tests {
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
 		let private_wires_alive = ir.private_wires_alive.clone();
-		let optimized_cs = ir.finalize(one_wire);
+		let optimized_cs = ir.finalize();
 		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
 
 		let mut witness_gen = WitnessGenerator::new(&optimized_cs, &layout);
@@ -255,7 +251,6 @@ mod tests {
 		}
 
 		let mut constraint_builder = ConstraintBuilder::new();
-		let one_wire = constraint_builder.constant(B128::ONE);
 		let coeffs: Vec<_> = (0..3).map(|_| constraint_builder.alloc_inout()).collect();
 		let z = constraint_builder.alloc_inout();
 		let expected_out = constraint_builder.alloc_inout();
@@ -264,7 +259,7 @@ mod tests {
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
 		let private_wires_alive = ir.private_wires_alive.clone();
-		let optimized_cs = ir.finalize(one_wire);
+		let optimized_cs = ir.finalize();
 		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
 
 		let mut witness_gen = WitnessGenerator::new(&optimized_cs, &layout);
@@ -308,7 +303,6 @@ mod tests {
 		}
 
 		let mut constraint_builder = ConstraintBuilder::new();
-		let one_wire = constraint_builder.constant(B128::ONE);
 		let coeffs: Vec<_> = (0..4).map(|_| constraint_builder.alloc_inout()).collect();
 		let coords: Vec<_> = (0..2).map(|_| constraint_builder.alloc_inout()).collect();
 		let expected_out = constraint_builder.alloc_inout();
@@ -317,7 +311,7 @@ mod tests {
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
 		let private_wires_alive = ir.private_wires_alive.clone();
-		let optimized_cs = ir.finalize(one_wire);
+		let optimized_cs = ir.finalize();
 		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
 
 		let mut witness_gen = WitnessGenerator::new(&optimized_cs, &layout);
@@ -358,7 +352,6 @@ mod tests {
 		}
 
 		let mut constraint_builder = ConstraintBuilder::new();
-		let one_wire = constraint_builder.constant(B128::ONE);
 		let x = constraint_builder.alloc_inout();
 		let expected_wires: Vec<_> = (0..4).map(|_| constraint_builder.alloc_inout()).collect();
 		build_powers_circuit(&mut constraint_builder, x, &expected_wires);
@@ -366,7 +359,7 @@ mod tests {
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
 		let private_wires_alive = ir.private_wires_alive.clone();
-		let optimized_cs = ir.finalize(one_wire);
+		let optimized_cs = ir.finalize();
 		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
 
 		let mut witness_gen = WitnessGenerator::new(&optimized_cs, &layout);

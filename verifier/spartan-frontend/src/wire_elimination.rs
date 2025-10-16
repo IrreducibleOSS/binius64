@@ -288,7 +288,6 @@ mod tests {
 	fn test_wire_elimination_fibonacci() {
 		// Build constraint system for fibonacci(20)
 		let mut constraint_builder = ConstraintBuilder::new();
-		let one_wire = constraint_builder.constant(B128::ONE);
 		let x0 = constraint_builder.alloc_inout();
 		let x1 = constraint_builder.alloc_inout();
 		let xn = constraint_builder.alloc_inout();
@@ -298,7 +297,7 @@ mod tests {
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
 		let private_wires_alive = ir.private_wires_alive.clone();
-		let optimized_cs = ir.finalize(one_wire);
+		let optimized_cs = ir.finalize();
 		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
 
 		// Generate witness for optimized constraint system
@@ -336,7 +335,6 @@ mod tests {
 		}
 
 		let mut constraint_builder = ConstraintBuilder::new();
-		let one_wire = constraint_builder.constant(B128::ONE);
 
 		// Create 8 input wires and 1 sum wire
 		let inputs: Vec<_> = (0..8).map(|_| constraint_builder.alloc_inout()).collect();
@@ -349,7 +347,7 @@ mod tests {
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
 		let private_wires_alive = ir.private_wires_alive.clone();
-		let optimized_cs = ir.finalize(one_wire);
+		let optimized_cs = ir.finalize();
 		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
 
 		// Generate test values
@@ -396,7 +394,6 @@ mod tests {
 		}
 
 		let mut constraint_builder = ConstraintBuilder::new();
-		let one_wire = constraint_builder.constant(B128::ONE);
 
 		// Create 40 input wires and 1 output wire
 		let inputs: Vec<_> = (0..40).map(|_| constraint_builder.alloc_inout()).collect();
@@ -410,7 +407,7 @@ mod tests {
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
 		let private_wires_alive = ir.private_wires_alive.clone();
-		let optimized_cs = ir.finalize(one_wire);
+		let optimized_cs = ir.finalize();
 		let optimized_mul_constraint_count = optimized_cs.mul_constraints().len();
 
 		// Assert some multiplication constraints were added in place of zero constraints.
@@ -473,7 +470,6 @@ mod tests {
 		}
 
 		let mut constraint_builder = ConstraintBuilder::new();
-		let one_wire = constraint_builder.constant(B128::ONE);
 
 		let w0 = constraint_builder.alloc_inout();
 		let w1 = constraint_builder.alloc_inout();
@@ -484,7 +480,7 @@ mod tests {
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
 		let private_wires_alive = ir.private_wires_alive.clone();
-		let optimized_cs = ir.finalize(one_wire);
+		let optimized_cs = ir.finalize();
 		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
 
 		// Generate witness
@@ -525,7 +521,6 @@ mod tests {
 		}
 
 		let mut constraint_builder = ConstraintBuilder::new();
-		let one_wire = constraint_builder.constant(B128::ONE);
 
 		// Create 9 input wires
 		let inputs: Vec<_> = (0..9).map(|_| constraint_builder.alloc_inout()).collect();
@@ -537,7 +532,7 @@ mod tests {
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
 		let private_wires_alive = ir.private_wires_alive.clone();
-		let optimized_cs = ir.finalize(one_wire);
+		let optimized_cs = ir.finalize();
 		let layout = WitnessLayout::sparse_from_cs(&optimized_cs, &private_wires_alive);
 
 		// Generate test values: a = 2, b = 3, c = 6
