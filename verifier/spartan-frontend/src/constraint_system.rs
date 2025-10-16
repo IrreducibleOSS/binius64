@@ -107,9 +107,6 @@ impl From<ConstraintWire> for Operand {
 }
 
 #[derive(Debug)]
-pub struct ZeroConstraint(pub Operand);
-
-#[derive(Debug)]
 pub struct MulConstraint {
 	pub a: Operand,
 	pub b: Operand,

@@ -6,7 +6,7 @@ use std::mem;
 
 use super::{
 	circuit_builder::ConstraintSystemIR,
-	constraint_system::{MulConstraint, WireKind, ZeroConstraint},
+	constraint_system::{MulConstraint, WireKind},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,8 +104,8 @@ impl WireEliminationPass {
 		let mut private_wires = vec![WireStatus::default(); ir.private_wires_alive.len()];
 
 		// TODO: Refactor the two loops below
-		for (i, ZeroConstraint(term)) in ir.zero_constraints.iter().enumerate() {
-			for wire in term.wires() {
+		for (i, operand) in ir.zero_constraints.iter().enumerate() {
+			for wire in operand.wires() {
 				if matches!(wire.kind, WireKind::Private)
 					&& let WireStatus::Unknown { ref mut uses } = private_wires[wire.id as usize]
 				{
@@ -152,7 +152,7 @@ impl WireEliminationPass {
 	}
 
 	fn pruning_candidate(&self, constraint_idx: usize) -> Option<usize> {
-		let operand = &self.ir.zero_constraints[constraint_idx].0;
+		let operand = &self.ir.zero_constraints[constraint_idx];
 
 		let (idx, n_uses) = (0..operand.len())
 			.filter_map(|idx| {
@@ -184,7 +184,7 @@ impl WireEliminationPass {
 
 	fn eliminate(&mut self, constraint_idx: usize, idx: usize) {
 		// Remove the constraint with `take`. Empty ADD constraints are dropped in `finish()`.
-		let operand = mem::take(&mut self.ir.zero_constraints[constraint_idx].0);
+		let operand = mem::take(&mut self.ir.zero_constraints[constraint_idx]);
 
 		// Remove the eliminated constraint from all uses.
 		let eliminated_use_site = UseSite::Add {
@@ -210,7 +210,7 @@ impl WireEliminationPass {
 		// Replace the eliminated wire in all use sites.
 		for use_site in uses {
 			let dst_operand = match use_site {
-				UseSite::Add { index } => &mut self.ir.zero_constraints[index as usize].0,
+				UseSite::Add { index } => &mut self.ir.zero_constraints[index as usize],
 				UseSite::Mul { index, position } => {
 					let constraint = &mut self.ir.mul_constraints[index as usize];
 					match position {

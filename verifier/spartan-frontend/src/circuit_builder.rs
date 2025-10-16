@@ -8,7 +8,6 @@ use smallvec::smallvec;
 
 use crate::constraint_system::{
 	ConstraintSystem, ConstraintWire, MulConstraint, Operand, WireKind, WitnessLayout,
-	ZeroConstraint,
 };
 
 pub trait CircuitBuilder {
@@ -65,7 +64,7 @@ pub struct ConstraintSystemIR {
 	pub(crate) public_alloc: WireAllocator,
 	pub(crate) private_alloc: WireAllocator,
 	pub(crate) constants: HashMap<B128, u32>,
-	pub(crate) zero_constraints: Vec<ZeroConstraint>,
+	pub(crate) zero_constraints: Vec<Operand>,
 	pub(crate) mul_constraints: Vec<MulConstraint>,
 	/// Tracks which private wires are still alive (not eliminated).
 	/// Index corresponds to private wire ID. Initially all wires are alive.
@@ -73,11 +72,11 @@ pub struct ConstraintSystemIR {
 }
 
 impl ConstraintSystemIR {
-	/// Finalize the IR into a ConstraintSystem by converting remaining ZeroConstraints
+	/// Finalize the IR into a ConstraintSystem by converting remaining zero constraints
 	/// to MulConstraints and computing the final witness layout.
 	///
 	/// The `one_wire` parameter specifies a constant wire with value 1, used to convert
-	/// ZeroConstraints of the form `A = 0` into MulConstraints `A * 1 = 0`.
+	/// zero constraints of the form `A = 0` into MulConstraints `A * 1 = 0`.
 	pub fn finalize(mut self, one_wire: ConstraintWire) -> ConstraintSystem {
 		use std::mem;
 
@@ -92,7 +91,7 @@ impl ConstraintSystemIR {
 		// Replace all remaining zero constraints with mul constraints
 		let one_operand = Operand::from(one_wire);
 		let zero_operand = Operand::default();
-		for ZeroConstraint(operand) in mem::take(&mut self.zero_constraints) {
+		for operand in mem::take(&mut self.zero_constraints) {
 			if !operand.is_empty() {
 				self.mul_constraints.push(MulConstraint {
 					a: operand,
@@ -148,7 +147,7 @@ impl CircuitBuilder for ConstraintBuilder {
 	fn assert_eq(&mut self, lhs: Self::Wire, rhs: Self::Wire) {
 		self.ir
 			.zero_constraints
-			.push(ZeroConstraint(Operand::new(smallvec![lhs, rhs])));
+			.push(Operand::new(smallvec![lhs, rhs]));
 	}
 
 	fn constant(&mut self, val: B128) -> Self::Wire {
@@ -168,7 +167,7 @@ impl CircuitBuilder for ConstraintBuilder {
 		self.ir.private_wires_alive.push(true);
 		self.ir
 			.zero_constraints
-			.push(ZeroConstraint(Operand::new(smallvec![lhs, rhs, out])));
+			.push(Operand::new(smallvec![lhs, rhs, out]));
 		out
 	}
 
