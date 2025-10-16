@@ -12,5 +12,9 @@ getset.workspace = true
 itertools.workspace = true
 smallvec.workspace = true
 
+[dev-dependencies]
+binius-math = { path = "../math", features = ["test-utils"] }
+rand.workspace = true
+
 [lints]
 workspace = true
