@@ -24,8 +24,6 @@ pub fn evaluate_univariate<Builder: CircuitBuilder>(
 	coeffs: &[Builder::Wire],
 	z: Builder::Wire,
 ) -> Builder::Wire {
-	use binius_field::{BinaryField128bGhash as B128, Field};
-
 	// Use Horner's method: p(z) = a0 + z(a1 + z(a2 + z(...)))
 	// Start from highest degree coefficient and work backwards
 	if coeffs.is_empty() {
