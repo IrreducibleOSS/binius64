@@ -1,7 +1,5 @@
 // Copyright 2025 Irreducible Inc.
 
-#![allow(dead_code)]
-
 use std::mem;
 
 use super::{
@@ -38,6 +36,7 @@ pub struct CostModel {
 
 impl Default for CostModel {
 	fn default() -> Self {
+		// This is just a guess, can be tuned later.
 		CostModel {
 			wire_cost: 16,
 			mul_cost: 2,
@@ -45,26 +44,6 @@ impl Default for CostModel {
 		}
 	}
 }
-
-// Passes:
-// - Constant folding
-// - Wire elimination
-//   - inputs: Add constraints, mul constraints, wires
-//   - outputs: mul constraints, wires
-//
-// ConstraintSystem IR over wires
-//
-// WitnessLayout (Separate)
-// - map from subset of ConstraintWire to WitnessIndex
-// - witness_size
-//
-// R1CS System
-// - constants
-// - log_public_size
-// - log_witness_size
-//
-//
-// - Wire mapping
 
 /// Wire elimination optimization pass on ConstraintSystemIR.
 ///
