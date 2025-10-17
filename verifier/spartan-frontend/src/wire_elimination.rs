@@ -274,10 +274,10 @@ mod tests {
 		let ir = constraint_builder.build();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
-		let optimized_cs = ir.finalize();
+		let (optimized_cs, layout) = ir.finalize();
 
 		// Generate witness for optimized constraint system
-		let mut witness_generator = WitnessGenerator::new(&optimized_cs);
+		let mut witness_generator = WitnessGenerator::new(&layout);
 		let x0_val = witness_generator.write_inout(x0, B128::ONE);
 		let x1_val = witness_generator.write_inout(x1, B128::MULTIPLICATIVE_GENERATOR);
 		let xn_val = witness_generator.write_inout(xn, B128::MULTIPLICATIVE_GENERATOR.pow(6765));
@@ -326,14 +326,14 @@ mod tests {
 		let ir = constraint_builder.build();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
-		let optimized_cs = ir.finalize();
+		let (optimized_cs, layout) = ir.finalize();
 
 		// Generate test values
 		let input_values: Vec<_> = (0..8).map(|i| B128::new(1u128 << i)).collect();
 		let sum_value: B128 = input_values.iter().copied().sum();
 
 		// Generate witness
-		let mut witness_generator = WitnessGenerator::new(&optimized_cs);
+		let mut witness_generator = WitnessGenerator::new(&layout);
 		let input_wires: Vec<_> = iter::zip(&inputs, &input_values)
 			.map(|(&wire, &value)| witness_generator.write_inout(wire, value))
 			.collect();
@@ -388,7 +388,7 @@ mod tests {
 		let original_mul_constraint_count = ir.mul_constraints.len();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
-		let optimized_cs = ir.finalize();
+		let (optimized_cs, layout) = ir.finalize();
 		let optimized_mul_constraint_count = optimized_cs.mul_constraints().len();
 
 		// Assert some multiplication constraints were added in place of zero constraints.
@@ -407,7 +407,7 @@ mod tests {
 				});
 
 		// Generate witness
-		let mut witness_generator = WitnessGenerator::new(&optimized_cs);
+		let mut witness_generator = WitnessGenerator::new(&layout);
 		let input_wires: Vec<_> = iter::zip(&inputs, &input_values)
 			.map(|(&wire, &value)| witness_generator.write_inout(wire, value))
 			.collect();
@@ -462,11 +462,11 @@ mod tests {
 		let ir = constraint_builder.build();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
-		let optimized_cs = ir.finalize();
+		let (optimized_cs, layout) = ir.finalize();
 
 		// Generate witness
 		let value = B128::new(42);
-		let mut witness_generator = WitnessGenerator::new(&optimized_cs);
+		let mut witness_generator = WitnessGenerator::new(&layout);
 		let w0_val = witness_generator.write_inout(w0, value);
 		let w1_val = witness_generator.write_inout(w1, value);
 		assert_equality(&mut witness_generator, w0_val, w1_val);
@@ -512,7 +512,7 @@ mod tests {
 		let ir = constraint_builder.build();
 
 		let ir = run_wire_elimination(CostModel::default(), ir);
-		let optimized_cs = ir.finalize();
+		let (optimized_cs, layout) = ir.finalize();
 
 		// Generate test values: a = 2, b = 3, c = 6
 		// In binary field: 2 * 3 = 6
@@ -529,7 +529,7 @@ mod tests {
 		];
 
 		// Generate witness
-		let mut witness_generator = WitnessGenerator::new(&optimized_cs);
+		let mut witness_generator = WitnessGenerator::new(&layout);
 		let input_wires: Vec<_> = iter::zip(&inputs, &input_values)
 			.map(|(&wire, &value)| witness_generator.write_inout(wire, value))
 			.collect();

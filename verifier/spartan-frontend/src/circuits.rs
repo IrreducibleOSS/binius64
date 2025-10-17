@@ -144,9 +144,9 @@ mod tests {
 		let mut constraint_builder = ConstraintBuilder::new();
 		let inout_wires = array::from_fn(|_| constraint_builder.alloc_inout());
 		C::build(&mut constraint_builder, inout_wires);
-		let cs = compile(constraint_builder);
+		let (cs, layout) = compile(constraint_builder);
 
-		let mut witness_gen = WitnessGenerator::new(&cs);
+		let mut witness_gen = WitnessGenerator::new(&layout);
 		let inout_assigned =
 			array::from_fn(|i| witness_gen.write_inout(inout_wires[i], inout_vals[i]));
 		C::build(&mut witness_gen, inout_assigned);

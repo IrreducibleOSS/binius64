@@ -118,50 +118,75 @@ pub struct MulConstraint<W> {
 	pub c: Operand<W>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct WitnessIndex(pub u32);
+
+/// A constraint system with multiplication constraints over witness indices.
+///
+/// Contains multiplication constraints of the form `A * B = C` where A, B, C are operands
+/// (XOR combinations of witness values). Constraints directly reference [`WitnessIndex`]
+/// positions in the witness array.
 #[derive(Debug)]
 pub struct ConstraintSystem {
-	layout: WitnessLayout,
-	mul_constraints: Vec<MulConstraint<ConstraintWire>>,
+	constants: Vec<B128>,
+	n_inout: u32,
+	n_private: u32,
+	log_public: u32,
+	log_size: u32,
+	mul_constraints: Vec<MulConstraint<WitnessIndex>>,
 }
 
 impl ConstraintSystem {
-	pub fn new(layout: WitnessLayout, mul_constraints: Vec<MulConstraint<ConstraintWire>>) -> Self {
-		// TODO: document unchecked preconditions on references
+	pub fn new(
+		constants: Vec<B128>,
+		n_inout: u32,
+		n_private: u32,
+		log_public: u32,
+		log_size: u32,
+		mul_constraints: Vec<MulConstraint<WitnessIndex>>,
+	) -> Self {
 		Self {
-			layout,
+			constants,
+			n_inout,
+			n_private,
+			log_public,
+			log_size,
 			mul_constraints,
 		}
 	}
 
-	pub fn layout(&self) -> &WitnessLayout {
-		&self.layout
+	pub fn constants(&self) -> &[B128] {
+		&self.constants
 	}
 
 	pub fn n_inout(&self) -> u32 {
-		self.layout.n_inout
+		self.n_inout
 	}
 
 	pub fn n_private(&self) -> u32 {
-		self.layout.n_private
+		self.n_private
 	}
 
-	pub fn mul_constraints(&self) -> &[MulConstraint<ConstraintWire>] {
+	pub fn log_public(&self) -> u32 {
+		self.log_public
+	}
+
+	pub fn size(&self) -> usize {
+		1 << self.log_size as usize
+	}
+
+	pub fn mul_constraints(&self) -> &[MulConstraint<WitnessIndex>] {
 		&self.mul_constraints
 	}
 
 	pub fn validate(&self, witness: &[B128]) {
-		assert_eq!(witness.len(), self.layout.size());
+		assert_eq!(witness.len(), self.size());
 
-		let operand_val = |operand: &Operand<ConstraintWire>| {
+		let operand_val = |operand: &Operand<WitnessIndex>| {
 			operand
 				.wires()
 				.iter()
-				.map(|wire| {
-					let Some(idx) = self.layout.get(wire) else {
-						panic!("wire {wire:?} not found");
-					};
-					witness[idx.0 as usize]
-				})
+				.map(|idx| witness[idx.0 as usize])
 				.sum::<B128>()
 		};
 
@@ -171,10 +196,7 @@ impl ConstraintSystem {
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct WitnessIndex(pub u32);
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WitnessLayout {
 	pub(crate) constants: Vec<B128>,
 	n_inout: u32,
@@ -226,6 +248,14 @@ impl WitnessLayout {
 
 	pub fn n_private(&self) -> usize {
 		self.n_private as usize
+	}
+
+	pub fn log_public(&self) -> u32 {
+		self.log_public
+	}
+
+	pub fn log_size(&self) -> u32 {
+		self.log_size
 	}
 
 	/// Returns the first index of the inout

@@ -4,10 +4,10 @@ use std::{array, backtrace::Backtrace, collections::HashMap, mem};
 
 use binius_field::{BinaryField128bGhash as B128, Field};
 use bytemuck::zeroed_vec;
-use smallvec::smallvec;
+use smallvec::{SmallVec, smallvec};
 
 use crate::constraint_system::{
-	ConstraintSystem, ConstraintWire, MulConstraint, Operand, WireKind, WitnessLayout,
+	ConstraintSystem, ConstraintWire, MulConstraint, Operand, WireKind, WitnessIndex, WitnessLayout,
 };
 
 /// Common interface for circuit construction and witness generation.
@@ -99,12 +99,13 @@ pub struct ConstraintSystemIR {
 }
 
 impl ConstraintSystemIR {
-	/// Finalize the IR into a ConstraintSystem by converting remaining zero constraints
-	/// to MulConstraints and computing the final witness layout.
+	/// Finalize the IR into a ConstraintSystem and WitnessLayout by converting remaining
+	/// zero constraints to MulConstraints, computing the final witness layout, and mapping all
+	/// ConstraintWires to WitnessIndices.
 	///
 	/// Internally looks up or allocates a constant wire with value 1, used to convert
 	/// zero constraints of the form `A = 0` into MulConstraints `A * 1 = 0`.
-	pub fn finalize(mut self) -> ConstraintSystem {
+	pub fn finalize(mut self) -> (ConstraintSystem, WitnessLayout) {
 		// Look up or allocate a constant wire for ONE
 		let one_id = self
 			.constants
@@ -142,9 +143,39 @@ impl ConstraintSystemIR {
 			.collect();
 
 		// Create WitnessLayout
-		let layout = WitnessLayout::sparse(constants, self.public_alloc.n_wires, &private_alive);
+		let layout =
+			WitnessLayout::sparse(constants.clone(), self.public_alloc.n_wires, &private_alive);
 
-		ConstraintSystem::new(layout, self.mul_constraints)
+		// Map all ConstraintWire to WitnessIndex
+		let map_operand = |operand: &Operand<ConstraintWire>| -> Operand<WitnessIndex> {
+			let indices: SmallVec<[WitnessIndex; 4]> = operand
+				.wires()
+				.iter()
+				.filter_map(|wire| layout.get(wire))
+				.collect();
+			Operand::new(indices)
+		};
+
+		let mul_constraints = self
+			.mul_constraints
+			.iter()
+			.map(|constraint| MulConstraint {
+				a: map_operand(&constraint.a),
+				b: map_operand(&constraint.b),
+				c: map_operand(&constraint.c),
+			})
+			.collect();
+
+		let cs = ConstraintSystem::new(
+			constants,
+			layout.n_inout() as u32,
+			layout.n_private() as u32,
+			layout.log_public(),
+			layout.log_size(),
+			mul_constraints,
+		);
+
+		(cs, layout)
 	}
 }
 
@@ -269,8 +300,7 @@ pub struct WitnessGenerator<'a> {
 }
 
 impl<'a> WitnessGenerator<'a> {
-	pub fn new(cs: &'a ConstraintSystem) -> Self {
-		let layout = cs.layout();
+	pub fn new(layout: &'a WitnessLayout) -> Self {
 		let witness_size = layout.size();
 
 		let mut witness = zeroed_vec(witness_size);
@@ -393,9 +423,9 @@ mod tests {
 		let out = fibonacci(&mut constraint_builder, x0, x1, 20);
 		constraint_builder.assert_eq(out, xn);
 		let ir = constraint_builder.build();
-		let constraint_system = ir.finalize();
+		let (constraint_system, layout) = ir.finalize();
 
-		let mut witness_generator = WitnessGenerator::new(&constraint_system);
+		let mut witness_generator = WitnessGenerator::new(&layout);
 		let x0 = witness_generator.write_inout(x0, B128::ONE);
 		let x1 = witness_generator.write_inout(x1, B128::MULTIPLICATIVE_GENERATOR);
 		let xn = witness_generator.write_inout(xn, B128::MULTIPLICATIVE_GENERATOR.pow(6765));
@@ -415,9 +445,9 @@ mod tests {
 		let expected = constraint_builder.alloc_inout();
 		constraint_builder.assert_eq(sum, expected);
 		let ir = constraint_builder.build();
-		let constraint_system = ir.finalize();
+		let (_constraint_system, layout) = ir.finalize();
 
-		let mut witness_generator = WitnessGenerator::new(&constraint_system);
+		let mut witness_generator = WitnessGenerator::new(&layout);
 		let x_val = B128::new(5);
 		let y_val = B128::new(7);
 		let wrong_expected = B128::new(99); // Incorrect: should be 5 + 7 = 2 in binary field
