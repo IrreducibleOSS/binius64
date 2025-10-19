@@ -28,25 +28,24 @@ use crate::{
 ///
 /// [BaseFold]: <https://link.springer.com/chapter/10.1007/978-3-031-68403-6_5>
 /// [DP24]: <https://eprint.iacr.org/2024/504>
-pub struct BaseFoldProver<'a, F, P, NTT, MerkleProver, VCS>
+pub struct BaseFoldProver<'a, F, P, NTT, MerkleProver>
 where
 	F: BinaryField,
 	P: PackedField<Scalar = F>,
 	NTT: AdditiveNTT<Field = F> + Sync,
-	MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
-	VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
+	MerkleProver: MerkleTreeProver<F>,
 {
 	sumcheck_prover: MultilinearSumcheckProver<F, P>,
-	fri_folder: FRIFoldProver<'a, F, P, NTT, MerkleProver, VCS>,
+	fri_folder: FRIFoldProver<'a, F, P, NTT, MerkleProver>,
 }
 
-impl<'a, F, P, NTT, MerkleProver, VCS> BaseFoldProver<'a, F, P, NTT, MerkleProver, VCS>
+impl<'a, F, P, NTT, MerkleScheme, MerkleProver> BaseFoldProver<'a, F, P, NTT, MerkleProver>
 where
 	F: BinaryField,
 	P: PackedField<Scalar = F>,
 	NTT: AdditiveNTT<Field = F> + Sync,
-	MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
-	VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
+	MerkleScheme: MerkleTreeScheme<F, Digest: SerializeBytes>,
+	MerkleProver: MerkleTreeProver<F, Scheme = MerkleScheme>,
 {
 	/// Constructs a new prover.
 	///
@@ -101,7 +100,9 @@ where
 	/// ## Returns
 	///  * the sumcheck round message
 	///  * the FRI fold round output
-	fn execute(&mut self) -> Result<(RoundCoeffs<F>, FoldRoundOutput<VCS::Digest>), Error> {
+	fn execute(
+		&mut self,
+	) -> Result<(RoundCoeffs<F>, FoldRoundOutput<MerkleScheme::Digest>), Error> {
 		let [round_coeffs] = self
 			.sumcheck_prover
 			.execute()?

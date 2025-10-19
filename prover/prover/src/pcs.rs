@@ -32,22 +32,21 @@ use crate::{
 /// interactive argument.
 ///
 /// See [`binius_verifier::pcs`] module documentation for more details.
-pub struct OneBitPCSProver<'a, NTT, MerkleProver, VCS>
+pub struct OneBitPCSProver<'a, NTT, MTProver>
 where
 	NTT: AdditiveNTT<Field = B128> + Sync,
-	MerkleProver: MerkleTreeProver<B128, Scheme = VCS>,
-	VCS: MerkleTreeScheme<B128, Digest: SerializeBytes>,
+	MTProver: MerkleTreeProver<B128>,
 {
 	ntt: &'a NTT,
-	merkle_prover: &'a MerkleProver,
+	merkle_prover: &'a MTProver,
 	fri_params: &'a FRIParams<B128>,
 }
 
-impl<'a, NTT, MerkleProver, VCS> OneBitPCSProver<'a, NTT, MerkleProver, VCS>
+impl<'a, NTT, MerkleScheme, MerkleProver> OneBitPCSProver<'a, NTT, MerkleProver>
 where
 	NTT: AdditiveNTT<Field = B128> + Sync,
-	MerkleProver: MerkleTreeProver<B128, Scheme = VCS>,
-	VCS: MerkleTreeScheme<B128, Digest: SerializeBytes>,
+	MerkleScheme: MerkleTreeScheme<B128, Digest: SerializeBytes>,
+	MerkleProver: MerkleTreeProver<B128, Scheme = MerkleScheme>,
 {
 	/// Creates a new PCS prover.
 	///
@@ -80,7 +79,7 @@ where
 	pub fn commit<P, Data>(
 		&self,
 		packed_multilin: FieldBuffer<P, Data>,
-	) -> Result<CommitOutput<P, VCS::Digest, MerkleProver::Committed>, Error>
+	) -> Result<CommitOutput<P, MerkleScheme::Digest, MerkleProver::Committed>, Error>
 	where
 		P: PackedField<Scalar = B128> + PackedExtension<B128>,
 		Data: Deref<Target = [P]>,
