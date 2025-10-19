@@ -8,6 +8,7 @@ use std::marker::PhantomData;
 use binius_field::{PackedExtension, PackedField, UnderlierWithBitOps, WithUnderlier};
 use binius_math::{
 	FieldBuffer,
+	multilinear::evaluate::evaluate,
 	ntt::{NeighborsLastMultiThread, domain_context::GenericPreExpanded},
 };
 use binius_prover::{
@@ -16,7 +17,10 @@ use binius_prover::{
 	merkle_tree::prover::BinaryMerkleTreeProver,
 };
 use binius_spartan_verifier::{Verifier, config::B128};
-use binius_transcript::{ProverTranscript, fiat_shamir::Challenger};
+use binius_transcript::{
+	ProverTranscript,
+	fiat_shamir::{CanSample, Challenger},
+};
 use binius_utils::{SerializeBytes, rayon::prelude::*};
 use digest::{Digest, FixedOutputReset, Output, core_api::BlockSizeUser};
 pub use error::*;
@@ -96,7 +100,8 @@ where
 		// Commit the witness
 		let CommitOutput {
 			commitment: trace_commitment,
-			..
+			committed: codeword_committed,
+			codeword,
 		} = fri::commit_interleaved(
 			self.verifier.fri_params(),
 			&self.ntt,
@@ -104,6 +109,28 @@ where
 			witness_packed.to_ref(),
 		)?;
 		transcript.message().write(&trace_commitment);
+
+		// Sample random evaluation point
+		let eval_point =
+			transcript.sample_vec(self.verifier.constraint_system().log_size() as usize);
+
+		// Compute the evaluation claim
+		let evaluation_claim = evaluate(&witness_packed, &eval_point)?;
+
+		// Write the evaluation claim to the transcript
+		transcript.message().write(&evaluation_claim);
+
+		// Prove the evaluation
+		let pcs_prover =
+			pcs::PCSProver::new(&self.ntt, &self.merkle_prover, self.verifier.fri_params());
+		pcs_prover.prove(
+			&codeword,
+			&codeword_committed,
+			witness_packed,
+			&eval_point,
+			evaluation_claim,
+			transcript,
+		)?;
 
 		Ok(())
 	}

@@ -1,7 +1,5 @@
 // Copyright 2025 Irreducible Inc.
 
-#![allow(dead_code)]
-
 pub mod config;
 pub mod pcs;
 
@@ -10,7 +8,10 @@ use binius_math::{
 	ntt::{NeighborsLastSingleThread, domain_context::GenericOnTheFly},
 };
 use binius_spartan_frontend::constraint_system::ConstraintSystem;
-use binius_transcript::{VerifierTranscript, fiat_shamir::Challenger};
+use binius_transcript::{
+	VerifierTranscript,
+	fiat_shamir::{CanSample, Challenger},
+};
 use binius_utils::DeserializeBytes;
 use binius_verifier::{
 	fri::{self, FRIParams, estimate_optimal_arity},
@@ -102,7 +103,23 @@ where
 		}
 
 		// Receive the trace commitment.
-		let _trace_commitment = transcript.message().read::<Output<MerkleHash>>()?;
+		let trace_commitment = transcript.message().read::<Output<MerkleHash>>()?;
+
+		// Sample random evaluation point
+		let eval_point = transcript.sample_vec(self.constraint_system.log_size() as usize);
+
+		// Read the claimed evaluation
+		let evaluation_claim = transcript.message().read::<B128>()?;
+
+		// Verify the PCS opening
+		pcs::verify(
+			transcript,
+			evaluation_claim,
+			&eval_point,
+			trace_commitment,
+			&self.fri_params,
+			&self.merkle_scheme,
+		)?;
 
 		Ok(())
 	}
@@ -112,6 +129,8 @@ where
 pub enum Error {
 	#[error("FRI error: {0}")]
 	FRI(#[from] fri::Error),
+	#[error("PCS error: {0}")]
+	PCS(#[from] pcs::Error),
 	#[error("Math error: {0}")]
 	Math(#[from] binius_math::Error),
 	#[error("Transcript error: {0}")]
