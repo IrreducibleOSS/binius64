@@ -237,6 +237,7 @@ This approach provides:
 - Extensive clippy lints are enforced
 - Use `cargo fmt` for formatting
 - Pre-commit hooks run rustfmt automatically
+- See CONTRIBUTING.md for detailed style guidelines including functional programming preferences
 
 ### Commenting Guidelines
 - Prefer descriptive function and variable names over obvious inline comments
