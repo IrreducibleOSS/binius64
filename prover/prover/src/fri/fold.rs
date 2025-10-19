@@ -28,12 +28,11 @@ pub enum FoldRoundOutput<VCSCommitment> {
 }
 
 /// A stateful prover for the FRI fold phase.
-pub struct FRIFoldProver<'a, F, P, NTT, MerkleProver, VCS>
+pub struct FRIFoldProver<'a, F, P, NTT, MerkleProver>
 where
 	F: BinaryField,
 	P: PackedField<Scalar = F>,
-	MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
-	VCS: MerkleTreeScheme<F>,
+	MerkleProver: MerkleTreeProver<F>,
 {
 	params: &'a FRIParams<F>,
 	ntt: &'a NTT,
@@ -46,13 +45,13 @@ where
 	unprocessed_challenges: Vec<F>,
 }
 
-impl<'a, F, P, NTT, MerkleProver, VCS> FRIFoldProver<'a, F, P, NTT, MerkleProver, VCS>
+impl<'a, F, P, NTT, MerkleScheme, MerkleProver> FRIFoldProver<'a, F, P, NTT, MerkleProver>
 where
 	F: BinaryField,
 	P: PackedField<Scalar = F>,
 	NTT: AdditiveNTT<Field = F> + Sync,
-	MerkleProver: MerkleTreeProver<F, Scheme = VCS>,
-	VCS: MerkleTreeScheme<F, Digest: SerializeBytes>,
+	MerkleScheme: MerkleTreeScheme<F, Digest: SerializeBytes>,
+	MerkleProver: MerkleTreeProver<F, Scheme = MerkleScheme>,
 {
 	/// Constructs a new folder.
 	pub fn new(
@@ -115,7 +114,7 @@ where
 	/// As a memory efficient optimization, this method may not actually do the folding, but instead
 	/// accumulate the folding challenge for processing at a later time. This saves us from storing
 	/// intermediate folded codewords.
-	pub fn execute_fold_round(&mut self) -> Result<FoldRoundOutput<VCS::Digest>, Error> {
+	pub fn execute_fold_round(&mut self) -> Result<FoldRoundOutput<MerkleScheme::Digest>, Error> {
 		if !self.is_commitment_round() {
 			return Ok(FoldRoundOutput::NoCommitment);
 		}
@@ -186,7 +185,8 @@ where
 	#[allow(clippy::type_complexity)]
 	pub fn finalize(
 		mut self,
-	) -> Result<(TerminateCodeword<F>, FRIQueryProver<'a, F, P, MerkleProver, VCS>), Error> {
+	) -> Result<(TerminateCodeword<F>, FRIQueryProver<'a, F, P, MerkleProver, MerkleScheme>), Error>
+	{
 		if self.curr_round != self.n_rounds() {
 			return Err(Error::EarlyProverFinish);
 		}
