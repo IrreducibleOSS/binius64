@@ -111,7 +111,7 @@ impl<W> From<W> for Operand<W> {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MulConstraint<W> {
 	pub a: Operand<W>,
 	pub b: Operand<W>,
@@ -126,7 +126,7 @@ pub struct WitnessIndex(pub u32);
 /// Contains multiplication constraints of the form `A * B = C` where A, B, C are operands
 /// (XOR combinations of witness values). Constraints directly reference [`WitnessIndex`]
 /// positions in the witness array.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ConstraintSystem {
 	constants: Vec<B128>,
 	n_inout: u32,
@@ -169,6 +169,10 @@ impl ConstraintSystem {
 
 	pub fn log_public(&self) -> u32 {
 		self.log_public
+	}
+
+	pub fn log_size(&self) -> u32 {
+		self.log_size
 	}
 
 	pub fn size(&self) -> usize {
