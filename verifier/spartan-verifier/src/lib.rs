@@ -75,6 +75,14 @@ where
 		})
 	}
 
+	pub fn constraint_system(&self) -> &ConstraintSystem {
+		&self.constraint_system
+	}
+
+	pub fn fri_params(&self) -> &FRIParams<B128> {
+		&self.fri_params
+	}
+
 	pub fn verify<Challenger_: Challenger>(
 		&self,
 		public: &[B128],
@@ -93,7 +101,7 @@ where
 		}
 
 		// Receive the trace commitment.
-		let trace_commitment = transcript.message().read::<Output<MerkleHash>>()?;
+		let _trace_commitment = transcript.message().read::<Output<MerkleHash>>()?;
 
 		Ok(())
 	}
@@ -105,6 +113,8 @@ pub enum Error {
 	FRI(#[from] fri::Error),
 	#[error("Math error: {0}")]
 	Math(#[from] binius_math::Error),
+	#[error("Transcript error: {0}")]
+	Transcript(#[from] binius_transcript::Error),
 	#[error("incorrect public inputs length: expected {expected}, got {actual}")]
 	IncorrectPublicInputLength { expected: usize, actual: usize },
 }
