@@ -3,6 +3,7 @@
 #![allow(dead_code)]
 
 pub mod config;
+pub mod pcs;
 
 use binius_math::{
 	BinarySubspace,

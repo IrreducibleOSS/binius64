@@ -1,6 +1,7 @@
 // Copyright 2025 Irreducible Inc.
 
 mod error;
+pub mod pcs;
 
 use std::marker::PhantomData;
 

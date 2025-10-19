@@ -10,4 +10,6 @@ pub enum Error {
 	Transcript(#[from] binius_transcript::Error),
 	#[error("math error: {0}")]
 	Math(#[from] binius_math::Error),
+	#[error("prover error: {0}")]
+	Prover(#[from] binius_prover::Error),
 }
