@@ -9,10 +9,10 @@ use binius_math::{
 	ntt::{NeighborsLastSingleThread, domain_context::GenericOnTheFly},
 };
 use binius_spartan_frontend::constraint_system::ConstraintSystem;
+use binius_transcript::{VerifierTranscript, fiat_shamir::Challenger};
 use binius_utils::DeserializeBytes;
 use binius_verifier::{
-	fri,
-	fri::{FRIParams, estimate_optimal_arity},
+	fri::{self, FRIParams, estimate_optimal_arity},
 	hash::PseudoCompressionFunction,
 	merkle_tree::BinaryMerkleTreeScheme,
 };
@@ -74,6 +74,29 @@ where
 			merkle_scheme,
 		})
 	}
+
+	pub fn verify<Challenger_: Challenger>(
+		&self,
+		public: &[B128],
+		transcript: &mut VerifierTranscript<Challenger_>,
+	) -> Result<(), Error> {
+		let _verify_guard =
+			tracing::info_span!("Verify", operation = "verify", perfetto_category = "operation")
+				.entered();
+
+		// Check that the public input length is correct
+		if public.len() != 1 << self.constraint_system.log_public() {
+			return Err(Error::IncorrectPublicInputLength {
+				expected: 1 << self.constraint_system.log_public(),
+				actual: public.len(),
+			});
+		}
+
+		// Receive the trace commitment.
+		let trace_commitment = transcript.message().read::<Output<MerkleHash>>()?;
+
+		Ok(())
+	}
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -82,4 +105,6 @@ pub enum Error {
 	FRI(#[from] fri::Error),
 	#[error("Math error: {0}")]
 	Math(#[from] binius_math::Error),
+	#[error("incorrect public inputs length: expected {expected}, got {actual}")]
+	IncorrectPublicInputLength { expected: usize, actual: usize },
 }
