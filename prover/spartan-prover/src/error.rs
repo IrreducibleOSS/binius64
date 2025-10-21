@@ -12,4 +12,6 @@ pub enum Error {
 	Math(#[from] binius_math::Error),
 	#[error("prover error: {0}")]
 	Prover(#[from] binius_prover::Error),
+	#[error("sumcheck error: {0}")]
+	Sumcheck(#[from] binius_prover::protocols::sumcheck::Error),
 }
