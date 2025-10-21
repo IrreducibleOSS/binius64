@@ -2,7 +2,7 @@
 
 pub mod config;
 pub mod pcs;
-mod wiring;
+pub mod wiring;
 
 use binius_math::{
 	BinarySubspace,

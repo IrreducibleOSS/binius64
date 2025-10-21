@@ -11,7 +11,7 @@ pub struct WiringTranspose {
 }
 
 #[derive(Debug, Clone)]
-struct Key {
+pub struct Key {
 	pub operand_idx: u8,
 	pub constraint_idx: u32,
 }
@@ -46,5 +46,113 @@ impl WiringTranspose {
 			flat_keys: operand_keys,
 			keys_start_by_witness_index: operand_key_start_by_word,
 		}
+	}
+
+	/// Returns an iterator over keys for a specific witness index.
+	pub fn keys_for_witness(&self, witness_idx: usize) -> &[Key] {
+		let start = self.keys_start_by_witness_index[witness_idx] as usize;
+		let end = self
+			.keys_start_by_witness_index
+			.get(witness_idx + 1)
+			.map(|&x| x as usize)
+			.unwrap_or(self.flat_keys.len());
+		&self.flat_keys[start..end]
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use binius_field::{BinaryField128bGhash as B128, Field, Random};
+	use binius_math::{multilinear::eq::eq_ind_partial_eval, univariate::evaluate_univariate};
+	use binius_spartan_frontend::constraint_system::{MulConstraint, Operand, WitnessIndex};
+	use binius_spartan_verifier::wiring::evaluate_wiring_mle;
+	use rand::{Rng, SeedableRng, rngs::StdRng};
+	use smallvec::SmallVec;
+
+	use super::*;
+
+	/// Generate random MulConstraints for testing.
+	/// Each operand has 0-4 random wires.
+	fn generate_random_constraints(
+		rng: &mut StdRng,
+		n_constraints: usize,
+		witness_size: usize,
+	) -> Vec<MulConstraint<WitnessIndex>> {
+		(0..n_constraints)
+			.map(|_| {
+				let a = generate_random_operand(rng, witness_size);
+				let b = generate_random_operand(rng, witness_size);
+				let c = generate_random_operand(rng, witness_size);
+				MulConstraint { a, b, c }
+			})
+			.collect()
+	}
+
+	fn generate_random_operand(rng: &mut StdRng, witness_size: usize) -> Operand<WitnessIndex> {
+		let n_wires = rng.random_range(0..=4);
+		let wires: SmallVec<[WitnessIndex; 4]> = (0..n_wires)
+			.map(|_| WitnessIndex(rng.random_range(0..witness_size as u32)))
+			.collect();
+		Operand::new(wires)
+	}
+
+	/// Evaluate the wiring MLE using the transposed representation.
+	fn evaluate_wiring_mle_transposed<F: Field>(
+		transposed: &WiringTranspose,
+		witness_size: usize,
+		lambda: F,
+		r_x_tensor: &[F],
+		r_y_tensor: &[F],
+	) -> F {
+		let mut acc = [F::ZERO; 3];
+
+		for witness_idx in 0..witness_size {
+			let r_y_weight = r_y_tensor[witness_idx];
+			for key in transposed.keys_for_witness(witness_idx) {
+				let r_x_weight = r_x_tensor[key.constraint_idx as usize];
+				acc[key.operand_idx as usize] += r_x_weight * r_y_weight;
+			}
+		}
+
+		evaluate_univariate(&acc, lambda)
+	}
+
+	#[test]
+	fn test_wiring_transpose_equivalence() {
+		let mut rng = StdRng::seed_from_u64(0);
+
+		// Generate random constraints
+		let n_constraints = 16;
+		let witness_size = 32;
+		let constraints = generate_random_constraints(&mut rng, n_constraints, witness_size);
+
+		// Sample random evaluation points
+		let log_n_constraints = (n_constraints as f64).log2().ceil() as usize;
+		let log_witness_size = (witness_size as f64).log2().ceil() as usize;
+
+		let r_x: Vec<B128> = (0..log_n_constraints)
+			.map(|_| <B128 as Random>::random(&mut rng))
+			.collect();
+		let r_y: Vec<B128> = (0..log_witness_size)
+			.map(|_| <B128 as Random>::random(&mut rng))
+			.collect();
+		let lambda = <B128 as Random>::random(&mut rng);
+
+		// Compute expected result using the original representation
+		let expected = evaluate_wiring_mle(&constraints, lambda, &r_x, &r_y);
+
+		// Compute result using the transposed representation
+		let transposed = WiringTranspose::transpose(witness_size, &constraints);
+		let r_x_tensor = eq_ind_partial_eval::<B128>(&r_x);
+		let r_y_tensor = eq_ind_partial_eval::<B128>(&r_y);
+		let actual = evaluate_wiring_mle_transposed(
+			&transposed,
+			witness_size,
+			lambda,
+			r_x_tensor.as_ref(),
+			r_y_tensor.as_ref(),
+		);
+
+		assert_eq!(actual, expected, "Transposed evaluation does not match original evaluation");
 	}
 }

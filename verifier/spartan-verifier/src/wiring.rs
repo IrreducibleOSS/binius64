@@ -68,7 +68,7 @@ pub fn check_eval<F: Field>(
 	Ok(())
 }
 
-fn evaluate_wiring_mle<F: Field>(
+pub fn evaluate_wiring_mle<F: Field>(
 	mul_constraints: &[MulConstraint<WitnessIndex>],
 	lambda: F,
 	r_x: &[F],
