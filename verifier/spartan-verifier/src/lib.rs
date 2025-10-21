@@ -2,6 +2,7 @@
 
 pub mod config;
 pub mod pcs;
+mod wiring;
 
 use binius_math::{
 	BinarySubspace,
@@ -110,22 +111,23 @@ where
 		let trace_commitment = transcript.message().read::<Output<MerkleHash>>()?;
 
 		// Sample random evaluation point
-		let _r_x: Vec<B128> = transcript.sample_vec(log_mul_constraints);
-
-		let _a_eval = transcript.message().read::<B128>()?;
-		let _b_eval = transcript.message().read::<B128>()?;
-		let _c_eval = transcript.message().read::<B128>()?;
-
-		// Sample random evaluation point
-		let r_y = transcript.sample_vec(cs.log_size() as usize);
+		let r_x = transcript.sample_vec(log_mul_constraints);
 
 		// Read the claimed evaluation
-		let evaluation_claim = transcript.message().read::<B128>()?;
+		let evaluation_claims = transcript.message().read_vec::<B128>(3)?;
+
+		// Verify the wiring reduction
+		let wiring_output = wiring::verify(log_mul_constraints, evaluation_claims, transcript)?;
+		wiring::check_eval(&self.constraint_system, &r_x, &wiring_output)?;
+
+		let wiring::Output {
+			r_y, witness_eval, ..
+		} = wiring_output;
 
 		// Verify the PCS opening
 		pcs::verify(
 			transcript,
-			evaluation_claim,
+			witness_eval,
 			&r_y,
 			trace_commitment,
 			&self.fri_params,
@@ -144,6 +146,8 @@ pub enum Error {
 	PCS(#[from] pcs::Error),
 	#[error("Math error: {0}")]
 	Math(#[from] binius_math::Error),
+	#[error("wiring error: {0}")]
+	Wiring(#[from] wiring::Error),
 	#[error("Transcript error: {0}")]
 	Transcript(#[from] binius_transcript::Error),
 	#[error("incorrect public inputs length: expected {expected}, got {actual}")]
