@@ -6,18 +6,18 @@ mod wiring;
 
 use std::marker::PhantomData;
 
-use binius_field::{PackedExtension, PackedField};
+use binius_field::{Field, PackedExtension, PackedField};
 use binius_math::{
-	FieldBuffer,
-	inner_product::inner_product_buffers,
-	multilinear::eq::eq_ind_partial_eval,
+	FieldBuffer, FieldSlice,
 	ntt::{NeighborsLastMultiThread, domain_context::GenericPreExpanded},
 };
 use binius_prover::{
 	fri::{self, CommitOutput},
 	hash::{ParallelDigest, parallel_compression::ParallelPseudoCompression},
 	merkle_tree::prover::BinaryMerkleTreeProver,
+	protocols::sumcheck::{prove_single_mlecheck, quadratic_mle::QuadraticMleCheckProver},
 };
+use binius_spartan_frontend::constraint_system::{MulConstraint, WitnessIndex};
 use binius_spartan_verifier::{Verifier, config::B128};
 use binius_transcript::{
 	ProverTranscript,
@@ -121,20 +121,13 @@ where
 		)?;
 		transcript.message().write(&trace_commitment);
 
-		let mulcheck_witness =
-			wiring::build_mulcheck_witness(cs.mul_constraints(), witness_packed.to_ref());
-
-		// Sample random evaluation point
-		let r_x = transcript.sample_vec(log_mul_constraints);
-
-		let r_x_tensor = eq_ind_partial_eval::<P>(&r_x);
-		let mulcheck_evals = [
-			inner_product_buffers(&mulcheck_witness.a, &r_x_tensor),
-			inner_product_buffers(&mulcheck_witness.b, &r_x_tensor),
-			inner_product_buffers(&mulcheck_witness.c, &r_x_tensor),
-		];
-
-		transcript.message().write_slice(&mulcheck_evals);
+		// Prove the multiplication constraints
+		let (mulcheck_evals, r_x) = self.prove_mulcheck(
+			cs.mul_constraints(),
+			witness_packed.to_ref(),
+			log_mul_constraints,
+			transcript,
+		)?;
 
 		// Run wiring check protocol
 		let wiring_output = wiring::prove(
@@ -159,6 +152,47 @@ where
 		)?;
 
 		Ok(())
+	}
+
+	fn prove_mulcheck<Challenger_: Challenger>(
+		&self,
+		mul_constraints: &[MulConstraint<WitnessIndex>],
+		witness: FieldSlice<P>,
+		log_mul_constraints: usize,
+		transcript: &mut ProverTranscript<Challenger_>,
+	) -> Result<([B128; 3], Vec<B128>), Error> {
+		let mulcheck_witness = wiring::build_mulcheck_witness(mul_constraints, witness);
+
+		// Sample random evaluation point for mulcheck
+		let r_mulcheck = transcript.sample_vec(log_mul_constraints);
+
+		// Create the QuadraticMleCheckProver for the mul gate: a * b - c
+		let mlecheck_prover = QuadraticMleCheckProver::new(
+			[mulcheck_witness.a, mulcheck_witness.b, mulcheck_witness.c],
+			|[a, b, c]| a * b - c, // composition
+			|[a, b, _c]| a * b,    // infinity_composition (quadratic term only)
+			&r_mulcheck,
+			B128::ZERO, // eval_claim: zerocheck
+		)?;
+
+		// Run the MLE-check protocol
+		let mlecheck_output = prove_single_mlecheck(mlecheck_prover, transcript)?;
+
+		// Extract the reduced evaluation point and multilinear evaluations
+		let mut r_x = mlecheck_output.challenges;
+		r_x.reverse(); // Match verifier's order
+
+		let [a_eval, b_eval, c_eval]: [B128; 3] = mlecheck_output
+			.multilinear_evals
+			.try_into()
+			.expect("mlecheck returns 3 evaluations");
+
+		// Write the multilinear evaluations to transcript
+		transcript.message().write(&[a_eval, b_eval, c_eval]);
+
+		let mulcheck_evals = [a_eval, b_eval, c_eval];
+
+		Ok((mulcheck_evals, r_x))
 	}
 }
 
