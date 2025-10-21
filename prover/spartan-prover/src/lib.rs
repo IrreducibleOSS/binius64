@@ -5,9 +5,9 @@ pub mod pcs;
 
 use std::marker::PhantomData;
 
-use binius_field::{PackedExtension, PackedField};
+use binius_field::{Field, PackedExtension, PackedField};
 use binius_math::{
-	FieldBuffer,
+	FieldBuffer, FieldSlice,
 	multilinear::evaluate::evaluate,
 	ntt::{NeighborsLastMultiThread, domain_context::GenericPreExpanded},
 };
@@ -16,12 +16,13 @@ use binius_prover::{
 	hash::{ParallelDigest, parallel_compression::ParallelPseudoCompression},
 	merkle_tree::prover::BinaryMerkleTreeProver,
 };
+use binius_spartan_frontend::constraint_system::{MulConstraint, Operand, WitnessIndex};
 use binius_spartan_verifier::{Verifier, config::B128};
 use binius_transcript::{
 	ProverTranscript,
 	fiat_shamir::{CanSample, Challenger},
 };
-use binius_utils::{SerializeBytes, rayon::prelude::*};
+use binius_utils::{SerializeBytes, checked_arithmetics::checked_log_2, rayon::prelude::*};
 use digest::{Digest, FixedOutputReset, Output, core_api::BlockSizeUser};
 pub use error::*;
 
@@ -169,4 +170,99 @@ fn pack_witness<P: PackedField<Scalar = B128>>(
 
 	FieldBuffer::new(log_witness_elems, packed_witness.into_boxed_slice())
 		.expect("FieldBuffer::new should succeed with correct log_witness_elems")
+}
+
+/// Witness data for multiplication constraint checking.
+///
+/// Contains the evaluated operands a, b, and c for all multiplication constraints,
+/// packed into field buffers for efficient processing.
+pub struct MulCheckWitness<P: PackedField> {
+	pub a: FieldBuffer<P>,
+	pub b: FieldBuffer<P>,
+	pub c: FieldBuffer<P>,
+}
+
+/// Evaluates an operand by XORing witness values at the specified indices.
+fn eval_operand<P: PackedField>(
+	witness: &FieldSlice<P>,
+	operand: &Operand<WitnessIndex>,
+) -> P::Scalar
+where
+	P::Scalar: Field,
+{
+	operand
+		.wires()
+		.iter()
+		.map(|idx| witness.get(idx.0 as usize))
+		.sum()
+}
+
+/// Builds the witness for multiplication constraint checking.
+///
+/// Extracts and packs the a, b, and c operand values for each multiplication constraint.
+/// This is analogous to `build_bitand_witness` in binius-prover but works with B128
+/// field elements instead of word-level operations.
+#[tracing::instrument(skip_all, level = "debug")]
+fn build_mulcheck_witness<F: Field, P: PackedField<Scalar = F>>(
+	mul_constraints: &[MulConstraint<WitnessIndex>],
+	witness: FieldSlice<P>,
+) -> MulCheckWitness<P> {
+	fn get_a(c: &MulConstraint<WitnessIndex>) -> &Operand<WitnessIndex> {
+		&c.a
+	}
+	fn get_b(c: &MulConstraint<WitnessIndex>) -> &Operand<WitnessIndex> {
+		&c.b
+	}
+	fn get_c(c: &MulConstraint<WitnessIndex>) -> &Operand<WitnessIndex> {
+		&c.c
+	}
+
+	let n_constraints = mul_constraints.len();
+	assert!(n_constraints > 0, "mul_constraints must not be empty");
+
+	let log_n_constraints = checked_log_2(n_constraints);
+
+	let len = 1 << log_n_constraints.saturating_sub(P::LOG_WIDTH);
+	let mut a = Vec::<P>::with_capacity(len);
+	let mut b = Vec::<P>::with_capacity(len);
+	let mut c = Vec::<P>::with_capacity(len);
+
+	(a.spare_capacity_mut(), b.spare_capacity_mut(), c.spare_capacity_mut())
+		.into_par_iter()
+		.enumerate()
+		.for_each(|(i, (a_i, b_i, c_i))| {
+			let offset = i << P::LOG_WIDTH;
+
+			for (dst, get_operand) in [
+				(a_i, get_a as fn(&MulConstraint<WitnessIndex>) -> &Operand<WitnessIndex>),
+				(b_i, get_b as fn(&MulConstraint<WitnessIndex>) -> &Operand<WitnessIndex>),
+				(c_i, get_c as fn(&MulConstraint<WitnessIndex>) -> &Operand<WitnessIndex>),
+			] {
+				let val = P::from_fn(|j| {
+					let constraint_idx = offset + j;
+					if constraint_idx < n_constraints {
+						eval_operand(&witness, get_operand(&mul_constraints[constraint_idx]))
+					} else {
+						F::ZERO
+					}
+				});
+				dst.write(val);
+			}
+		});
+
+	// Safety: all entries in a, b, c are initialized in the parallel loop above.
+	unsafe {
+		a.set_len(len);
+		b.set_len(len);
+		c.set_len(len);
+	}
+
+	MulCheckWitness {
+		a: FieldBuffer::new(log_n_constraints, a.into_boxed_slice())
+			.expect("FieldBuffer::new should succeed with correct log_n_constraints"),
+		b: FieldBuffer::new(log_n_constraints, b.into_boxed_slice())
+			.expect("FieldBuffer::new should succeed with correct log_n_constraints"),
+		c: FieldBuffer::new(log_n_constraints, c.into_boxed_slice())
+			.expect("FieldBuffer::new should succeed with correct log_n_constraints"),
+	}
 }
