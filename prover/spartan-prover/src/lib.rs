@@ -130,13 +130,13 @@ where
 		transcript.message().write(&c_eval);
 
 		// Sample random evaluation point
-		let r_y = transcript.sample_vec(self.verifier.constraint_system().log_size() as usize);
+		let r_y = transcript.sample_vec(cs.log_size() as usize);
 
 		// Compute the evaluation claim
-		let evaluation_claim = evaluate(&witness_packed, &r_y)?;
+		let witness_eval = evaluate(&witness_packed, &r_y)?;
 
 		// Write the evaluation claim to the transcript
-		transcript.message().write(&evaluation_claim);
+		transcript.message().write(&witness_eval);
 
 		// Prove the evaluation
 		let pcs_prover =
@@ -146,7 +146,7 @@ where
 			&codeword_committed,
 			witness_packed,
 			&r_y,
-			evaluation_claim,
+			witness_eval,
 			transcript,
 		)?;
 

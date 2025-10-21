@@ -1,5 +1,7 @@
 // Copyright 2025 Irreducible Inc.
 
+#![allow(dead_code)]
+
 use std::iter;
 
 use binius_field::Field;
