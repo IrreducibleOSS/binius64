@@ -279,6 +279,24 @@ impl<U: DeserializeBytes, V: DeserializeBytes> DeserializeBytes for (U, V) {
 	}
 }
 
+impl<T: SerializeBytes, const N: usize> SerializeBytes for [T; N] {
+	fn serialize(&self, mut write_buf: impl BufMut) -> Result<(), SerializationError> {
+		for val in self {
+			val.serialize(&mut write_buf)?;
+		}
+		Ok(())
+	}
+}
+
+impl<T: DeserializeBytes, const N: usize> DeserializeBytes for [T; N] {
+	fn deserialize(mut read_buf: impl Buf) -> Result<Self, SerializationError>
+	where
+		Self: Sized,
+	{
+		array_util::try_from_fn(|_| T::deserialize(&mut read_buf))
+	}
+}
+
 impl<N: ArrayLength<u8>> SerializeBytes for GenericArray<u8, N> {
 	fn serialize(&self, mut write_buf: impl BufMut) -> Result<(), SerializationError> {
 		assert_enough_space_for(&write_buf, N::USIZE)?;
