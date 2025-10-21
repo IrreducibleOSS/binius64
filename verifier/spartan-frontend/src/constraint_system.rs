@@ -2,7 +2,7 @@
 
 use std::{cmp::Ordering, collections::HashMap, mem};
 
-use binius_field::BinaryField128bGhash as B128;
+use binius_field::{BinaryField128bGhash as B128, Field};
 use binius_utils::checked_arithmetics::log2_ceil_usize;
 use smallvec::{SmallVec, smallvec};
 
@@ -127,8 +127,8 @@ pub struct WitnessIndex(pub u32);
 /// (XOR combinations of witness values). Constraints directly reference [`WitnessIndex`]
 /// positions in the witness array.
 #[derive(Debug, Clone)]
-pub struct ConstraintSystem {
-	constants: Vec<B128>,
+pub struct ConstraintSystem<F: Field = B128> {
+	constants: Vec<F>,
 	n_inout: u32,
 	n_private: u32,
 	log_public: u32,
@@ -136,9 +136,9 @@ pub struct ConstraintSystem {
 	mul_constraints: Vec<MulConstraint<WitnessIndex>>,
 }
 
-impl ConstraintSystem {
+impl<F: Field> ConstraintSystem<F> {
 	pub fn new(
-		constants: Vec<B128>,
+		constants: Vec<F>,
 		n_inout: u32,
 		n_private: u32,
 		log_public: u32,
@@ -155,7 +155,7 @@ impl ConstraintSystem {
 		}
 	}
 
-	pub fn constants(&self) -> &[B128] {
+	pub fn constants(&self) -> &[F] {
 		&self.constants
 	}
 

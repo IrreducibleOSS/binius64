@@ -6,7 +6,7 @@ mod wiring;
 
 use std::marker::PhantomData;
 
-use binius_field::{Field, PackedExtension, PackedField};
+use binius_field::{BinaryField, Field, PackedExtension, PackedField};
 use binius_math::{
 	FieldBuffer, FieldSlice,
 	ntt::{NeighborsLastMultiThread, domain_context::GenericPreExpanded},
@@ -18,7 +18,7 @@ use binius_prover::{
 	protocols::sumcheck::{prove_single_mlecheck, quadratic_mle::QuadraticMleCheckProver},
 };
 use binius_spartan_frontend::constraint_system::{MulConstraint, WitnessIndex};
-use binius_spartan_verifier::{Verifier, config::B128};
+use binius_spartan_verifier::Verifier;
 use binius_transcript::{
 	ProverTranscript,
 	fiat_shamir::{CanSample, Challenger},
@@ -37,19 +37,22 @@ use crate::wiring::WiringTranspose;
 #[derive(Debug)]
 pub struct Prover<P, ParallelMerkleCompress, ParallelMerkleHasher: ParallelDigest>
 where
+	P: PackedField,
 	ParallelMerkleCompress: ParallelPseudoCompression<Output<ParallelMerkleHasher::Digest>, 2>,
 {
-	verifier: Verifier<ParallelMerkleHasher::Digest, ParallelMerkleCompress::Compression>,
-	ntt: NeighborsLastMultiThread<GenericPreExpanded<B128>>,
-	merkle_prover: BinaryMerkleTreeProver<B128, ParallelMerkleHasher, ParallelMerkleCompress>,
+	verifier:
+		Verifier<P::Scalar, ParallelMerkleHasher::Digest, ParallelMerkleCompress::Compression>,
+	ntt: NeighborsLastMultiThread<GenericPreExpanded<P::Scalar>>,
+	merkle_prover: BinaryMerkleTreeProver<P::Scalar, ParallelMerkleHasher, ParallelMerkleCompress>,
 	wiring_transpose: WiringTranspose,
 	_p_marker: PhantomData<P>,
 }
 
-impl<P, MerkleHash, ParallelMerkleCompress, ParallelMerkleHasher>
+impl<F, P, MerkleHash, ParallelMerkleCompress, ParallelMerkleHasher>
 	Prover<P, ParallelMerkleCompress, ParallelMerkleHasher>
 where
-	P: PackedField<Scalar = B128> + PackedExtension<B128>,
+	F: BinaryField,
+	P: PackedField<Scalar = F> + PackedExtension<F>,
 	MerkleHash: Digest + BlockSizeUser + FixedOutputReset,
 	ParallelMerkleHasher: ParallelDigest<Digest = MerkleHash>,
 	ParallelMerkleCompress: ParallelPseudoCompression<Output<MerkleHash>, 2>,
@@ -59,7 +62,7 @@ where
 	///
 	/// See [`Prover`] struct documentation for details.
 	pub fn setup(
-		verifier: Verifier<MerkleHash, ParallelMerkleCompress::Compression>,
+		verifier: Verifier<F, MerkleHash, ParallelMerkleCompress::Compression>,
 		compression: ParallelMerkleCompress,
 	) -> Result<Self, Error> {
 		let subspace = verifier.fri_params().rs_code().subspace();
@@ -84,7 +87,7 @@ where
 
 	pub fn prove<Challenger_: Challenger>(
 		&self,
-		witness: &[B128],
+		witness: &[F],
 		transcript: &mut ProverTranscript<Challenger_>,
 	) -> Result<(), Error> {
 		let _prove_guard =
@@ -106,7 +109,7 @@ where
 
 		// Pack witness into field elements
 		// TODO: Populate witness directly into a FieldBuffer
-		let witness_packed = pack_witness::<P>(cs.log_size() as usize, witness);
+		let witness_packed = pack_witness::<_, P>(cs.log_size() as usize, witness);
 
 		// Commit the witness
 		let CommitOutput {
@@ -160,7 +163,7 @@ where
 		witness: FieldSlice<P>,
 		log_mul_constraints: usize,
 		transcript: &mut ProverTranscript<Challenger_>,
-	) -> Result<([B128; 3], Vec<B128>), Error> {
+	) -> Result<([F; 3], Vec<F>), Error> {
 		let mulcheck_witness = wiring::build_mulcheck_witness(mul_constraints, witness);
 
 		// Sample random evaluation point for mulcheck
@@ -172,7 +175,7 @@ where
 			|[a, b, c]| a * b - c, // composition
 			|[a, b, _c]| a * b,    // infinity_composition (quadratic term only)
 			&r_mulcheck,
-			B128::ZERO, // eval_claim: zerocheck
+			F::ZERO, // eval_claim: zerocheck
 		)?;
 
 		// Run the MLE-check protocol
@@ -182,7 +185,7 @@ where
 		let mut r_x = mlecheck_output.challenges;
 		r_x.reverse(); // Match verifier's order
 
-		let [a_eval, b_eval, c_eval]: [B128; 3] = mlecheck_output
+		let [a_eval, b_eval, c_eval]: [F; 3] = mlecheck_output
 			.multilinear_evals
 			.try_into()
 			.expect("mlecheck returns 3 evaluations");
@@ -196,9 +199,9 @@ where
 	}
 }
 
-fn pack_witness<P: PackedField<Scalar = B128>>(
+fn pack_witness<F: Field, P: PackedField<Scalar = F>>(
 	log_witness_elems: usize,
-	witness: &[B128],
+	witness: &[F],
 ) -> FieldBuffer<P> {
 	// Precondition: witness length must match expected size
 	let expected_size = 1 << log_witness_elems;

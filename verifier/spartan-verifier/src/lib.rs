@@ -4,7 +4,7 @@ pub mod config;
 pub mod pcs;
 pub mod wiring;
 
-use binius_field::Field;
+use binius_field::{BinaryField, Field};
 use binius_math::{
 	BinarySubspace,
 	ntt::{NeighborsLastSingleThread, domain_context::GenericOnTheFly},
@@ -23,8 +23,6 @@ use binius_verifier::{
 };
 use digest::{Digest, Output, core_api::BlockSizeUser};
 
-use crate::config::B128;
-
 pub const SECURITY_BITS: usize = 96;
 
 /// Struct for verifying instances of a particular constraint system.
@@ -32,14 +30,15 @@ pub const SECURITY_BITS: usize = 96;
 /// The [`Self::setup`] constructor determines public parameters for proving instances of the given
 /// constraint system. Then [`Self::verify`] is called one or more times with individual instances.
 #[derive(Debug, Clone)]
-pub struct Verifier<MerkleHash, MerkleCompress> {
+pub struct Verifier<F: Field, MerkleHash, MerkleCompress> {
 	constraint_system: ConstraintSystem,
-	fri_params: FRIParams<B128>,
-	merkle_scheme: BinaryMerkleTreeScheme<B128, MerkleHash, MerkleCompress>,
+	fri_params: FRIParams<F>,
+	merkle_scheme: BinaryMerkleTreeScheme<F, MerkleHash, MerkleCompress>,
 }
 
-impl<MerkleHash, MerkleCompress> Verifier<MerkleHash, MerkleCompress>
+impl<F, MerkleHash, MerkleCompress> Verifier<F, MerkleHash, MerkleCompress>
 where
+	F: BinaryField,
 	MerkleHash: Digest + BlockSizeUser,
 	MerkleCompress: PseudoCompressionFunction<Output<MerkleHash>, 2>,
 	Output<MerkleHash>: DeserializeBytes,
@@ -54,11 +53,8 @@ where
 	) -> Result<Self, Error> {
 		let log_witness_len = constraint_system.log_size() as usize;
 		let log_code_len = log_witness_len + log_inv_rate;
-		let fri_arity = estimate_optimal_arity(
-			log_code_len,
-			size_of::<Output<MerkleHash>>(),
-			size_of::<binius_verifier::config::B128>(),
-		);
+		let fri_arity =
+			estimate_optimal_arity(log_code_len, size_of::<Output<MerkleHash>>(), size_of::<F>());
 
 		let subspace = BinarySubspace::with_dim(log_code_len)?;
 		let domain_context = GenericOnTheFly::generate_from_subspace(&subspace);
@@ -84,13 +80,13 @@ where
 		&self.constraint_system
 	}
 
-	pub fn fri_params(&self) -> &FRIParams<B128> {
+	pub fn fri_params(&self) -> &FRIParams<F> {
 		&self.fri_params
 	}
 
 	pub fn verify<Challenger_: Challenger>(
 		&self,
-		public: &[B128],
+		public: &[F],
 		transcript: &mut VerifierTranscript<Challenger_>,
 	) -> Result<(), Error> {
 		let _verify_guard =
@@ -137,7 +133,7 @@ where
 	fn verify_mulcheck<Challenger_: Challenger>(
 		&self,
 		transcript: &mut VerifierTranscript<Challenger_>,
-	) -> Result<([B128; 3], Vec<B128>), Error> {
+	) -> Result<([F; 3], Vec<F>), Error> {
 		let log_mul_constraints = checked_log_2(self.constraint_system.mul_constraints().len());
 
 		// Sample random evaluation point
@@ -147,7 +143,7 @@ where
 		let SumcheckOutput {
 			eval,
 			challenges: r_x,
-		} = mlecheck::verify(&r_mulcheck, 2, B128::ZERO, transcript)?;
+		} = mlecheck::verify(&r_mulcheck, 2, F::ZERO, transcript)?;
 
 		// Read the claimed evaluations
 		let [a_eval, b_eval, c_eval] = transcript.message().read()?;
