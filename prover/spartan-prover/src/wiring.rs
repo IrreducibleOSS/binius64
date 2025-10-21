@@ -2,7 +2,10 @@
 
 #![allow(dead_code)]
 
+use binius_field::{Field, PackedField};
+use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval};
 use binius_spartan_frontend::constraint_system::{MulConstraint, WitnessIndex};
+use binius_utils::{checked_arithmetics::checked_log_2, rayon::prelude::*};
 
 /// Transpose of the wiring sparse matrix.
 pub struct WiringTranspose {
@@ -60,10 +63,62 @@ impl WiringTranspose {
 	}
 }
 
+/// Folds the wiring matrix along the constraint axis by partially evaluating at r_x.
+///
+/// Also batches the three operands (a, b, c) using powers of lambda.
+/// Returns a multilinear polynomial over witness indices where each coefficient is the
+/// weighted sum of constraint contributions.
+pub fn fold_constraints<F: Field, P: PackedField<Scalar = F>>(
+	transposed: &WiringTranspose,
+	witness_size: usize,
+	lambda: F,
+	r_x: &[F],
+) -> FieldBuffer<P> {
+	// Compute eq indicator tensor for constraint evaluation points
+	let r_x_tensor = eq_ind_partial_eval::<F>(r_x);
+
+	// Batching powers for the three operands
+	let lambda_powers = [F::ONE, lambda, lambda.square()];
+
+	// Create packed field buffer for witness indices
+	let log_witness_size = checked_log_2(witness_size);
+	let len = 1 << log_witness_size.saturating_sub(P::LOG_WIDTH);
+
+	// Process in parallel over chunks of P::WIDTH witness indices
+	let result = (0..len)
+		.into_par_iter()
+		.map(|packed_idx| {
+			let base_witness_idx = packed_idx << P::LOG_WIDTH;
+
+			P::from_fn(|scalar_idx| {
+				let witness_idx = base_witness_idx + scalar_idx;
+				if witness_idx >= witness_size {
+					return F::ZERO;
+				}
+
+				let mut acc = F::ZERO;
+				for key in transposed.keys_for_witness(witness_idx) {
+					let r_x_weight = r_x_tensor[key.constraint_idx as usize];
+					let lambda_weight = lambda_powers[key.operand_idx as usize];
+					acc += r_x_weight * lambda_weight;
+				}
+				acc
+			})
+		})
+		.collect::<Vec<_>>();
+
+	FieldBuffer::new(log_witness_size, result.into_boxed_slice())
+		.expect("FieldBuffer::new should succeed with correct log_witness_size")
+}
+
 #[cfg(test)]
 mod tests {
 	use binius_field::{BinaryField128bGhash as B128, Field, Random};
-	use binius_math::{multilinear::eq::eq_ind_partial_eval, univariate::evaluate_univariate};
+	use binius_math::{
+		multilinear::eq::eq_ind_partial_eval,
+		test_utils::{Packed128b, random_scalars},
+		univariate::evaluate_univariate,
+	};
 	use binius_spartan_frontend::constraint_system::{MulConstraint, Operand, WitnessIndex};
 	use binius_spartan_verifier::wiring::evaluate_wiring_mle;
 	use rand::{Rng, SeedableRng, rngs::StdRng};
@@ -130,13 +185,9 @@ mod tests {
 		let log_n_constraints = (n_constraints as f64).log2().ceil() as usize;
 		let log_witness_size = (witness_size as f64).log2().ceil() as usize;
 
-		let r_x: Vec<B128> = (0..log_n_constraints)
-			.map(|_| <B128 as Random>::random(&mut rng))
-			.collect();
-		let r_y: Vec<B128> = (0..log_witness_size)
-			.map(|_| <B128 as Random>::random(&mut rng))
-			.collect();
-		let lambda = <B128 as Random>::random(&mut rng);
+		let r_x = random_scalars::<B128>(&mut rng, log_n_constraints);
+		let r_y = random_scalars::<B128>(&mut rng, log_witness_size);
+		let lambda = B128::random(&mut rng);
 
 		// Compute expected result using the original representation
 		let expected = evaluate_wiring_mle(&constraints, lambda, &r_x, &r_y);
@@ -154,5 +205,38 @@ mod tests {
 		);
 
 		assert_eq!(actual, expected, "Transposed evaluation does not match original evaluation");
+	}
+
+	#[test]
+	fn test_fold_constraints_equivalence() {
+		use binius_math::multilinear::evaluate::evaluate;
+
+		let mut rng = StdRng::seed_from_u64(1);
+
+		// Generate random constraints
+		let n_constraints = 16;
+		let witness_size = 32;
+		let constraints = generate_random_constraints(&mut rng, n_constraints, witness_size);
+
+		// Sample random evaluation points
+		let log_n_constraints = (n_constraints as f64).log2().ceil() as usize;
+		let log_witness_size = (witness_size as f64).log2().ceil() as usize;
+
+		let r_x = random_scalars::<B128>(&mut rng, log_n_constraints);
+		let r_y = random_scalars::<B128>(&mut rng, log_witness_size);
+		let lambda = B128::random(&mut rng);
+
+		// Method 1: Compute expected result using evaluate_wiring_mle
+		let expected = evaluate_wiring_mle(&constraints, lambda, &r_x, &r_y);
+
+		// Method 2: Use fold_constraints then evaluate at r_y
+		let transposed = WiringTranspose::transpose(witness_size, &constraints);
+		let folded = fold_constraints::<_, Packed128b>(&transposed, witness_size, lambda, &r_x);
+		let actual = evaluate(&folded, &r_y).expect("evaluation should succeed");
+
+		assert_eq!(
+			actual, expected,
+			"fold_constraints + evaluate does not match evaluate_wiring_mle"
+		);
 	}
 }
