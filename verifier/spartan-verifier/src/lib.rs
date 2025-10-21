@@ -12,7 +12,7 @@ use binius_transcript::{
 	VerifierTranscript,
 	fiat_shamir::{CanSample, Challenger},
 };
-use binius_utils::DeserializeBytes;
+use binius_utils::{DeserializeBytes, checked_arithmetics::checked_log_2};
 use binius_verifier::{
 	fri::{self, FRIParams, estimate_optimal_arity},
 	hash::PseudoCompressionFunction,
@@ -94,19 +94,30 @@ where
 			tracing::info_span!("Verify", operation = "verify", perfetto_category = "operation")
 				.entered();
 
+		let cs = self.constraint_system();
+
 		// Check that the public input length is correct
-		if public.len() != 1 << self.constraint_system.log_public() {
+		if public.len() != 1 << cs.log_public() {
 			return Err(Error::IncorrectPublicInputLength {
 				expected: 1 << self.constraint_system.log_public(),
 				actual: public.len(),
 			});
 		}
 
+		let log_mul_constraints = checked_log_2(cs.mul_constraints().len());
+
 		// Receive the trace commitment.
 		let trace_commitment = transcript.message().read::<Output<MerkleHash>>()?;
 
 		// Sample random evaluation point
-		let eval_point = transcript.sample_vec(self.constraint_system.log_size() as usize);
+		let _r_x: Vec<B128> = transcript.sample_vec(log_mul_constraints);
+
+		let _a_eval = transcript.message().read::<B128>()?;
+		let _b_eval = transcript.message().read::<B128>()?;
+		let _c_eval = transcript.message().read::<B128>()?;
+
+		// Sample random evaluation point
+		let r_y = transcript.sample_vec(cs.log_size() as usize);
 
 		// Read the claimed evaluation
 		let evaluation_claim = transcript.message().read::<B128>()?;
@@ -115,7 +126,7 @@ where
 		pcs::verify(
 			transcript,
 			evaluation_claim,
-			&eval_point,
+			&r_y,
 			trace_commitment,
 			&self.fri_params,
 			&self.merkle_scheme,

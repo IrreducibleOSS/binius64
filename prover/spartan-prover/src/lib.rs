@@ -8,7 +8,8 @@ use std::marker::PhantomData;
 use binius_field::{Field, PackedExtension, PackedField};
 use binius_math::{
 	FieldBuffer, FieldSlice,
-	multilinear::evaluate::evaluate,
+	inner_product::inner_product_buffers,
+	multilinear::{eq::eq_ind_partial_eval, evaluate::evaluate},
 	ntt::{NeighborsLastMultiThread, domain_context::GenericPreExpanded},
 };
 use binius_prover::{
@@ -82,8 +83,10 @@ where
 			tracing::info_span!("Prove", operation = "prove", perfetto_category = "operation")
 				.entered();
 
+		let cs = self.verifier.constraint_system();
+
 		// Check that the witness length matches the constraint system
-		let expected_size = self.verifier.constraint_system().size();
+		let expected_size = cs.size();
 		if witness.len() != expected_size {
 			return Err(Error::ArgumentError {
 				arg: "witness".to_string(),
@@ -91,10 +94,11 @@ where
 			});
 		}
 
+		let log_mul_constraints = checked_log_2(cs.mul_constraints().len());
+
 		// Pack witness into field elements
 		// TODO: Populate witness directly into a FieldBuffer
-		let witness_packed =
-			pack_witness::<P>(self.verifier.constraint_system().log_size() as usize, witness);
+		let witness_packed = pack_witness::<P>(cs.log_size() as usize, witness);
 
 		// Commit the witness
 		let CommitOutput {
@@ -109,12 +113,26 @@ where
 		)?;
 		transcript.message().write(&trace_commitment);
 
+		let mulcheck_witness =
+			build_mulcheck_witness(cs.mul_constraints(), witness_packed.to_ref());
+
 		// Sample random evaluation point
-		let eval_point =
-			transcript.sample_vec(self.verifier.constraint_system().log_size() as usize);
+		let r_x = transcript.sample_vec(log_mul_constraints);
+
+		let r_x_tensor = eq_ind_partial_eval::<P>(&r_x);
+		let a_eval = inner_product_buffers(&mulcheck_witness.a, &r_x_tensor);
+		let b_eval = inner_product_buffers(&mulcheck_witness.b, &r_x_tensor);
+		let c_eval = inner_product_buffers(&mulcheck_witness.c, &r_x_tensor);
+
+		transcript.message().write(&a_eval);
+		transcript.message().write(&b_eval);
+		transcript.message().write(&c_eval);
+
+		// Sample random evaluation point
+		let r_y = transcript.sample_vec(self.verifier.constraint_system().log_size() as usize);
 
 		// Compute the evaluation claim
-		let evaluation_claim = evaluate(&witness_packed, &eval_point)?;
+		let evaluation_claim = evaluate(&witness_packed, &r_y)?;
 
 		// Write the evaluation claim to the transcript
 		transcript.message().write(&evaluation_claim);
@@ -126,7 +144,7 @@ where
 			&codeword,
 			&codeword_committed,
 			witness_packed,
-			&eval_point,
+			&r_y,
 			evaluation_claim,
 			transcript,
 		)?;
