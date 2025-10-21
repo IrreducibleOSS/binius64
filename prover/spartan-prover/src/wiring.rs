@@ -8,6 +8,7 @@ use binius_spartan_frontend::constraint_system::{MulConstraint, WitnessIndex};
 use binius_utils::{checked_arithmetics::checked_log_2, rayon::prelude::*};
 
 /// Transpose of the wiring sparse matrix.
+#[derive(Debug)]
 pub struct WiringTranspose {
 	flat_keys: Vec<Key>,
 	keys_start_by_witness_index: Vec<u32>,

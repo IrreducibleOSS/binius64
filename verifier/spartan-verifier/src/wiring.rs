@@ -23,13 +23,13 @@ pub struct Output<F> {
 
 pub fn verify<F: Field, Challenger_: Challenger>(
 	n_vars: usize,
-	eval_claims: Vec<F>,
+	eval_claims: &[F],
 	transcript: &mut VerifierTranscript<Challenger_>,
 ) -> Result<Output<F>, Error> {
 	// \lambda is the batching challenge
 	let lambda = transcript.sample();
 
-	let batched_claim = evaluate_univariate(&eval_claims, lambda);
+	let batched_claim = evaluate_univariate(eval_claims, lambda);
 	let SumcheckOutput {
 		eval,
 		challenges: mut r_y,

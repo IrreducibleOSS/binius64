@@ -10,13 +10,18 @@ use binius_field::{Field, PackedExtension, PackedField};
 use binius_math::{
 	FieldBuffer, FieldSlice,
 	inner_product::inner_product_buffers,
-	multilinear::{eq::eq_ind_partial_eval, evaluate::evaluate},
+	multilinear::eq::eq_ind_partial_eval,
 	ntt::{NeighborsLastMultiThread, domain_context::GenericPreExpanded},
+	univariate::evaluate_univariate,
 };
 use binius_prover::{
 	fri::{self, CommitOutput},
 	hash::{ParallelDigest, parallel_compression::ParallelPseudoCompression},
 	merkle_tree::prover::BinaryMerkleTreeProver,
+	protocols::{
+		sumcheck,
+		sumcheck::{ProveSingleOutput, bivariate_product::BivariateProductSumcheckProver},
+	},
 };
 use binius_spartan_frontend::constraint_system::{MulConstraint, Operand, WitnessIndex};
 use binius_spartan_verifier::{Verifier, config::B128};
@@ -27,6 +32,8 @@ use binius_transcript::{
 use binius_utils::{SerializeBytes, checked_arithmetics::checked_log_2, rayon::prelude::*};
 use digest::{Digest, FixedOutputReset, Output, core_api::BlockSizeUser};
 pub use error::*;
+
+use crate::wiring::{WiringTranspose, fold_constraints};
 
 /// Struct for proving instances of a particular constraint system.
 ///
@@ -41,6 +48,7 @@ where
 	verifier: Verifier<ParallelMerkleHasher::Digest, ParallelMerkleCompress::Compression>,
 	ntt: NeighborsLastMultiThread<GenericPreExpanded<B128>>,
 	merkle_prover: BinaryMerkleTreeProver<B128, ParallelMerkleHasher, ParallelMerkleCompress>,
+	wiring_transpose: WiringTranspose,
 	_p_marker: PhantomData<P>,
 }
 
@@ -67,10 +75,15 @@ where
 
 		let merkle_prover = BinaryMerkleTreeProver::<_, ParallelMerkleHasher, _>::new(compression);
 
+		// Compute wiring transpose from constraint system
+		let cs = verifier.constraint_system();
+		let wiring_transpose = WiringTranspose::transpose(cs.size(), cs.mul_constraints());
+
 		Ok(Prover {
 			verifier,
 			ntt,
 			merkle_prover,
+			wiring_transpose,
 			_p_marker: PhantomData,
 		})
 	}
@@ -121,19 +134,33 @@ where
 		let r_x = transcript.sample_vec(log_mul_constraints);
 
 		let r_x_tensor = eq_ind_partial_eval::<P>(&r_x);
-		let a_eval = inner_product_buffers(&mulcheck_witness.a, &r_x_tensor);
-		let b_eval = inner_product_buffers(&mulcheck_witness.b, &r_x_tensor);
-		let c_eval = inner_product_buffers(&mulcheck_witness.c, &r_x_tensor);
+		let mulcheck_evals = [
+			inner_product_buffers(&mulcheck_witness.a, &r_x_tensor),
+			inner_product_buffers(&mulcheck_witness.b, &r_x_tensor),
+			inner_product_buffers(&mulcheck_witness.c, &r_x_tensor),
+		];
 
-		transcript.message().write(&a_eval);
-		transcript.message().write(&b_eval);
-		transcript.message().write(&c_eval);
+		transcript.message().write_slice(&mulcheck_evals);
 
-		// Sample random evaluation point
-		let r_y = transcript.sample_vec(cs.log_size() as usize);
+		let lambda = transcript.sample();
+		let l_poly = fold_constraints(&self.wiring_transpose, cs.size(), lambda, &r_x);
 
-		// Compute the evaluation claim
-		let witness_eval = evaluate(&witness_packed, &r_y)?;
+		let batched_sum = evaluate_univariate(&mulcheck_evals, lambda);
+		// TODO: We could eliminate the witness cloning below if necessary.
+		let sumcheck_prover =
+			BivariateProductSumcheckProver::new([witness_packed.clone(), l_poly], batched_sum)
+				.expect("multilinears have equal numbers of variables");
+		let ProveSingleOutput {
+			multilinear_evals,
+			challenges: mut r_y,
+		} = sumcheck::prove_single(sumcheck_prover, transcript)
+			.expect("prover instance satisfies preconditions");
+
+		r_y.reverse();
+
+		let [witness_eval, _l_poly_eval] = multilinear_evals
+			.try_into()
+			.expect("prover has two multilinears; it returns two evaluations");
 
 		// Write the evaluation claim to the transcript
 		transcript.message().write(&witness_eval);

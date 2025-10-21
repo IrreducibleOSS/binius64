@@ -111,25 +111,18 @@ where
 		let trace_commitment = transcript.message().read::<Output<MerkleHash>>()?;
 
 		// Sample random evaluation point
-		let _r_x: Vec<B128> = transcript.sample_vec(log_mul_constraints);
+		let r_x = transcript.sample_vec(log_mul_constraints);
 
 		// Read the claimed evaluation
-		let _a_eval = transcript.message().read::<B128>()?;
-		let _b_eval = transcript.message().read::<B128>()?;
-		let _c_eval = transcript.message().read::<B128>()?;
+		let mulcheck_evals = transcript.message().read_vec(3)?;
 
-		// // Verify the wiring reduction
-		// let wiring_output = wiring::verify(log_mul_constraints, evaluation_claims, transcript)?;
-		// wiring::check_eval(&self.constraint_system, &r_x, &wiring_output)?;
-		//
-		// let wiring::Output {
-		// 	r_y, witness_eval, ..
-		// } = wiring_output;
+		// Verify the wiring reduction
+		let wiring_output = wiring::verify(cs.log_size() as usize, &mulcheck_evals, transcript)?;
+		wiring::check_eval(&self.constraint_system, &r_x, &wiring_output)?;
 
-		// Sample random evaluation point
-		let r_y = transcript.sample_vec(cs.log_size() as usize);
-
-		let witness_eval = transcript.message().read::<B128>()?;
+		let wiring::Output {
+			r_y, witness_eval, ..
+		} = wiring_output;
 
 		// Verify the PCS opening
 		pcs::verify(
