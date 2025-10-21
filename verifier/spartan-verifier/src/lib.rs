@@ -4,6 +4,7 @@ pub mod config;
 pub mod pcs;
 pub mod wiring;
 
+use binius_field::Field;
 use binius_math::{
 	BinarySubspace,
 	ntt::{NeighborsLastSingleThread, domain_context::GenericOnTheFly},
@@ -18,6 +19,7 @@ use binius_verifier::{
 	fri::{self, FRIParams, estimate_optimal_arity},
 	hash::PseudoCompressionFunction,
 	merkle_tree::BinaryMerkleTreeScheme,
+	protocols::{mlecheck, sumcheck, sumcheck::SumcheckOutput},
 };
 use digest::{Digest, Output, core_api::BlockSizeUser};
 
@@ -105,16 +107,11 @@ where
 			});
 		}
 
-		let log_mul_constraints = checked_log_2(cs.mul_constraints().len());
-
 		// Receive the trace commitment.
 		let trace_commitment = transcript.message().read::<Output<MerkleHash>>()?;
 
-		// Sample random evaluation point
-		let r_x = transcript.sample_vec(log_mul_constraints);
-
-		// Read the claimed evaluation
-		let mulcheck_evals = transcript.message().read_vec(3)?;
+		// Verify the multiplication constraints.
+		let (mulcheck_evals, r_x) = self.verify_mulcheck(transcript)?;
 
 		// Verify the wiring reduction
 		let wiring_output = wiring::verify(cs.log_size() as usize, &mulcheck_evals, transcript)?;
@@ -136,6 +133,33 @@ where
 
 		Ok(())
 	}
+
+	fn verify_mulcheck<Challenger_: Challenger>(
+		&self,
+		transcript: &mut VerifierTranscript<Challenger_>,
+	) -> Result<([B128; 3], Vec<B128>), Error> {
+		let log_mul_constraints = checked_log_2(self.constraint_system.mul_constraints().len());
+
+		// Sample random evaluation point
+		let r_mulcheck = transcript.sample_vec(log_mul_constraints);
+
+		// Verify the zerocheck for the multiplication constraints.
+		let SumcheckOutput {
+			eval,
+			challenges: r_x,
+		} = mlecheck::verify(&r_mulcheck, 2, B128::ZERO, transcript)?;
+
+		// Read the claimed evaluations
+		let [a_eval, b_eval, c_eval] = transcript.message().read()?;
+
+		if a_eval * b_eval - c_eval != eval {
+			return Err(Error::IncorrectMulCheckEvaluation);
+		}
+
+		let mulcheck_evals = [a_eval, b_eval, c_eval];
+
+		Ok((mulcheck_evals, r_x))
+	}
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -144,6 +168,8 @@ pub enum Error {
 	FRI(#[from] fri::Error),
 	#[error("PCS error: {0}")]
 	PCS(#[from] pcs::Error),
+	#[error("Sumcheck error: {0}")]
+	Sumcheck(#[from] sumcheck::Error),
 	#[error("Math error: {0}")]
 	Math(#[from] binius_math::Error),
 	#[error("wiring error: {0}")]
@@ -152,4 +178,6 @@ pub enum Error {
 	Transcript(#[from] binius_transcript::Error),
 	#[error("incorrect public inputs length: expected {expected}, got {actual}")]
 	IncorrectPublicInputLength { expected: usize, actual: usize },
+	#[error("incorrect reduction output of the multiplication check")]
+	IncorrectMulCheckEvaluation,
 }
