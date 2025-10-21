@@ -2,6 +2,7 @@
 
 mod error;
 pub mod pcs;
+mod wiring;
 
 use std::marker::PhantomData;
 
