@@ -2,6 +2,7 @@
 
 pub mod config;
 pub mod pcs;
+pub mod wiring;
 
 use binius_math::{
 	BinarySubspace,
@@ -12,7 +13,7 @@ use binius_transcript::{
 	VerifierTranscript,
 	fiat_shamir::{CanSample, Challenger},
 };
-use binius_utils::DeserializeBytes;
+use binius_utils::{DeserializeBytes, checked_arithmetics::checked_log_2};
 use binius_verifier::{
 	fri::{self, FRIParams, estimate_optimal_arity},
 	hash::PseudoCompressionFunction,
@@ -94,28 +95,40 @@ where
 			tracing::info_span!("Verify", operation = "verify", perfetto_category = "operation")
 				.entered();
 
+		let cs = self.constraint_system();
+
 		// Check that the public input length is correct
-		if public.len() != 1 << self.constraint_system.log_public() {
+		if public.len() != 1 << cs.log_public() {
 			return Err(Error::IncorrectPublicInputLength {
 				expected: 1 << self.constraint_system.log_public(),
 				actual: public.len(),
 			});
 		}
 
+		let log_mul_constraints = checked_log_2(cs.mul_constraints().len());
+
 		// Receive the trace commitment.
 		let trace_commitment = transcript.message().read::<Output<MerkleHash>>()?;
 
 		// Sample random evaluation point
-		let eval_point = transcript.sample_vec(self.constraint_system.log_size() as usize);
+		let r_x = transcript.sample_vec(log_mul_constraints);
 
 		// Read the claimed evaluation
-		let evaluation_claim = transcript.message().read::<B128>()?;
+		let mulcheck_evals = transcript.message().read_vec(3)?;
+
+		// Verify the wiring reduction
+		let wiring_output = wiring::verify(cs.log_size() as usize, &mulcheck_evals, transcript)?;
+		wiring::check_eval(&self.constraint_system, &r_x, &wiring_output)?;
+
+		let wiring::Output {
+			r_y, witness_eval, ..
+		} = wiring_output;
 
 		// Verify the PCS opening
 		pcs::verify(
 			transcript,
-			evaluation_claim,
-			&eval_point,
+			witness_eval,
+			&r_y,
 			trace_commitment,
 			&self.fri_params,
 			&self.merkle_scheme,
@@ -133,6 +146,8 @@ pub enum Error {
 	PCS(#[from] pcs::Error),
 	#[error("Math error: {0}")]
 	Math(#[from] binius_math::Error),
+	#[error("wiring error: {0}")]
+	Wiring(#[from] wiring::Error),
 	#[error("Transcript error: {0}")]
 	Transcript(#[from] binius_transcript::Error),
 	#[error("incorrect public inputs length: expected {expected}, got {actual}")]

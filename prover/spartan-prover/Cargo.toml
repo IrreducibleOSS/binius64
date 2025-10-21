@@ -23,7 +23,9 @@ tracing.workspace = true
 
 [dev-dependencies]
 anyhow.workspace = true
+binius-math = { path = "../../verifier/math", features = ["test-utils"] }
 rand = { workspace = true, features = ["thread_rng"] }
+smallvec.workspace = true
 
 [features]
 default = ["rayon"]

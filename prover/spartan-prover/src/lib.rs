@@ -2,13 +2,15 @@
 
 mod error;
 pub mod pcs;
+mod wiring;
 
 use std::marker::PhantomData;
 
 use binius_field::{PackedExtension, PackedField};
 use binius_math::{
 	FieldBuffer,
-	multilinear::evaluate::evaluate,
+	inner_product::inner_product_buffers,
+	multilinear::eq::eq_ind_partial_eval,
 	ntt::{NeighborsLastMultiThread, domain_context::GenericPreExpanded},
 };
 use binius_prover::{
@@ -21,9 +23,11 @@ use binius_transcript::{
 	ProverTranscript,
 	fiat_shamir::{CanSample, Challenger},
 };
-use binius_utils::{SerializeBytes, rayon::prelude::*};
+use binius_utils::{SerializeBytes, checked_arithmetics::checked_log_2, rayon::prelude::*};
 use digest::{Digest, FixedOutputReset, Output, core_api::BlockSizeUser};
 pub use error::*;
+
+use crate::wiring::WiringTranspose;
 
 /// Struct for proving instances of a particular constraint system.
 ///
@@ -38,6 +42,7 @@ where
 	verifier: Verifier<ParallelMerkleHasher::Digest, ParallelMerkleCompress::Compression>,
 	ntt: NeighborsLastMultiThread<GenericPreExpanded<B128>>,
 	merkle_prover: BinaryMerkleTreeProver<B128, ParallelMerkleHasher, ParallelMerkleCompress>,
+	wiring_transpose: WiringTranspose,
 	_p_marker: PhantomData<P>,
 }
 
@@ -64,10 +69,15 @@ where
 
 		let merkle_prover = BinaryMerkleTreeProver::<_, ParallelMerkleHasher, _>::new(compression);
 
+		// Compute wiring transpose from constraint system
+		let cs = verifier.constraint_system();
+		let wiring_transpose = WiringTranspose::transpose(cs.size(), cs.mul_constraints());
+
 		Ok(Prover {
 			verifier,
 			ntt,
 			merkle_prover,
+			wiring_transpose,
 			_p_marker: PhantomData,
 		})
 	}
@@ -81,8 +91,10 @@ where
 			tracing::info_span!("Prove", operation = "prove", perfetto_category = "operation")
 				.entered();
 
+		let cs = self.verifier.constraint_system();
+
 		// Check that the witness length matches the constraint system
-		let expected_size = self.verifier.constraint_system().size();
+		let expected_size = cs.size();
 		if witness.len() != expected_size {
 			return Err(Error::ArgumentError {
 				arg: "witness".to_string(),
@@ -90,10 +102,11 @@ where
 			});
 		}
 
+		let log_mul_constraints = checked_log_2(cs.mul_constraints().len());
+
 		// Pack witness into field elements
 		// TODO: Populate witness directly into a FieldBuffer
-		let witness_packed =
-			pack_witness::<P>(self.verifier.constraint_system().log_size() as usize, witness);
+		let witness_packed = pack_witness::<P>(cs.log_size() as usize, witness);
 
 		// Commit the witness
 		let CommitOutput {
@@ -108,15 +121,30 @@ where
 		)?;
 		transcript.message().write(&trace_commitment);
 
+		let mulcheck_witness =
+			wiring::build_mulcheck_witness(cs.mul_constraints(), witness_packed.to_ref());
+
 		// Sample random evaluation point
-		let eval_point =
-			transcript.sample_vec(self.verifier.constraint_system().log_size() as usize);
+		let r_x = transcript.sample_vec(log_mul_constraints);
 
-		// Compute the evaluation claim
-		let evaluation_claim = evaluate(&witness_packed, &eval_point)?;
+		let r_x_tensor = eq_ind_partial_eval::<P>(&r_x);
+		let mulcheck_evals = [
+			inner_product_buffers(&mulcheck_witness.a, &r_x_tensor),
+			inner_product_buffers(&mulcheck_witness.b, &r_x_tensor),
+			inner_product_buffers(&mulcheck_witness.c, &r_x_tensor),
+		];
 
-		// Write the evaluation claim to the transcript
-		transcript.message().write(&evaluation_claim);
+		transcript.message().write_slice(&mulcheck_evals);
+
+		// Run wiring check protocol
+		let wiring_output = wiring::prove(
+			&self.wiring_transpose,
+			&r_x,
+			witness_packed.clone(),
+			&mulcheck_evals,
+			transcript,
+		)?;
+		let wiring::Output { r_y, witness_eval } = wiring_output;
 
 		// Prove the evaluation
 		let pcs_prover =
@@ -125,8 +153,8 @@ where
 			&codeword,
 			&codeword_committed,
 			witness_packed,
-			&eval_point,
-			evaluation_claim,
+			&r_y,
+			witness_eval,
 			transcript,
 		)?;
 
