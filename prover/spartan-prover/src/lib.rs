@@ -5,7 +5,7 @@ pub mod pcs;
 
 use std::marker::PhantomData;
 
-use binius_field::{PackedExtension, PackedField, UnderlierWithBitOps, WithUnderlier};
+use binius_field::{PackedExtension, PackedField};
 use binius_math::{
 	FieldBuffer,
 	multilinear::evaluate::evaluate,
@@ -44,9 +44,7 @@ where
 impl<P, MerkleHash, ParallelMerkleCompress, ParallelMerkleHasher>
 	Prover<P, ParallelMerkleCompress, ParallelMerkleHasher>
 where
-	P: PackedField<Scalar = B128>
-		+ PackedExtension<B128>
-		+ WithUnderlier<Underlier: UnderlierWithBitOps>,
+	P: PackedField<Scalar = B128> + PackedExtension<B128>,
 	MerkleHash: Digest + BlockSizeUser + FixedOutputReset,
 	ParallelMerkleHasher: ParallelDigest<Digest = MerkleHash>,
 	ParallelMerkleCompress: ParallelPseudoCompression<Output<MerkleHash>, 2>,
