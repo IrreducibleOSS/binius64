@@ -12,81 +12,10 @@ use binius_utils::rayon::{
 	slice::ParallelSliceMut,
 };
 
-use super::{AdditiveNTT, DomainContext};
+use super::{AdditiveNTT, DomainContext, reference::NeighborsLastReference};
 use crate::{FieldSlice, FieldSliceMut};
 
 const DEFAULT_LOG_BASE_LEN: usize = 8;
-
-/// Reference implementation of [`AdditiveNTT`].
-///
-/// This is slow. Do not use in production.
-pub struct NeighborsLastReference<DC> {
-	pub domain_context: DC,
-}
-
-impl<DC: DomainContext> AdditiveNTT for NeighborsLastReference<DC> {
-	type Field = DC::Field;
-
-	fn forward_transform<P: PackedField<Scalar = Self::Field>>(
-		&self,
-		mut data: FieldSliceMut<P>,
-		skip_early: usize,
-		skip_late: usize,
-	) {
-		let log_d = data.log_len();
-
-		for layer in skip_early..(log_d - skip_late) {
-			let num_blocks = 1 << layer;
-			let block_size_half = 1 << (log_d - layer - 1);
-			for block in 0..num_blocks {
-				let twiddle = self.domain_context.twiddle(layer, block);
-				let block_start = block << (log_d - layer);
-				for idx0 in block_start..(block_start + block_size_half) {
-					let idx1 = block_size_half | idx0;
-					// perform butterfly
-					let mut u = data.get_checked(idx0).unwrap();
-					let mut v = data.get_checked(idx1).unwrap();
-					u += v * twiddle;
-					v += u;
-					data.set_checked(idx0, u).unwrap();
-					data.set_checked(idx1, v).unwrap();
-				}
-			}
-		}
-	}
-
-	fn inverse_transform<P: PackedField<Scalar = Self::Field>>(
-		&self,
-		mut data: FieldSliceMut<P>,
-		skip_early: usize,
-		skip_late: usize,
-	) {
-		let log_d = data.log_len();
-
-		for layer in (skip_early..(log_d - skip_late)).rev() {
-			let num_blocks = 1 << layer;
-			let block_size_half = 1 << (log_d - layer - 1);
-			for block in 0..num_blocks {
-				let twiddle = self.domain_context.twiddle(layer, block);
-				let block_start = block << (log_d - layer);
-				for idx0 in block_start..(block_start + block_size_half) {
-					let idx1 = block_size_half | idx0;
-					// perform butterfly
-					let mut u = data.get_checked(idx0).unwrap();
-					let mut v = data.get_checked(idx1).unwrap();
-					v += u;
-					u += v * twiddle;
-					data.set_checked(idx0, u).unwrap();
-					data.set_checked(idx1, v).unwrap();
-				}
-			}
-		}
-	}
-
-	fn domain_context(&self) -> &impl DomainContext<Field = DC::Field> {
-		&self.domain_context
-	}
-}
 
 /// Runs a **part** of an NTT butterfly network, in depth-first order.
 ///
