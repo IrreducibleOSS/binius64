@@ -77,7 +77,7 @@ fn main() -> Result<()> {
 			.context("Failed to setup verifier")?;
 
 	// Create a verifier transcript from the serialized proof data
-	let (data, _) = proof.into_owned();
+	let (data, _challenger_type) = proof.into_owned();
 	let mut verifier_transcript = VerifierTranscript::new(StdChallenger::default(), data);
 
 	// Verify
