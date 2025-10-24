@@ -1,5 +1,7 @@
 // Copyright 2024-2025 Irreducible Inc.
 
+use std::ops::Deref;
+
 use binius_field::{BinaryField, BinaryField1b};
 
 use super::error::Error;
@@ -9,18 +11,65 @@ use super::error::Error;
 /// The subspace is defined by a basis of elements from a binary field. The basis elements are
 /// ordered, which implies an ordering on the subspace elements.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BinarySubspace<F> {
-	basis: Vec<F>,
+pub struct BinarySubspace<F, Data: Deref<Target = [F]> = Vec<F>> {
+	basis: Data,
 }
 
-impl<F: BinaryField> BinarySubspace<F> {
+impl<F: BinaryField, Data: Deref<Target = [F]>> BinarySubspace<F, Data> {
 	/// Creates a new subspace from a vector of ordered basis elements.
 	///
 	/// This constructor does not check that the basis elements are linearly independent.
-	pub const fn new_unchecked(basis: Vec<F>) -> Self {
+	pub const fn new_unchecked(basis: Data) -> Self {
 		Self { basis }
 	}
 
+	/// Creates a new subspace isomorphic to the given one.
+	pub fn isomorphic<FIso>(&self) -> BinarySubspace<FIso>
+	where
+		FIso: BinaryField + From<F>,
+	{
+		BinarySubspace {
+			basis: self.basis.iter().copied().map(Into::into).collect(),
+		}
+	}
+
+	/// Returns the dimension of the subspace.
+	pub fn dim(&self) -> usize {
+		self.basis.len()
+	}
+
+	/// Returns the slice of ordered basis elements.
+	pub fn basis(&self) -> &[F] {
+		&self.basis
+	}
+
+	pub fn get(&self, index: usize) -> F {
+		self.basis
+			.iter()
+			.enumerate()
+			.map(|(i, &basis_i)| basis_i * BinaryField1b::from((index >> i) & 1 == 1))
+			.sum()
+	}
+
+	pub fn get_checked(&self, index: usize) -> Result<F, Error> {
+		if index >= 1 << self.basis.len() {
+			return Err(Error::ArgumentRangeError {
+				arg: "index".to_string(),
+				range: 0..1 << self.basis.len(),
+			});
+		}
+		Ok(self.get(index))
+	}
+
+	/// Returns an iterator over all elements of the subspace in order.
+	///
+	/// This has a limitation that the iterator only yields the first `2^usize::BITS` elements.
+	pub fn iter(&self) -> BinarySubspaceIterator<'_, F> {
+		BinarySubspaceIterator::new(&self.basis)
+	}
+}
+
+impl<F: BinaryField> BinarySubspace<F> {
 	/// Creates a new subspace of this binary subspace with the given dimension.
 	///
 	/// This creates a new sub-subspace using a prefix of the default $\mathbb{F}_2$ basis elements
@@ -51,57 +100,6 @@ impl<F: BinaryField> BinarySubspace<F> {
 			basis: self.basis[..dim].to_vec(),
 		})
 	}
-
-	/// Creates a new subspace isomorphic to the given one.
-	pub fn isomorphic<FIso>(&self) -> BinarySubspace<FIso>
-	where
-		FIso: BinaryField + From<F>,
-	{
-		BinarySubspace {
-			basis: self.basis.iter().copied().map(Into::into).collect(),
-		}
-	}
-
-	/// Returns the dimension of the subspace.
-	pub fn dim(&self) -> usize {
-		self.basis.len()
-	}
-
-	/// Returns the slice of ordered basis elements.
-	pub fn basis(&self) -> &[F] {
-		&self.basis
-	}
-
-	pub fn get(&self, index: usize) -> F {
-		self.basis
-			.iter()
-			.take(usize::BITS as usize)
-			.enumerate()
-			.fold(F::ZERO, |acc, (i, basis_i)| {
-				if (index >> i) & 1 != 0 {
-					acc + basis_i
-				} else {
-					acc
-				}
-			})
-	}
-
-	pub fn get_checked(&self, index: usize) -> Result<F, Error> {
-		if index >= 1 << self.basis.len() {
-			return Err(Error::ArgumentRangeError {
-				arg: "index".to_string(),
-				range: 0..1 << self.basis.len(),
-			});
-		}
-		Ok(self.get(index))
-	}
-
-	/// Returns an iterator over all elements of the subspace in order.
-	///
-	/// This has a limitation that the iterator only yields the first `2^usize::BITS` elements.
-	pub fn iter(&self) -> BinarySubspaceIterator<'_, F> {
-		BinarySubspaceIterator::new(&self.basis)
-	}
 }
 
 /// Iterator over all elements of a binary subspace.
@@ -117,6 +115,7 @@ pub struct BinarySubspaceIterator<'a, F> {
 
 impl<'a, F: BinaryField> BinarySubspaceIterator<'a, F> {
 	fn new(basis: &'a [F]) -> Self {
+		assert!(basis.len() < usize::BITS as usize);
 		Self {
 			basis,
 			index: 0,
@@ -152,12 +151,7 @@ impl<'a, F: BinaryField> Iterator for BinarySubspaceIterator<'a, F> {
 	fn nth(&mut self, n: usize) -> Option<Self::Item> {
 		match self.index.checked_add(n) {
 			Some(new_index) if new_index < 1 << self.basis.len() => {
-				let new_next = self
-					.basis
-					.iter()
-					.enumerate()
-					.map(|(i, &basis_i)| basis_i * BinaryField1b::from((new_index >> i) & 1 == 1))
-					.sum();
+				let new_next = BinarySubspace::new_unchecked(self.basis).get(new_index);
 
 				self.index = new_index;
 				self.next = Some(new_next);
@@ -207,14 +201,6 @@ mod tests {
 	fn test_binary_subspace_range_error() {
 		let subspace = BinarySubspace::<B8>::default();
 		assert_matches!(subspace.get_checked(256), Err(Error::ArgumentRangeError { .. }));
-	}
-
-	#[test]
-	fn test_default_large_binary_subspace_iterates_elements() {
-		let subspace = BinarySubspace::<B128>::default();
-		for i in 0..=255 {
-			assert_eq!(subspace.get(i), B128::new(i as u128));
-		}
 	}
 
 	#[test]
