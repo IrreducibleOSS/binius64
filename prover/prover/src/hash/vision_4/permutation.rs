@@ -100,6 +100,52 @@ pub fn batch_permutation<const N: usize, const MN: usize>(
 	}
 }
 
+#[inline]
+pub fn batch_poseidon_permutation<const N: usize, const MN: usize>(
+	states: &mut [Ghash; MN],
+	scratchpad: &mut [Ghash],
+) {
+	batch_full_round::<N, MN>(states, scratchpad, 0);
+	batch_full_round::<N, MN>(states, scratchpad, 1);
+	for i in 2..2 + 43 {
+		batch_partial_round::<N, MN>(states, scratchpad, i % 16);
+	}
+	batch_full_round::<N, MN>(states, scratchpad, 2 + 10);
+	batch_full_round::<N, MN>(states, scratchpad, 2 + 11);
+}
+
+#[inline]
+fn batch_full_round<const N: usize, const MN: usize>(
+	states: &mut [Ghash; MN],
+	scratchpad: &mut [Ghash],
+	round_constants_idx: usize,
+) {
+	// First half-round: inversion → inverse transform → MDS → constants
+	batch_invert::<MN>(states, scratchpad);
+	batch_mds_mul::<N, MN>(states);
+	batch_constants_add::<N, MN>(states, &ROUND_CONSTANTS[round_constants_idx]);
+}
+
+#[inline]
+fn batch_partial_round<const N: usize, const MN: usize>(
+	states: &mut [Ghash; MN],
+	scratchpad: &mut [Ghash],
+	round_constants_idx: usize,
+) {
+	// First half-round: inversion → inverse transform → MDS → constants
+	for i in 0..N {
+		let x = states[i];
+		let x_2 = x.square();
+		let x_3 = x_2 * x;
+		let x_6 = x_3.square();
+		let x_7 = x_6 * x;
+		states[i] = x_7;
+	}
+	// batch_inverse_transform::<N, MN>(states);
+	batch_mds_mul::<N, MN>(states);
+	batch_constants_add::<N, MN>(states, &ROUND_CONSTANTS[round_constants_idx]);
+}
+
 #[cfg(test)]
 mod tests {
 	use std::array;
