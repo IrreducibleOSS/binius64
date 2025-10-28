@@ -5,18 +5,26 @@
 use binius_field::BinaryField;
 
 use super::DomainContext;
-use crate::BinarySubspace;
+use crate::{BinarySubspace, binary_subspace::BinarySubspaceIterator};
 
-/// Given a basis $S^{(0)}$, computes the evaluations of the normalized subspace polynomials
-/// $hat{W}_i$ on the basis.
+/// Given an $\ell$-dimensional subspace, this computes the evaluations of the normalized subspace
+/// polynomials $hat{W}_i$ on the basis.
+///
+/// The dimension of the subspace is $\ell$. This returns a vector of $\ell$ vectors. The $i$th
+/// vector contains $\ell - i$ entries and contains
+///
+/// $$
+/// \left( \hat{W}_i(\beta_j) \right)_{j = i}^{\ell - 1}
+/// $$
 fn generate_evals_from_subspace<F: BinaryField>(subspace: &BinarySubspace<F>) -> Vec<Vec<F>> {
-	let mut evals = Vec::with_capacity(subspace.dim());
+	let l = subspace.dim();
+	let mut evals = Vec::with_capacity(l);
 
 	// push $[W_0 (\beta_0), W_0 (\beta_1), ...] = [\beta_0, \beta_1, ...]$
 	evals.push(subspace.basis().to_vec());
-	for i in 1..subspace.dim() {
+	for i in 1..l {
 		// push $[W_i (\beta_i), W_i (\beta_(i+1)), ...]$
-		evals.push(Vec::new());
+		evals.push(Vec::with_capacity(l - i));
 		for k in 1..evals[i - 1].len() {
 			// $W_i (X) = W_(i-1) (X) * [ W_(i-1) (X) + W_(i-1) (\beta_(i-1)) ]$
 			// hence: $W_i (\beta_j) = W_(i-1) (\beta_(j)) * [ W_(i-1) (\beta_j) + W_(i-1)
@@ -34,8 +42,6 @@ fn generate_evals_from_subspace<F: BinaryField>(subspace: &BinarySubspace<F>) ->
 		}
 	}
 
-	assert_eq!(evals.len(), subspace.dim());
-
 	evals
 }
 
@@ -47,7 +53,13 @@ fn generate_evals_from_subspace<F: BinaryField>(subspace: &BinarySubspace<F>) ->
 /// selected twiddles.
 #[derive(Debug)]
 pub struct GenericOnTheFly<F> {
-	/// The $i$'th vector stores $[hat{W}_i (\beta_i), \hat{W}_i (\beta_(i+1)), ...]$.
+	/// The subspace polynomial evaluations.
+	///
+	/// Contains $\ell$ vectors. The $i$th vector stores
+	///
+	/// $$
+	/// \left( \hat{W}_i(\beta_j) \right)_{j = i}^{\ell - 1}.
+	/// $$
 	evals: Vec<Vec<F>>,
 }
 
@@ -56,8 +68,9 @@ impl<F: BinaryField> GenericOnTheFly<F> {
 	///
 	/// This will _not_ precompute the twiddles; instead they will be computed on-the-fly.
 	pub fn generate_from_subspace(subspace: &BinarySubspace<F>) -> Self {
-		let evals = generate_evals_from_subspace(subspace);
-		Self { evals }
+		Self {
+			evals: generate_evals_from_subspace(subspace),
+		}
 	}
 }
 
@@ -75,18 +88,9 @@ impl<F: BinaryField> DomainContext for GenericOnTheFly<F> {
 		BinarySubspace::new_unchecked(self.evals[self.log_domain_size() - i].clone())
 	}
 
-	fn twiddle(&self, layer: usize, mut block: usize) -> F {
+	fn twiddle(&self, layer: usize, block: usize) -> F {
 		let v = &self.evals[self.log_domain_size() - layer - 1];
-		let mut twiddle = F::ZERO;
-
-		let mut i = 1;
-		while block != 0 {
-			twiddle += v[i] * binius_field::BinaryField1b::from((block & 1) == 1);
-			i += 1;
-			block >>= 1;
-		}
-
-		twiddle
+		BinarySubspace::new_unchecked(&v[1..]).get(block)
 	}
 }
 
@@ -144,6 +148,13 @@ impl<F: BinaryField> DomainContext for GenericPreExpanded<F> {
 
 	fn twiddle(&self, layer: usize, block: usize) -> F {
 		self.expanded[layer][block]
+	}
+
+	fn iter_twiddles(&self, layer: usize, log_step_by: usize) -> impl Iterator<Item = F> {
+		self.expanded[layer]
+			.iter()
+			.step_by(1 << log_step_by)
+			.copied()
 	}
 }
 
@@ -221,7 +232,7 @@ fn gao_mateer_basis<F: BinaryField + TraceOneElement>(num_basis_elements: usize)
 /// selected twiddles.
 #[derive(Debug)]
 pub struct GaoMateerOnTheFly<F> {
-	/// Stores $[\beta_0, \beta_1, ...]$.
+	/// Stores $[\beta_0, ..., \beta_{\ell-1}]$.
 	basis: Vec<F>,
 }
 
@@ -236,9 +247,9 @@ impl<F: BinaryField + TraceOneElement> GaoMateerOnTheFly<F> {
 	///   does **not** work with $\mathbb{F}_{2^3}$, but it works with $\mathbb{F}_{2^4}$.
 	/// - `log_domain_size` must be nonzero
 	pub fn generate(log_domain_size: usize) -> Self {
-		let basis: Vec<F> = gao_mateer_basis(log_domain_size);
-
-		Self { basis }
+		Self {
+			basis: gao_mateer_basis(log_domain_size),
+		}
 	}
 }
 
@@ -253,17 +264,12 @@ impl<F: BinaryField> DomainContext for GaoMateerOnTheFly<F> {
 		BinarySubspace::new_unchecked(self.basis[..i].to_vec())
 	}
 
-	fn twiddle(&self, _layer: usize, mut block: usize) -> F {
-		let mut twiddle = F::ZERO;
+	fn twiddle(&self, layer: usize, block: usize) -> F {
+		BinarySubspace::new_unchecked(&self.basis[1..=layer]).get(block)
+	}
 
-		let mut i = 1;
-		while block != 0 {
-			twiddle += self.basis[i] * binius_field::BinaryField1b::from((block & 1) == 1);
-			i += 1;
-			block >>= 1;
-		}
-
-		twiddle
+	fn iter_twiddles(&self, layer: usize, log_step_by: usize) -> impl Iterator<Item = F> + '_ {
+		BinarySubspaceIterator::new(&self.basis[1 + log_step_by..=layer])
 	}
 }
 
@@ -322,11 +328,19 @@ impl<F: BinaryField> DomainContext for GaoMateerPreExpanded<F> {
 	fn twiddle(&self, _layer: usize, block: usize) -> F {
 		self.expanded[block]
 	}
+
+	fn iter_twiddles(&self, layer: usize, log_step_by: usize) -> impl Iterator<Item = F> {
+		self.expanded[..1 << layer]
+			.iter()
+			.step_by(1 << log_step_by)
+			.copied()
+	}
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::test_utils::B128;
 
 	fn test_equivalence<F: BinaryField>(
 		dc_1: &impl DomainContext<Field = F>,
@@ -349,12 +363,11 @@ mod tests {
 	#[test]
 	fn test_generic() {
 		const LOG_SIZE: usize = 5;
-		type F = binius_field::BinaryField128bGhash;
 
 		let subspace = BinarySubspace::with_dim(LOG_SIZE).unwrap();
 
-		let dc_otf = GenericOnTheFly::<F>::generate_from_subspace(&subspace);
-		let dc_pre = GenericPreExpanded::<F>::generate_from_subspace(&subspace);
+		let dc_otf = GenericOnTheFly::<B128>::generate_from_subspace(&subspace);
+		let dc_pre = GenericPreExpanded::<B128>::generate_from_subspace(&subspace);
 
 		test_equivalence(&dc_otf, &dc_pre, LOG_SIZE);
 	}
@@ -362,14 +375,50 @@ mod tests {
 	#[test]
 	fn test_gao_mateer() {
 		const LOG_SIZE: usize = 5;
-		type F = binius_field::BinaryField128bGhash;
 
-		let dc_gm_otf = GaoMateerOnTheFly::<F>::generate(LOG_SIZE);
-		let dc_gm_pre = GaoMateerPreExpanded::<F>::generate(LOG_SIZE);
+		let dc_gm_otf = GaoMateerOnTheFly::<B128>::generate(LOG_SIZE);
+		let dc_gm_pre = GaoMateerPreExpanded::<B128>::generate(LOG_SIZE);
 		let dc_generic_otf =
-			GenericOnTheFly::<F>::generate_from_subspace(&dc_gm_otf.subspace(LOG_SIZE));
+			GenericOnTheFly::<B128>::generate_from_subspace(&dc_gm_otf.subspace(LOG_SIZE));
 
 		test_equivalence(&dc_gm_otf, &dc_gm_pre, LOG_SIZE);
 		test_equivalence(&dc_gm_otf, &dc_generic_otf, LOG_SIZE);
+	}
+
+	#[test]
+	fn test_iter_layer() {
+		const LOG_SIZE: usize = 7;
+
+		let dc_gm_otf = GaoMateerOnTheFly::<B128>::generate(LOG_SIZE);
+		let dc_gm_pre = GaoMateerPreExpanded::<B128>::generate(LOG_SIZE);
+		let subspace = BinarySubspace::with_dim(LOG_SIZE).unwrap();
+		let dc_generic_otf = GenericOnTheFly::<B128>::generate_from_subspace(&subspace);
+		let dc_generic_pre = GenericPreExpanded::<B128>::generate_from_subspace(&subspace);
+
+		// Test that iter_layer returns the same values as calling twiddle individually
+		for layer in 0..LOG_SIZE {
+			let expected: Vec<_> = (0..1 << layer)
+				.map(|block| dc_gm_pre.twiddle(layer, block))
+				.collect();
+
+			assert_eq!(
+				dc_gm_otf.iter_twiddles(layer, 0).collect::<Vec<_>>(),
+				expected,
+				"GaoMateerOnTheFly iter_layer mismatch at layer {}",
+				layer
+			);
+			assert_eq!(
+				dc_gm_pre.iter_twiddles(layer, 0).collect::<Vec<_>>(),
+				expected,
+				"GaoMateerPreExpanded iter_layer mismatch at layer {}",
+				layer
+			);
+			assert_eq!(
+				dc_generic_otf.iter_twiddles(layer, 0).collect::<Vec<_>>(),
+				dc_generic_pre.iter_twiddles(layer, 0).collect::<Vec<_>>(),
+				"Generic iter_layer mismatch at layer {}",
+				layer
+			);
+		}
 	}
 }
