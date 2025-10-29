@@ -10,13 +10,39 @@ use rand::prelude::*;
 
 use super::{AdditiveNTT, DomainContext};
 use crate::{
-	BinarySubspace,
+	binary_subspace::BinarySubspace,
+	field_buffer::FieldSliceMut,
 	ntt::{
 		NeighborsLastMultiThread, NeighborsLastReference, NeighborsLastSingleThread,
-		domain_context::{GaoMateerPreExpanded, GenericPreExpanded, TraceOneElement},
+		domain_context::{
+			GaoMateerPreExpanded, GenericOnTheFly, GenericPreExpanded, TraceOneElement,
+		},
 	},
-	test_utils::random_field_buffer,
+	test_utils::{B128, Packed128b, random_field_buffer},
 };
+
+fn test_transform_equivalence<P: PackedField>(
+	mut rng: impl Rng,
+	reference: impl Fn(FieldSliceMut<P>, usize, usize),
+	transform: impl Fn(FieldSliceMut<P>, usize, usize),
+	log_n: usize,
+) {
+	let half_rounds = log_n / 2;
+	for skip_early in [0, 1, half_rounds] {
+		for skip_late in [0, 1, log_n - half_rounds] {
+			if skip_early + skip_late > log_n {
+				continue;
+			}
+
+			let mut data_a = random_field_buffer::<P>(&mut rng, log_n);
+			let mut data_b = data_a.clone();
+
+			reference(data_a.to_mut(), skip_early, skip_late);
+			transform(data_b.to_mut(), skip_early, skip_late);
+			assert_eq!(data_a, data_b);
+		}
+	}
+}
 
 fn test_equivalence<P: PackedField>(
 	ntt_a: &impl AdditiveNTT<Field = P::Scalar>,
@@ -24,58 +50,20 @@ fn test_equivalence<P: PackedField>(
 ) where
 	P::Scalar: BinaryField,
 {
-	// log_d = 8
-	{
-		let log_d = 8;
+	let mut rng = StdRng::seed_from_u64(0);
 
-		let mut rng = StdRng::seed_from_u64(0);
-		let mut data_a = random_field_buffer::<P>(&mut rng, log_d);
-		let mut data_b = data_a.clone();
-
-		for skip_early in [0, 3, 5, 7] {
-			for skip_late in [0, 3, 5, 7] {
-				if skip_early + skip_late > log_d {
-					continue;
-				}
-
-				ntt_a.forward_transform(data_a.to_mut(), skip_early, skip_late);
-				ntt_b.forward_transform(data_b.to_mut(), skip_early, skip_late);
-				assert_eq!(data_a, data_b)
-			}
-		}
-	}
-
-	// log_d = 1
-	{
-		let log_d = 1;
-		let mut rng = StdRng::seed_from_u64(0);
-		let mut data_a = random_field_buffer::<P>(&mut rng, log_d);
-		let mut data_b = data_a.clone();
-
-		ntt_a.forward_transform(data_a.to_mut(), 0, 0);
-		ntt_b.forward_transform(data_b.to_mut(), 0, 0);
-		assert_eq!(data_a, data_b);
-
-		ntt_a.forward_transform(data_a.to_mut(), 1, 0);
-		ntt_b.forward_transform(data_b.to_mut(), 1, 0);
-		assert_eq!(data_a, data_b);
-
-		ntt_a.forward_transform(data_a.to_mut(), 0, 1);
-		ntt_b.forward_transform(data_b.to_mut(), 0, 1);
-		assert_eq!(data_a, data_b);
-	}
-
-	// log_d = 0 (i.e. no transformation should happen)
-	{
-		let log_d = 0;
-		let mut rng = StdRng::seed_from_u64(0);
-		let mut data_a = random_field_buffer::<P>(&mut rng, log_d);
-		let mut data_b = data_a.clone();
-
-		ntt_a.forward_transform(data_a.to_mut(), 0, 0);
-		ntt_b.forward_transform(data_b.to_mut(), 0, 0);
-		assert_eq!(data_a, data_b);
-	}
+	test_transform_equivalence::<P>(
+		&mut rng,
+		|data, skip_early, skip_late| ntt_a.forward_transform(data, skip_early, skip_late),
+		|data, skip_early, skip_late| ntt_b.forward_transform(data, skip_early, skip_late),
+		1,
+	);
+	test_transform_equivalence::<P>(
+		&mut rng,
+		|data, skip_early, skip_late| ntt_a.forward_transform(data, skip_early, skip_late),
+		|data, skip_early, skip_late| ntt_b.forward_transform(data, skip_early, skip_late),
+		8,
+	);
 }
 
 fn test_equivalence_ntts<P: PackedField>(
@@ -119,6 +107,90 @@ fn test_equivalence_ntts<P: PackedField>(
 	test_equivalence::<P>(&ntt_ref, &ntt_multi_3_1);
 	test_equivalence::<P>(&ntt_ref, &ntt_multi_3_2);
 	test_equivalence::<P>(&ntt_ref, &ntt_multi_3_1000);
+}
+
+trait NTTFactory<F: BinaryField> {
+	fn create<DC: DomainContext<Field = F> + Sync>(
+		&self,
+		domain_context: DC,
+	) -> impl AdditiveNTT<Field = F>;
+}
+
+struct NeighborsLastReferenceFactory;
+
+impl<F: BinaryField> NTTFactory<F> for NeighborsLastReferenceFactory {
+	fn create<DC: DomainContext<Field = F> + Sync>(
+		&self,
+		domain_context: DC,
+	) -> impl AdditiveNTT<Field = F> {
+		NeighborsLastReference { domain_context }
+	}
+}
+
+struct NeighborsLastSingleThreadFactory {
+	log_base_len: usize,
+}
+
+impl<F: BinaryField> NTTFactory<F> for NeighborsLastSingleThreadFactory {
+	fn create<DC: DomainContext<Field = F> + Sync>(
+		&self,
+		domain_context: DC,
+	) -> impl AdditiveNTT<Field = F> {
+		NeighborsLastSingleThread {
+			domain_context,
+			log_base_len: self.log_base_len,
+		}
+	}
+}
+
+struct NeighborsLastMultiThreadFactory {
+	log_base_len: usize,
+	log_num_shares: usize,
+}
+
+impl<F: BinaryField> NTTFactory<F> for NeighborsLastMultiThreadFactory {
+	fn create<DC: DomainContext<Field = F> + Sync>(
+		&self,
+		domain_context: DC,
+	) -> impl AdditiveNTT<Field = F> {
+		NeighborsLastMultiThread {
+			domain_context,
+			log_base_len: self.log_base_len,
+			log_num_shares: self.log_num_shares,
+		}
+	}
+}
+
+#[rstest::rstest]
+#[case::neighbors_last_reference(NeighborsLastReferenceFactory)]
+#[case::neighbors_last_single_thread(NeighborsLastSingleThreadFactory { log_base_len: 6 })]
+#[case::neighbors_last_multi_thread_1_share(
+	NeighborsLastMultiThreadFactory { log_base_len: 3, log_num_shares: 1 }
+)]
+#[case::neighbors_last_multi_thread_1000_share(
+	NeighborsLastMultiThreadFactory { log_base_len: 3, log_num_shares: 1000 }
+)]
+fn test_forward_transform_is_identity(#[case] ntt_factory: impl NTTFactory<B128>) {
+	fn test_forward_transform_is_identity_helper<F, P>(ntt_factory: impl NTTFactory<F>)
+	where
+		F: BinaryField,
+		P: PackedField<Scalar = F>,
+	{
+		let subspace = BinarySubspace::<F>::with_dim(1).unwrap();
+		let domain_context = GenericOnTheFly::generate_from_subspace(&subspace);
+
+		let ntt = ntt_factory.create(domain_context);
+
+		let mut rng = StdRng::seed_from_u64(0);
+		let data = random_field_buffer::<P>(&mut rng, 0);
+		let mut data_clone = data.clone();
+
+		ntt.forward_transform(data_clone.to_mut(), 0, 0);
+
+		assert_eq!(data, data_clone);
+	}
+
+	test_forward_transform_is_identity_helper::<_, Packed128b>(ntt_factory);
 }
 
 fn test_equivalence_ntts_domain_contexts<P: PackedField>()
@@ -167,7 +239,6 @@ where
 
 #[test]
 fn test_composition_packings() {
-	test_composition::<PackedBinaryGhash1x128b>();
-	test_composition::<PackedBinaryGhash2x128b>();
-	test_composition::<PackedBinaryGhash4x128b>();
+	test_composition::<B128>();
+	test_composition::<Packed128b>();
 }
