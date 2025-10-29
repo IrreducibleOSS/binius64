@@ -5,10 +5,9 @@ use binius_field::{
 	PackedField,
 };
 use binius_math::{
-	BinarySubspace,
 	ntt::{
 		AdditiveNTT, DomainContext, NeighborsLastMultiThread, NeighborsLastSingleThread,
-		domain_context::GenericPreExpanded,
+		domain_context::{GaoMateerOnTheFly, GaoMateerPreExpanded},
 	},
 	test_utils::random_field_buffer,
 };
@@ -95,48 +94,118 @@ fn bench_ntts<F: BinaryField, P: PackedField<Scalar = F>>(
 	}
 }
 
-/// Calls `bench_ntts` with a fixed `PackedField` but different parameters.
-fn bench_params<F: BinaryField, P: PackedField<Scalar = F>>(
-	c: &mut Criterion,
-	packed_field_name: &str,
-	throughput_var: ThroughputVariant,
-) {
-	let mut group = c.benchmark_group(packed_field_name);
+/// Macro that generates benchmarks for a matrix of parameters.
+///
+/// This macro generates benchmark code for all combinations of:
+/// - DomainContext implementations
+/// - PackedField types
+/// - log_d values
+/// - skip_early/skip_late pairs
+///
+/// Implementation uses macro recursion to process domain contexts sequentially,
+/// avoiding Rust's nested repetition depth limitations.
+macro_rules! bench_ntt_matrix {
+	// Internal helper: process a single domain context with all fields
+	(
+		@single_dc
+		criterion = $c:expr,
+		throughput = $throughput_var:expr,
+		domain_context = ($dc_name:expr, $dc_type:ty, $dc_constructor:expr),
+		fields = [ $( ($field_type:ty, $field_name:expr) ),* $(,)? ],
+		log_d = $log_d_array:expr,
+		skip_params = $skip_params_array:expr
+	) => {
+		// Single level of repetition over fields
+		$(
+			{
+				type F = <$field_type as PackedField>::Scalar;
+				let mut group = $c.benchmark_group($field_name);
 
-	for log_d in [16, 20, 24] {
-		let subspace = BinarySubspace::<F>::with_dim(log_d).unwrap();
-		let domain_context_generic = GenericPreExpanded::generate_from_subspace(&subspace);
-		let domain_context_name = "precompute";
+				for log_d in $log_d_array {
+					let domain_context: $dc_type = $dc_constructor(log_d);
+					let domain_context_name = $dc_name;
 
-		if log_d >= 24 {
-			group.sample_size(10);
-		} else if log_d >= 20 {
-			group.sample_size(40);
-		}
+					if log_d >= 24 {
+						group.sample_size(10);
+					} else if log_d >= 20 {
+						group.sample_size(40);
+					}
 
-		for skip_early in [0, 4] {
-			for skip_late in [0, 4] {
-				bench_ntts::<F, P>(
-					&mut group,
-					throughput_var,
-					log_d,
-					&domain_context_generic,
-					domain_context_name,
-					skip_early,
-					skip_late,
-				);
+					for (skip_early, skip_late) in $skip_params_array {
+						bench_ntts::<F, $field_type>(
+							&mut group,
+							$throughput_var,
+							log_d,
+							&domain_context,
+							domain_context_name,
+							skip_early,
+							skip_late,
+						);
+					}
+				}
 			}
+		)*
+	};
+
+	// Main entry point: process domain contexts recursively
+	(
+		criterion = $c:expr,
+		throughput = $throughput_var:expr,
+		domain_contexts = [
+			($dc_name:expr, $dc_type:ty, $dc_constructor:expr)
+			$(, ($rest_dc_name:expr, $rest_dc_type:ty, $rest_dc_constructor:expr) )*
+			$(,)?
+		],
+		fields = $fields:tt,
+		log_d = $log_d_array:expr,
+		skip_params = $skip_params_array:expr
+		$(,)?
+	) => {
+		// Process first domain context
+		bench_ntt_matrix! {
+			@single_dc
+			criterion = $c,
+			throughput = $throughput_var,
+			domain_context = ($dc_name, $dc_type, $dc_constructor),
+			fields = $fields,
+			log_d = $log_d_array,
+			skip_params = $skip_params_array
 		}
-	}
+
+		// Recurse on remaining domain contexts
+		$(
+			bench_ntt_matrix! {
+				@single_dc
+				criterion = $c,
+				throughput = $throughput_var,
+				domain_context = ($rest_dc_name, $rest_dc_type, $rest_dc_constructor),
+				fields = $fields,
+				log_d = $log_d_array,
+				skip_params = $skip_params_array
+			}
+		)*
+	};
 }
 
-/// Calls `bench_params` with different fields.
+/// Calls benchmarks with all parameter combinations.
 fn bench_fields(c: &mut Criterion) {
 	let throughput_var = determine_throughput_variant();
 
-	bench_params::<_, PackedBinaryGhash1x128b>(c, "1xGhash", throughput_var);
-	bench_params::<_, PackedBinaryGhash2x128b>(c, "2xGhash", throughput_var);
-	bench_params::<_, PackedBinaryGhash4x128b>(c, "4xGhash", throughput_var);
+	bench_ntt_matrix! {
+		criterion = c,
+		throughput = throughput_var,
+		domain_contexts = [
+			("on-the-fly", GaoMateerOnTheFly<_>, GaoMateerOnTheFly::generate),
+			("pre-expanded", GaoMateerPreExpanded<_>, GaoMateerPreExpanded::generate),
+		],
+		fields = [
+			(PackedBinaryGhash1x128b, "1xGhash"),
+			(PackedBinaryGhash2x128b, "2xGhash"),
+			(PackedBinaryGhash4x128b, "4xGhash"),
+		],
+		log_d = [16, 20, 24],
+		skip_params = [(0, 0), (4, 0), (0, 4)],
+	}
 }
 
 /// Gives the number of raw field multiplications that are done for an NTT with specific parameters.
