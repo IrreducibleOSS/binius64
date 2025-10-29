@@ -34,6 +34,7 @@ enum ThroughputVariant {
 ///
 /// `log_y` is computed automatically from `log_x`, `log_z`, and the size of `data`.
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::single_element_loop)]
 fn bench_ntts<F: BinaryField, P: PackedField<Scalar = F>>(
 	group: &mut BenchmarkGroup<WallTime>,
 	throughput_var: ThroughputVariant,
@@ -55,7 +56,7 @@ fn bench_ntts<F: BinaryField, P: PackedField<Scalar = F>>(
 	};
 	group.throughput(throughput);
 
-	for log_base_len in [4, 16] {
+	for log_base_len in [10] {
 		let ntt_name = format!("singlethread/log_base_len={log_base_len}/{domain_context_name}");
 		group.bench_function(BenchmarkId::new(&ntt_name, &parameter), |b| {
 			let ntt = NeighborsLastSingleThread {
