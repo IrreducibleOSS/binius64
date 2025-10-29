@@ -40,14 +40,17 @@ use crate::FieldSliceMut;
 ///
 /// An [`AdditiveNTT`] implementation with a maximum domain dimension of $\ell$ can be applied on
 /// a sequence of $\ell + 1$ evaluation domains of sizes $2^0, \ldots, 2^\ell$. These are the
-/// domains $S^{(\ell)}, S^{(\ell - 1)}, \ldots, S^{(0)}$ defined in [DP24] Section 4. The methods
-/// [`Self::forward_transform`] and [`Self::inverse_transform`] require a parameter
-/// `log_domain_size` that indicates which of the $S^(i)$ domains to use for the transformation's
-/// evaluation domain and novel polynomial basis. (Remember, the novel polynomial basis is itself
-/// parameterized by basis). **Counterintuitively, the space $S^(i+1)$ is not necessarily
-/// a subset of $S^i$**. We choose this behavior for the [`AdditiveNTT`] trait because it
-/// facilitates compatibility with FRI when batching proximity tests for codewords of different
-/// dimensions.
+/// domains $S^{(\ell)}, S^{(\ell - 1)}, \ldots, S^{(0)}$ defined in [DP24] Section 4.
+///
+/// The methods [`Self::forward_transform`] and [`Self::inverse_transform`] take three parameters:
+/// a `data` buffer with length `2^log_len`, `skip_early`, and `skip_late`. The number of total NTT
+/// layers is considered to be `log_len`. "Early" layers at the beginning of the forward transform
+/// or "late" layers at the end of the forward transform may be skipped. The NTT uses
+/// $S^{(\ell - n)}$ for the evaluation domain for an $n$-layer NTT. (Remember, the novel polynomial
+/// basis is itself parameterized by the evaluation domain.) Counterintuitively, the space
+/// $S^{(n+1)}$ is not necessarily a subset of $S^{(n)}$**. We choose this behavior for the
+/// [`AdditiveNTT`] trait because it facilitates compatibility with FRI when batching proximity
+/// tests for codewords of different dimensions.
 ///
 /// [LCH14]: <https://arxiv.org/abs/1404.3458>
 /// [DP24]: <https://eprint.iacr.org/2024/504>
@@ -63,9 +66,8 @@ pub trait AdditiveNTT {
 	///
 	/// ## Preconditons
 	///
-	/// - `data.len()` is a power of 2
-	/// - `skip_early + skip_late <= log2(data.len()) + P::LOG_WIDTH`
-	/// - `log2(data.len()) + P::LOG_WIDTH <= self.log_domain_size() + skip_late`
+	/// - `skip_early + skip_late <= data.log_len()`
+	/// - `data.log_len() - skip_late <= self.log_domain_size()`
 	///
 	/// [DP24]: <https://eprint.iacr.org/2024/504>
 	fn forward_transform<P: PackedField<Scalar = Self::Field>>(
@@ -143,11 +145,36 @@ pub trait DomainContext {
 	///
 	/// The layer numbers start from 0, i.e., the earliest layer is layer 0.
 	///
+	/// Let $i$ be `layer`, and $j$ be `block`. This returns
+	///
+	/// $$
+	/// S^{(\ell - i - 1)}_{2j} = \hat{W}_{\ell - i - 1}\left( \sum_{b = 0}^{i-1} j_b \beta_{\ell -
+	/// i + b} \right) $$
+	///
+	/// The equality above is a consequence of Corollary 4.5 from [DP24].
+	///
 	/// ## Preconditions
 	///
 	/// - `layer < self.log_domain_size()`
 	/// - `block < 2^layer`
+	///
+	/// [DP24]: <https://eprint.iacr.org/2024/504>
 	fn twiddle(&self, layer: usize, block: usize) -> Self::Field;
+
+	/// Returns an iterator over all twiddles in a layer.
+	///
+	/// For layer `i`, this iterates over `twiddle(i, block)` for `block` in `0..2^i`.
+	///
+	/// ## Preconditions
+	///
+	/// - `layer < self.log_domain_size()`
+	fn iter_twiddles(
+		&self,
+		layer: usize,
+		log_step_by: usize,
+	) -> impl Iterator<Item = Self::Field> + '_ {
+		(0..1 << (layer - log_step_by)).map(move |block| self.twiddle(layer, block << log_step_by))
+	}
 }
 
 /// Make it so that references to a [`DomainContext` implement [`DomainContext`] themselves.
@@ -167,5 +194,9 @@ impl<T: DomainContext> DomainContext for &T {
 
 	fn twiddle(&self, layer: usize, block: usize) -> Self::Field {
 		(*self).twiddle(layer, block)
+	}
+
+	fn iter_twiddles(&self, layer: usize, log_step_by: usize) -> impl Iterator<Item = Self::Field> {
+		(*self).iter_twiddles(layer, log_step_by)
 	}
 }

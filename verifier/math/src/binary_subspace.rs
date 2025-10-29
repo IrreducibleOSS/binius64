@@ -114,7 +114,7 @@ pub struct BinarySubspaceIterator<'a, F> {
 }
 
 impl<'a, F: BinaryField> BinarySubspaceIterator<'a, F> {
-	fn new(basis: &'a [F]) -> Self {
+	pub fn new(basis: &'a [F]) -> Self {
 		assert!(basis.len() < usize::BITS as usize);
 		Self {
 			basis,
