@@ -52,7 +52,7 @@ fn test_square_circuit_prover_verifier() {
 	// Setup prover and verifier
 	let log_inv_rate = 1;
 	let compression = StdCompression::default();
-	let verifier = Verifier::<StdDigest, _>::setup(cs, log_inv_rate, compression.clone())
+	let verifier = Verifier::<_, StdDigest, _>::setup(cs, log_inv_rate, compression.clone())
 		.expect("verifier setup failed");
 	let prover = Prover::<OptimalPackedB128, _, StdDigest>::setup(
 		verifier.clone(),
@@ -109,7 +109,7 @@ fn test_multiply_circuit_prover_verifier() {
 	// Setup prover and verifier
 	let log_inv_rate = 1;
 	let compression = StdCompression::default();
-	let verifier = Verifier::<StdDigest, _>::setup(cs, log_inv_rate, compression.clone())
+	let verifier = Verifier::<_, StdDigest, _>::setup(cs, log_inv_rate, compression.clone())
 		.expect("verifier setup failed");
 	let prover = Prover::<OptimalPackedB128, _, StdDigest>::setup(
 		verifier.clone(),

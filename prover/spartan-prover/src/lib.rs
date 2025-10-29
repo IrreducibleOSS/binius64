@@ -6,19 +6,19 @@ mod wiring;
 
 use std::marker::PhantomData;
 
-use binius_field::{PackedExtension, PackedField};
+use binius_field::{BinaryField, Field, PackedExtension, PackedField};
 use binius_math::{
-	FieldBuffer,
-	inner_product::inner_product_buffers,
-	multilinear::eq::eq_ind_partial_eval,
+	FieldBuffer, FieldSlice,
 	ntt::{NeighborsLastMultiThread, domain_context::GenericPreExpanded},
 };
 use binius_prover::{
 	fri::{self, CommitOutput},
 	hash::{ParallelDigest, parallel_compression::ParallelPseudoCompression},
 	merkle_tree::prover::BinaryMerkleTreeProver,
+	protocols::sumcheck::{prove_single_mlecheck, quadratic_mle::QuadraticMleCheckProver},
 };
-use binius_spartan_verifier::{Verifier, config::B128};
+use binius_spartan_frontend::constraint_system::{MulConstraint, WitnessIndex};
+use binius_spartan_verifier::Verifier;
 use binius_transcript::{
 	ProverTranscript,
 	fiat_shamir::{CanSample, Challenger},
@@ -37,19 +37,22 @@ use crate::wiring::WiringTranspose;
 #[derive(Debug)]
 pub struct Prover<P, ParallelMerkleCompress, ParallelMerkleHasher: ParallelDigest>
 where
+	P: PackedField,
 	ParallelMerkleCompress: ParallelPseudoCompression<Output<ParallelMerkleHasher::Digest>, 2>,
 {
-	verifier: Verifier<ParallelMerkleHasher::Digest, ParallelMerkleCompress::Compression>,
-	ntt: NeighborsLastMultiThread<GenericPreExpanded<B128>>,
-	merkle_prover: BinaryMerkleTreeProver<B128, ParallelMerkleHasher, ParallelMerkleCompress>,
+	verifier:
+		Verifier<P::Scalar, ParallelMerkleHasher::Digest, ParallelMerkleCompress::Compression>,
+	ntt: NeighborsLastMultiThread<GenericPreExpanded<P::Scalar>>,
+	merkle_prover: BinaryMerkleTreeProver<P::Scalar, ParallelMerkleHasher, ParallelMerkleCompress>,
 	wiring_transpose: WiringTranspose,
 	_p_marker: PhantomData<P>,
 }
 
-impl<P, MerkleHash, ParallelMerkleCompress, ParallelMerkleHasher>
+impl<F, P, MerkleHash, ParallelMerkleCompress, ParallelMerkleHasher>
 	Prover<P, ParallelMerkleCompress, ParallelMerkleHasher>
 where
-	P: PackedField<Scalar = B128> + PackedExtension<B128>,
+	F: BinaryField,
+	P: PackedField<Scalar = F> + PackedExtension<F>,
 	MerkleHash: Digest + BlockSizeUser + FixedOutputReset,
 	ParallelMerkleHasher: ParallelDigest<Digest = MerkleHash>,
 	ParallelMerkleCompress: ParallelPseudoCompression<Output<MerkleHash>, 2>,
@@ -59,7 +62,7 @@ where
 	///
 	/// See [`Prover`] struct documentation for details.
 	pub fn setup(
-		verifier: Verifier<MerkleHash, ParallelMerkleCompress::Compression>,
+		verifier: Verifier<F, MerkleHash, ParallelMerkleCompress::Compression>,
 		compression: ParallelMerkleCompress,
 	) -> Result<Self, Error> {
 		let subspace = verifier.fri_params().rs_code().subspace();
@@ -84,7 +87,7 @@ where
 
 	pub fn prove<Challenger_: Challenger>(
 		&self,
-		witness: &[B128],
+		witness: &[F],
 		transcript: &mut ProverTranscript<Challenger_>,
 	) -> Result<(), Error> {
 		let _prove_guard =
@@ -106,7 +109,7 @@ where
 
 		// Pack witness into field elements
 		// TODO: Populate witness directly into a FieldBuffer
-		let witness_packed = pack_witness::<P>(cs.log_size() as usize, witness);
+		let witness_packed = pack_witness::<_, P>(cs.log_size() as usize, witness);
 
 		// Commit the witness
 		let CommitOutput {
@@ -121,20 +124,13 @@ where
 		)?;
 		transcript.message().write(&trace_commitment);
 
-		let mulcheck_witness =
-			wiring::build_mulcheck_witness(cs.mul_constraints(), witness_packed.to_ref());
-
-		// Sample random evaluation point
-		let r_x = transcript.sample_vec(log_mul_constraints);
-
-		let r_x_tensor = eq_ind_partial_eval::<P>(&r_x);
-		let mulcheck_evals = [
-			inner_product_buffers(&mulcheck_witness.a, &r_x_tensor),
-			inner_product_buffers(&mulcheck_witness.b, &r_x_tensor),
-			inner_product_buffers(&mulcheck_witness.c, &r_x_tensor),
-		];
-
-		transcript.message().write_slice(&mulcheck_evals);
+		// Prove the multiplication constraints
+		let (mulcheck_evals, r_x) = self.prove_mulcheck(
+			cs.mul_constraints(),
+			witness_packed.to_ref(),
+			log_mul_constraints,
+			transcript,
+		)?;
 
 		// Run wiring check protocol
 		let wiring_output = wiring::prove(
@@ -160,11 +156,52 @@ where
 
 		Ok(())
 	}
+
+	fn prove_mulcheck<Challenger_: Challenger>(
+		&self,
+		mul_constraints: &[MulConstraint<WitnessIndex>],
+		witness: FieldSlice<P>,
+		log_mul_constraints: usize,
+		transcript: &mut ProverTranscript<Challenger_>,
+	) -> Result<([F; 3], Vec<F>), Error> {
+		let mulcheck_witness = wiring::build_mulcheck_witness(mul_constraints, witness);
+
+		// Sample random evaluation point for mulcheck
+		let r_mulcheck = transcript.sample_vec(log_mul_constraints);
+
+		// Create the QuadraticMleCheckProver for the mul gate: a * b - c
+		let mlecheck_prover = QuadraticMleCheckProver::new(
+			[mulcheck_witness.a, mulcheck_witness.b, mulcheck_witness.c],
+			|[a, b, c]| a * b - c, // composition
+			|[a, b, _c]| a * b,    // infinity_composition (quadratic term only)
+			&r_mulcheck,
+			F::ZERO, // eval_claim: zerocheck
+		)?;
+
+		// Run the MLE-check protocol
+		let mlecheck_output = prove_single_mlecheck(mlecheck_prover, transcript)?;
+
+		// Extract the reduced evaluation point and multilinear evaluations
+		let mut r_x = mlecheck_output.challenges;
+		r_x.reverse(); // Match verifier's order
+
+		let [a_eval, b_eval, c_eval]: [F; 3] = mlecheck_output
+			.multilinear_evals
+			.try_into()
+			.expect("mlecheck returns 3 evaluations");
+
+		// Write the multilinear evaluations to transcript
+		transcript.message().write(&[a_eval, b_eval, c_eval]);
+
+		let mulcheck_evals = [a_eval, b_eval, c_eval];
+
+		Ok((mulcheck_evals, r_x))
+	}
 }
 
-fn pack_witness<P: PackedField<Scalar = B128>>(
+fn pack_witness<F: Field, P: PackedField<Scalar = F>>(
 	log_witness_elems: usize,
-	witness: &[B128],
+	witness: &[F],
 ) -> FieldBuffer<P> {
 	// Precondition: witness length must match expected size
 	let expected_size = 1 << log_witness_elems;

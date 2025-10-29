@@ -12,10 +12,7 @@ use crate::merkle_tree::MerkleTreeScheme;
 
 /// Parameters for an FRI interleaved code proximity protocol.
 #[derive(Debug, Clone, Getters, CopyGetters)]
-pub struct FRIParams<F>
-where
-	F: BinaryField,
-{
+pub struct FRIParams<F> {
 	/// The Reed-Solomon code the verifier is testing proximity to.
 	#[getset(get = "pub")]
 	rs_code: ReedSolomonCode<F>,
