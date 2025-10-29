@@ -12,6 +12,7 @@
 
 pub mod batch_invert;
 pub mod binary_subspace;
+pub mod bit_reverse;
 mod error;
 pub mod field_buffer;
 pub mod fold;
