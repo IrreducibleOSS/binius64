@@ -6,7 +6,8 @@ use binius_field::{
 };
 use binius_math::{
 	ntt::{
-		AdditiveNTT, DomainContext, NeighborsLastMultiThread, NeighborsLastSingleThread,
+		AdditiveNTT, DomainContext, NeighborsLastBreadthFirst, NeighborsLastMultiThread,
+		NeighborsLastSingleThread,
 		domain_context::{GaoMateerOnTheFly, GaoMateerPreExpanded},
 	},
 	test_utils::random_field_buffer,
@@ -66,6 +67,14 @@ fn bench_ntts<F: BinaryField, P: PackedField<Scalar = F>>(
 			b.iter(|| ntt.forward_transform(data.to_mut(), skip_early, skip_late))
 		});
 	}
+
+	let ntt_name = format!("neighbors_last_breadth_first/{domain_context_name}");
+	group.bench_function(BenchmarkId::new(&ntt_name, &parameter), |b| {
+		let ntt = NeighborsLastBreadthFirst { domain_context };
+
+		let mut data = random_field_buffer::<P>(&mut rng, log_d);
+		b.iter(|| ntt.forward_transform(data.to_mut(), skip_early, skip_late))
+	});
 
 	for log_num_shares in [0, 3] {
 		for log_base_len in [4, 8, 12, 16] {

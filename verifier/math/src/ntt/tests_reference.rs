@@ -8,7 +8,7 @@ use binius_field::{
 };
 use rand::prelude::*;
 
-use super::{AdditiveNTT, DomainContext};
+use super::{AdditiveNTT, DomainContext, NeighborsLastBreadthFirst};
 use crate::{
 	binary_subspace::BinarySubspace,
 	field_buffer::FieldSliceMut,
@@ -72,6 +72,7 @@ fn test_equivalence_ntts<P: PackedField>(
 	P::Scalar: BinaryField,
 {
 	let ntt_ref = NeighborsLastReference { domain_context };
+	let ntt_breadth_first = NeighborsLastBreadthFirst { domain_context };
 	let ntt_single_2 = NeighborsLastSingleThread {
 		domain_context,
 		log_base_len: 2,
@@ -101,6 +102,7 @@ fn test_equivalence_ntts<P: PackedField>(
 		log_num_shares: 1000,
 	};
 
+	test_equivalence::<P>(&ntt_ref, &ntt_breadth_first);
 	test_equivalence::<P>(&ntt_ref, &ntt_single_2);
 	test_equivalence::<P>(&ntt_ref, &ntt_single_6);
 	test_equivalence::<P>(&ntt_ref, &ntt_multi_3_0);
@@ -124,6 +126,17 @@ impl<F: BinaryField> NTTFactory<F> for NeighborsLastReferenceFactory {
 		domain_context: DC,
 	) -> impl AdditiveNTT<Field = F> {
 		NeighborsLastReference { domain_context }
+	}
+}
+
+struct NeighborsLastBreadthFirstFactory;
+
+impl<F: BinaryField> NTTFactory<F> for NeighborsLastBreadthFirstFactory {
+	fn create<DC: DomainContext<Field = F> + Sync>(
+		&self,
+		domain_context: DC,
+	) -> impl AdditiveNTT<Field = F> {
+		NeighborsLastBreadthFirst { domain_context }
 	}
 }
 
@@ -163,6 +176,7 @@ impl<F: BinaryField> NTTFactory<F> for NeighborsLastMultiThreadFactory {
 
 #[rstest::rstest]
 #[case::neighbors_last_reference(NeighborsLastReferenceFactory)]
+#[case::neighbors_last_breadth_first(NeighborsLastBreadthFirstFactory)]
 #[case::neighbors_last_single_thread(NeighborsLastSingleThreadFactory { log_base_len: 6 })]
 #[case::neighbors_last_multi_thread_1_share(
 	NeighborsLastMultiThreadFactory { log_base_len: 3, log_num_shares: 1 }

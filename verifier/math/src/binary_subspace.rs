@@ -127,6 +127,7 @@ impl<'a, F: BinaryField> BinarySubspaceIterator<'a, F> {
 impl<'a, F: BinaryField> Iterator for BinarySubspaceIterator<'a, F> {
 	type Item = F;
 
+	#[inline]
 	fn next(&mut self) -> Option<Self::Item> {
 		let ret = self.next?;
 
