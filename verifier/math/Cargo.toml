@@ -39,6 +39,10 @@ name = "batch_invert"
 harness = false
 
 [[bench]]
+name = "bit_reverse"
+harness = false
+
+[[bench]]
 name = "ntt"
 harness = false
 
