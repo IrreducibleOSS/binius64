@@ -74,13 +74,8 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-nextest
-      - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@v0.0.9
       - name: Compile
         run: cargo build --workspace --all-targets
-        env:
-          SCCACHE_GHA_ENABLED: "true"
-          RUSTC_WRAPPER: "sccache"
       - name: Run platform diagnostics
         run: cargo test -p binius-utils --features platform-diagnostics test_platform_diagnostics -- --nocapture
       - name: Run clippy
