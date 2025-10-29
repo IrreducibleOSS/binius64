@@ -10,6 +10,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_PROFILE_DEV_BUILD_OVERRIDE_DEBUG: true
 
 concurrency:
   group: ${{ github.event_name }}-${{ github.ref }}
