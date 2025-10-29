@@ -9,15 +9,15 @@
 
 pub mod domain_context;
 mod neighbors_last;
+mod reference;
 #[cfg(test)]
 mod tests_evaluation;
 #[cfg(test)]
 pub mod tests_reference;
 
 use binius_field::{BinaryField, PackedField};
-pub use neighbors_last::{
-	NeighborsLastMultiThread, NeighborsLastReference, NeighborsLastSingleThread,
-};
+pub use neighbors_last::{NeighborsLastMultiThread, NeighborsLastSingleThread};
+pub use reference::NeighborsLastReference;
 
 use super::BinarySubspace;
 use crate::FieldSliceMut;
