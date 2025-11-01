@@ -134,22 +134,34 @@ mod test {
 
 	#[test]
 	fn test_lookup_fold() {
-		let log_num_rows = 10;
-		let mut rng = StdRng::from_seed([0; 32]);
-		let mlv = random_one_bit_multivariate(log_num_rows, &mut rng);
+		// Test with various log_num_rows values: minimum (9), current (10), and larger sizes (12, 14)
+		// Each uses a different seed to ensure diversity in test data
+		let test_cases: &[(usize, u64)] = &[(9, 0), (10, 1), (12, 2), (14, 3)];
 
-		let challenge = B128::random(&mut rng);
+		for &(log_num_rows, seed) in test_cases {
+			let mut seed_bytes = [0u8; 32];
+			seed_bytes[0..8].copy_from_slice(&seed.to_le_bytes());
+			let mut rng = StdRng::from_seed(seed_bytes);
+			let mlv = random_one_bit_multivariate(log_num_rows, &mut rng);
 
-		let univariate_domain = BinarySubspace::with_dim(SKIPPED_VARS).unwrap();
+			let challenge = B128::random(&mut rng);
 
-		let lookup = FoldLookup::<_, SKIPPED_VARS>::new(&univariate_domain, challenge);
+			let univariate_domain = BinarySubspace::with_dim(SKIPPED_VARS).unwrap();
 
-		let folded_naive = fold_naive(&mlv, &univariate_domain, challenge);
+			let lookup = FoldLookup::<_, SKIPPED_VARS>::new(&univariate_domain, challenge);
 
-		let folded_smart = mlv.fold(&lookup);
+			let folded_naive = fold_naive(&mlv, &univariate_domain, challenge);
 
-		for i in 0..1 << (log_num_rows - SKIPPED_VARS) {
-			assert_eq!(folded_naive.as_ref()[i], folded_smart.as_ref()[i]);
+			let folded_smart = mlv.fold(&lookup);
+
+			let expected_len = 1 << (log_num_rows - SKIPPED_VARS);
+			for i in 0..expected_len {
+				assert_eq!(
+					folded_naive.as_ref()[i],
+					folded_smart.as_ref()[i],
+					"Mismatch at index {i} for log_num_rows={log_num_rows}"
+				);
+			}
 		}
 	}
 }
