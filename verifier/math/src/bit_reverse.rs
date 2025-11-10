@@ -109,66 +109,6 @@ fn bit_reverse_packed_naive<P: PackedField>(mut buffer: FieldSliceMut<P>) {
 	}
 }
 
-/// Single-threaded implementations of bit-reversal algorithms.
-pub mod single_threaded {
-	use super::*;
-
-	/// Applies a bit-reversal permutation to packed field elements in a buffer.
-	///
-	/// Functionally equivalent to [`super::bit_reverse_packed`], but the implementation is
-	/// single-threaded.
-	///
-	/// # Arguments
-	///
-	/// * `buffer` - Mutable slice of packed field elements to permute
-	pub fn bit_reverse_packed<P: PackedField>(mut buffer: FieldSliceMut<P>) {
-		let log_len = buffer.log_len();
-		if log_len < 2 * P::LOG_WIDTH {
-			return super::bit_reverse_packed_naive(buffer);
-		}
-
-		let bits = (log_len - P::LOG_WIDTH) as u32;
-		let data = buffer.as_mut();
-
-		let mut tmp = zeroed_vec::<P>(P::WIDTH);
-		for i in 0..1 << (log_len - 2 * P::LOG_WIDTH) {
-			for j in 0..P::WIDTH {
-				tmp[j] = data[reverse_bits(j, bits) | i];
-			}
-			square_transpose(P::LOG_WIDTH, &mut tmp).expect("pre-conditions satisfied");
-			for j in 0..P::WIDTH {
-				data[reverse_bits(j, bits) | i] = tmp[j];
-			}
-		}
-
-		for chunk in data.chunks_mut(1 << (log_len - 2 * P::LOG_WIDTH)) {
-			bit_reverse_indices(chunk);
-		}
-	}
-
-	/// Applies a bit-reversal permutation to elements in a slice.
-	///
-	/// Functionally equivalent to [`super::bit_reverse_indices`], but the implementation is
-	/// single-threaded.
-	///
-	/// # Arguments
-	///
-	/// * `buffer` - Mutable slice of elements to permute
-	///
-	/// # Panics
-	///
-	/// Panics if the buffer length is not a power of two.
-	pub fn bit_reverse_indices<T>(buffer: &mut [T]) {
-		let bits = log2_strict_usize(buffer.len()) as u32;
-		for i in 0..buffer.len() {
-			let i_rev = reverse_bits(i, bits);
-			if i < i_rev {
-				buffer.swap(i, i_rev);
-			}
-		}
-	}
-}
-
 /// Applies a bit-reversal permutation to elements in a slice using parallel iteration.
 ///
 /// This function permutes the elements such that element at index `i` is moved to
@@ -227,40 +167,12 @@ mod tests {
 
 		let data_orig = random_field_buffer::<Packed128b>(&mut rng, log_d);
 
-		let mut data_parallel = data_orig.clone();
-		let mut data_single_threaded = data_orig.clone();
+		let mut data_optimized = data_orig.clone();
 		let mut data_naive = data_orig.clone();
 
-		bit_reverse_packed(data_parallel.to_mut());
-		single_threaded::bit_reverse_packed(data_single_threaded.to_mut());
+		bit_reverse_packed(data_optimized.to_mut());
 		bit_reverse_packed_naive(data_naive.to_mut());
 
-		assert_eq!(data_parallel, data_naive, "Parallel vs naive mismatch at log_d={}", log_d);
-		assert_eq!(
-			data_parallel, data_single_threaded,
-			"Parallel vs single-threaded mismatch at log_d={}",
-			log_d
-		);
-	}
-
-	// Test functional equivalence between single-threaded and parallel bit_reverse_indices
-	#[test]
-	fn test_bit_reverse_indices_equivalence() {
-		use crate::test_utils::{B128, random_scalars};
-
-		let log_n = 10;
-
-		let mut rng = StdRng::seed_from_u64(0);
-
-		let n = 1 << log_n;
-		let data_orig = random_scalars::<B128>(&mut rng, n);
-
-		let mut data_parallel = data_orig.clone();
-		let mut data_single_threaded = data_orig.clone();
-
-		bit_reverse_indices(&mut data_parallel);
-		single_threaded::bit_reverse_indices(&mut data_single_threaded);
-
-		assert_eq!(data_parallel, data_single_threaded);
+		assert_eq!(data_optimized, data_naive, "Mismatch at log_d={}", log_d);
 	}
 }
