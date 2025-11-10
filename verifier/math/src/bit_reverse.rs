@@ -1,7 +1,7 @@
 // Copyright 2025 Irreducible Inc.
 
 use binius_field::{PackedField, square_transpose};
-use binius_utils::checked_arithmetics::log2_strict_usize;
+use binius_utils::{checked_arithmetics::log2_strict_usize, rayon::prelude::*};
 use bytemuck::zeroed_vec;
 
 use crate::field_buffer::FieldSliceMut;
@@ -77,13 +77,38 @@ fn bit_reverse_packed_naive<P: PackedField>(mut buffer: FieldSliceMut<P>) {
 	}
 }
 
-/// Applies a bit-reversal permutation to elements in a slice.
+/// Single-threaded implementations of bit-reversal algorithms.
+pub mod single_threaded {
+	use super::*;
+
+	/// Applies a bit-reversal permutation to elements in a slice.
+	///
+	/// Functionally equivalent to [`super::bit_reverse_indices`], but the implementation is
+	/// single-threaded.
+	///
+	/// # Arguments
+	///
+	/// * `buffer` - Mutable slice of elements to permute
+	///
+	/// # Panics
+	///
+	/// Panics if the buffer length is not a power of two.
+	pub fn bit_reverse_indices<T>(buffer: &mut [T]) {
+		let bits = log2_strict_usize(buffer.len()) as u32;
+		for i in 0..buffer.len() {
+			let i_rev = reverse_bits(i, bits);
+			if i < i_rev {
+				buffer.swap(i, i_rev);
+			}
+		}
+	}
+}
+
+/// Applies a bit-reversal permutation to elements in a slice using parallel iteration.
 ///
 /// This function permutes the elements such that element at index `i` is moved to
 /// index `reverse_bits(i, log2(length))`. The permutation is performed in-place
-/// by swapping elements.
-///
-/// This is a single-threaded implementation.
+/// by swapping elements in parallel.
 ///
 /// # Arguments
 ///
@@ -94,12 +119,28 @@ fn bit_reverse_packed_naive<P: PackedField>(mut buffer: FieldSliceMut<P>) {
 /// Panics if the buffer length is not a power of two.
 pub fn bit_reverse_indices<T>(buffer: &mut [T]) {
 	let bits = log2_strict_usize(buffer.len()) as u32;
-	for i in 0..buffer.len() {
+
+	// We need to use UnsafeCell-like semantics here to get proper Sync behavior.
+	// Creating a raw pointer from the slice inside the closure avoids Sync issues.
+	let buffer_ptr = buffer.as_mut_ptr() as usize;
+
+	(0..buffer.len()).into_par_iter().for_each(|i| {
 		let i_rev = reverse_bits(i, bits);
 		if i < i_rev {
-			buffer.swap(i, i_rev);
+			// SAFETY: The i < i_rev condition guarantees that:
+			// 1. Each (i, i_rev) pair is processed by exactly one thread (the one with i < i_rev)
+			// 2. Since bit-reversal is bijective, no two threads access the same pair
+			// 3. Therefore, ptr.add(i) and ptr.add(i_rev) point to disjoint memory locations
+			// 4. No data races can occur
+			// 5. buffer_ptr is valid for the lifetime of this closure
+			unsafe {
+				let ptr = buffer_ptr as *mut T;
+				let ptr_i = ptr.add(i);
+				let ptr_i_rev = ptr.add(i_rev);
+				std::ptr::swap_nonoverlapping(ptr_i, ptr_i_rev, 1);
+			}
 		}
-	}
+	});
 }
 
 #[cfg(test)]
@@ -128,5 +169,26 @@ mod tests {
 		bit_reverse_packed_naive(data_naive.to_mut());
 
 		assert_eq!(data_optimized, data_naive, "Mismatch at log_d={}", log_d);
+	}
+
+	// Test functional equivalence between single-threaded and parallel bit_reverse_indices
+	#[test]
+	fn test_bit_reverse_indices_equivalence() {
+		use crate::test_utils::{B128, random_scalars};
+
+		let log_n = 10;
+
+		let mut rng = StdRng::seed_from_u64(0);
+
+		let n = 1 << log_n;
+		let data_orig = random_scalars::<B128>(&mut rng, n);
+
+		let mut data_parallel = data_orig.clone();
+		let mut data_single_threaded = data_orig.clone();
+
+		bit_reverse_indices(&mut data_parallel);
+		single_threaded::bit_reverse_indices(&mut data_single_threaded);
+
+		assert_eq!(data_parallel, data_single_threaded);
 	}
 }
