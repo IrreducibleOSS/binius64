@@ -2,11 +2,12 @@
 
 use std::{
 	cmp::{max, min},
+	iter,
 	ops::Range,
 	slice::from_raw_parts_mut,
 };
 
-use binius_field::PackedField;
+use binius_field::{BinaryField, PackedField};
 use binius_utils::rayon::{
 	iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator},
 	slice::ParallelSliceMut,
@@ -57,19 +58,21 @@ fn forward_depth_first<P: PackedField>(
 	log_base_len: usize,
 ) {
 	// check preconditions
-	debug_assert_eq!(data.len() * (1 << P::LOG_WIDTH), 1 << log_d);
-	debug_assert!(data.len() >= 2);
+	debug_assert!(P::LOG_WIDTH < log_d);
+	debug_assert_eq!(data.len(), 1 << (log_d - P::LOG_WIDTH));
 	debug_assert!(layer_range.end <= domain_context.log_domain_size());
 	debug_assert!(layer <= layer_range.start);
+	debug_assert!(log_base_len > P::LOG_WIDTH);
+
+	let log_n = log_d + layer;
+	debug_assert!(layer_range.end <= log_n);
 
 	if layer >= layer_range.end {
 		return;
 	}
 
 	// if the problem size is small, we just do breadth_first (to get rid of the stack overhead)
-	// we also need to do that if the number of scalars is just two times our packing width, i.e. if
-	// we only have two packed elements in our data slice
-	if log_d <= log_base_len || data.len() <= 2 {
+	if log_d <= log_base_len {
 		forward_breadth_first(domain_context, data, log_d, layer, block, layer_range);
 		return;
 	}
@@ -78,16 +81,12 @@ fn forward_depth_first<P: PackedField>(
 	if layer >= layer_range.start {
 		// process only one layer of this block
 		let twiddle = domain_context.twiddle(layer, block);
-		let twiddle = P::broadcast(twiddle);
-		for idx0 in 0..block_size_half {
-			let idx1 = block_size_half | idx0;
+		let packed_twiddle = P::broadcast(twiddle);
+		let (block0, block1) = data.split_at_mut(block_size_half);
+		for (u, v) in iter::zip(block0, block1) {
 			// perform butterfly
-			let mut u = data[idx0];
-			let mut v = data[idx1];
-			u += v * twiddle;
-			v += u;
-			data[idx0] = u;
-			data[idx1] = v;
+			*u += *v * packed_twiddle;
+			*v += *u;
 		}
 
 		layer_range.start += 1;
@@ -118,6 +117,7 @@ fn forward_depth_first<P: PackedField>(
 ///
 /// ## Preconditions
 ///
+/// - `P::LOG_WIDTH < log_d`
 /// - `2^(log_d) == data.len() * packing_width`
 /// - `data.len() >= 2`
 /// - `domain_context` holds all the twiddles up to `layer_bound` (exclusive)
@@ -126,80 +126,91 @@ fn forward_breadth_first<P: PackedField>(
 	domain_context: &impl DomainContext<Field = P::Scalar>,
 	data: &mut [P],
 	log_d: usize,
-	layer: usize,
-	block: usize,
+	base_layer: usize,
+	base_block: usize,
 	layer_range: Range<usize>,
 ) {
 	// check preconditions
-	debug_assert_eq!(data.len() * (1 << P::LOG_WIDTH), 1 << log_d);
-	debug_assert!(data.len() >= 2);
+	debug_assert!(P::LOG_WIDTH < log_d);
+	debug_assert_eq!(data.len(), 1 << (log_d - P::LOG_WIDTH));
 	debug_assert!(layer_range.end <= domain_context.log_domain_size());
-	debug_assert!(layer <= layer_range.start);
+	debug_assert!(base_layer <= layer_range.start);
 
-	let num_packed_layers_left = log_d - P::LOG_WIDTH;
-	let first_interleaved_layer = layer + num_packed_layers_left;
-	let first_interleaved_layer = max(first_interleaved_layer, layer_range.start);
-	let packed_layers = layer_range.start..min(first_interleaved_layer, layer_range.end);
-	let interleaved_layers = first_interleaved_layer..layer_range.end;
+	let log_n = log_d + base_layer;
+	debug_assert!(layer_range.end <= log_n);
 
-	// Run the layers where packing_width >= block_size_half.
-	// In these layers, we can always process whole packed elements, we don't need to interleave
-	// them or read/write "within" packed elements.
-	for l in packed_layers {
-		// there are 2^l total blocks in layer l, but we only want to process those which are
-		// contained in `block`
-		let l_rel = l - layer;
-		let block_offset = block << l_rel;
-		// there are 2^(log_d - l) total scalars in a block in layer l, but they come in
-		// pairs, so we iterate over 2^(log_d - l - 1) many scalars
-		let block_size_half = 1 << (log_d - l_rel - 1 - P::LOG_WIDTH);
-		for b in 0..1 << l_rel {
-			// all butterflys within a block share the same twiddle
-			let twiddle = domain_context.twiddle(l, block_offset | b);
-			let twiddle = P::broadcast(twiddle);
-			let block_start = b << (log_d - l_rel - P::LOG_WIDTH);
-			for idx0 in block_start..(block_start + block_size_half) {
-				let idx1 = block_size_half | idx0;
+	let packed_cutoff = (log_n - P::LOG_WIDTH).clamp(layer_range.start, layer_range.end);
+
+	// In these rounds, layer <= log_n - P::LOG_WIDTH. All butterflies are between values in
+	// separate packed elements, and all butterflies within a block share the same twiddle factor.
+	for layer in layer_range.start..packed_cutoff {
+		// log_block_size is log2 the number of packed elements forming one block.
+		let log_block_size = log_n - P::LOG_WIDTH - layer;
+		let log_half_block_size = log_block_size - 1;
+
+		// log2 the number of blocks to process in this layer
+		let log_blocks = layer - base_layer;
+		let layer_twiddles = domain_context
+			.iter_twiddles(layer, 0)
+			.skip(base_block << log_blocks)
+			.take(1 << log_blocks);
+		let blocks = data.chunks_exact_mut(1 << log_block_size);
+		for (block, twiddle) in iter::zip(blocks, layer_twiddles) {
+			let packed_twiddle = P::broadcast(twiddle);
+			let (block0, block1) = block.split_at_mut(1 << log_half_block_size);
+			for (u, v) in iter::zip(block0, block1) {
 				// perform butterfly
-				let mut u = data[idx0];
-				let mut v = data[idx1];
-				u += v * twiddle;
-				v += u;
-				data[idx0] = u;
-				data[idx1] = v;
+				*u += *v * packed_twiddle;
+				*v += *u;
 			}
 		}
 	}
 
-	// Run the layers where packing_width < block_size_half.
-	// That is, we would need to work "within" packed field elements.
-	// We solve this problem by interleaving the packed elements with each other.
-	for l in interleaved_layers {
-		let l_rel = l - layer;
-		let block_offset = block << l_rel;
-		let block_size_half = 1 << (log_d - l_rel - 1);
-		let log_block_size_half = log_d - l_rel - 1;
+	// In these rounds, layer > log_n - P::LOG_WIDTH. The butterflies operate on elements within
+	// packed field elements. We solve this problem by interleaving the packed elements with each
+	// other.
+	for layer in packed_cutoff..layer_range.end {
+		// log_block_size is log2 the number of single elements forming one block.
+		let log_block_size = log_n - layer;
+		let log_half_block_size = log_block_size - 1;
+		let log_blocks_per_packed = P::LOG_WIDTH - log_block_size;
+		let log_half_blocks_per_packed = log_blocks_per_packed + 1;
 
 		// calculate packed_twiddle_offset
 		let mut packed_twiddle_offset = P::zero();
-		let log_blocks_per_packed = P::LOG_WIDTH - log_block_size_half;
-		for i in 0..1 << log_blocks_per_packed {
-			let block_start = i << log_block_size_half;
-			let twiddle_offset_i_index = rotate_right(i, log_blocks_per_packed);
-			let twiddle_offset_i = domain_context.twiddle(l, twiddle_offset_i_index);
-			for j in block_start..(block_start + block_size_half) {
-				packed_twiddle_offset.set(j, twiddle_offset_i);
+		for block in 0..1 << log_blocks_per_packed {
+			let twiddle0 = domain_context.twiddle(layer, block);
+			let twiddle1 = domain_context.twiddle(layer, (1 << log_blocks_per_packed) | block);
+
+			let block_start = block << log_block_size;
+			for j in 0..1 << log_half_block_size {
+				packed_twiddle_offset.set(block_start | j, twiddle0);
+				packed_twiddle_offset.set(block_start | j | (1 << log_half_block_size), twiddle1);
 			}
 		}
 
-		for b in (0..data.len()).step_by(2) {
-			let first_twiddle =
-				domain_context.twiddle(l, block_offset | (b << (log_blocks_per_packed - 1)));
-			let twiddle = P::broadcast(first_twiddle) + packed_twiddle_offset;
-			let (mut u, mut v) = data[b].interleave(data[b | 1], log_block_size_half);
-			u += v * twiddle;
+		// log2 the number of packed element pairs to process in this layer
+		let log_packed_pairs = packed_cutoff - base_layer - 1;
+		let layer_twiddles = domain_context
+			.iter_twiddles(layer, log_half_blocks_per_packed)
+			.skip(base_block << log_packed_pairs)
+			.take(1 << log_packed_pairs);
+
+		let (data_pairs, rest) = data.as_chunks_mut::<2>();
+		debug_assert!(
+			rest.is_empty(),
+			"data_packed length is a power of two; \
+				data_packed length is greater than 1 (checked at beginning of method)"
+		);
+		debug_assert_eq!(data_pairs.len(), 1 << log_packed_pairs);
+
+		for ([packed0, packed1], first_twiddle) in iter::zip(data_pairs, layer_twiddles) {
+			let packed_twiddle = P::broadcast(first_twiddle) + packed_twiddle_offset;
+
+			let (mut u, mut v) = (*packed0).interleave(*packed1, log_half_block_size);
+			u += v * packed_twiddle;
 			v += u;
-			(data[b], data[b | 1]) = u.interleave(v, log_block_size_half);
+			(*packed0, *packed1) = u.interleave(v, log_half_block_size);
 		}
 	}
 }
@@ -261,13 +272,6 @@ fn forward_shared_layer<P: PackedField>(
 	});
 }
 
-/// Interprets `value` as a bit-sequence of `bits` many bits, and rotates them to the right.
-/// For example: `rotate_right(0b0001011, 7) -> 0b1000101`
-#[inline]
-fn rotate_right(value: usize, bits: usize) -> usize {
-	(value >> 1) | ((value & 1) << (bits - 1))
-}
-
 /// Inserts a bit into `k`. Returns both the version with `0` inserted and `1` inserted.
 ///
 /// The first `shift` bits are preserved, then `0` or `1` is inserted, and then the remaining bits
@@ -296,16 +300,67 @@ fn input_check<P: PackedField>(
 	data: FieldSlice<P>,
 	skip_early: usize,
 	skip_late: usize,
-) -> usize {
+) {
 	let log_d = data.log_len();
 
 	// we can't "double-skip" layers
 	assert!(skip_early + skip_late <= log_d);
 
 	// we need enough twiddles in `domain_context`
-	assert!(log_d <= domain_context.log_domain_size() + skip_late);
+	assert!(log_d - skip_late <= domain_context.log_domain_size());
+}
 
-	log_d
+#[derive(Debug)]
+pub struct NeighborsLastBreadthFirst<DC> {
+	/// The domain context from which the twiddles are pulled.
+	pub domain_context: DC,
+}
+
+impl<F, DC> AdditiveNTT for NeighborsLastBreadthFirst<DC>
+where
+	F: BinaryField,
+	DC: DomainContext<Field = F>,
+{
+	type Field = F;
+
+	fn forward_transform<P: PackedField<Scalar = F>>(
+		&self,
+		mut data: FieldSliceMut<P>,
+		skip_early: usize,
+		skip_late: usize,
+	) {
+		let log_d = data.log_len();
+		if log_d <= P::LOG_WIDTH {
+			let fallback_ntt = NeighborsLastReference {
+				domain_context: &self.domain_context,
+			};
+			return fallback_ntt.forward_transform(data, skip_early, skip_late);
+		}
+
+		input_check(&self.domain_context, data.to_ref(), skip_early, skip_late);
+
+		forward_breadth_first(
+			self.domain_context(),
+			data.as_mut(),
+			log_d,
+			0,
+			0,
+			skip_early..(log_d - skip_late),
+		);
+	}
+
+	fn inverse_transform<P: PackedField<Scalar = F>>(
+		&self,
+		_data: FieldSliceMut<P>,
+		_skip_early: usize,
+		_skip_late: usize,
+	) {
+		todo!()
+	}
+
+	fn domain_context(&self) -> &impl DomainContext<Field = F> {
+		&self.domain_context
+	}
 }
 
 /// A single-threaded implementation of [`AdditiveNTT`].
@@ -341,39 +396,35 @@ impl<DC: DomainContext> AdditiveNTT for NeighborsLastSingleThread<DC> {
 
 	fn forward_transform<P: PackedField<Scalar = Self::Field>>(
 		&self,
-		mut data_orig: FieldSliceMut<P>,
+		mut data: FieldSliceMut<P>,
 		skip_early: usize,
 		skip_late: usize,
 	) {
-		// total number of scalars
-		let log_d = input_check(&self.domain_context, data_orig.to_ref(), skip_early, skip_late);
-
-		let data = data_orig.as_mut();
-
-		// if there is only a single packed element, we don't want to bother with potential
-		// interleaving issues in the future so we just call the (slow) reference NTT
-		if data.len() == 1 {
-			let reference_ntt = NeighborsLastReference {
+		let log_d = data.log_len();
+		if log_d <= P::LOG_WIDTH {
+			let fallback_ntt = NeighborsLastReference {
 				domain_context: &self.domain_context,
 			};
-			reference_ntt.forward_transform(data_orig, skip_early, skip_late);
-			return;
+			return fallback_ntt.forward_transform(data, skip_early, skip_late);
 		}
+
+		input_check(&self.domain_context, data.to_ref(), skip_early, skip_late);
 
 		forward_depth_first(
 			&self.domain_context,
-			data,
+			data.as_mut(),
 			log_d,
 			0,
 			0,
 			skip_early..(log_d - skip_late),
-			self.log_base_len,
+			// Ensures that log_base_len satisfies precondition
+			self.log_base_len.max(P::LOG_WIDTH + 1),
 		);
 	}
 
 	fn inverse_transform<P: PackedField<Scalar = Self::Field>>(
 		&self,
-		mut _data_orig: FieldSliceMut<P>,
+		_data_orig: FieldSliceMut<P>,
 		_skip_early: usize,
 		_skip_late: usize,
 	) {
@@ -423,24 +474,19 @@ impl<DC: DomainContext + Sync> AdditiveNTT for NeighborsLastMultiThread<DC> {
 
 	fn forward_transform<P: PackedField<Scalar = Self::Field>>(
 		&self,
-		mut data_orig: FieldSliceMut<P>,
+		mut data: FieldSliceMut<P>,
 		skip_early: usize,
 		skip_late: usize,
 	) {
-		// total number of scalars
-		let log_d = input_check(&self.domain_context, data_orig.to_ref(), skip_early, skip_late);
-
-		let data = data_orig.as_mut();
-
-		// if there is only a single packed element, we don't want to bother with potential
-		// interleaving issues in the future so we just call the (slow) reference NTT
-		if data.len() == 1 {
-			let reference_ntt = NeighborsLastReference {
+		let log_d = data.log_len();
+		if log_d <= P::LOG_WIDTH {
+			let fallback_ntt = NeighborsLastReference {
 				domain_context: &self.domain_context,
 			};
-			reference_ntt.forward_transform(data_orig, skip_early, skip_late);
-			return;
+			return fallback_ntt.forward_transform(data, skip_early, skip_late);
 		}
+
+		input_check(&self.domain_context, data.to_ref(), skip_early, skip_late);
 
 		// Decide on `actual_log_num_shares`, which also determines how many shared rounds we do.
 		// By default this would just be `self.log_num_shares`, but we will potentially decrease it
@@ -459,7 +505,13 @@ impl<DC: DomainContext + Sync> AdditiveNTT for NeighborsLastMultiThread<DC> {
 		let independent_layers = max(first_independent_layer, skip_early)..last_layer;
 
 		for layer in shared_layers {
-			forward_shared_layer(&self.domain_context, data, log_d, layer, actual_log_num_shares);
+			forward_shared_layer(
+				&self.domain_context,
+				data.as_mut(),
+				log_d,
+				layer,
+				actual_log_num_shares,
+			);
 		}
 
 		// One might think that we could just call `forward_depth_first` with
@@ -468,7 +520,8 @@ impl<DC: DomainContext + Sync> AdditiveNTT for NeighborsLastMultiThread<DC> {
 		// one packed element.
 		let layer = min(independent_layers.start, maximum_log_num_shares);
 		let log_d_chunk = log_d - layer;
-		data.par_chunks_exact_mut(1 << (log_d_chunk - P::LOG_WIDTH))
+		data.as_mut()
+			.par_chunks_exact_mut(1 << (log_d_chunk - P::LOG_WIDTH))
 			.enumerate()
 			.for_each(|(block, chunk)| {
 				forward_depth_first(
@@ -485,7 +538,7 @@ impl<DC: DomainContext + Sync> AdditiveNTT for NeighborsLastMultiThread<DC> {
 
 	fn inverse_transform<P: PackedField<Scalar = Self::Field>>(
 		&self,
-		mut _data_orig: FieldSliceMut<P>,
+		_data_orig: FieldSliceMut<P>,
 		_skip_early: usize,
 		_skip_late: usize,
 	) {
@@ -500,15 +553,6 @@ impl<DC: DomainContext + Sync> AdditiveNTT for NeighborsLastMultiThread<DC> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-
-	#[test]
-	fn test_rotate_right() {
-		assert_eq!(rotate_right(0b1001011, 7), 0b1100101);
-		assert_eq!(rotate_right(0b0001011, 7), 0b1000101);
-		assert_eq!(rotate_right(0b0001010, 7), 0b0000101);
-		assert_eq!(rotate_right(0b1, 1), 0b1);
-		assert_eq!(rotate_right(0b0, 1), 0b0);
-	}
 
 	#[test]
 	fn test_with_middle_bit() {
