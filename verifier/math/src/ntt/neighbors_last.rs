@@ -13,8 +13,11 @@ use binius_utils::rayon::{
 	slice::ParallelSliceMut,
 };
 
-use super::{AdditiveNTT, DomainContext, reference::NeighborsLastReference};
-use crate::{FieldSlice, FieldSliceMut};
+use super::{
+	AdditiveNTT, DomainContext,
+	reference::{NeighborsLastReference, input_check},
+};
+use crate::field_buffer::FieldSliceMut;
 
 const DEFAULT_LOG_BASE_LEN: usize = 8;
 
@@ -293,23 +296,6 @@ fn with_middle_bit(k: usize, shift: usize) -> (usize, usize) {
 	(k0, k1)
 }
 
-/// Checks for the preconditions of the `AdditiveNTT` transforms and returns `log_d`, the base-2 log
-/// of the total number of scalars in the input.
-fn input_check<P: PackedField>(
-	domain_context: &impl DomainContext<Field = P::Scalar>,
-	data: FieldSlice<P>,
-	skip_early: usize,
-	skip_late: usize,
-) {
-	let log_d = data.log_len();
-
-	// we can't "double-skip" layers
-	assert!(skip_early + skip_late <= log_d);
-
-	// we need enough twiddles in `domain_context`
-	assert!(log_d - skip_late <= domain_context.log_domain_size());
-}
-
 #[derive(Debug)]
 pub struct NeighborsLastBreadthFirst<DC> {
 	/// The domain context from which the twiddles are pulled.
@@ -337,7 +323,7 @@ where
 			return fallback_ntt.forward_transform(data, skip_early, skip_late);
 		}
 
-		input_check(&self.domain_context, data.to_ref(), skip_early, skip_late);
+		input_check(&self.domain_context, log_d, skip_early, skip_late);
 
 		forward_breadth_first(
 			self.domain_context(),
@@ -408,7 +394,7 @@ impl<DC: DomainContext> AdditiveNTT for NeighborsLastSingleThread<DC> {
 			return fallback_ntt.forward_transform(data, skip_early, skip_late);
 		}
 
-		input_check(&self.domain_context, data.to_ref(), skip_early, skip_late);
+		input_check(&self.domain_context, log_d, skip_early, skip_late);
 
 		forward_depth_first(
 			&self.domain_context,
@@ -486,7 +472,7 @@ impl<DC: DomainContext + Sync> AdditiveNTT for NeighborsLastMultiThread<DC> {
 			return fallback_ntt.forward_transform(data, skip_early, skip_late);
 		}
 
-		input_check(&self.domain_context, data.to_ref(), skip_early, skip_late);
+		input_check(&self.domain_context, log_d, skip_early, skip_late);
 
 		// Decide on `actual_log_num_shares`, which also determines how many shared rounds we do.
 		// By default this would just be `self.log_num_shares`, but we will potentially decrease it

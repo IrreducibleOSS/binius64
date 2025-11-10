@@ -21,8 +21,7 @@ pub use neighbors_last::{
 };
 pub use reference::NeighborsLastReference;
 
-use super::BinarySubspace;
-use crate::FieldSliceMut;
+use crate::{binary_subspace::BinarySubspace, field_buffer::FieldSliceMut};
 
 /// The binary field additive NTT.
 ///
