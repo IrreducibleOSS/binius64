@@ -19,7 +19,10 @@ use super::{
 };
 use crate::field_buffer::FieldSliceMut;
 
-const DEFAULT_LOG_BASE_LEN: usize = 8;
+// This value is chosen assuming 128-bit field elements.
+//
+// Empirically it performs well and is small enough for the buffer to fit comfortably in L1 cache.
+const DEFAULT_LOG_BASE_LEN: usize = 10;
 
 /// Runs a **part** of an NTT butterfly network, in depth-first order.
 ///
