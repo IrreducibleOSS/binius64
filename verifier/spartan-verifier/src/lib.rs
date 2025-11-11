@@ -109,6 +109,8 @@ where
 		// Verify the multiplication constraints.
 		let (mulcheck_evals, r_x) = self.verify_mulcheck(transcript)?;
 
+		// TODO: investigate whether r_x needs to be reversed
+
 		// Verify the wiring reduction
 		let wiring_output = wiring::verify(cs.log_size() as usize, &mulcheck_evals, transcript)?;
 		wiring::check_eval(&self.constraint_system, &r_x, &wiring_output)?;

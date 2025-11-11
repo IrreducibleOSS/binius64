@@ -57,7 +57,7 @@ where
 		final_fri_value,
 		final_sumcheck_value,
 		eval_point,
-		&challenges,
+		challenges,
 	) {
 		return Err(VerificationError::EvaluationInconsistency.into());
 	}

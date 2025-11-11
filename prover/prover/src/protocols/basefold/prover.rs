@@ -15,7 +15,9 @@ use crate::{
 	Error,
 	fri::{FRIFoldProver, FoldRoundOutput},
 	merkle_tree::MerkleTreeProver,
-	protocols::{basefold::sumcheck::MultilinearSumcheckProver, sumcheck::common::SumcheckProver},
+	protocols::sumcheck::{
+		bivariate_product::BivariateProductSumcheckProver, common::SumcheckProver,
+	},
 };
 
 /// Prover for the BaseFold protocol.
@@ -35,7 +37,7 @@ where
 	NTT: AdditiveNTT<Field = F> + Sync,
 	MerkleProver: MerkleTreeProver<F>,
 {
-	sumcheck_prover: MultilinearSumcheckProver<F, P>,
+	sumcheck_prover: BivariateProductSumcheckProver<P>,
 	fri_folder: FRIFoldProver<'a, F, P, NTT, MerkleProver>,
 }
 
@@ -76,15 +78,11 @@ where
 	) -> Result<Self, Error> {
 		assert_eq!(multilinear.log_len(), transparent_multilinear.log_len());
 
-		let log_n = multilinear.log_len();
-
 		let fri_folder =
 			FRIFoldProver::new(fri_params, ntt, merkle_prover, committed_codeword, committed)?;
 
-		let sumcheck_composition = [multilinear, transparent_multilinear];
-
 		let sumcheck_prover =
-			MultilinearSumcheckProver::<F, P>::new(sumcheck_composition, claim, log_n);
+			BivariateProductSumcheckProver::new([multilinear, transparent_multilinear], claim)?;
 
 		Ok(Self {
 			sumcheck_prover,
@@ -273,7 +271,7 @@ mod test {
 			final_fri_value,
 			final_sumcheck_value,
 			&evaluation_point,
-			&challenges,
+			challenges,
 		) {
 			bail!("Sumcheck and FRI are inconsistent");
 		}

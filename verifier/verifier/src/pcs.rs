@@ -84,7 +84,7 @@ where
 	let basefold::ReducedOutput {
 		final_fri_value,
 		final_sumcheck_value,
-		challenges,
+		mut challenges,
 	} = basefold::verify(
 		fri_params,
 		merkle_scheme,
@@ -95,6 +95,9 @@ where
 	)?;
 
 	let (_, eval_point_high) = eval_point.split_at(packing_degree);
+
+	// Reverse challenges to get the reduced evaluation point.
+	challenges.reverse();
 
 	let rs_eq_at_basefold_challenges = eval_rs_eq::<F>(
 		eval_point_high,
