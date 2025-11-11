@@ -178,7 +178,7 @@ impl<P: PackedField, Data: Deref<Target = [P]>> FieldBuffer<P, Data> {
 	}
 
 	/// Returns log2 the number of field elements.
-	pub fn log_len(&self) -> usize {
+	pub const fn log_len(&self) -> usize {
 		self.log_len
 	}
 
