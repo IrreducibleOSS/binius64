@@ -26,23 +26,14 @@ pub fn reverse_bits(x: usize, bits: u32) -> usize {
 /// index `reverse_bits(i, log_len)`. The permutation is performed in-place and correctly
 /// handles packed field representations.
 ///
-/// The algorithm has two parallelized phases:
-/// 1. Process P::WIDTH x P::WIDTH submatrices in parallel
-/// 2. Apply bit-reversal to independent chunks in parallel
-///
 /// # Arguments
 ///
 /// * `buffer` - Mutable slice of packed field elements to permute
-///
-/// # Safety
-///
-/// This implementation uses unsafe code to enable parallel access to the data buffer.
-/// This is safe because:
-/// - Phase 1: Different iterations access disjoint memory regions (different values of `i` access
-///   non-overlapping submatrices due to the `| i` operation placing `i` in low bits while
-///   `reverse_bits(j, bits)` occupies high bits)
-/// - Phase 2: Chunks are non-overlapping, so parallel processing is inherently safe
 pub fn bit_reverse_packed<P: PackedField>(mut buffer: FieldSliceMut<P>) {
+	// The algorithm has two parallelized phases:
+	// 1. Process P::WIDTH x P::WIDTH submatrices in parallel
+	// 2. Apply bit-reversal to independent chunks in parallel
+
 	let log_len = buffer.log_len();
 	if log_len < 2 * P::LOG_WIDTH {
 		return bit_reverse_packed_naive(buffer);
