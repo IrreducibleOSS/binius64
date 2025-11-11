@@ -5,8 +5,7 @@ use std::vec;
 use binius_field::{BinaryField, PackedBinaryGhash1x128b, PackedField};
 use binius_math::{
 	BinarySubspace, ReedSolomonCode,
-	inner_product::inner_product_par,
-	multilinear::eq::eq_ind_partial_eval,
+	multilinear::evaluate::evaluate,
 	ntt::{NeighborsLastSingleThread, domain_context::GenericOnTheFly},
 	test_utils::{Packed128b, random_field_buffer},
 };
@@ -116,13 +115,6 @@ fn test_commit_prove_verify_success<F, P>(
 
 	assert_eq!(verifier_challenges.len(), params.n_fold_rounds());
 
-	// check c == t(r'_0, ..., r'_{\ell-1})
-	// note that the prover is claiming that the final_message is [c]
-	let eval_query = eq_ind_partial_eval::<P>(&verifier_challenges);
-	// recall that msg, the message the prover commits to, is (the evaluations on the Boolean
-	// hypercube of) a multilinear polynomial.
-	let computed_eval = inner_product_par(&eval_query, &msg);
-
 	let verifier = FRIQueryVerifier::new(
 		&params,
 		merkle_prover.scheme(),
@@ -153,6 +145,12 @@ fn test_commit_prove_verify_success<F, P>(
 
 	// Verify that the Merkle tree has exactly inv_rate leaves.
 	assert_eq!(tree.log_len, params.rs_code().log_inv_rate());
+
+	// check c == t(r'_0, ..., r'_{\ell-1})
+	// note that the prover is claiming that the final_message is [c]
+	let mut eval_point = verifier_challenges.clone();
+	eval_point.reverse();
+	let computed_eval = evaluate(&msg, &eval_point).unwrap();
 
 	let final_fri_value = verifier.verify(&mut cloned_verifier_challenger).unwrap();
 	assert_eq!(computed_eval, final_fri_value);
