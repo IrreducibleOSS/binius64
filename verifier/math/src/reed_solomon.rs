@@ -105,16 +105,14 @@ impl<F: BinaryField> ReedSolomonCode<F> {
 		1 << self.log_inv_rate
 	}
 
-	/// Encode a batch of interleaved messages into a provided output buffer.
+	/// Encodes a message with an interleaved Reed–Solomon code.
 	///
-	/// This function encodes multiple messages in parallel by copying the input data to all chunks
-	/// of the output buffer and then applying the NTT transformation. The messages are interleaved
-	/// in both the input and output buffers, which improves cache efficiency.
+	/// This function interprets the message as a batch of independent vectors and applies an
+	/// interleaved Reed–Solomon.
 	///
 	/// ## Preconditions
 	///
-	/// * The input `data` must contain exactly `dim() << log_batch_size` field elements.
-	/// * The output buffer must have capacity for `len() << log_batch_size` field elements.
+	/// * `data.log_len()` equal `log_dim() + log_batch_size`.
 	///
 	/// ## Postconditions
 	///
