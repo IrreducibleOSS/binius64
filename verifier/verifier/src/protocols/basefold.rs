@@ -129,9 +129,10 @@ pub fn sumcheck_fri_consistency<F: Field>(
 	fri_final_oracle: F,
 	sumcheck_final_claim: F,
 	evaluation_point: &[F],
-	challenges: &[F],
+	mut challenges: Vec<F>,
 ) -> bool {
-	fri_final_oracle * eq_ind(evaluation_point, challenges) == sumcheck_final_claim
+	challenges.reverse();
+	fri_final_oracle * eq_ind(evaluation_point, &challenges) == sumcheck_final_claim
 }
 
 #[derive(Debug, thiserror::Error)]
