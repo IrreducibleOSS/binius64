@@ -146,7 +146,7 @@ where
 		let pcs_prover =
 			pcs::PCSProver::new(&self.ntt, &self.merkle_prover, self.verifier.fri_params());
 		pcs_prover.prove(
-			&codeword,
+			codeword.as_ref(),
 			&codeword_committed,
 			witness_packed,
 			&r_y,

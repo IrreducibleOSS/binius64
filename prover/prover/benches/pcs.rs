@@ -88,7 +88,7 @@ fn bench_pcs(c: &mut Criterion) {
 				let mut transcript = transcript.clone();
 				pcs_prover
 					.prove(
-						&codeword,
+						codeword.as_ref(),
 						&codeword_committed,
 						packed_multilin.clone(),
 						eval_point.clone(),
@@ -100,7 +100,7 @@ fn bench_pcs(c: &mut Criterion) {
 
 		pcs_prover
 			.prove(
-				&codeword,
+				codeword.as_ref(),
 				&codeword_committed,
 				packed_multilin.clone(),
 				eval_point.clone(),

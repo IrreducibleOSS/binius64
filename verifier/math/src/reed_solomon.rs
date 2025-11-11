@@ -4,16 +4,19 @@
 //!
 //! See [`ReedSolomonCode`] for details.
 
-use std::mem::MaybeUninit;
+use std::ptr;
 
 use binius_field::{BinaryField, PackedField};
 use binius_utils::rayon::{
-	iter::{IntoParallelRefMutIterator, ParallelBridge, ParallelIterator},
+	iter::{ParallelBridge, ParallelIterator},
 	slice::ParallelSliceMut,
 };
 use getset::{CopyGetters, Getters};
 
-use super::{binary_subspace::BinarySubspace, error::Error as MathError, ntt::AdditiveNTT};
+use super::{
+	FieldBuffer, FieldSlice, binary_subspace::BinarySubspace, error::Error as MathError,
+	ntt::AdditiveNTT,
+};
 use crate::{FieldSliceMut, ntt::DomainContext};
 
 /// [Reed–Solomon] codes over binary fields.
@@ -187,46 +190,21 @@ impl<F: BinaryField> ReedSolomonCode<F> {
 	///
 	/// * [`Error::EncoderSubspaceMismatch`] if the NTT subspace doesn't match the code's subspace.
 	/// * [`Error::Math`] if the output buffer has incorrect dimensions.
-	pub fn encode_batch<P: PackedField<Scalar = F>, NTT: AdditiveNTT<Field = F> + Sync>(
+	pub fn encode_batch<P, NTT>(
 		&self,
 		ntt: &NTT,
-		data: &[P],
-		output: &mut [MaybeUninit<P>],
+		data: FieldSlice<P>,
 		log_batch_size: usize,
-	) -> Result<(), Error> {
+	) -> Result<FieldBuffer<P>, Error>
+	where
+		P: PackedField<Scalar = F>,
+		NTT: AdditiveNTT<Field = F> + Sync,
+	{
 		if ntt.subspace(self.log_len()) != self.subspace {
 			return Err(Error::EncoderSubspaceMismatch);
 		}
 
-		// Dimension checks
-		let data_log_len = self.log_dim() + log_batch_size;
-		let output_log_len = self.log_len() + log_batch_size;
-
-		let expected_data_len = if data_log_len >= P::LOG_WIDTH {
-			1 << (data_log_len - P::LOG_WIDTH)
-		} else {
-			1
-		};
-
-		let expected_output_len = if output_log_len >= P::LOG_WIDTH {
-			1 << (output_log_len - P::LOG_WIDTH)
-		} else {
-			1
-		};
-
-		if data.len() != expected_data_len {
-			return Err(Error::Math(MathError::IncorrectArgumentLength {
-				arg: "data".to_string(),
-				expected: expected_data_len,
-			}));
-		}
-
-		if output.len() != expected_output_len {
-			return Err(Error::Math(MathError::IncorrectArgumentLength {
-				arg: "output".to_string(),
-				expected: expected_output_len,
-			}));
-		}
+		assert_eq!(data.log_len(), self.log_dim() + log_batch_size); // precondition
 
 		let _scope = tracing::trace_span!(
 			"Reed-Solomon encode",
@@ -237,33 +215,44 @@ impl<F: BinaryField> ReedSolomonCode<F> {
 		.entered();
 
 		// Repeat the message to fill the entire buffer.
-		let log_chunk_size = self.log_dim() + log_batch_size;
-		if log_chunk_size < P::LOG_WIDTH {
-			let repeated_values = data[0]
-				.into_iter()
-				.take(1 << (self.log_dim() + log_batch_size))
-				.cycle();
+		let log_output_len = self.log_dim() + log_batch_size + self.log_inv_rate;
+		let output_data = if data.log_len() < P::LOG_WIDTH {
+			let repeated_values = data.iter_scalars().cycle();
 			let elem_0 = P::from_scalars(repeated_values);
-			output.par_iter_mut().for_each(|elem| {
-				elem.write(elem_0);
-			});
+			vec![elem_0; 1 << log_output_len.saturating_sub(P::LOG_WIDTH)]
 		} else {
-			output
-				.par_chunks_mut(1 << (log_chunk_size - P::LOG_WIDTH))
+			let mut output_data =
+				Vec::with_capacity(1 << log_output_len.saturating_sub(P::LOG_WIDTH));
+
+			let data_packed = data.as_ref();
+			output_data
+				.spare_capacity_mut()
+				.par_chunks_exact_mut(data_packed.len())
 				.for_each(|chunk| {
-					let out = uninit::out_ref::Out::from(chunk);
-					out.copy_from_slice(data);
+					unsafe {
+						// Safety: MaybeUninit<P> has the same memory representation as P. P is a
+						// PackedField, which is Copy. chuck len is exactly data_packed.len()
+						// because of the par_chunks_exact_mut.
+						ptr::copy_nonoverlapping(
+							data_packed.as_ptr(),
+							chunk.as_mut_ptr() as *mut P,
+							data_packed.len(),
+						)
+					}
 				});
+
+			unsafe {
+				// Safety: the vec's spare capacity is fully initialized above.
+				output_data.set_len(1 << log_output_len.saturating_sub(P::LOG_WIDTH));
+			}
+
+			output_data
 		};
+		let mut output = FieldBuffer::new(log_output_len, output_data.into_boxed_slice())
+			.expect("preconditions satisfied");
 
-		// SAFETY: We just initialized all elements
-		let output_initialized = unsafe { uninit::out_ref::Out::<[P]>::from(output).assume_init() };
-		let code = FieldSliceMut::from_slice(self.log_len() + log_batch_size, output_initialized)?;
-
-		let skip_early = self.log_inv_rate;
-		let skip_late = log_batch_size;
-		ntt.forward_transform(code, skip_early, skip_late);
-		Ok(())
+		ntt.forward_transform(output.to_mut(), self.log_inv_rate, log_batch_size);
+		Ok(output)
 	}
 }
 
@@ -280,8 +269,7 @@ pub enum Error {
 #[cfg(test)]
 mod tests {
 	use binius_field::{
-		BinaryField, BinaryField128bGhash, PackedBinaryGhash1x128b, PackedBinaryGhash4x128b,
-		PackedField,
+		BinaryField, PackedBinaryGhash1x128b, PackedBinaryGhash4x128b, PackedField,
 	};
 	use rand::{SeedableRng, rngs::StdRng};
 
@@ -402,52 +390,29 @@ mod tests {
 		let message = random_field_buffer::<P>(&mut rng, log_dim + log_batch_size);
 
 		// Test the new encode_batch interface
-		let log_encoded_len = rs_code.log_len() + log_batch_size;
-		let encoded_capacity = 1 << log_encoded_len.saturating_sub(P::LOG_WIDTH);
-		let mut encoded_output = Vec::<MaybeUninit<P>>::with_capacity(encoded_capacity);
-
-		unsafe {
-			encoded_output.set_len(encoded_capacity);
-		}
-
-		rs_code
-			.encode_batch(&ntt, message.as_ref(), &mut encoded_output, log_batch_size)
+		let encoded_buffer = rs_code
+			.encode_batch(&ntt, message.to_ref(), log_batch_size)
 			.expect("encode_batch failed");
 
-		// Convert MaybeUninit to initialized values
-		let encoded_result: Vec<P> = unsafe {
-			encoded_output
-				.into_iter()
-				.map(|x| x.assume_init())
-				.collect()
-		};
+		// Method 2: Reference implementation - apply NTT with zero-padded coefficients
+		let mut reference_buffer = FieldBuffer::zeros(rs_code.log_len() + log_batch_size);
+		for (i, val) in message.iter_scalars().enumerate() {
+			reference_buffer.set(i, val);
+		}
 
-		// Compare with encode_batch_inplace reference implementation
-		let mut encoded_data = message.as_ref().to_vec();
-		encoded_data.resize(encoded_capacity, P::zero());
-
-		let mut reference_buffer =
-			FieldBuffer::new_truncated(log_dim + log_batch_size, encoded_data.into_boxed_slice())
-				.expect("Failed to create reference buffer");
-
-		reference_buffer
-			.zero_extend(log_encoded_len)
-			.expect("Failed to zero-extend reference buffer");
-
-		rs_code
-			.encode_batch_inplace(&ntt, reference_buffer.as_mut(), log_batch_size)
-			.expect("encode_batch_inplace failed");
+		// Perform large NTT with zero-padded coefficients.
+		ntt.forward_transform(reference_buffer.to_mut(), 0, log_batch_size);
 
 		// Compare results
 		assert_eq!(
-			encoded_result,
+			encoded_buffer.as_ref(),
 			reference_buffer.as_ref(),
-			"encode_batch result differs from encode_batch_inplace"
+			"encode_batch_inplace result differs from reference NTT implementation"
 		);
 	}
 
 	#[test]
-	fn test_encode_batch() {
+	fn test_encode_batch_above_packing_width() {
 		// Test with PackedBinaryGhash1x128b
 		test_encode_batch_helper::<PackedBinaryGhash1x128b>(4, 2, 0);
 		test_encode_batch_helper::<PackedBinaryGhash1x128b>(6, 2, 1);
@@ -457,83 +422,11 @@ mod tests {
 		test_encode_batch_helper::<PackedBinaryGhash4x128b>(4, 2, 0);
 		test_encode_batch_helper::<PackedBinaryGhash4x128b>(6, 2, 1);
 		test_encode_batch_helper::<PackedBinaryGhash4x128b>(8, 3, 2);
-
-		// Test where message length is less than the packing width and codeword length is greater.
-		test_encode_batch_helper::<PackedBinaryGhash4x128b>(1, 2, 0);
 	}
 
 	#[test]
-	#[ignore = "Test setup hits edge case in NTT domain configuration - dimension validation logic is correct"]
-	fn test_encode_batch_dimension_validation() {
-		let mut rng = StdRng::seed_from_u64(0);
-		let log_dim = 6; // Use larger dimensions to avoid NTT size issues
-		let log_inv_rate = 2;
-		let log_batch_size = 1;
-
-		type P = PackedBinaryGhash4x128b;
-		type F = <P as PackedField>::Scalar;
-
-		let rs_code = ReedSolomonCode::<F>::new(log_dim, log_inv_rate)
-			.expect("Failed to create Reed-Solomon code");
-
-		let subspace = rs_code.subspace().clone();
-		let domain_context = GenericPreExpanded::<F>::generate_from_subspace(&subspace);
-		let ntt = NeighborsLastReference {
-			domain_context: &domain_context,
-		};
-
-		// Test with incorrect input data length (too small)
-		let wrong_data = random_field_buffer::<P>(&mut rng, log_dim + log_batch_size - 1);
-		let log_encoded_len = rs_code.log_len() + log_batch_size;
-		let encoded_capacity = 1 << log_encoded_len.saturating_sub(P::LOG_WIDTH);
-		let mut output = Vec::<MaybeUninit<P>>::with_capacity(encoded_capacity);
-
-		unsafe {
-			output.set_len(encoded_capacity);
-		}
-
-		let result = rs_code.encode_batch(&ntt, wrong_data.as_ref(), &mut output, log_batch_size);
-		assert!(result.is_err(), "Expected error for incorrect input data length");
-		assert!(
-			matches!(result, Err(Error::Math(MathError::IncorrectArgumentLength { arg, .. })) if arg == "data"),
-			"Expected IncorrectArgumentLength error for data"
-		);
-
-		// Test with incorrect output buffer length (too small)
-		let correct_data = random_field_buffer::<P>(&mut rng, log_dim + log_batch_size);
-		let mut wrong_output = Vec::<MaybeUninit<P>>::with_capacity(encoded_capacity - 1);
-
-		unsafe {
-			wrong_output.set_len(encoded_capacity - 1);
-		}
-
-		let result =
-			rs_code.encode_batch(&ntt, correct_data.as_ref(), &mut wrong_output, log_batch_size);
-		assert!(result.is_err(), "Expected error for incorrect output buffer length");
-		assert!(
-			matches!(result, Err(Error::Math(MathError::IncorrectArgumentLength { arg, .. })) if arg == "output"),
-			"Expected IncorrectArgumentLength error for output"
-		);
-
-		// Test with mismatched NTT subspace
-		let wrong_rs_code = ReedSolomonCode::<BinaryField128bGhash>::new(log_dim + 1, log_inv_rate)
-			.expect("Failed to create Reed-Solomon code");
-
-		let mut correct_output = Vec::<MaybeUninit<P>>::with_capacity(encoded_capacity);
-		unsafe {
-			correct_output.set_len(encoded_capacity);
-		}
-
-		let result = wrong_rs_code.encode_batch(
-			&ntt,
-			correct_data.as_ref(),
-			&mut correct_output,
-			log_batch_size,
-		);
-		assert!(result.is_err(), "Expected error for NTT subspace mismatch");
-		assert!(
-			matches!(result, Err(Error::EncoderSubspaceMismatch)),
-			"Expected EncoderSubspaceMismatch error"
-		);
+	fn test_encode_batch_below_packing_width() {
+		// Test where message length is less than the packing width and codeword length is greater.
+		test_encode_batch_helper::<PackedBinaryGhash4x128b>(1, 2, 0);
 	}
 }

@@ -195,7 +195,7 @@ mod tests {
 		let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
 		prover_transcript.message().write(&codeword_commitment);
 		pcs_prover.prove(
-			&codeword,
+			codeword.as_ref(),
 			&codeword_committed,
 			multilinear,
 			&evaluation_point,
