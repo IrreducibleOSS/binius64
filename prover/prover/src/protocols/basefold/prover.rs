@@ -243,7 +243,7 @@ mod test {
 			multilinear,
 			eval_point_eq,
 			evaluation_claim,
-			&codeword,
+			codeword.as_ref(),
 			&codeword_committed,
 			&merkle_prover,
 			&ntt,

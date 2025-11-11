@@ -262,7 +262,7 @@ mod test {
 		let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
 		prover_transcript.message().write(&codeword_commitment);
 		ring_switch_pcs_prover.prove(
-			&codeword,
+			codeword.as_ref(),
 			&codeword_committed,
 			packed_mle,
 			evaluation_point.clone(),

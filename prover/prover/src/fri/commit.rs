@@ -1,6 +1,6 @@
 // Copyright 2025 Irreducible Inc.
 use binius_field::{BinaryField, PackedField};
-use binius_math::{FieldSlice, ntt::AdditiveNTT};
+use binius_math::{FieldBuffer, FieldSlice, ntt::AdditiveNTT};
 use binius_utils::rayon::prelude::*;
 use binius_verifier::{fri::FRIParams, merkle_tree::MerkleTreeScheme};
 
@@ -8,10 +8,10 @@ use super::error::Error;
 use crate::merkle_tree::MerkleTreeProver;
 
 #[derive(Debug)]
-pub struct CommitOutput<P, VCSCommitment, VCSCommitted> {
+pub struct CommitOutput<P: PackedField, VCSCommitment, VCSCommitted> {
 	pub commitment: VCSCommitment,
 	pub committed: VCSCommitted,
-	pub codeword: Vec<P>,
+	pub codeword: FieldBuffer<P>,
 }
 
 /// Encodes and commits the input message.
@@ -57,24 +57,16 @@ where
 	)
 	.entered();
 
-	let len = 1 << (log_elems - P::LOG_WIDTH + rs_code.log_inv_rate());
-	let mut encoded = Vec::with_capacity(len);
-
-	tracing::debug_span!("Reed-Solomon Encode").in_scope(|| {
-		rs_code.encode_batch(ntt, message.as_ref(), encoded.spare_capacity_mut(), log_batch_size)
-	})?;
-
-	unsafe {
-		// Safety: encode_ext_batch guarantees all elements are initialized on success
-		encoded.set_len(len);
-	}
+	let encoded = tracing::debug_span!("Reed-Solomon Encode")
+		.in_scope(|| rs_code.encode_batch(ntt, message.to_ref(), log_batch_size))?;
 
 	let merkle_tree_span = tracing::debug_span!("Merkle Tree").entered();
 	let (commitment, vcs_committed) = if log_batch_size > P::LOG_WIDTH {
-		let iterated_big_chunks = to_par_scalar_big_chunks(&encoded, 1 << log_batch_size);
+		let iterated_big_chunks = to_par_scalar_big_chunks(encoded.as_ref(), 1 << log_batch_size);
 		merkle_prover.commit_iterated(iterated_big_chunks, params.rs_code().log_len())?
 	} else {
-		let iterated_small_chunks = to_par_scalar_small_chunks(&encoded, 1 << log_batch_size);
+		let iterated_small_chunks =
+			to_par_scalar_small_chunks(encoded.as_ref(), 1 << log_batch_size);
 		merkle_prover.commit_iterated(iterated_small_chunks, params.rs_code().log_len())?
 	};
 	drop(merkle_tree_span);
