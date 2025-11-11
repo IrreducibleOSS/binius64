@@ -9,7 +9,7 @@ use binius_math::{FieldBuffer, multilinear::eq::eq_ind_partial_eval, ntt::Additi
 use binius_prover::{
 	fri::{self, CommitOutput},
 	merkle_tree::MerkleTreeProver,
-	protocols::basefold::prover::BaseFoldProver,
+	protocols::basefold::BaseFoldProver,
 };
 use binius_transcript::{ProverTranscript, fiat_shamir::Challenger};
 use binius_utils::SerializeBytes;

@@ -22,7 +22,7 @@ use crate::{
 	Error,
 	fri::{self, CommitOutput},
 	merkle_tree::MerkleTreeProver,
-	protocols::basefold::prover::BaseFoldProver,
+	protocols::basefold::BaseFoldProver,
 	ring_switch,
 };
 
