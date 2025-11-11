@@ -7,17 +7,14 @@
 use std::ptr;
 
 use binius_field::{BinaryField, PackedField};
-use binius_utils::rayon::{
-	iter::{ParallelBridge, ParallelIterator},
-	slice::ParallelSliceMut,
-};
+use binius_utils::rayon::{iter::ParallelIterator, slice::ParallelSliceMut};
 use getset::{CopyGetters, Getters};
 
 use super::{
 	FieldBuffer, FieldSlice, binary_subspace::BinarySubspace, error::Error as MathError,
 	ntt::AdditiveNTT,
 };
-use crate::{FieldSliceMut, ntt::DomainContext};
+use crate::ntt::DomainContext;
 
 /// [Reed–Solomon] codes over binary fields.
 ///
@@ -106,69 +103,6 @@ impl<F: BinaryField> ReedSolomonCode<F> {
 	/// The reciprocal of the rate, ie. `self.len() / self.dim()`.
 	pub const fn inv_rate(&self) -> usize {
 		1 << self.log_inv_rate
-	}
-
-	/// Encode a batch of interleaved messages in-place in a provided buffer.
-	///
-	/// The message symbols are interleaved in the buffer, which improves the cache-efficiency of
-	/// the encoding procedure. The interleaved codeword is stored in the buffer when the method
-	/// completes.
-	///
-	/// ## Throws
-	///
-	/// * If the `code` buffer does not have capacity for `len() << log_batch_size` field elements.
-	pub fn encode_batch_inplace<P: PackedField<Scalar = F>, NTT: AdditiveNTT<Field = F> + Sync>(
-		&self,
-		ntt: &NTT,
-		code: &mut [P],
-		log_batch_size: usize,
-	) -> Result<(), Error> {
-		if ntt.subspace(self.log_len()) != self.subspace {
-			return Err(Error::EncoderSubspaceMismatch);
-		}
-
-		let mut code = FieldSliceMut::from_slice(self.log_len() + log_batch_size, code)?;
-
-		let _scope = tracing::trace_span!(
-			"Reed-Solomon encode",
-			log_len = self.log_len(),
-			log_batch_size = log_batch_size,
-			symbol_bits = F::N_BITS,
-		)
-		.entered();
-
-		// Repeat the message to fill the entire buffer.
-
-		// If the message is less than the packing width, we need to repeat it to fill one
-		// packed element.
-		let chunk_size = self.log_dim() + log_batch_size;
-		let chunk_size = if chunk_size < P::LOG_WIDTH {
-			let elem_0 = &mut code.as_mut()[0];
-			let repeated_values = elem_0
-				.into_iter()
-				.take(1 << (self.log_dim() + log_batch_size))
-				.cycle();
-			*elem_0 = P::from_scalars(repeated_values);
-			P::LOG_WIDTH
-		} else {
-			chunk_size
-		};
-
-		if chunk_size < code.log_len() {
-			let mut chunks = code.chunks_mut(chunk_size).expect(
-				"chunk_size >= P::LOG_WIDTH from assignment above; \
-				chunk_size < code.log_len() in conditional",
-			);
-			let first_chunk = chunks.next().expect("chunks_mut cannot be empty");
-			chunks.par_bridge().for_each(|mut chunk| {
-				chunk.as_mut().copy_from_slice(first_chunk.as_ref());
-			});
-		}
-
-		let skip_early = self.log_inv_rate;
-		let skip_late = log_batch_size;
-		ntt.forward_transform(code, skip_early, skip_late);
-		Ok(())
 	}
 
 	/// Encode a batch of interleaved messages into a provided output buffer.
@@ -279,93 +213,6 @@ mod tests {
 		ntt::{NeighborsLastReference, domain_context::GenericPreExpanded},
 		test_utils::random_field_buffer,
 	};
-
-	fn test_encode_batch_inplace_helper<P: PackedField>(
-		log_dim: usize,
-		log_inv_rate: usize,
-		log_batch_size: usize,
-	) where
-		P::Scalar: BinaryField,
-	{
-		let mut rng = StdRng::seed_from_u64(0);
-
-		let rs_code = ReedSolomonCode::<P::Scalar>::new(log_dim, log_inv_rate)
-			.expect("Failed to create Reed-Solomon code");
-
-		// Create NTT with matching subspace
-		let subspace = rs_code.subspace().clone();
-		let domain_context = GenericPreExpanded::<P::Scalar>::generate_from_subspace(&subspace);
-		let ntt = NeighborsLastReference {
-			domain_context: &domain_context,
-		};
-
-		// Generate random message buffer
-		let message = random_field_buffer::<P>(&mut rng, log_dim + log_batch_size);
-
-		// Create two clones with capacity for encoding
-		let log_encoded_len = rs_code.log_len() + log_batch_size;
-
-		// Method 1: Use encode_batch_inplace
-		// Create buffer with message data but with capacity for the full encoding
-		let mut encoded_data = message.as_ref().to_vec();
-		// Resize to have capacity for encoding
-		let encoded_capacity = 1 << log_encoded_len.saturating_sub(P::LOG_WIDTH);
-		encoded_data.resize(encoded_capacity, P::zero());
-
-		let mut encoded_buffer =
-			FieldBuffer::new_truncated(log_dim + log_batch_size, encoded_data.into_boxed_slice())
-				.expect("Failed to create encoded buffer");
-
-		// Zero-extend to encoding size
-		encoded_buffer
-			.zero_extend(log_encoded_len)
-			.expect("Failed to zero-extend encoded buffer");
-
-		rs_code
-			.encode_batch_inplace(&ntt, encoded_buffer.as_mut(), log_batch_size)
-			.expect("encode_batch_inplace failed");
-
-		// Method 2: Reference implementation - apply NTT with zero-padded coefficients
-		// Create buffer with message data but with capacity for the full encoding
-		let mut reference_data = message.as_ref().to_vec();
-		// Resize to have capacity for encoding
-		reference_data.resize(encoded_capacity, P::zero());
-
-		let mut reference_buffer =
-			FieldBuffer::new_truncated(log_dim + log_batch_size, reference_data.into_boxed_slice())
-				.expect("Failed to create reference buffer");
-
-		// Zero-extend to encoding size
-		reference_buffer
-			.zero_extend(log_encoded_len)
-			.expect("Failed to zero-extend reference buffer");
-
-		// Perform large NTT with zero-padded coefficients.
-		ntt.forward_transform(reference_buffer.to_mut(), 0, log_batch_size);
-
-		// Compare results
-		assert_eq!(
-			encoded_buffer.as_ref(),
-			reference_buffer.as_ref(),
-			"encode_batch_inplace result differs from reference NTT implementation"
-		);
-	}
-
-	#[test]
-	fn test_encode_batch_inplace() {
-		// Test with PackedBinaryGhash1x128b
-		test_encode_batch_inplace_helper::<PackedBinaryGhash1x128b>(4, 2, 0);
-		test_encode_batch_inplace_helper::<PackedBinaryGhash1x128b>(6, 2, 1);
-		test_encode_batch_inplace_helper::<PackedBinaryGhash1x128b>(8, 3, 2);
-
-		// Test with PackedBinaryGhash4x128b
-		test_encode_batch_inplace_helper::<PackedBinaryGhash4x128b>(4, 2, 0);
-		test_encode_batch_inplace_helper::<PackedBinaryGhash4x128b>(6, 2, 1);
-		test_encode_batch_inplace_helper::<PackedBinaryGhash4x128b>(8, 3, 2);
-
-		// Test where message length is less than the packing width and codeword length is greater.
-		test_encode_batch_inplace_helper::<PackedBinaryGhash4x128b>(1, 2, 0);
-	}
 
 	fn test_encode_batch_helper<P: PackedField>(
 		log_dim: usize,
