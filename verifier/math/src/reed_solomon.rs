@@ -7,14 +7,17 @@
 use std::ptr;
 
 use binius_field::{BinaryField, PackedField};
-use binius_utils::rayon::{iter::ParallelIterator, slice::ParallelSliceMut};
+use binius_utils::rayon::prelude::*;
 use getset::{CopyGetters, Getters};
 
 use super::{
-	FieldBuffer, FieldSlice, binary_subspace::BinarySubspace, error::Error as MathError,
-	ntt::AdditiveNTT,
+	FieldBuffer, FieldSlice, FieldSliceMut, binary_subspace::BinarySubspace,
+	error::Error as MathError, ntt::AdditiveNTT,
 };
-use crate::ntt::DomainContext;
+use crate::{
+	bit_reverse::{bit_reverse_indices, bit_reverse_packed},
+	ntt::DomainContext,
+};
 
 /// [Reed–Solomon] codes over binary fields.
 ///
@@ -149,33 +152,43 @@ impl<F: BinaryField> ReedSolomonCode<F> {
 		// Repeat the message to fill the entire buffer.
 		let log_output_len = self.log_dim() + log_batch_size + self.log_inv_rate;
 		let output_data = if data.log_len() < P::LOG_WIDTH {
-			let repeated_values = data.iter_scalars().cycle();
-			let elem_0 = P::from_scalars(repeated_values);
+			let mut scalars = data.iter_scalars().collect::<Vec<_>>();
+			bit_reverse_indices(&mut scalars);
+			let elem_0 = P::from_scalars(scalars.into_iter().cycle());
 			vec![elem_0; 1 << log_output_len.saturating_sub(P::LOG_WIDTH)]
 		} else {
-			let mut output_data =
-				Vec::with_capacity(1 << log_output_len.saturating_sub(P::LOG_WIDTH));
+			let mut output_data = Vec::with_capacity(1 << (log_output_len - P::LOG_WIDTH));
 
-			let data_packed = data.as_ref();
+			output_data.extend_from_slice(data.as_ref());
+
+			// Bit-reverse permute the message.
+			bit_reverse_packed(
+				FieldSliceMut::from_slice(data.log_len(), output_data.as_mut_slice())
+					.expect("output_data.len() == data.as_ref.len()"),
+			);
+
+			let log_msg_len_packed = data.log_len() - P::LOG_WIDTH;
 			output_data
 				.spare_capacity_mut()
-				.par_chunks_exact_mut(data_packed.len())
-				.for_each(|chunk| {
-					unsafe {
-						// Safety: MaybeUninit<P> has the same memory representation as P. P is a
-						// PackedField, which is Copy. chuck len is exactly data_packed.len()
-						// because of the par_chunks_exact_mut.
-						ptr::copy_nonoverlapping(
-							data_packed.as_ptr(),
-							chunk.as_mut_ptr() as *mut P,
-							data_packed.len(),
-						)
-					}
+				.par_chunks_exact_mut(1 << log_msg_len_packed)
+				.enumerate()
+				.for_each(|(i, output_chunk)| unsafe {
+					let dst_ptr = output_chunk.as_mut_ptr();
+
+					// TODO(https://github.com/rust-lang/rust/issues/81944):
+					// Improve unsafe code with Vec::split_at_spare_mut when stable
+
+					// Safety:
+					// - log_output_len == log_msg_len_packed + self.log_inv_rate
+					// - i + 1 is in the range 1..1 << self.log_inv_rate
+					// - dst_ptr is disjoint from src_ptr and within the Vec capacity
+					let src_ptr = dst_ptr.sub((i + 1) << log_msg_len_packed);
+					ptr::copy_nonoverlapping(src_ptr, dst_ptr, 1 << log_msg_len_packed);
 				});
 
 			unsafe {
 				// Safety: the vec's spare capacity is fully initialized above.
-				output_data.set_len(1 << log_output_len.saturating_sub(P::LOG_WIDTH));
+				output_data.set_len(1 << (log_output_len - P::LOG_WIDTH));
 			}
 
 			output_data
@@ -208,6 +221,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		FieldBuffer,
+		bit_reverse::reverse_bits,
 		ntt::{NeighborsLastReference, domain_context::GenericPreExpanded},
 		test_utils::random_field_buffer,
 	};
@@ -239,10 +253,12 @@ mod tests {
 			.encode_batch(&ntt, message.to_ref(), log_batch_size)
 			.expect("encode_batch failed");
 
-		// Method 2: Reference implementation - apply NTT with zero-padded coefficients
+		// Method 2: Reference implementation - apply NTT with zero-padded coefficients to the
+		// bit-reversal permuted message.
 		let mut reference_buffer = FieldBuffer::zeros(rs_code.log_len() + log_batch_size);
 		for (i, val) in message.iter_scalars().enumerate() {
-			reference_buffer.set(i, val);
+			let bits = (rs_code.log_dim() + log_batch_size) as u32;
+			reference_buffer.set(reverse_bits(i, bits), val);
 		}
 
 		// Perform large NTT with zero-padded coefficients.
