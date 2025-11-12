@@ -1,12 +1,14 @@
 // Copyright 2024-2025 Irreducible Inc.
 
+use std::sync::Mutex;
+
 use binius_field::Field;
 use binius_transcript::{BufMut, TranscriptWriter};
 use binius_utils::rayon::iter::IndexedParallelIterator;
 use binius_verifier::merkle_tree::{BinaryMerkleTreeScheme, Commitment, Error, MerkleTreeScheme};
 use digest::{FixedOutputReset, Output, core_api::BlockSizeUser};
 use getset::Getters;
-use rand::{SeedableRng, rngs::StdRng};
+use rand::{CryptoRng, SeedableRng, rngs::StdRng};
 
 use super::MerkleTreeProver;
 use crate::{
@@ -22,7 +24,7 @@ where
 	#[getset(get = "pub")]
 	scheme: BinaryMerkleTreeScheme<T, H::Digest, C::Compression>,
 	parallel_compression: C,
-	salt_len: usize,
+	salt_rng: Mutex<StdRng>,
 }
 
 impl<T, C, H: ParallelDigest> BinaryMerkleTreeProver<T, H, C>
@@ -31,17 +33,22 @@ where
 	C::Compression: Clone,
 {
 	pub fn new(parallel_compression: C) -> Self {
-		Self::hiding(parallel_compression, 0)
+		Self {
+			scheme: BinaryMerkleTreeScheme::new(parallel_compression.compression().clone()),
+			parallel_compression,
+			// We can construct a dummy Rng with a deterministic seed because it will be unused.
+			salt_rng: Mutex::new(StdRng::seed_from_u64(0)),
+		}
 	}
 
-	pub fn hiding(parallel_compression: C, salt_len: usize) -> Self {
+	pub fn hiding(parallel_compression: C, mut rng: impl CryptoRng, salt_len: usize) -> Self {
 		Self {
 			scheme: BinaryMerkleTreeScheme::hiding(
 				parallel_compression.compression().clone(),
 				salt_len,
 			),
 			parallel_compression,
-			salt_len,
+			salt_rng: Mutex::new(StdRng::from_rng(&mut rng)),
 		}
 	}
 }
@@ -57,27 +64,6 @@ where
 
 	fn scheme(&self) -> &Self::Scheme {
 		&self.scheme
-	}
-
-	fn commit(
-		&self,
-		data: &[F],
-		batch_size: usize,
-	) -> Result<(Commitment<Output<H::Digest>>, Self::Committed), Error> {
-		let tree = binary_merkle_tree::build::<_, H, _, _>(
-			&self.parallel_compression,
-			data,
-			batch_size,
-			self.salt_len,
-			StdRng::seed_from_u64(0),
-		)?;
-
-		let commitment = Commitment {
-			root: tree.root(),
-			depth: tree.log_len,
-		};
-
-		Ok((commitment, tree))
 	}
 
 	fn layer<'a>(
@@ -111,11 +97,16 @@ where
 	where
 		ParIter: IndexedParallelIterator<Item: IntoIterator<Item = F, IntoIter: Send>>,
 	{
+		let salt_rng = {
+			// If mutex is poisoned, panic.
+			let mut root_rng = self.salt_rng.lock().unwrap();
+			StdRng::from_rng(&mut *root_rng)
+		};
 		let tree = binary_merkle_tree::build_from_iterator::<F, H, _, _, _>(
 			&self.parallel_compression,
 			leaves,
-			self.salt_len,
-			StdRng::seed_from_u64(0),
+			self.scheme.salt_len(),
+			salt_rng,
 		)?;
 
 		let commitment = Commitment {

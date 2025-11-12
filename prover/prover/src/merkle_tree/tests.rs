@@ -112,7 +112,7 @@ fn test_binary_merkle_vcs_hiding_commit_prove_open() {
 	let parallel_compression = ParallelCompressionAdaptor::new(StdCompression::default());
 	let salt_len = 2;
 	let mt_prover =
-		BinaryMerkleTreeProver::<_, StdDigest, _>::hiding(parallel_compression, salt_len);
+		BinaryMerkleTreeProver::<_, StdDigest, _>::hiding(parallel_compression, &mut rng, salt_len);
 
 	let data = random_scalars::<B128>(&mut rng, 16);
 	let (commitment, tree) = mt_prover.commit(&data, 1).unwrap();
@@ -148,7 +148,7 @@ fn test_binary_merkle_vcs_hiding_verify_vector() {
 	let parallel_compression = ParallelCompressionAdaptor::new(StdCompression::default());
 	let salt_len = 3;
 	let mt_prover =
-		BinaryMerkleTreeProver::<_, StdDigest, _>::hiding(parallel_compression, salt_len);
+		BinaryMerkleTreeProver::<_, StdDigest, _>::hiding(parallel_compression, &mut rng, salt_len);
 
 	let data = random_scalars::<B128>(&mut rng, 8);
 	let (commitment, tree) = mt_prover.commit(&data, 1).unwrap();
@@ -175,7 +175,7 @@ fn test_binary_merkle_vcs_hiding_batch_size() {
 	let parallel_compression = ParallelCompressionAdaptor::new(StdCompression::default());
 	let salt_len = 1;
 	let mt_prover =
-		BinaryMerkleTreeProver::<_, StdDigest, _>::hiding(parallel_compression, salt_len);
+		BinaryMerkleTreeProver::<_, StdDigest, _>::hiding(parallel_compression, &mut rng, salt_len);
 
 	let data = random_scalars::<B128>(&mut rng, 32);
 	let batch_size = 4;
