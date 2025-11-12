@@ -137,6 +137,12 @@ pub struct ConstraintSystem<F: Field = B128> {
 }
 
 impl<F: Field> ConstraintSystem<F> {
+	/// Create a new constraint system.
+	///
+	/// # Preconditions
+	///
+	/// * `mul_constraints.len()` must be a power of two. This is required by the prover's
+	///   multilinear extension protocol, which operates over power-of-two sized domains.
 	pub fn new(
 		constants: Vec<F>,
 		n_inout: u32,
@@ -145,6 +151,11 @@ impl<F: Field> ConstraintSystem<F> {
 		log_size: u32,
 		mul_constraints: Vec<MulConstraint<WitnessIndex>>,
 	) -> Self {
+		assert!(
+			mul_constraints.len().is_power_of_two(),
+			"mul_constraints length must be a power of two, got {}",
+			mul_constraints.len()
+		);
 		Self {
 			constants,
 			n_inout,

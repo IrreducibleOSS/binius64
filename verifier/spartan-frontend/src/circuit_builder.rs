@@ -135,6 +135,18 @@ impl ConstraintSystemIR {
 			}
 		}
 
+		// Pad mul_constraints to the next power of two with dummy constraints
+		// The prover requires power-of-two sized constraint lists for multilinear extensions
+		let current_len = self.mul_constraints.len();
+		self.mul_constraints.resize(
+			current_len.next_power_of_two(),
+			MulConstraint {
+				a: one_operand.clone(),
+				b: one_operand.clone(),
+				c: one_operand.clone(),
+			},
+		);
+
 		// Create private_alive array from wire status (invert pruned logic)
 		let private_alive: Vec<bool> = self
 			.private_wires_status
