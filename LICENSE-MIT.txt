@@ -1,3 +1,4 @@
+Copyright (c) 2025 The Binius Developers
 Copyright (c) 2025 Irreducible, Inc.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
