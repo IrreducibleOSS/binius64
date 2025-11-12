@@ -112,7 +112,7 @@ where
 		let terminate_codeword = advice
 			.read_scalar_slice(terminate_codeword_len)
 			.map_err(Error::TranscriptError)?;
-		let final_value = self.verify_last_oracle(&ntt, &terminate_codeword)?;
+		let final_value = self.verify_last_oracle(&ntt, &terminate_codeword, &mut advice)?;
 
 		// Verify that the provided layers match the commitments.
 		let layers = vcs_optimal_layers_depths_iter(self.params, self.vcs)
@@ -144,10 +144,11 @@ where
 	/// Verifies that the last oracle sent is a codeword.
 	///
 	/// Returns the fully-folded message value.
-	pub fn verify_last_oracle(
+	pub fn verify_last_oracle<B: Buf>(
 		&self,
-		ntt: &NeighborsLastSingleThread<GenericOnTheFly<F>>,
+		ntt: &impl AdditiveNTT<Field = F>,
 		terminate_codeword: &[F],
+		advice: &mut TranscriptReader<B>,
 	) -> Result<F, Error> {
 		let n_final_challenges = self.params.n_final_challenges();
 		let terminal_commitment = self
@@ -155,8 +156,12 @@ where
 			.last()
 			.expect("round_commitments is non-empty as an invariant");
 
-		self.vcs
-			.verify_vector(terminal_commitment, terminate_codeword, 1 << n_final_challenges)?;
+		self.vcs.verify_vector(
+			terminal_commitment,
+			terminate_codeword,
+			1 << n_final_challenges,
+			advice,
+		)?;
 
 		let n_prior_challenges = self.fold_challenges.len() - n_final_challenges;
 		let final_challenges = &self.fold_challenges[n_prior_challenges..];

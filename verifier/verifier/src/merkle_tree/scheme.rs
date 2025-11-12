@@ -2,9 +2,11 @@
 
 use std::{array, fmt::Debug, marker::PhantomData};
 
-use binius_field::Field;
 use binius_transcript::{Buf, TranscriptReader};
-use binius_utils::checked_arithmetics::{log2_ceil_usize, log2_strict_usize};
+use binius_utils::{
+	DeserializeBytes, SerializeBytes,
+	checked_arithmetics::{log2_ceil_usize, log2_strict_usize},
+};
 use digest::{Digest, Output, core_api::BlockSizeUser};
 use getset::Getters;
 
@@ -18,6 +20,7 @@ use crate::hash::{PseudoCompressionFunction, hash_serialize};
 pub struct BinaryMerkleTreeScheme<T, H, C> {
 	#[getset(get = "pub")]
 	compression: C,
+	salt_len: usize,
 	// This makes it so that `BinaryMerkleTreeScheme` remains Send + Sync
 	// See https://doc.rust-lang.org/nomicon/phantom-data.html#table-of-phantomdata-patterns
 	_phantom: PhantomData<fn() -> (T, H)>,
@@ -25,18 +28,38 @@ pub struct BinaryMerkleTreeScheme<T, H, C> {
 
 impl<T, H, C> BinaryMerkleTreeScheme<T, H, C> {
 	pub fn new(compression: C) -> Self {
+		Self::hiding(compression, 0)
+	}
+
+	pub fn hiding(compression: C, salt_len: usize) -> Self {
 		Self {
 			compression,
+			salt_len,
 			_phantom: PhantomData,
 		}
 	}
 }
 
-impl<F, H, C> MerkleTreeScheme<F> for BinaryMerkleTreeScheme<F, H, C>
+impl<T, H, C> BinaryMerkleTreeScheme<T, H, C>
 where
-	F: Field,
+	T: SerializeBytes + DeserializeBytes,
 	H: Digest + BlockSizeUser,
-	// TODO: Remove Sync trait here
+	C: PseudoCompressionFunction<Output<H>, 2>,
+{
+	fn compute_leaf_digest<B: Buf>(
+		&self,
+		values: &[T],
+		proof: &mut TranscriptReader<B>,
+	) -> Result<Output<H>, Error> {
+		let salt = proof.read_vec::<T>(self.salt_len)?;
+		hash_serialize::<T, H>(values.iter().chain(&salt)).map_err(Error::Serialization)
+	}
+}
+
+impl<T, H, C> MerkleTreeScheme<T> for BinaryMerkleTreeScheme<T, H, C>
+where
+	T: SerializeBytes + DeserializeBytes,
+	H: Digest + BlockSizeUser,
 	C: PseudoCompressionFunction<Output<H>, 2>,
 {
 	type Digest = Output<H>;
@@ -61,26 +84,23 @@ where
 			* <H as Digest>::output_size())
 	}
 
-	fn verify_vector(
+	fn verify_vector<B: Buf>(
 		&self,
 		root: &Self::Digest,
-		data: &[F],
+		data: &[T],
 		batch_size: usize,
+		proof: &mut TranscriptReader<B>,
 	) -> Result<(), Error> {
 		if !data.len().is_multiple_of(batch_size) {
 			return Err(Error::IncorrectBatchSize);
 		}
 
-		let mut digests = data
+		let digests = data
 			.chunks(batch_size)
-			.map(|chunk| {
-				hash_serialize::<F, H>(chunk)
-					.expect("values are of TowerField type which we expect to be serializable")
-			})
-			.collect::<Vec<_>>();
+			.map(|chunk| self.compute_leaf_digest(chunk, proof))
+			.collect::<Result<Vec<_>, _>>()?;
 
-		fold_digests_vector_inplace(&self.compression, &mut digests)?;
-		if digests[0] != *root {
+		if fold_digests_vector_inplace(&self.compression, digests) != *root {
 			return Err(VerificationError::InvalidProof.into());
 		}
 		Ok(())
@@ -96,11 +116,8 @@ where
 			return Err(VerificationError::IncorrectVectorLength.into());
 		}
 
-		let mut digests = layer_digests.to_owned();
-
-		fold_digests_vector_inplace(&self.compression, &mut digests)?;
-
-		if digests[0] != *root {
+		let computed_root = fold_digests_vector_inplace(&self.compression, layer_digests.to_vec());
+		if computed_root != *root {
 			return Err(VerificationError::InvalidProof.into());
 		}
 		Ok(())
@@ -109,7 +126,7 @@ where
 	fn verify_opening<B: Buf>(
 		&self,
 		mut index: usize,
-		values: &[F],
+		values: &[T],
 		layer_depth: usize,
 		tree_depth: usize,
 		layer_digests: &[Self::Digest],
@@ -125,8 +142,7 @@ where
 			});
 		}
 
-		let mut leaf_digest = hash_serialize::<F, H>(values)
-			.expect("values are of TowerField type which we expect to be serializable");
+		let mut leaf_digest = self.compute_leaf_digest(values, proof)?;
 		for branch_node in proof.read_vec(tree_depth - layer_depth)? {
 			leaf_digest = self.compression.compress(if index & 1 == 0 {
 				[leaf_digest, branch_node]
@@ -142,24 +158,22 @@ where
 	}
 }
 
-// Merkle-tree-like folding
-fn fold_digests_vector_inplace<C, D>(compression: &C, digests: &mut [D]) -> Result<(), Error>
+/// Compute the Merkle root over a vector of leaf digests.
+///
+/// Consumes digests because it modifies the vector in place.
+///
+/// # Preconditions
+/// - `digests.len()` is a power of two
+fn fold_digests_vector_inplace<C, D>(compression: &C, mut digests: Vec<D>) -> D
 where
 	C: PseudoCompressionFunction<D, 2>,
 	D: Clone + Default + Send + Sync + Debug,
 {
-	if !digests.len().is_power_of_two() {
-		return Err(Error::PowerOfTwoLengthRequired);
-	}
-
-	let mut len = digests.len() / 2;
-
-	while len != 0 {
-		for i in 0..len {
+	let log_len = log2_strict_usize(digests.len()); // pre-condition
+	for layer in (0..log_len).rev() {
+		for i in 0..1 << layer {
 			digests[i] = compression.compress(array::from_fn(|j| digests[2 * i + j].clone()));
 		}
-		len /= 2;
 	}
-
-	Ok(())
+	digests[0].clone()
 }

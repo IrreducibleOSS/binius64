@@ -3,7 +3,7 @@
 use core::slice;
 
 use binius_math::test_utils::random_scalars;
-use binius_transcript::ProverTranscript;
+use binius_transcript::{ProverTranscript, VerifierTranscript};
 use binius_verifier::{
 	config::{B128, StdChallenger},
 	hash::{StdCompression, StdDigest},
@@ -93,13 +93,14 @@ fn test_binary_merkle_vcs_verify_vector() {
 	let mut rng = StdRng::seed_from_u64(0);
 
 	let parallel_compression = ParallelCompressionAdaptor::new(StdCompression::default());
-	let mr_prover = BinaryMerkleTreeProver::<_, StdDigest, _>::new(parallel_compression);
+	let mt_prover = BinaryMerkleTreeProver::<_, StdDigest, _>::new(parallel_compression);
 
+	let mut proof_reader = VerifierTranscript::new(StdChallenger::default(), Vec::new());
 	let data = random_scalars::<B128>(&mut rng, 4);
-	let (commitment, _) = mr_prover.commit(&data, 1).unwrap();
+	let (commitment, _) = mt_prover.commit(&data, 1).unwrap();
 
-	mr_prover
+	mt_prover
 		.scheme()
-		.verify_vector(&commitment.root, &data, 1)
+		.verify_vector(&commitment.root, &data, 1, &mut proof_reader.decommitment())
 		.unwrap();
 }
