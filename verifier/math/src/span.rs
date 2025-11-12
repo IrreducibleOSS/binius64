@@ -111,8 +111,8 @@ mod tests {
 			n in 0usize..=8,  // Input length (small to avoid exponential blowup)
 			index in 0usize..256,  // Index to check
 		) {
-			// Filter out invalid indices
-			prop_assume!(index < (1 << n));
+			// Truncate index to the correct range
+			let index = index % (1 << n);
 
 			let mut rng = StdRng::seed_from_u64(n as u64);
 
