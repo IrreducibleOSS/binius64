@@ -8,7 +8,7 @@ use binius_utils::{
 	checked_arithmetics::{log2_ceil_usize, log2_strict_usize},
 };
 use digest::{Digest, Output, core_api::BlockSizeUser};
-use getset::Getters;
+use getset::{CopyGetters, Getters};
 
 use super::{
 	error::{Error, VerificationError},
@@ -16,10 +16,11 @@ use super::{
 };
 use crate::hash::{PseudoCompressionFunction, hash_serialize};
 
-#[derive(Debug, Clone, Getters)]
+#[derive(Debug, Clone, Getters, CopyGetters)]
 pub struct BinaryMerkleTreeScheme<T, H, C> {
 	#[getset(get = "pub")]
 	compression: C,
+	#[getset(get_copy = "pub")]
 	salt_len: usize,
 	// This makes it so that `BinaryMerkleTreeScheme` remains Send + Sync
 	// See https://doc.rust-lang.org/nomicon/phantom-data.html#table-of-phantomdata-patterns

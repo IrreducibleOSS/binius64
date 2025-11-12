@@ -1,6 +1,6 @@
 // Copyright 2024-2025 Irreducible Inc.
 
-use std::{fmt::Debug, mem::MaybeUninit};
+use std::{fmt::Debug, iter::repeat_with, mem::MaybeUninit};
 
 use binius_field::Field;
 use binius_utils::{
@@ -10,6 +10,7 @@ use binius_utils::{
 };
 use binius_verifier::merkle_tree::Error;
 use digest::{FixedOutputReset, Output, crypto_common::BlockSizeUser};
+use rand::{CryptoRng, Rng};
 
 use crate::hash::{ParallelDigest, parallel_compression::ParallelPseudoCompression};
 
@@ -19,22 +20,27 @@ use crate::hash::{ParallelDigest, parallel_compression::ParallelPseudoCompressio
 /// Merkle tree is constructed over the leaf digests. The implementation requires that the vector
 /// lengths are all equal to each other and a power of two.
 #[derive(Debug, Clone)]
-pub struct BinaryMerkleTree<D> {
+pub struct BinaryMerkleTree<D, F> {
 	/// Base-2 logarithm of the number of leaves
 	pub log_len: usize,
 	/// The inner nodes, arranged as a flattened array of layers with the root at the end
 	pub inner_nodes: Vec<D>,
+	/// Salt values for each leaf (if using hiding commitments)
+	pub salts: Vec<F>,
 }
 
-pub fn build<F, H, C>(
+pub fn build<F, H, C, R>(
 	compression: &C,
 	elements: &[F],
 	batch_size: usize,
-) -> Result<BinaryMerkleTree<Output<H::Digest>>, Error>
+	salt_len: usize,
+	rng: R,
+) -> Result<BinaryMerkleTree<Output<H::Digest>, F>, Error>
 where
 	F: Field,
 	H: ParallelDigest<Digest: BlockSizeUser + FixedOutputReset>,
 	C: ParallelPseudoCompression<Output<H::Digest>, 2>,
+	R: Rng + CryptoRng,
 {
 	if !elements.len().is_multiple_of(batch_size) {
 		return Err(Error::IncorrectBatchSize);
@@ -46,29 +52,43 @@ where
 		return Err(Error::PowerOfTwoLengthRequired);
 	}
 
-	let log_len = log2_strict_usize(len);
-
-	internal_build(
+	build_from_iterator::<_, H, _, _, _>(
 		compression,
-		|inner_nodes| hash_interleaved::<_, H>(elements, inner_nodes),
-		log_len,
+		elements
+			.par_chunks(batch_size)
+			.map(|chunk| chunk.iter().copied()),
+		salt_len,
+		rng,
 	)
 }
 
-fn internal_build<Digest, C>(
+pub fn build_from_iterator<F, H, C, R, ParIter>(
 	compression: &C,
-	// Must either successfully initialize the passed in slice or return error
-	hash_leaves: impl FnOnce(&mut [MaybeUninit<Digest>]),
-	log_len: usize,
-) -> Result<BinaryMerkleTree<Digest>, Error>
+	iterated_chunks: ParIter,
+	salt_len: usize,
+	mut rng: R,
+) -> Result<BinaryMerkleTree<Output<H::Digest>, F>, Error>
 where
-	Digest: Clone + Send + Sync,
-	C: ParallelPseudoCompression<Digest, 2>,
+	F: Field,
+	H: ParallelDigest<Digest: BlockSizeUser + FixedOutputReset>,
+	C: ParallelPseudoCompression<Output<H::Digest>, 2>,
+	R: Rng + CryptoRng,
+	ParIter: IndexedParallelIterator<Item: IntoIterator<Item = F, IntoIter: Send>>,
 {
+	let log_len = log2_strict_usize(iterated_chunks.len()); // precondition
+
+	// Generate salts if needed
+	let salts = repeat_with(|| F::random(&mut rng))
+		.take(salt_len << log_len)
+		.collect::<Vec<_>>();
+
 	let total_length = (1 << (log_len + 1)) - 1;
 	let mut inner_nodes = Vec::with_capacity(total_length);
-
-	hash_leaves(&mut inner_nodes.spare_capacity_mut()[..(1 << log_len)]);
+	hash_leaves::<F, H, _>(
+		iterated_chunks,
+		&mut inner_nodes.spare_capacity_mut()[..(1 << log_len)],
+		&salts,
+	);
 
 	let (prev_layer, mut remaining) = inner_nodes.spare_capacity_mut().split_at_mut(1 << log_len);
 
@@ -80,7 +100,7 @@ where
 		let (next_layer, next_remaining) = remaining.split_at_mut(1 << (log_len - i));
 		remaining = next_remaining;
 
-		compress_layer(compression, prev_layer, next_layer);
+		compression.parallel_compress(prev_layer, next_layer);
 
 		prev_layer = unsafe {
 			// SAFETY: next_layer was just initialized by compress_layer
@@ -97,33 +117,26 @@ where
 	Ok(BinaryMerkleTree {
 		log_len,
 		inner_nodes,
+		salts,
 	})
 }
 
-pub fn build_from_iterator<F, H, C, ParIter>(
-	compression: &C,
-	iterated_chunks: ParIter,
-	log_len: usize,
-) -> Result<BinaryMerkleTree<Output<H::Digest>>, Error>
-where
-	F: Field,
-	H: ParallelDigest<Digest: BlockSizeUser + FixedOutputReset>,
-	C: ParallelPseudoCompression<Output<H::Digest>, 2>,
-	ParIter: IndexedParallelIterator<Item: IntoIterator<Item = F>>,
-{
-	internal_build(
-		compression,
-		|inner_nodes| hash_iterated::<F, H, _>(iterated_chunks, inner_nodes),
-		log_len,
-	)
-}
-
-impl<D: Clone> BinaryMerkleTree<D> {
+impl<D: Clone, F> BinaryMerkleTree<D, F> {
 	pub fn root(&self) -> D {
 		self.inner_nodes
 			.last()
 			.expect("MerkleTree inner nodes can't be empty")
 			.clone()
+	}
+
+	/// Returns the salt values associated with a specific leaf index in the Merkle tree.
+	///
+	/// # Arguments
+	/// * `index` - The index of the leaf. Must be less than 2^log_len (the total number of leaves).
+	pub fn get_salt(&self, index: usize) -> &[F] {
+		assert!(index < (1 << self.log_len));
+		let salt_len = self.salts.len() >> self.log_len;
+		&self.salts[index * salt_len..(index + 1) * salt_len]
 	}
 
 	pub fn layer(&self, layer_depth: usize) -> Result<&[D], Error> {
@@ -156,44 +169,37 @@ impl<D: Clone> BinaryMerkleTree<D> {
 	}
 }
 
-#[tracing::instrument("MerkleTree::compress_layer", skip_all, level = "debug")]
-fn compress_layer<D, C>(compression: &C, prev_layer: &[D], next_layer: &mut [MaybeUninit<D>])
-where
-	D: Clone + Send + Sync,
-	C: ParallelPseudoCompression<D, 2>,
-{
-	compression.parallel_compress(prev_layer, next_layer);
-}
-
 /// Hashes the elements in chunks of a vector into digests.
 ///
 /// Given a vector of elements and an output buffer of N hash digests, this splits the elements
 /// into N equal-sized chunks and hashes each chunks into the corresponding output digest. This
 /// returns the number of elements hashed into each digest.
-#[tracing::instrument("hash_interleaved", skip_all, level = "debug")]
-fn hash_interleaved<F, H>(elems: &[F], digests: &mut [MaybeUninit<Output<H::Digest>>])
-where
-	F: Field,
-	H: ParallelDigest<Digest: BlockSizeUser + FixedOutputReset>,
-{
-	assert!(elems.len().is_multiple_of(digests.len())); // pre-condition
-
-	let hash_data_iter = elems
-		.par_chunks(elems.len() / digests.len())
-		.map(|s| s.iter().copied());
-	hash_iterated::<_, H, _>(hash_data_iter, digests);
-}
-
-fn hash_iterated<F, H, ParIter>(
+#[tracing::instrument("hash_leaves", skip_all, level = "debug")]
+fn hash_leaves<F, H, ParIter>(
 	iterated_chunks: ParIter,
 	digests: &mut [MaybeUninit<Output<H::Digest>>],
+	salts: &[F],
 ) where
 	F: Field,
 	H: ParallelDigest<Digest: BlockSizeUser + FixedOutputReset>,
-	ParIter: IndexedParallelIterator<Item: IntoIterator<Item = F>>,
+	ParIter: IndexedParallelIterator<Item: IntoIterator<Item = F, IntoIter: Send>>,
 {
-	assert_eq!(iterated_chunks.len(), digests.len());
+	if salts.is_empty() {
+		// Need special-case handling when salts is empty, otherwise salt_len is 0 and par_chunks
+		// cannot handle chunk size of 0.
+		let hasher = H::new();
+		hasher.digest(iterated_chunks, digests);
+	} else {
+		assert!(salts.len().is_multiple_of(digests.len()));
 
-	let hasher = H::new();
-	hasher.digest(iterated_chunks, digests);
+		let salt_len = salts.len() / digests.len();
+
+		// Create an iterator that chains each chunk with its salt
+		let salted_iter = iterated_chunks
+			.zip(salts.par_chunks(salt_len))
+			.map(|(chunk, salt)| chunk.into_iter().chain(salt.iter().copied()));
+
+		let hasher = H::new();
+		hasher.digest(salted_iter, digests);
+	}
 }
