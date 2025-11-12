@@ -81,10 +81,11 @@ Prover:
 - **binius-prover**: Zero-knowledge proof generation
 - **binius-examples**: Examples and tutorials for learning and performance measurement
 
-## Authors
+## Authors & Supporters
 
-Binius64 is developed by [Irreducible](https://www.irreducible.com).
-
+Binius64 was originally developed by [Irreducible](https://www.irreducible.com), with funding from
+[Bain Capital Crypto](https://baincapitalcrypto.com/) and [Paradigm](https://www.paradigm.xyz/).
+ 
 ## Licensing
 
 ```
@@ -97,6 +98,7 @@ Apache-2.0 and MIT licenses, without any additional terms or conditions.
 
 ### Apache-2.0 Notice
 
+  Copyright 2025 The Binius Developers
   Copyright 2025 Irreducible, Inc.
 
   Licensed under the Apache License, Version 2.0 (the "License");
@@ -113,6 +115,7 @@ Apache-2.0 and MIT licenses, without any additional terms or conditions.
 
 ### MIT Notice
 
+  Copyright (c) 2025 The Binius Developers
   Copyright (c) 2025 Irreducible, Inc.
 
   Permission is hereby granted, free of charge, to any person obtaining a copy
