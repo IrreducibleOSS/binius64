@@ -3,9 +3,8 @@
 use binius_core::{constraint_system::ConstraintSystem, word::Word};
 use binius_field::{AESTowerField8b as B8, BinaryField};
 use binius_math::{
-	BinarySubspace, FieldBuffer,
-	inner_product::{inner_product, inner_product_subfield},
-	multilinear::{eq::eq_ind_partial_eval, evaluate::evaluate_inplace},
+	BinarySubspace,
+	inner_product::inner_product,
 	ntt::{NeighborsLastSingleThread, domain_context::GenericOnTheFly},
 	univariate::lagrange_evals,
 };
@@ -24,8 +23,7 @@ use super::error::Error;
 use crate::{
 	and_reduction::verifier::{AndCheckOutput, verify_with_transcript},
 	config::{
-		B1, B128, LOG_WORD_SIZE_BITS, LOG_WORDS_PER_ELEM, PROVER_SMALL_FIELD_ZEROCHECK_CHALLENGES,
-		WORD_SIZE_BITS,
+		B128, LOG_WORD_SIZE_BITS, LOG_WORDS_PER_ELEM, PROVER_SMALL_FIELD_ZEROCHECK_CHALLENGES,
 	},
 	fri::{FRIParams, estimate_optimal_arity},
 	hash::PseudoCompressionFunction,
@@ -235,8 +233,13 @@ where
 			perfetto_category = "phase"
 		)
 		.entered();
-		let shift_output =
-			shift::verify(self.constraint_system(), &bitand_claim, &intmul_claim, transcript)?;
+		let shift_output = shift::verify(
+			self.constraint_system(),
+			public,
+			&bitand_claim,
+			&intmul_claim,
+			transcript,
+		)?;
 		drop(constraint_guard);
 
 		// [phase] Verify Public Input - public input verification
@@ -246,18 +249,12 @@ where
 			perfetto_category = "phase"
 		)
 		.entered();
-		let public_eval = evaluate_public_mle(
-			public,
-			shift_output.r_j(),
-			&shift_output.r_y()[..self.log_public_words()],
-		);
 		shift::check_eval(
 			self.constraint_system(),
 			&bitand_claim,
 			&intmul_claim,
 			&domain_subspace,
 			&shift_output,
-			public_eval,
 		)?;
 		drop(public_guard);
 
@@ -283,34 +280,6 @@ where
 
 		Ok(())
 	}
-}
-
-/// Evaluate the multilinear extension of the public inputs at a point.
-///
-/// ## Arguments
-///
-/// * `public` - the public input words
-/// * `z_coords` - coordinates for the lower variables, corresponding to bits of words
-/// * `y_coords` - coordinates for the upper variables, corresponding to words
-pub fn evaluate_public_mle<F: BinaryField>(public: &[Word], z_coords: &[F], y_coords: &[F]) -> F {
-	assert_eq!(public.len(), 1 << y_coords.len()); // precondition
-	assert_eq!(LOG_WORD_SIZE_BITS, z_coords.len()); // precondition
-
-	// First, fold the bits of the word with the z coordinates
-	let z_tensor = eq_ind_partial_eval::<F>(z_coords);
-	let z_folded_words = public
-		.iter()
-		.map(|&word| {
-			let word_bits = (0..WORD_SIZE_BITS).map(|i| B1::from((word.as_u64() >> i) & 1 == 1));
-			inner_product_subfield(word_bits, z_tensor.as_ref().iter().copied())
-		})
-		.collect::<Box<[_]>>();
-	let z_folded_words = FieldBuffer::new(y_coords.len(), z_folded_words)
-		.expect("precondition: public.len() == 1 << y_coords.len()");
-
-	// Then, fold the partial evaluation with the y coordinates
-	evaluate_inplace(z_folded_words, y_coords)
-		.expect("z_folded_words constructed with log_len = y_coords.len()")
 }
 
 fn verify_bitand_reduction<F: BinaryField + From<B8>, Challenger_: Challenger>(
