@@ -133,8 +133,10 @@ where
 		)?;
 
 		// Run wiring check protocol
+		let r_public = transcript.sample_vec(cs.log_public() as usize);
 		let wiring_output = wiring::prove(
 			&self.wiring_transpose,
+			&r_public,
 			&r_x,
 			witness_packed.clone(),
 			&mulcheck_evals,
