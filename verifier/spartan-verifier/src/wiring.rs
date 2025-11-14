@@ -5,7 +5,10 @@
 use std::iter;
 
 use binius_field::Field;
-use binius_math::{multilinear::eq::eq_ind_partial_eval, univariate::evaluate_univariate};
+use binius_math::{
+	multilinear::eq::{eq_ind, eq_ind_partial_eval, eq_one_var},
+	univariate::evaluate_univariate,
+};
 use binius_spartan_frontend::constraint_system::{ConstraintSystem, MulConstraint, WitnessIndex};
 use binius_transcript::{
 	VerifierTranscript,
@@ -24,12 +27,16 @@ pub struct Output<F> {
 pub fn verify<F: Field, Challenger_: Challenger>(
 	n_vars: usize,
 	eval_claims: &[F],
+	public_eval: F,
 	transcript: &mut VerifierTranscript<Challenger_>,
 ) -> Result<Output<F>, Error> {
 	// \lambda is the batching challenge
 	let lambda = transcript.sample();
 
-	let batched_claim = evaluate_univariate(eval_claims, lambda);
+	// Batch together the witness public input consistency claim (`public_eval`) with the
+	// constraint operand evaluation claims (`eval_claims`).
+	let batched_claim = public_eval + lambda * evaluate_univariate(eval_claims, lambda);
+
 	let SumcheckOutput {
 		eval,
 		challenges: mut r_y,
@@ -49,6 +56,7 @@ pub fn verify<F: Field, Challenger_: Challenger>(
 
 pub fn check_eval<F: Field>(
 	constraint_system: &ConstraintSystem,
+	r_public: &[F],
 	r_x: &[F],
 	output: &Output<F>,
 ) -> Result<(), Error> {
@@ -59,9 +67,18 @@ pub fn check_eval<F: Field>(
 		witness_eval,
 	} = output;
 
+	assert!(r_public.len() <= r_y.len());
+
 	let wiring_eval = evaluate_wiring_mle(constraint_system.mul_constraints(), *lambda, r_x, r_y);
 
-	if *eval != wiring_eval * witness_eval {
+	// Evaluate eq(r_public || ZERO, r_y)
+	let (r_y_head, r_y_tail) = r_y.split_at(r_public.len());
+	let eq_head = eq_ind(r_public, r_y_head);
+	let eq_public = r_y_tail
+		.iter()
+		.fold(eq_head, |eval, &r_x_i| eval * eq_one_var(r_x_i, F::ZERO));
+
+	if *eval != (eq_public + *lambda * wiring_eval) * *witness_eval {
 		return Err(Error::SumcheckComposition);
 	}
 

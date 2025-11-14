@@ -358,14 +358,15 @@ mod tests {
 		let mut rng = StdRng::seed_from_u64(0);
 
 		// Generate random constraints
-		let n_constraints = 16;
-		let witness_size = 32;
+		let log_n_constraints = 4;
+		let log_witness_size = 5;
+
+		let n_constraints = 1 << log_n_constraints;
+		let witness_size = 1 << log_witness_size;
+
 		let constraints = generate_random_constraints(&mut rng, n_constraints, witness_size);
 
 		// Sample random evaluation points
-		let log_n_constraints = (n_constraints as f64).log2().ceil() as usize;
-		let log_witness_size = (witness_size as f64).log2().ceil() as usize;
-
 		let r_x = random_scalars::<B128>(&mut rng, log_n_constraints);
 		let r_y = random_scalars::<B128>(&mut rng, log_witness_size);
 		let lambda = B128::random(&mut rng);
@@ -391,15 +392,16 @@ mod tests {
 	fn test_fold_constraints_equivalence() {
 		let mut rng = StdRng::seed_from_u64(0);
 
+		let log_n_constraints = 4;
+		let log_witness_size = 5;
+
+		let n_constraints = 1 << log_n_constraints;
+		let witness_size = 1 << log_witness_size;
+
 		// Generate random constraints
-		let n_constraints = 16;
-		let witness_size = 32;
 		let constraints = generate_random_constraints(&mut rng, n_constraints, witness_size);
 
 		// Sample random evaluation points
-		let log_n_constraints = (n_constraints as f64).log2().ceil() as usize;
-		let log_witness_size = (witness_size as f64).log2().ceil() as usize;
-
 		let r_x = random_scalars::<B128>(&mut rng, log_n_constraints);
 		let r_y = random_scalars::<B128>(&mut rng, log_witness_size);
 		let lambda = B128::random(&mut rng);
@@ -422,14 +424,15 @@ mod tests {
 	fn test_wiring_prove_verify() {
 		let mut rng = StdRng::seed_from_u64(0);
 
-		// Generate random constraints
-		let n_constraints = 16;
-		let witness_size = 32;
-		let constraints = generate_random_constraints(&mut rng, n_constraints, witness_size);
+		let log_n_constraints = 4;
+		let log_public = 3;
+		let log_witness_size = 5;
 
-		// Sample random evaluation points
-		let log_n_constraints = (n_constraints as f64).log2().ceil() as usize;
-		let log_witness_size = (witness_size as f64).log2().ceil() as usize;
+		let n_constraints = 1 << log_n_constraints;
+		let witness_size = 1 << log_witness_size;
+
+		// Generate random constraints
+		let constraints = generate_random_constraints(&mut rng, n_constraints, witness_size);
 
 		// Create random witness using random_field_buffer
 		let witness_packed = random_field_buffer::<Packed128b>(&mut rng, log_witness_size);
@@ -448,6 +451,15 @@ mod tests {
 			inner_product_buffers(&mulcheck_witness.c, &r_x_tensor),
 		];
 
+		// Sample r_public and evaluate the public inputs.
+		let r_public = random_scalars::<B128>(&mut rng, log_public);
+		let r_public_padded = [
+			r_public.as_slice(),
+			&vec![B128::ZERO; log_witness_size - log_public],
+		]
+		.concat();
+		let public_eval = evaluate(&witness_packed, &r_public_padded).unwrap();
+
 		// Create transposed wiring
 		let wiring_transpose = WiringTranspose::transpose(witness_size, &constraints);
 
@@ -459,9 +471,13 @@ mod tests {
 
 		// Verifier side
 		let mut verifier_transcript = prover_transcript.into_verifier();
-		let verifier_output =
-			verifier_wiring::verify(log_witness_size, &mulcheck_evals, &mut verifier_transcript)
-				.expect("verify should succeed");
+		let verifier_output = verifier_wiring::verify(
+			log_witness_size,
+			&mulcheck_evals,
+			public_eval,
+			&mut verifier_transcript,
+		)
+		.expect("verify should succeed");
 
 		// Check that outputs match
 		assert_eq!(
@@ -478,11 +494,11 @@ mod tests {
 			vec![],                  // constants
 			0,                       // n_inout
 			0,                       // n_private
-			0,                       // log_public
+			log_public as u32,       // log_public
 			log_witness_size as u32, // log_size
 			constraints,             // mul_constraints
 		);
-		verifier_wiring::check_eval(&constraint_system, &r_x, &verifier_output)
+		verifier_wiring::check_eval(&constraint_system, &r_public, &r_x, &verifier_output)
 			.expect("check_eval should succeed");
 	}
 }

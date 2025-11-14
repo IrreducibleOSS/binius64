@@ -6,7 +6,8 @@ pub mod wiring;
 
 use binius_field::{BinaryField, Field};
 use binius_math::{
-	BinarySubspace,
+	BinarySubspace, FieldSlice,
+	multilinear::evaluate::evaluate,
 	ntt::{NeighborsLastSingleThread, domain_context::GenericOnTheFly},
 };
 use binius_spartan_frontend::constraint_system::ConstraintSystem;
@@ -109,9 +110,18 @@ where
 		// Verify the multiplication constraints.
 		let (mulcheck_evals, r_x) = self.verify_mulcheck(transcript)?;
 
+		// Sample the public input check challenge and evaluate the public input at the challenge
+		// point.
+		let r_public = transcript.sample_vec(cs.log_public() as usize);
+
+		let public = FieldSlice::from_slice(cs.log_public() as usize, public)
+			.expect("public.len() checked above");
+		let public_eval = evaluate(&public, &r_public).expect("public.log_len() == r_y_head.len()");
+
 		// Verify the wiring reduction
-		let wiring_output = wiring::verify(cs.log_size() as usize, &mulcheck_evals, transcript)?;
-		wiring::check_eval(&self.constraint_system, &r_x, &wiring_output)?;
+		let wiring_output =
+			wiring::verify(cs.log_size() as usize, &mulcheck_evals, public_eval, transcript)?;
+		wiring::check_eval(&self.constraint_system, &r_public, &r_x, &wiring_output)?;
 
 		let wiring::Output {
 			r_y, witness_eval, ..
