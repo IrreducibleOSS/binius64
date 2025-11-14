@@ -166,8 +166,14 @@ fn bench_prove_and_verify(c: &mut Criterion) {
 					intmul_evals,
 				);
 
-				verify(&cs, &verifier_bitand_data, &verifier_intmul_data, &mut verifier_transcript)
-					.unwrap();
+				verify(
+					&cs,
+					value_vec.public(),
+					&verifier_bitand_data,
+					&verifier_intmul_data,
+					&mut verifier_transcript,
+				)
+				.unwrap();
 			})
 		});
 	}

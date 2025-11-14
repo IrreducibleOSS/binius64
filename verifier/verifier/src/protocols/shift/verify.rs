@@ -1,8 +1,19 @@
 // Copyright 2025 Irreducible Inc.
 
-use binius_core::constraint_system::{AndConstraint, ConstraintSystem, MulConstraint};
+use binius_core::{
+	Word,
+	constraint_system::{AndConstraint, ConstraintSystem, MulConstraint},
+};
 use binius_field::{BinaryField, Field};
-use binius_math::{BinarySubspace, multilinear::eq::eq_ind, univariate::evaluate_univariate};
+use binius_math::{
+	BinarySubspace, FieldBuffer,
+	inner_product::inner_product_subfield,
+	multilinear::{
+		eq::{eq_ind, eq_ind_partial_eval},
+		evaluate::evaluate_inplace,
+	},
+	univariate::evaluate_univariate,
+};
 use binius_transcript::{
 	VerifierTranscript,
 	fiat_shamir::{CanSample, Challenger},
@@ -13,7 +24,7 @@ use itertools::Itertools;
 
 use super::{BITAND_ARITY, INTMUL_ARITY, error::Error, evaluate_monster_multilinear_for_operation};
 use crate::{
-	config::LOG_WORD_SIZE_BITS,
+	config::{B1, LOG_WORD_SIZE_BITS, WORD_SIZE_BITS},
 	protocols::sumcheck::{SumcheckOutput, verify as verify_sumcheck},
 };
 
@@ -134,6 +145,7 @@ impl<F: Field> VerifyOutput<F> {
 ///
 /// # Parameters
 /// - `constraint_system`: The constraint system containing AND and MUL constraints (consumed)
+/// - `public`: The public segment of the witness value vector
 /// - `bitand_data`: Operator data for bit multiplication operations
 /// - `intmul_data`: Operator data for integer multiplication operations
 /// - `transcript`: Interactive transcript for challenge sampling and message reading
@@ -148,6 +160,7 @@ impl<F: Field> VerifyOutput<F> {
 /// - Propagates sumcheck verification errors
 pub fn verify<F: BinaryField, C: Challenger>(
 	constraint_system: &ConstraintSystem,
+	public: &[Word],
 	bitand_data: &OperatorData<F, BITAND_ARITY>,
 	intmul_data: &OperatorData<F, INTMUL_ARITY>,
 	transcript: &mut VerifierTranscript<C>,
@@ -174,12 +187,13 @@ pub fn verify<F: BinaryField, C: Challenger>(
 	let inout_n_vars = strict_log_2(constraint_system.value_vec_layout.offset_witness)
 		.expect("constraints preprocessed");
 
-	let inout_eval_point: Vec<F> = transcript.sample_vec(inout_n_vars);
+	let inout_eval_point = transcript.sample_vec(inout_n_vars);
+	let public_eval = evaluate_public_mle(public, &r_j, &inout_eval_point);
 
 	// Batch the `gamma` as the eval claim for the shift prover
-	// together with zero as the eval claim for the inout prover.
-	let batch_coeff: F = transcript.sample();
-	let sum = gamma + batch_coeff * F::ZERO;
+	// together with the public values eval claim for the public prover.
+	let batch_coeff = transcript.sample();
+	let sum = gamma + batch_coeff * public_eval;
 
 	let SumcheckOutput {
 		eval,
@@ -214,7 +228,7 @@ pub fn verify<F: BinaryField, C: Challenger>(
 ///
 /// The function verifies that:
 /// ```text
-/// eval = witness_eval * monster_eval + batch_coeff * eq_eval * (witness_eval - public_eval)
+/// eval = witness_eval * (monster_eval + batch_coeff * eq_eval)
 /// ```
 ///
 /// Where:
@@ -228,7 +242,6 @@ pub fn verify<F: BinaryField, C: Challenger>(
 /// * `bitand_data` - Operator data for AND constraints (bit multiplication operations)
 /// * `intmul_data` - Operator data for MUL constraints (integer multiplication operations)
 /// * `output` - The output from the [`verify`] function containing challenge points and evaluations
-/// * `public_eval` - The evaluation of the public input multilinear at the challenge point
 ///
 /// # Returns
 ///
@@ -245,7 +258,6 @@ pub fn check_eval<F: BinaryField>(
 	intmul_data: &OperatorData<F, INTMUL_ARITY>,
 	subspace: &BinarySubspace<F>,
 	output: &VerifyOutput<F>,
-	public_eval: F,
 ) -> Result<(), Error> {
 	let VerifyOutput {
 		bitand_lambda,
@@ -305,11 +317,38 @@ pub fn check_eval<F: BinaryField>(
 	// The protocol could compute this witness value instead of reading it from the prover. This
 	// would require inverting a random element, however, making the protocol incomplete with
 	// negligible probability. As a matter of taste, we read the witness value from the prover.
-	let expected_eval =
-		*witness_eval * monster_eval + *batch_coeff * eq_eval * (*witness_eval - public_eval);
+	let expected_eval = *witness_eval * (monster_eval + *batch_coeff * eq_eval);
 	if *eval != expected_eval {
 		return Err(Error::VerificationFailure);
 	}
 
 	Ok(())
+}
+
+/// Evaluate the multilinear extension of the public inputs at a point.
+///
+/// ## Arguments
+///
+/// * `public` - the public input words
+/// * `z_coords` - coordinates for the lower variables, corresponding to bits of words
+/// * `y_coords` - coordinates for the upper variables, corresponding to words
+pub fn evaluate_public_mle<F: BinaryField>(public: &[Word], z_coords: &[F], y_coords: &[F]) -> F {
+	assert_eq!(public.len(), 1 << y_coords.len()); // precondition
+	assert_eq!(LOG_WORD_SIZE_BITS, z_coords.len()); // precondition
+
+	// First, fold the bits of the word with the z coordinates
+	let z_tensor = eq_ind_partial_eval::<F>(z_coords);
+	let z_folded_words = public
+		.iter()
+		.map(|&word| {
+			let word_bits = (0..WORD_SIZE_BITS).map(|i| B1::from((word.as_u64() >> i) & 1 == 1));
+			inner_product_subfield(word_bits, z_tensor.as_ref().iter().copied())
+		})
+		.collect::<Box<[_]>>();
+	let z_folded_words = FieldBuffer::new(y_coords.len(), z_folded_words)
+		.expect("precondition: public.len() == 1 << y_coords.len()");
+
+	// Then, fold the partial evaluation with the y coordinates
+	evaluate_inplace(z_folded_words, y_coords)
+		.expect("z_folded_words constructed with log_len = y_coords.len()")
 }

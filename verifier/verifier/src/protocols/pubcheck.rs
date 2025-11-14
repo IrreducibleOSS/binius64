@@ -28,9 +28,9 @@ pub struct VerifyOutput<F: Field> {
 /// w(v_0, \ldots, v_{m-1}, 0^{\ell - m}) = p(v_0, \ldots, v_{m-1})
 /// $$
 ///
-/// The protocol is a zerocheck on the multilinear $w - p$, using a truncated challenge point. It
+/// The protocol is an MLE-check on the multilinear $w$, using a zero-padded challenge point. It
 /// begins with an $m$-dimensional challenge point $r$ and reduces to an MLE-check that
-/// $(w - p)(r || 0) = 0$.
+/// $w(r || 0) = p(r)$.
 ///
 /// ## Arguments
 ///
@@ -43,6 +43,7 @@ pub struct VerifyOutput<F: Field> {
 /// * `challenge.len()` is at most `n_witness_vars`
 pub fn verify<F: Field, Challenger_: Challenger>(
 	n_witness_vars: usize,
+	public_eval: F,
 	challenge: &[F],
 	transcript: &mut VerifierTranscript<Challenger_>,
 ) -> Result<VerifyOutput<F>, Error> {
@@ -59,8 +60,8 @@ pub fn verify<F: Field, Challenger_: Challenger>(
 		mut challenges,
 	} = mlecheck::verify(
 		&zero_padded_eval_point,
-		1, // degree 1 for multilinear evaluation of (w - p)
-		F::ZERO,
+		1, // degree 1 for w multilinear
+		public_eval,
 		transcript,
 	)?;
 
@@ -71,29 +72,4 @@ pub fn verify<F: Field, Challenger_: Challenger>(
 		eval,
 		eval_point: challenges,
 	})
-}
-
-/// Derive the expected witness evaluation.
-///
-/// Given the public input evaluation and the reduced evaluation from the pubcheck
-/// protocol, computes the witness evaluation.
-///
-/// The pubcheck protocol reduces the claim `(w - p)(r) = reduced_eval`, where
-/// `w` is the witness multilinear, `p` is the public multilinear, and `r` is
-/// the evaluation point. This function recovers `w(r)` from the equation:
-///
-/// ```text
-/// w(r) = reduced_eval + p(r)
-/// ```
-///
-/// # Arguments
-///
-/// * `public_eval` - The evaluation of the public multilinear `p` at point `r`
-/// * `reduced_eval` - The evaluation of `(w - p)` at point `r`
-///
-/// # Returns
-///
-/// The evaluation of the witness multilinear `w` at point `r`
-pub fn compute_witness_eval<F: Field>(public_eval: F, reduced_eval: F) -> F {
-	reduced_eval + public_eval
 }

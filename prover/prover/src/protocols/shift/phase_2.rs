@@ -120,17 +120,8 @@ fn run_sumcheck<F: Field, P: PackedField<Scalar = F>, C: Challenger>(
 	let shift_prover =
 		BivariateProductSumcheckProver::new([r_j_witness.clone(), monster_multilinear], gamma)?;
 
-	let inout_buf = FieldBuffer::new(
-		inout_n_vars,
-		r_j_witness
-			.as_ref()
-			.iter()
-			.take(1 << inout_n_vars.saturating_sub(P::LOG_WIDTH))
-			.copied()
-			.collect(),
-	)?;
 	let inout_eval_point = transcript.sample_vec(inout_n_vars);
-	let inout_mle_prover = InOutCheckProver::new(r_j_witness, inout_buf, &inout_eval_point)?;
+	let inout_mle_prover = InOutCheckProver::new(r_j_witness, &inout_eval_point);
 	let inout_prover = MleToSumCheckDecorator::new(inout_mle_prover);
 
 	let provers = vec![Either::Left(shift_prover), Either::Right(inout_prover)];

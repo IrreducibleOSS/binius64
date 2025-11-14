@@ -22,7 +22,6 @@ use binius_transcript::ProverTranscript;
 use binius_utils::checked_arithmetics::strict_log_2;
 use binius_verifier::{
 	config::{LOG_WORD_SIZE_BITS, StdChallenger},
-	evaluate_public_mle,
 	protocols::shift::{OperatorData as VerifierOperatorData, check_eval, verify},
 };
 use itertools::Itertools;
@@ -319,26 +318,19 @@ fn test_shift_prove_and_verify() {
 		let verifier_intmul_data =
 			VerifierOperatorData::new(r_zhat_prime_intmul, r_x_prime_intmul, intmul_evals);
 
-		let verifier_output =
-			verify(&cs, &verifier_bitand_data, &verifier_intmul_data, &mut verifier_transcript)
-				.unwrap();
-		verifier_transcript.finalize().unwrap();
-
-		// Compute the expected public input evaluation
-		let z_coords = verifier_output.r_j();
-		let remaining = verifier_output.r_y();
-		let y_coords = &remaining[..inout_n_vars];
-		let expected_public_eval = evaluate_public_mle(value_vec.public(), z_coords, y_coords);
-		// and check consistency with verifier output
-		check_eval(
+		let verifier_output = verify(
 			&cs,
+			value_vec.public(),
 			&verifier_bitand_data,
 			&verifier_intmul_data,
-			&subspace,
-			&verifier_output,
-			expected_public_eval,
+			&mut verifier_transcript,
 		)
 		.unwrap();
+		verifier_transcript.finalize().unwrap();
+
+		// Check consistency with verifier output
+		check_eval(&cs, &verifier_bitand_data, &verifier_intmul_data, &subspace, &verifier_output)
+			.unwrap();
 
 		// Check the claimed eval matches the computed eval
 		let expected_eval = evaluate_witness(
