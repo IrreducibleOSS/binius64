@@ -88,6 +88,7 @@ where
 		}
 	}
 
+	// TODO: this differs from prove_single, which doesn't reverse
 	challenges.reverse();
 
 	let multilinear_evals = provers

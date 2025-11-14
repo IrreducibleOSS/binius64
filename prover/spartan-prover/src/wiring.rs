@@ -7,15 +7,21 @@ use binius_math::{
 	FieldBuffer, FieldSlice, multilinear::eq::eq_ind_partial_eval, univariate::evaluate_univariate,
 };
 use binius_prover::protocols::{
-	sumcheck,
-	sumcheck::{ProveSingleOutput, bivariate_product::BivariateProductSumcheckProver},
+	InOutCheckProver, sumcheck,
+	sumcheck::{
+		MleToSumCheckDecorator, batch::BatchSumcheckOutput,
+		bivariate_product::BivariateProductSumcheckProver,
+	},
 };
 use binius_spartan_frontend::constraint_system::{MulConstraint, Operand, WitnessIndex};
 use binius_transcript::{
 	ProverTranscript,
 	fiat_shamir::{CanSample, Challenger},
 };
-use binius_utils::{checked_arithmetics::checked_log_2, rayon::prelude::*};
+use binius_utils::{
+	checked_arithmetics::checked_log_2,
+	rayon::{iter::Either, prelude::*},
+};
 
 use crate::Error;
 
@@ -153,6 +159,7 @@ pub struct Output<F> {
 /// and witness evaluation.
 pub fn prove<F: Field, P: PackedField<Scalar = F>, Challenger_: Challenger>(
 	wiring_transpose: &WiringTranspose,
+	r_public: &[F],
 	r_x: &[F],
 	witness: FieldBuffer<P>,
 	mulcheck_evals: &[F],
@@ -164,26 +171,37 @@ pub fn prove<F: Field, P: PackedField<Scalar = F>, Challenger_: Challenger>(
 	// Fold constraints with batching
 	let l_poly = fold_constraints(wiring_transpose, lambda, r_x);
 
-	// Batch the mulcheck evaluations
-	let batched_sum = evaluate_univariate(mulcheck_evals, lambda);
+	// Batch the mulcheck evaluations with the public evaluation.
+	let pubcheck_prover = MleToSumCheckDecorator::new(InOutCheckProver::new(
+		// TODO: Eliminate the clone, and ideally the duplicated folding with the other prover.
+		witness.clone(),
+		r_public,
+	));
 
 	// Run sumcheck on bivariate product
-	let sumcheck_prover = BivariateProductSumcheckProver::new([witness, l_poly], batched_sum)
+	let batched_sum = evaluate_univariate(mulcheck_evals, lambda);
+	let wiring_check_prover = BivariateProductSumcheckProver::new([witness, l_poly], batched_sum)
 		.expect("multilinears have equal numbers of variables");
 
-	let ProveSingleOutput {
+	let BatchSumcheckOutput {
 		multilinear_evals,
-		challenges: mut r_y,
-	} = sumcheck::prove_single(sumcheck_prover, transcript)
-		.expect("prover instance satisfies preconditions");
-
-	// Reverse challenges to match expected order
-	r_y.reverse();
+		challenges: r_y,
+	} = sumcheck::batch::batch_prove(
+		vec![
+			Either::Left(pubcheck_prover),
+			Either::Right(wiring_check_prover),
+		],
+		transcript,
+	)
+	.expect("prover instance satisfies preconditions");
 
 	// Extract witness evaluation
-	let [witness_eval, _l_poly_eval] = multilinear_evals
+	let [pubcheck_evals, _wiring_check_evals] = multilinear_evals
 		.try_into()
-		.expect("prover has two multilinears; it returns two evaluations");
+		.expect("batch_prove called with 2 provers");
+	let [witness_eval] = pubcheck_evals
+		.try_into()
+		.expect("pubcheck_prover has 1 multilinear polynomial");
 
 	// Write witness evaluation to transcript
 	transcript.message().write(&witness_eval);
@@ -465,9 +483,15 @@ mod tests {
 
 		// Prover side
 		let mut prover_transcript = ProverTranscript::new(StdChallenger::default());
-		let prover_output =
-			prove(&wiring_transpose, &r_x, witness_packed, &mulcheck_evals, &mut prover_transcript)
-				.expect("prove should succeed");
+		let prover_output = prove(
+			&wiring_transpose,
+			&r_public,
+			&r_x,
+			witness_packed,
+			&mulcheck_evals,
+			&mut prover_transcript,
+		)
+		.expect("prove should succeed");
 
 		// Verifier side
 		let mut verifier_transcript = prover_transcript.into_verifier();

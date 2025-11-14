@@ -19,6 +19,7 @@ use binius_verifier::protocols::{sumcheck, sumcheck::SumcheckOutput};
 #[derive(Debug)]
 pub struct Output<F> {
 	pub lambda: F,
+	pub batch_coeff: F,
 	pub r_y: Vec<F>,
 	pub eval: F,
 	pub witness_eval: F,
@@ -30,12 +31,15 @@ pub fn verify<F: Field, Challenger_: Challenger>(
 	public_eval: F,
 	transcript: &mut VerifierTranscript<Challenger_>,
 ) -> Result<Output<F>, Error> {
-	// \lambda is the batching challenge
+	// \lambda is the batching challenge for the constraint operands
 	let lambda = transcript.sample();
+
+	// Coefficient for batching the public input check with the wiring check.
+	let batch_coeff = transcript.sample();
 
 	// Batch together the witness public input consistency claim (`public_eval`) with the
 	// constraint operand evaluation claims (`eval_claims`).
-	let batched_claim = public_eval + lambda * evaluate_univariate(eval_claims, lambda);
+	let batched_claim = public_eval + batch_coeff * evaluate_univariate(eval_claims, lambda);
 
 	let SumcheckOutput {
 		eval,
@@ -48,6 +52,7 @@ pub fn verify<F: Field, Challenger_: Challenger>(
 
 	Ok(Output {
 		lambda,
+		batch_coeff,
 		r_y,
 		eval,
 		witness_eval,
@@ -62,6 +67,7 @@ pub fn check_eval<F: Field>(
 ) -> Result<(), Error> {
 	let Output {
 		lambda,
+		batch_coeff,
 		r_y,
 		eval,
 		witness_eval,
@@ -78,7 +84,7 @@ pub fn check_eval<F: Field>(
 		.iter()
 		.fold(eq_head, |eval, &r_x_i| eval * eq_one_var(r_x_i, F::ZERO));
 
-	if *eval != (eq_public + *lambda * wiring_eval) * *witness_eval {
+	if *eval != (eq_public + *batch_coeff * wiring_eval) * *witness_eval {
 		return Err(Error::SumcheckComposition);
 	}
 
