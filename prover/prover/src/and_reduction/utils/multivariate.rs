@@ -13,13 +13,19 @@ use crate::and_reduction::fold_lookup::FoldLookup;
 /// This struct stores the evaluations of a OblongMultilinear polynomial over the binary hypercube
 /// in a packed format for efficient processing. The polynomial can be partially evaluated
 /// (folded) on its first variable using either a naive approach or an optimized lookup table.
+///
+/// # Invariants
+/// * `log_num_rows >= LOG_WORD_SIZE_BITS` - Required to prevent arithmetic underflow in folding operations
+/// * `packed_evals.len() == 1 << (log_num_rows - LOG_WORD_SIZE_BITS)` - Each word packs 64 binary values
 #[derive(Debug, Clone)]
 pub struct OneBitOblongMultilinear {
 	/// Logarithm base 2 of the number of rows (evaluations) in the polynomial.
 	/// The total number of evaluations is 2^log_num_rows.
+	/// Must be >= LOG_WORD_SIZE_BITS to prevent arithmetic underflow.
 	pub log_num_rows: usize,
 	/// Packed binary field elements storing the polynomial evaluations.
 	/// Each element contains 64 binary values packed together to create 64-bit words.
+	/// Length must be 1 << (log_num_rows - LOG_WORD_SIZE_BITS).
 	pub packed_evals: Vec<Word>,
 }
 
@@ -40,9 +46,13 @@ impl OneBitOblongMultilinear {
 	/// # Returns
 	/// A `FieldBuffer` containing the evaluations of the partially evaluated polynomial
 	/// over the remaining variables.
+	///
+	/// # Panics
+	/// Panics if `log_num_rows < LOG_WORD_SIZE_BITS`, which would cause arithmetic underflow.
 	#[allow(clippy::modulo_one)]
 	pub fn fold<F: Field>(&self, lookup: &FoldLookup<F, LOG_WORD_SIZE_BITS>) -> FieldBuffer<F> {
-		let new_n_vars = self.log_num_rows - LOG_WORD_SIZE_BITS;
+		let new_n_vars = self.log_num_rows.checked_sub(LOG_WORD_SIZE_BITS)
+			.expect("log_num_rows must be >= LOG_WORD_SIZE_BITS to prevent arithmetic underflow");
 		let multilin_vals = self
 			.packed_evals
 			.par_iter()
@@ -95,13 +105,17 @@ mod test {
 	/// # Returns
 	/// A `FieldBuffer` containing the evaluations of the partially evaluated polynomial
 	/// over the remaining variables.
+	///
+	/// # Panics
+	/// Panics if `log_num_rows < LOG_WORD_SIZE_BITS`, which would cause arithmetic underflow.
 	#[allow(clippy::modulo_one)]
 	pub fn fold_naive<F: BinaryField>(
 		one_bit_oblong: &OneBitOblongMultilinear,
 		univariate_domain: &BinarySubspace<F>,
 		challenge: F,
 	) -> FieldBuffer<F> {
-		let new_n_vars = one_bit_oblong.log_num_rows - LOG_WORD_SIZE_BITS;
+		let new_n_vars = one_bit_oblong.log_num_rows.checked_sub(LOG_WORD_SIZE_BITS)
+			.expect("log_num_rows must be >= LOG_WORD_SIZE_BITS to prevent arithmetic underflow");
 
 		let lagrange_basis_vectors =
 			lexicographic_lagrange_basis_vectors::<F, F>(challenge, univariate_domain);
@@ -124,10 +138,12 @@ mod test {
 		log_num_rows: usize,
 		mut rng: impl Rng,
 	) -> OneBitOblongMultilinear {
+		let num_packed_evals = log_num_rows.checked_sub(LOG_WORD_SIZE_BITS)
+			.expect("log_num_rows must be >= LOG_WORD_SIZE_BITS to prevent arithmetic underflow");
 		OneBitOblongMultilinear {
 			log_num_rows,
 			packed_evals: repeat_with(|| Word(rng.random()))
-				.take(1 << (log_num_rows - LOG_WORD_SIZE_BITS))
+				.take(1 << num_packed_evals)
 				.collect(),
 		}
 	}
@@ -148,7 +164,9 @@ mod test {
 
 		let folded_smart = mlv.fold(&lookup);
 
-		for i in 0..1 << (log_num_rows - SKIPPED_VARS) {
+		let num_elements = log_num_rows.checked_sub(SKIPPED_VARS)
+			.expect("log_num_rows must be >= SKIPPED_VARS to prevent arithmetic underflow");
+		for i in 0..1 << num_elements {
 			assert_eq!(folded_naive.as_ref()[i], folded_smart.as_ref()[i]);
 		}
 	}
